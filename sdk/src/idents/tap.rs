@@ -2,7 +2,10 @@
 //! generic interface of TAPs. The packages and modules are retrieved at
 //! runtime.
 
-use crate::{idents::ModuleAndNameIdent, sui};
+use crate::{
+    idents::{registry::AGENT_REGISTRY_MODULE, ModuleAndNameIdent},
+    sui,
+};
 
 pub const STANDARD_TAP_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("tap");
 
@@ -18,14 +21,6 @@ impl TapStandard {
     pub const AGENT_ID_FROM_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("agent_id_from_address"),
-    };
-    pub const ANNOUNCE_ENDPOINT_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("announce_endpoint_revision"),
-    };
-    pub const AUTHORIZED_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("authorized_tool"),
     };
     pub const BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT: ModuleAndNameIdent =
         ModuleAndNameIdent {
@@ -69,7 +64,7 @@ impl TapStandard {
         name: sui::types::Identifier::from_static("create_scheduled_occurrence_payment"),
     };
     pub const DEFAULT_DAG_EXECUTOR_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
+        module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("DefaultDagExecutorUpdatedEvent"),
     };
     pub const DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -81,13 +76,13 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("deposit_agent_payment_vault"),
     };
-    pub const ENDPOINT_REVISION_ANNOUNCED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
-    };
     pub const EXECUTION_PAYMENT_RECEIPT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
+    };
+    pub const FIXED_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("fixed_tool"),
     };
     pub const GET_SKILL_REQUIREMENTS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
@@ -105,9 +100,21 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("payment_mode_user_funded"),
     };
-    pub const PAYMENT_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
+    pub const PAYMENT_POLICY_AGENT_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("payment_policy"),
+        name: sui::types::Identifier::from_static("payment_policy_agent_funded"),
+    };
+    pub const PAYMENT_POLICY_USER_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("payment_policy_user_funded"),
+    };
+    pub const RECURRENCE_ONCE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("recurrence_once"),
+    };
+    pub const RECURRENCE_RECURSIVE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_TAP_MODULE,
+        name: sui::types::Identifier::from_static("recurrence_recursive"),
     };
     pub const REFILL_SCHEDULED_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
         ModuleAndNameIdent {
@@ -173,20 +180,16 @@ impl TapStandard {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("settle_execution_payment_vertex"),
     };
-    pub const SET_SKILL_ACTIVE_REVISION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("set_skill_active_revision"),
-    };
     pub const SHARED_OBJECT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("shared_object_ref"),
     };
     pub const SKILL_ACTIVE_REVISION_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
+        module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("SkillActiveRevisionUpdatedEvent"),
     };
     pub const SKILL_REGISTERED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
+        module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("SkillRegisteredEvent"),
     };
     pub const SNAPSHOT_EXECUTION_PAYMENT_TOOL_COST: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -196,10 +199,6 @@ impl TapStandard {
     pub const TRIGGER_SCHEDULED_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_TAP_MODULE,
         name: sui::types::Identifier::from_static("trigger_scheduled_skill_execution"),
-    };
-    pub const VERTEX_AUTHORIZATION_SCHEMA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_TAP_MODULE,
-        name: sui::types::Identifier::from_static("vertex_authorization_schema"),
     };
     /// Withdraw unlocked SUI from a standard TAP `AgentPaymentVault`.
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -245,15 +244,6 @@ pub fn scheduled_authorization_grant_template_type(
         package_id,
         STANDARD_TAP_MODULE,
         sui::types::Identifier::from_static("ScheduledAuthorizationGrantTemplate"),
-        vec![],
-    )))
-}
-
-pub fn tap_authorized_tool_type(package_id: sui::types::Address) -> sui::types::TypeTag {
-    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        package_id,
-        STANDARD_TAP_MODULE,
-        sui::types::Identifier::from_static("TapAuthorizedTool"),
         vec![],
     )))
 }
@@ -340,10 +330,6 @@ mod tests {
                 execution_payment_receipt_type(package),
                 sui::types::Identifier::from_static("ExecutionPaymentReceipt"),
             ),
-            (
-                tap_authorized_tool_type(package),
-                sui::types::Identifier::from_static("TapAuthorizedTool"),
-            ),
         ] {
             let sui::types::TypeTag::Struct(tag) = tag else {
                 panic!("expected struct type tag");
@@ -353,31 +339,5 @@ mod tests {
             assert_eq!(*tag.name(), expected_name);
             assert!(tag.type_params().is_empty());
         }
-    }
-
-    #[test]
-    fn standard_tap_idents_added_for_cap_gated_skills() {
-        // Idents introduced for cap-gated skill registration and grant
-        // composition. A regression that renames one of these on chain would
-        // silently break either skill registration with a non-default
-        // `TapVertexAuthorizationSchema` or scheduled-skill grant minting; the
-        // assertion pins both the module and the Move function/struct name.
-        assert_eq!(TapStandard::AUTHORIZED_TOOL.module, STANDARD_TAP_MODULE);
-        assert_eq!(
-            TapStandard::AUTHORIZED_TOOL.name,
-            sui::types::Identifier::from_static("authorized_tool")
-        );
-        assert_eq!(
-            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.module,
-            STANDARD_TAP_MODULE
-        );
-        assert_eq!(
-            TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name,
-            sui::types::Identifier::from_static("vertex_authorization_schema")
-        );
-        assert_eq!(
-            TapStandard::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
-            sui::types::Identifier::from_static("trigger_scheduled_skill_execution")
-        );
     }
 }

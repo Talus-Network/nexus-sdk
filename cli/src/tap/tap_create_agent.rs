@@ -1,7 +1,6 @@
 use super::*;
 
 pub(crate) async fn create_agent(
-    operator: sui::types::Address,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -10,7 +9,7 @@ pub(crate) async fn create_agent(
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let result = nexus_client
         .tap()
-        .create_agent(operator)
+        .create_agent()
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -18,7 +17,7 @@ pub(crate) async fn create_agent(
         "Created Talus agent {agent_id}",
         agent_id = result.agent_id.to_string().truecolor(100, 100, 100)
     );
-    json_output(&create_agent_result_json(operator, &result))
+    json_output(&create_agent_result_json(&result))
 }
 
 #[cfg(test)]
@@ -68,13 +67,9 @@ mod tests {
         let temp_home = tempfile::tempdir().expect("temp home");
         let _env = EnvGuard::without_sui_credentials(temp_home.path());
 
-        let error = create_agent(
-            sui::types::Address::from_static("0x2"),
-            None,
-            DEFAULT_GAS_BUDGET,
-        )
-        .await
-        .expect_err("missing RPC should fail");
+        let error = create_agent(None, DEFAULT_GAS_BUDGET)
+            .await
+            .expect_err("missing RPC should fail");
 
         assert!(
             error.to_string().contains("Sui RPC URL is not configured"),

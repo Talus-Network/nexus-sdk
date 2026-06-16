@@ -47,7 +47,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
         agent_registry: mock_sui_object_ref(),
-        default_tap_executor: DefaultDagExecutor {
+        default_dag_executor: DefaultDagExecutor {
             agent_id: sui::types::Address::generate(&mut rng),
             skill_id: 1,
         },

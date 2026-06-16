@@ -1,5 +1,8 @@
 use {
-    super::move_json::parse_string_value,
+    super::{
+        move_json::{parse_string_value, strip_fields_owned},
+        MoveOption,
+    },
     base64::{prelude::BASE64_STANDARD, Engine},
     serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
     serde_json::Value,
@@ -136,6 +139,54 @@ where
         Ok(value) => Ok(value),
         Err(err) => Err(serde::de::Error::custom(err)),
     }
+}
+
+/// Deserialize a Move `Option<u64>` whose human-readable Sui JSON may encode `u64` as a string.
+pub fn deserialize_move_option_sui_u64<'de, D>(deserializer: D) -> Result<MoveOption<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return MoveOption::<u64>::deserialize(deserializer);
+    }
+
+    fn parse_value(value: Value) -> Result<Option<u64>, String> {
+        let value = strip_fields_owned(value);
+        match value {
+            Value::Null => Ok(None),
+            Value::String(value) => value
+                .parse::<u64>()
+                .map(Some)
+                .map_err(|e| format!("invalid number: {e}")),
+            Value::Number(value) => value
+                .as_u64()
+                .map(Some)
+                .ok_or_else(|| "expected unsigned number".to_string()),
+            Value::Array(mut values) => values
+                .drain(..)
+                .next()
+                .map(parse_value)
+                .transpose()
+                .map(|value| value.flatten()),
+            Value::Object(mut object) => {
+                if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
+                    return parse_value(vec);
+                }
+                if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
+                    return parse_value(inner);
+                }
+                if object.contains_key("none") || object.contains_key("None") {
+                    return Ok(None);
+                }
+                Err("expected Move Option<u64>".to_string())
+            }
+            other => Err(format!("unexpected value for Option<u64>: {other}")),
+        }
+    }
+
+    parse_value(Deserialize::deserialize(deserializer)?)
+        .map(MoveOption)
+        .map_err(serde::de::Error::custom)
 }
 
 /// Serialize an optional Sui `u64` value.

@@ -2,7 +2,6 @@ use {super::*, nexus_sdk::nexus::tap::BindAgentSkillParams};
 
 pub(crate) async fn bind_agent_skill(
     artifact_path: PathBuf,
-    operator: sui::types::Address,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -14,7 +13,6 @@ pub(crate) async fn bind_agent_skill(
     let result = nexus_client
         .tap()
         .bind_agent_skill(BindAgentSkillParams {
-            operator,
             artifact: artifact.clone(),
         })
         .await
@@ -26,5 +24,5 @@ pub(crate) async fn bind_agent_skill(
         skill_id = result.skill_id.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&bind_result_json(&artifact, operator, &result))
+    json_output(&bind_result_json(&artifact, &result))
 }

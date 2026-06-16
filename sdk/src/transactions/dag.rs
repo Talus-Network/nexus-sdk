@@ -105,7 +105,6 @@ pub struct AgentDagExecuteInput {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
-    pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<crate::types::TapVertexAuthorizationPlanEntry>,
 }
@@ -159,8 +158,8 @@ fn tap_authorization_grant_ref(
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
     let operation_commitment = tx.pure(&entry.operation_commitment);
     let constraints_commitment = tx.pure(&entry.constraints_commitment);
-    let endpoint_revision =
-        prepare_option_interface_revision(tx, objects, entry.endpoint_revision)?;
+    let interface_revision =
+        prepare_option_interface_revision(tx, objects, entry.interface_revision)?;
     let payment_id = prepare_option_address(tx, entry.payment_id)?;
 
     Ok(tx.move_call(
@@ -177,7 +176,7 @@ fn tap_authorization_grant_ref(
             tool_function,
             operation_commitment,
             constraints_commitment,
-            endpoint_revision,
+            interface_revision,
             payment_id,
         ],
     ))
@@ -2113,7 +2112,6 @@ pub fn prepare_agent_execution(
 
     let payment_source = tx.pure(&agent_execution.payment_source);
     let payment_max_budget = tx.pure(&agent_execution.payment_max_budget);
-    let payment_refund_mode = tx.pure(&agent_execution.payment_refund_mode);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -2130,7 +2128,6 @@ pub fn prepare_agent_execution(
             payment_coin,
             payment_source,
             payment_max_budget,
-            payment_refund_mode,
             clock,
         ],
     ))
@@ -2256,7 +2253,6 @@ pub fn prepare_default_agent_execution(
 
     let payment_source = tx.pure(&agent_execution.payment_source);
     let payment_max_budget = tx.pure(&agent_execution.payment_max_budget);
-    let payment_refund_mode = tx.pure(&agent_execution.payment_refund_mode);
     let authorization_plan_commitment = tx.pure(&agent_execution.authorization_plan_commitment);
     let authorization_plan =
         tap_authorization_plan(tx, objects, &agent_execution.authorization_plan)?;
@@ -2275,7 +2271,6 @@ pub fn prepare_default_agent_execution(
             payment_coin,
             payment_source,
             payment_max_budget,
-            payment_refund_mode,
             authorization_plan_commitment,
             authorization_plan,
             clock,
@@ -2377,13 +2372,14 @@ fn execute_agent_dag_internal(
         false,
     ));
 
-    let agent = agent.map(|agent| {
-        tx.object(sui::tx::ObjectInput::shared(
+    let agent = match agent {
+        Some(agent) => Some(tx.object(sui::tx::ObjectInput::shared(
             *agent.object_id(),
             agent.version(),
             true,
-        ))
-    });
+        ))),
+        None => None,
+    };
 
     let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
@@ -2832,7 +2828,6 @@ mod tests {
     #[test]
     fn test_publish() {
         let objects = sui_mocks::mock_nexus_objects();
-
         let mut tx = sui::tx::TransactionBuilder::new();
         let dag = tx.pure(&0u64);
         publish(&mut tx, &objects, dag);
@@ -2930,7 +2925,6 @@ mod tests {
     #[test]
     fn test_create_post_failure_action() {
         let objects = sui_mocks::mock_nexus_objects();
-
         let mut tx = sui::tx::TransactionBuilder::new();
         let dag = tx.pure(&0u64);
         create_post_failure_action(
@@ -2960,7 +2954,6 @@ mod tests {
     #[test]
     fn test_create_vertex_post_failure_action() {
         let objects = sui_mocks::mock_nexus_objects();
-
         let mut tx = sui::tx::TransactionBuilder::new();
         let dag = tx.pure(&0u64);
         create_vertex_post_failure_action(
@@ -3064,40 +3057,40 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_v1_with_registered_key_proof() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
+        let __ph_10 = tx.pure(&10u64);
+        let __ph_11 = tx.pure(&11u64);
 
-        let __placeholder_arg_0 = tx.pure(&1u64);
-        let __placeholder_arg_1 = tx.pure(&2u64);
-        let __placeholder_arg_2 = tx.pure(&3u64);
-        let __placeholder_arg_3 = tx.pure(&4u64);
-        let __placeholder_arg_4 = tx.pure(&5u64);
-        let __placeholder_arg_5 = tx.pure(&6u64);
-        let __placeholder_arg_6 = tx.pure(&7u64);
-        let __placeholder_arg_7 = tx.pure(&8u64);
-        let __placeholder_arg_8 = tx.pure(&9u64);
-        let __placeholder_arg_9 = tx.pure(&10u64);
-        let __placeholder_arg_10 = tx.pure(&11u64);
-        let __placeholder_arg_11 = tx.pure(&12u64);
         submit_off_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_0,
-            __placeholder_arg_1,
-            __placeholder_arg_2,
-            __placeholder_arg_3,
-            __placeholder_arg_4,
-            __placeholder_arg_5,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             Some(&mock_offchain_none_auxiliary()),
             &mock_offchain_registered_key_proof(),
-            __placeholder_arg_6,
-            __placeholder_arg_7,
-            __placeholder_arg_8,
-            __placeholder_arg_9,
-            __placeholder_arg_10,
+            __ph_6,
+            __ph_7,
+            __ph_8,
+            __ph_9,
+            __ph_10,
             0,
-            __placeholder_arg_11,
+            __ph_11,
         )
         .unwrap();
 
@@ -3133,29 +3126,29 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_plain_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_12 = tx.pure(&13u64);
-        let __placeholder_arg_13 = tx.pure(&14u64);
-        let __placeholder_arg_14 = tx.pure(&15u64);
-        let __placeholder_arg_15 = tx.pure(&16u64);
-        let __placeholder_arg_16 = tx.pure(&17u64);
-        let __placeholder_arg_17 = tx.pure(&18u64);
-        let __placeholder_arg_18 = tx.pure(&19u64);
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_12,
-            __placeholder_arg_13,
-            __placeholder_arg_14,
-            __placeholder_arg_15,
-            __placeholder_arg_16,
-            __placeholder_arg_17,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             None,
             0,
-            __placeholder_arg_18,
+            __ph_6,
         )
         .unwrap();
 
@@ -3178,29 +3171,29 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_failure_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_19 = tx.pure(&20u64);
-        let __placeholder_arg_20 = tx.pure(&21u64);
-        let __placeholder_arg_21 = tx.pure(&22u64);
-        let __placeholder_arg_22 = tx.pure(&23u64);
-        let __placeholder_arg_23 = tx.pure(&24u64);
-        let __placeholder_arg_24 = tx.pure(&25u64);
-        let __placeholder_arg_25 = tx.pure(&26u64);
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_19,
-            __placeholder_arg_20,
-            __placeholder_arg_21,
-            __placeholder_arg_22,
-            __placeholder_arg_23,
-            __placeholder_arg_24,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_failure_result(),
             Some(&mock_offchain_failure_auxiliary()),
             0,
-            __placeholder_arg_25,
+            __ph_6,
         )
         .unwrap();
 
@@ -3233,29 +3226,29 @@ mod tests {
 
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_26 = tx.pure(&27u64);
-        let __placeholder_arg_27 = tx.pure(&28u64);
-        let __placeholder_arg_28 = tx.pure(&29u64);
-        let __placeholder_arg_29 = tx.pure(&30u64);
-        let __placeholder_arg_30 = tx.pure(&31u64);
-        let __placeholder_arg_31 = tx.pure(&32u64);
-        let __placeholder_arg_32 = tx.pure(&33u64);
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_26,
-            __placeholder_arg_27,
-            __placeholder_arg_28,
-            __placeholder_arg_29,
-            __placeholder_arg_30,
-            __placeholder_arg_31,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &result,
             None,
             0,
-            __placeholder_arg_32,
+            __ph_6,
         )
         .unwrap();
 
@@ -3291,41 +3284,41 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let runtime_call = mock_external_verifier_runtime_call();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
+        let __ph_10 = tx.pure(&10u64);
+        let __ph_11 = tx.pure(&11u64);
 
-        let __placeholder_arg_33 = tx.pure(&34u64);
-        let __placeholder_arg_34 = tx.pure(&35u64);
-        let __placeholder_arg_35 = tx.pure(&36u64);
-        let __placeholder_arg_36 = tx.pure(&37u64);
-        let __placeholder_arg_37 = tx.pure(&38u64);
-        let __placeholder_arg_38 = tx.pure(&39u64);
-        let __placeholder_arg_39 = tx.pure(&40u64);
-        let __placeholder_arg_40 = tx.pure(&41u64);
-        let __placeholder_arg_41 = tx.pure(&42u64);
-        let __placeholder_arg_42 = tx.pure(&43u64);
-        let __placeholder_arg_43 = tx.pure(&44u64);
-        let __placeholder_arg_44 = tx.pure(&45u64);
         submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_33,
-            __placeholder_arg_34,
-            __placeholder_arg_35,
-            __placeholder_arg_36,
-            __placeholder_arg_37,
-            __placeholder_arg_38,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             &mock_authenticated_offchain_verifier_evidence(),
             &[21, 22, 23],
             &runtime_call,
-            __placeholder_arg_39,
-            __placeholder_arg_40,
-            __placeholder_arg_41,
-            __placeholder_arg_42,
-            __placeholder_arg_43,
+            __ph_6,
+            __ph_7,
+            __ph_8,
+            __ph_9,
+            __ph_10,
             0,
-            __placeholder_arg_44,
+            __ph_11,
         )
         .unwrap();
 
@@ -3457,23 +3450,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_45 = tx.pure(&46u64);
-        let __placeholder_arg_46 = tx.pure(&47u64);
-        let __placeholder_arg_47 = tx.pure(&48u64);
-        let __placeholder_arg_48 = tx.pure(&49u64);
-        let __placeholder_arg_49 = tx.pure(&50u64);
-        let __placeholder_arg_50 = tx.pure(&51u64);
-        let __placeholder_arg_51 = tx.pure(&52u64);
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_45,
-            __placeholder_arg_46,
-            __placeholder_arg_47,
-            __placeholder_arg_48,
-            __placeholder_arg_49,
-            __placeholder_arg_50,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_prepared_tool_output(),
@@ -3481,7 +3474,7 @@ mod tests {
             None,
             witness,
             0,
-            __placeholder_arg_51,
+            __ph_6,
         )
         .unwrap();
 
@@ -3501,35 +3494,20 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
 
-        let __placeholder_arg_52 = tx.pure(&53u64);
-        let __placeholder_arg_53 = tx.pure(&54u64);
-        let __placeholder_arg_54 = tx.pure(&55u64);
-        let __placeholder_arg_55 = tx.pure(&56u64);
-        let __placeholder_arg_56 = tx.pure(&57u64);
-        let __placeholder_arg_57 = tx.pure(&58u64);
-        let __placeholder_arg_58 = tx.pure(&59u64);
-        let __placeholder_arg_59 = tx.pure(&60u64);
-        let __placeholder_arg_60 = tx.pure(&61u64);
-        let __placeholder_arg_61 = tx.pure(&62u64);
         submit_on_chain_tool_result_for_walk_v1_with_args(
-            &mut tx,
-            &objects,
-            __placeholder_arg_52,
-            __placeholder_arg_53,
-            __placeholder_arg_54,
-            __placeholder_arg_55,
-            __placeholder_arg_56,
-            __placeholder_arg_57,
-            9,
-            __placeholder_arg_58,
-            __placeholder_arg_59,
-            __placeholder_arg_60,
-            None,
-            None,
-            witness,
-            0,
-            __placeholder_arg_61,
+            &mut tx, &objects, __ph_0, __ph_1, __ph_2, __ph_3, __ph_4, __ph_5, 9, __ph_6, __ph_7,
+            __ph_8, None, None, witness, 0, __ph_9,
         )
         .unwrap();
 
@@ -3551,9 +3529,6 @@ mod tests {
         let dag = tx.pure(&0u64);
         let execution = tx.pure(&1u64);
         let leader_cap = tx.pure(&2u64);
-        let dag_resolved = sui::types::Argument::Input(0);
-        let execution_resolved = sui::types::Argument::Input(1);
-        let leader_cap_resolved = sui::types::Argument::Input(2);
 
         mint_vertex_authorization_check_cap_for_onchain_walk(
             &mut tx, &objects, dag, execution, leader_cap, 17,
@@ -3573,9 +3548,9 @@ mod tests {
             workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name
         );
         assert_eq!(call.arguments.len(), 4);
-        assert_eq!(call.arguments[0], dag_resolved);
-        assert_eq!(call.arguments[1], execution_resolved);
-        assert_eq!(call.arguments[2], leader_cap_resolved);
+        assert_eq!(call.arguments[0], sui::types::Argument::Input(0));
+        assert_eq!(call.arguments[1], sui::types::Argument::Input(1));
+        assert_eq!(call.arguments[2], sui::types::Argument::Input(2));
         inspector.expect_u64(&call.arguments[3], 17);
         assert_eq!(inspector.inputs().len(), 4);
     }
@@ -3639,14 +3614,14 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
 
-        let __placeholder_arg_62 = tx.pure(&63u64);
-        let __placeholder_arg_63 = tx.pure(&64u64);
         let submission = prepare_on_chain_tool_result_submission_v1_bytes(
             &mut tx,
             &objects,
-            __placeholder_arg_62,
-            __placeholder_arg_63,
+            __ph_0,
+            __ph_1,
             None,
             &None,
             tool_witness_id,
@@ -3655,15 +3630,20 @@ mod tests {
 
         let _ = submission;
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let submission_index = *inspector
-            .move_call_indices_to(
-                objects.workflow_pkg_id,
-                &workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.module,
-                &workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name,
-            )
-            .last()
-            .expect("submission move call should be present");
-        let submission_call = inspector.move_call(submission_index);
+        let submission_call = inspector
+            .commands()
+            .iter()
+            .find_map(|command| match command {
+                sui::types::Command::MoveCall(call)
+                    if call.package == objects.workflow_pkg_id
+                        && call.function
+                            == workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .expect("expected submission move call");
 
         assert_eq!(submission_call.package, objects.workflow_pkg_id);
         assert_eq!(
@@ -3703,23 +3683,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_64 = tx.pure(&65u64);
-        let __placeholder_arg_65 = tx.pure(&66u64);
-        let __placeholder_arg_66 = tx.pure(&67u64);
-        let __placeholder_arg_67 = tx.pure(&68u64);
-        let __placeholder_arg_68 = tx.pure(&69u64);
-        let __placeholder_arg_69 = tx.pure(&70u64);
-        let __placeholder_arg_70 = tx.pure(&71u64);
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            __placeholder_arg_64,
-            __placeholder_arg_65,
-            __placeholder_arg_66,
-            __placeholder_arg_67,
-            __placeholder_arg_68,
-            __placeholder_arg_69,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             11,
             &mock_runtime_vertex(),
             &mock_prepared_tool_output(),
@@ -3727,7 +3707,7 @@ mod tests {
             Some(b"tool failed".to_vec()),
             tool_witness_id,
             0,
-            __placeholder_arg_70,
+            __ph_6,
         )
         .unwrap();
 
@@ -3760,23 +3740,23 @@ mod tests {
     fn test_submit_on_chain_terminal_err_eval_for_walk_defaults_zero_tool_witness_id() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_71 = tx.pure(&72u64);
-        let __placeholder_arg_72 = tx.pure(&73u64);
-        let __placeholder_arg_73 = tx.pure(&74u64);
-        let __placeholder_arg_74 = tx.pure(&75u64);
-        let __placeholder_arg_75 = tx.pure(&76u64);
-        let __placeholder_arg_76 = tx.pure(&77u64);
-        let __placeholder_arg_77 = tx.pure(&78u64);
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
             &objects,
-            __placeholder_arg_71,
-            __placeholder_arg_72,
-            __placeholder_arg_73,
-            __placeholder_arg_74,
-            __placeholder_arg_75,
-            __placeholder_arg_76,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             13,
             &mock_runtime_vertex(),
             DataStorage::try_from(serde_json::json!({
@@ -3786,7 +3766,7 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             None,
-            __placeholder_arg_77,
+            __ph_6,
         )
         .unwrap();
 
@@ -3821,23 +3801,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
-        let __placeholder_arg_78 = tx.pure(&79u64);
-        let __placeholder_arg_79 = tx.pure(&80u64);
-        let __placeholder_arg_80 = tx.pure(&81u64);
-        let __placeholder_arg_81 = tx.pure(&82u64);
-        let __placeholder_arg_82 = tx.pure(&83u64);
-        let __placeholder_arg_83 = tx.pure(&84u64);
-        let __placeholder_arg_84 = tx.pure(&85u64);
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
             &objects,
-            __placeholder_arg_78,
-            __placeholder_arg_79,
-            __placeholder_arg_80,
-            __placeholder_arg_81,
-            __placeholder_arg_82,
-            __placeholder_arg_83,
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             13,
             &mock_runtime_vertex(),
             DataStorage::try_from(serde_json::json!({
@@ -3847,7 +3827,7 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             Some(tool_witness_id),
-            __placeholder_arg_84,
+            __ph_6,
         )
         .unwrap();
 
@@ -4034,7 +4014,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 55,
-            payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: Vec::new(),
         };
@@ -4096,17 +4075,17 @@ mod tests {
         inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
         inspector.expect_u64(&config_call.arguments[4], 13);
         let sui::types::Argument::Result(agent_id_index) = config_call.arguments[5] else {
-            panic!("expected agent ID to come from tap::agent_id_from_address");
+            panic!("expected agent ID");
         };
         let agent_id_call = inspector.move_call(agent_id_index as usize);
-        assert_eq!(agent_id_call.package, nexus_objects.interface_pkg_id);
+        assert_eq!(agent_id_call.package, sui_framework::PACKAGE_ID);
         assert_eq!(
             agent_id_call.module,
-            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.module
+            sui_framework::Object::ID_FROM_ADDRESS.module
         );
         assert_eq!(
             agent_id_call.function,
-            crate::idents::tap::TapStandard::AGENT_ID_FROM_ADDRESS.name
+            sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&agent_id_call.arguments[0], agent_execution.agent_id);
 
@@ -4117,7 +4096,7 @@ mod tests {
             begin_call.function,
             workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
         );
-        assert_eq!(begin_call.arguments.len(), 10);
+        assert_eq!(begin_call.arguments.len(), 9);
         inspector.expect_shared_object(&begin_call.arguments[2], &agent, true);
         assert_matches!(
             &begin_call.arguments[5],
@@ -4170,7 +4149,7 @@ mod tests {
             tool_function: "run".to_string(),
             operation_commitment: vec![7],
             constraints_commitment: vec![8],
-            endpoint_revision: Some(InterfaceRevision(2)),
+            interface_revision: Some(InterfaceRevision(2)),
             payment_id: Some(sui::types::Address::from_static("0x60")),
         };
         let agent_execution = AgentDagExecuteInput {
@@ -4180,7 +4159,6 @@ mod tests {
             payment_coin: Some(payment_coin.clone()),
             payment_coin_balance: Some(1_000),
             payment_max_budget: 55,
-            payment_refund_mode: 7,
             authorization_plan_commitment: Some(vec![9, 8]),
             authorization_plan: vec![entry.clone()],
         };
@@ -4255,7 +4233,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
-            payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
         };
@@ -4349,7 +4326,6 @@ mod tests {
             payment_coin: None,
             payment_coin_balance: None,
             payment_max_budget: 3,
-            payment_refund_mode: 4,
             authorization_plan_commitment: None,
             authorization_plan: Vec::new(),
         };

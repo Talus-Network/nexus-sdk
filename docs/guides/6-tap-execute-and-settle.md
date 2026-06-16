@@ -47,7 +47,7 @@ Expected: `100000000`.
 
 `nexus tap execute` submits one transaction that:
 
-- Locks a standard TAP `ExecutionPayment` (paid out of the wallet's coins).
+- Locks a Talus agent `ExecutionPayment` (paid out of the wallet's coins).
 - Initialises the `DAGExecution` object and shares it.
 - Calls the workflow's `request_network_to_execute_walks`, which emits a `RequestWalkExecutionEvent` for the `transfer_vertex` walk. The leader picks the event up, runs `transfer_vertex::execute(worksheet, state, recipient)` on chain, and marks the walk `Successful`. Your wallet sees `consumed` MIST debited from the payment object; the recipient receives whatever was in the treasury.
 
@@ -154,7 +154,7 @@ If you want to block until the payment object lands in a terminal state, `nexus 
 
 ## 5. Cost summary
 
-`nexus dag execution-cost` rolls up the standard TAP payment consumption:
+`nexus dag execution-cost` rolls up the Talus agent payment consumption:
 
 ```bash
 nexus dag execution-cost --dag-execution-id "$EXEC" --json
@@ -175,14 +175,14 @@ End-to-end, your skill does this on every call:
 Re-running just means funding the treasury again and calling `tap execute` again with a fresh recipient (or the same one).
 
 {% hint style="danger" %}
-**This flow is unauthorized.** Anyone who can reach a workflow dispatch against `(agent, skill)` will drain the treasury — there is no per-call authorization check on `transfer_vertex::execute`. The only thing keeping the funds in place is the `public(package)` visibility on `take_treasury`, which prevents *direct* Move-side calls from other packages; it does **not** prevent another skill author from publishing their own DAG that lists `tutorial.local.transfer_vertex@1` in its entry vertex and submitting `tap execute` against their own agent. Treat this guide as an introduction to the workflow lifecycle, not as a production pattern. The cap concept (`WorkflowVertexAuthorizationGrant`, `VertexAuthorizationCheckCap`, `fixed_tools` with `requires_payment: true`, `--workflow-authorization-cap-first`) plus the state-bound grant-id check that closes the multi-`(agent, skill)` attack will land in a follow-up cap-gated TAP guide.
+**This flow is minimal, not production-authorized.** Anyone who can reach a workflow dispatch against `(agent, skill)` will drain the treasury because there is no per-call authorization check on `transfer_vertex::execute`. The only thing keeping the funds in place is the `public(package)` visibility on `take_treasury`, which prevents *direct* Move-side calls from other packages; it does **not** prevent another skill author from publishing their own DAG that lists `tutorial.local.transfer_vertex@1` in its entry vertex and submitting `tap execute` against their own agent. Treat this guide as an introduction to the workflow lifecycle, not as a production pattern. The cap concept (`WorkflowVertexAuthorizationGrant`, `VertexAuthorizationCheckCap`, fixed-tool requirements, and `--workflow-authorization-cap-first`) plus the state-bound grant-id check that closes the multi-`(agent, skill)` attack will land in a follow-up cap-gated TAP guide.
 {% endhint %}
 
 ## Next steps
 
-The CLI surface for the rest of standard TAP is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
+The CLI surface for the rest of TAP package and Talus agent operation is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
 
 - **`nexus tap vault deposit`** to pre-fund a payment vault on the agent instead of paying per-call.
 - **`nexus tap schedule-from-vault`**, **`nexus tap schedule-address-funded`**, and **`nexus tap schedule-default-address-funded`** to drive scheduled executions tied to a scheduler task.
-- **`nexus tap announce`** for shipping a new endpoint revision of an existing skill.
+- **`nexus tap update-skill`** for moving an existing skill to a new current revision.
 - **`nexus dag execution-cost`** and **`nexus tap payments list`** for observability on what executions cost the operator across an agent's lifetime.

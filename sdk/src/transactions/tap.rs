@@ -1,18 +1,17 @@
 use crate::{
-    idents::{move_std, registry::AgentRegistry, tap::TapStandard},
+    idents::{move_std, registry::AgentRegistry, sui_framework, tap::TapStandard},
     sui,
     types::{
         AgentId,
         InterfaceRevision,
         NexusObjects,
         SkillId,
-        TapAuthorizedTool,
+        TapFixedTool,
         TapPaymentPolicy,
+        TapRecurrenceKind,
         TapSchedulePolicy,
         TapScheduledAuthorizationGrantTemplate,
         TapScheduledOccurrenceFinalState,
-        TapSharedObjectRef,
-        TapVertexAuthorizationSchema,
     },
 };
 
@@ -63,31 +62,21 @@ pub fn create_agent(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::tx::Argument,
-    operator: sui::types::Address,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let operator = tx.pure(&operator);
-
     Ok(agent_registry_call(
         tx,
         objects,
         AgentRegistry::CREATE_AGENT,
-        vec![registry, operator],
+        vec![registry],
     ))
 }
 
 pub fn agent_id_from_address(
     tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
+    _objects: &NexusObjects,
     agent_id: AgentId,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let agent_id = tx.pure(&agent_id);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::AGENT_ID_FROM_ADDRESS,
-        vec![agent_id],
-    ))
+    sui_framework::Object::id_from_object_id(tx, agent_id)
 }
 
 pub fn interface_revision(
@@ -110,18 +99,48 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::tx::Argument,
-    operator: sui::types::Address,
-    config_digest: Vec<u8>,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let args = vec![registry, tx.pure(&operator), tx.pure(&config_digest)];
-
     let result = agent_registry_call(
         tx,
         objects,
         AgentRegistry::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT,
-        args,
+        vec![registry],
     );
     Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_skill(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
+    dag_id: sui::types::Address,
+    description: Vec<u8>,
+    input_commitment: Vec<u8>,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+    active: bool,
+) -> anyhow::Result<sui::tx::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
+    let args = vec![
+        registry,
+        agent,
+        tx.pure(&dag_id),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
+        payment_policy,
+        schedule_policy,
+        tx.pure(&active),
+    ];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::CREATE_SKILL,
+        args,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -131,30 +150,21 @@ pub fn register_skill(
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     dag_id: sui::types::Address,
-    workflow_commitment: Vec<u8>,
-    requirements_commitment: Vec<u8>,
-    metadata_commitment: Vec<u8>,
+    description: Vec<u8>,
+    input_commitment: Vec<u8>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
-    capability_schema_commitment: Vec<u8>,
-    shared_objects: Vec<TapSharedObjectRef>,
-    config_digest: Vec<u8>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
-    let shared_objects = shared_object_refs_arg(tx, objects, &shared_objects)?;
     let args = vec![
         registry,
         agent,
         tx.pure(&dag_id),
-        tx.pure(&workflow_commitment),
-        tx.pure(&requirements_commitment),
-        tx.pure(&metadata_commitment),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
         payment_policy,
         schedule_policy,
-        tx.pure(&capability_schema_commitment),
-        shared_objects,
-        tx.pure(&config_digest),
     ];
 
     Ok(agent_registry_call(
@@ -165,112 +175,37 @@ pub fn register_skill(
     ))
 }
 
-/// Build a `tap::TapAuthorizedTool` Move value from a typed entry.
-pub fn authorized_tool_arg(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    tool: &TapAuthorizedTool,
-) -> anyhow::Result<sui::tx::Argument> {
-    let package_id = tx.pure(&tool.package_id);
-    let module_name = move_std::Ascii::ascii_string_from_str(tx, tool.module.as_str())?;
-    let function_name = move_std::Ascii::ascii_string_from_str(tx, tool.function.as_str())?;
-    let operation_commitment = tx.pure(&tool.operation_commitment);
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::AUTHORIZED_TOOL,
-        vec![package_id, module_name, function_name, operation_commitment],
-    ))
-}
-
-/// Build a `tap::TapVertexAuthorizationSchema` Move value with each `TapAuthorizedTool`
-/// individually constructed and pushed into the on-chain `vector`.
-pub fn vertex_authorization_schema_arg(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    schema: &TapVertexAuthorizationSchema,
-) -> anyhow::Result<sui::tx::Argument> {
-    let schema_commitment = tx.pure(&schema.schema_commitment);
-    let authorized_tool_type =
-        crate::idents::tap::tap_authorized_tool_type(objects.interface_pkg_id);
-    let fixed_tools = tx.move_call(
-        sui::tx::Function::new(
-            move_std::PACKAGE_ID,
-            move_std::Vector::EMPTY.module,
-            move_std::Vector::EMPTY.name,
-        )
-        .with_type_args(vec![authorized_tool_type.clone()]),
-        vec![],
-    );
-    // `vector::push_back` mutates by reference and returns nothing — keep the
-    // original `fixed_tools` Argument and drop the move-call result.
-    for tool in &schema.fixed_tools {
-        let tool_arg = authorized_tool_arg(tx, objects, tool)?;
-        tx.move_call(
-            sui::tx::Function::new(
-                move_std::PACKAGE_ID,
-                move_std::Vector::PUSH_BACK.module,
-                move_std::Vector::PUSH_BACK.name,
-            )
-            .with_type_args(vec![authorized_tool_type.clone()]),
-            vec![fixed_tools, tool_arg],
-        );
-    }
-    let requires_payment = tx.pure(&schema.requires_payment);
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::VERTEX_AUTHORIZATION_SCHEMA,
-        vec![schema_commitment, fixed_tools, requires_payment],
-    ))
-}
-
-/// Variant of `register_skill` that passes the full `TapVertexAuthorizationSchema`.
-/// Required when the skill is cap-gated (non-empty `fixed_tools` or
-/// `requires_payment = true`); the chain reconstructs the requirements digest with
-/// the schema baked in, so the simpler `register_skill` would fail the config
-/// digest assertion.
 #[allow(clippy::too_many_arguments)]
-pub fn register_skill_with_vertex_authorization_schema(
+pub fn register_skill_with_fixed_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     dag_id: sui::types::Address,
-    workflow_commitment: Vec<u8>,
-    requirements_commitment: Vec<u8>,
-    metadata_commitment: Vec<u8>,
+    description: Vec<u8>,
+    input_commitment: Vec<u8>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
-    capability_schema_commitment: Vec<u8>,
-    vertex_authorization_schema: &TapVertexAuthorizationSchema,
-    shared_objects: Vec<TapSharedObjectRef>,
-    config_digest: Vec<u8>,
+    fixed_tools: Vec<TapFixedTool>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
-    let shared_objects = shared_object_refs_arg(tx, objects, &shared_objects)?;
-    let vertex_authorization_schema =
-        vertex_authorization_schema_arg(tx, objects, vertex_authorization_schema)?;
+    let fixed_tools = fixed_tools_arg(tx, objects, &fixed_tools)?;
     let args = vec![
         registry,
         agent,
         tx.pure(&dag_id),
-        tx.pure(&workflow_commitment),
-        tx.pure(&requirements_commitment),
-        tx.pure(&metadata_commitment),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
         payment_policy,
         schedule_policy,
-        tx.pure(&capability_schema_commitment),
-        vertex_authorization_schema,
-        shared_objects,
-        tx.pure(&config_digest),
+        fixed_tools,
     ];
 
     Ok(agent_registry_call(
         tx,
         objects,
-        AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA,
+        AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS,
         args,
     ))
 }
@@ -292,62 +227,100 @@ pub fn get_skill_requirements(
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn announce_endpoint_revision(
+pub fn set_skill_active(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     skill_id: SkillId,
-    interface_revision: InterfaceRevision,
-    shared_objects: Vec<TapSharedObjectRef>,
-    payment_policy: TapPaymentPolicy,
-    schedule_policy: TapSchedulePolicy,
-    capability_schema_commitment: Vec<u8>,
-    config_digest: Vec<u8>,
+    active: bool,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
-    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
-    let shared_objects = shared_object_refs_arg(tx, objects, &shared_objects)?;
-    let args = vec![
-        registry,
-        agent,
-        tx.pure(&skill_id),
-        tx.pure(&interface_revision),
-        shared_objects,
-        payment_policy,
-        schedule_policy,
-        tx.pure(&capability_schema_commitment),
-        tx.pure(&config_digest),
-    ];
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&active)];
 
     Ok(agent_registry_call(
         tx,
         objects,
-        AgentRegistry::ANNOUNCE_ENDPOINT_REVISION,
+        AgentRegistry::SET_SKILL_ACTIVE,
         args,
     ))
 }
 
-pub fn set_skill_active_revision(
+pub fn set_agent_active(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
+    active: bool,
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&active)];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::SET_AGENT_ACTIVE,
+        args,
+    ))
+}
+
+pub fn update_skill_description(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     skill_id: SkillId,
-    interface_revision: InterfaceRevision,
+    description: Vec<u8>,
 ) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&description)];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::UPDATE_SKILL_DESCRIPTION,
+        args,
+    ))
+}
+
+pub fn update_dag(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
+    skill_id: SkillId,
+    dag_id: sui::types::Address,
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&dag_id)];
+
+    Ok(agent_registry_call(
+        tx,
+        objects,
+        AgentRegistry::UPDATE_DAG,
+        args,
+    ))
+}
+
+pub fn update_skill_policies(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
+    skill_id: SkillId,
+    payment_policy: TapPaymentPolicy,
+    schedule_policy: TapSchedulePolicy,
+) -> anyhow::Result<sui::tx::Argument> {
+    let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
+    let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
         tx.pure(&skill_id),
-        tx.pure(&interface_revision),
+        payment_policy,
+        schedule_policy,
     ];
 
     Ok(agent_registry_call(
         tx,
         objects,
-        AgentRegistry::SET_SKILL_ACTIVE_REVISION,
+        AgentRegistry::UPDATE_SKILL_POLICIES,
         args,
     ))
 }
@@ -421,7 +394,6 @@ pub struct AgentSkillPaymentInput {
     pub skill_id: SkillId,
     pub source: Vec<u8>,
     pub max_budget: u64,
-    pub refund_mode: u8,
 }
 
 impl AgentSkillPaymentInput {
@@ -430,14 +402,12 @@ impl AgentSkillPaymentInput {
         skill_id: SkillId,
         invoker: sui::types::Address,
         max_budget: u64,
-        refund_mode: u8,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             agent_id,
             skill_id,
             source: crate::types::tap_payment_source_for_address(invoker)?,
             max_budget,
-            refund_mode,
         })
     }
 
@@ -448,14 +418,12 @@ impl AgentSkillPaymentInput {
         agent_id: AgentId,
         skill_id: SkillId,
         max_budget: u64,
-        refund_mode: u8,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             agent_id,
             skill_id,
             source: crate::types::tap_payment_source_for_address(agent_id)?,
             max_budget,
-            refund_mode,
         })
     }
 }
@@ -483,8 +451,7 @@ pub fn withdraw_agent_payment_vault(
     agent: sui::tx::Argument,
     amount: u64,
 ) -> anyhow::Result<sui::tx::Argument> {
-    // The TAP Move module checks that the transaction sender is the agent
-    // owner or operator registered in the TapRegistry.
+    // The TAP Move module checks mutable agent custody through the registry.
     let amount = tx.pure(&amount);
 
     Ok(agent_registry_call(
@@ -541,7 +508,6 @@ pub fn schedule_skill_execution_address_funded(
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
-    refund_mode: u8,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -558,7 +524,6 @@ pub fn schedule_skill_execution_address_funded(
         tx.pure(&refund_recipient),
         tx.pure(&payment_source),
         tx.pure(&occurrence_budget),
-        tx.pure(&refund_mode),
         schedule_policy,
         tx.pure(&refill_policy_commitment),
         tx.pure(&schedule_entries_commitment),
@@ -585,7 +550,6 @@ pub fn schedule_skill_execution_address_funded_with_grants(
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
-    refund_mode: u8,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -605,7 +569,6 @@ pub fn schedule_skill_execution_address_funded_with_grants(
         tx.pure(&refund_recipient),
         tx.pure(&payment_source),
         tx.pure(&occurrence_budget),
-        tx.pure(&refund_mode),
         schedule_policy,
         tx.pure(&refill_policy_commitment),
         tx.pure(&schedule_entries_commitment),
@@ -631,7 +594,6 @@ pub fn schedule_default_dag_executor_skill_execution_address_funded(
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
-    refund_mode: u8,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -645,7 +607,6 @@ pub fn schedule_default_dag_executor_skill_execution_address_funded(
         tx.pure(&refund_recipient),
         tx.pure(&payment_source),
         tx.pure(&occurrence_budget),
-        tx.pure(&refund_mode),
         schedule_policy,
         tx.pure(&refill_policy_commitment),
         tx.pure(&schedule_entries_commitment),
@@ -670,7 +631,6 @@ pub fn schedule_skill_execution_from_agent_vault(
     skill_id: SkillId,
     prepay_amount: u64,
     occurrence_budget: u64,
-    refund_mode: u8,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -685,7 +645,6 @@ pub fn schedule_skill_execution_from_agent_vault(
         skill_id,
         tx.pure(&prepay_amount),
         tx.pure(&occurrence_budget),
-        tx.pure(&refund_mode),
         schedule_policy,
         tx.pure(&refill_policy_commitment),
         tx.pure(&schedule_entries_commitment),
@@ -710,7 +669,6 @@ pub fn schedule_skill_execution_from_agent_vault_with_grants(
     skill_id: SkillId,
     prepay_amount: u64,
     occurrence_budget: u64,
-    refund_mode: u8,
     schedule_policy: TapSchedulePolicy,
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
@@ -728,7 +686,6 @@ pub fn schedule_skill_execution_from_agent_vault_with_grants(
         skill_id,
         tx.pure(&prepay_amount),
         tx.pure(&occurrence_budget),
-        tx.pure(&refund_mode),
         schedule_policy,
         tx.pure(&refill_policy_commitment),
         tx.pure(&schedule_entries_commitment),
@@ -749,43 +706,44 @@ fn schedule_policy_arg(
     objects: &NexusObjects,
     schedule_policy: &TapSchedulePolicy,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let recurrence_kind =
-        move_std::Ascii::ascii_string_from_str(tx, &schedule_policy.recurrence_kind)?;
-    let min_interval_ms = tx.pure(&schedule_policy.min_interval_ms);
-    let max_occurrences = tx.pure(&schedule_policy.max_occurrences);
+    let recurrence = match &schedule_policy.recurrence {
+        TapRecurrenceKind::Once => {
+            tap_interface_call(tx, objects, TapStandard::RECURRENCE_ONCE, vec![])
+        }
+        TapRecurrenceKind::Recursive {
+            min_interval_ms,
+            max_occurrences,
+        } => {
+            let min_interval_ms = tx.pure(min_interval_ms);
+            let max_occurrences = option_u64_arg(tx, max_occurrences.as_ref())?;
+            tap_interface_call(
+                tx,
+                objects,
+                TapStandard::RECURRENCE_RECURSIVE,
+                vec![min_interval_ms, max_occurrences],
+            )
+        }
+    };
     let allow_recursive = tx.pure(&schedule_policy.allow_recursive);
 
     Ok(tap_interface_call(
         tx,
         objects,
         TapStandard::SCHEDULE_POLICY,
-        vec![
-            recurrence_kind,
-            min_interval_ms,
-            max_occurrences,
-            allow_recursive,
-        ],
+        vec![recurrence, allow_recursive],
     ))
 }
 
-fn payment_mode_arg(
+fn option_u64_arg(
     tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    mode: &crate::types::TapPaymentMode,
+    value: Option<&u64>,
 ) -> anyhow::Result<sui::tx::Argument> {
-    match mode {
-        crate::types::TapPaymentMode::UserFunded => Ok(tap_interface_call(
-            tx,
-            objects,
-            TapStandard::PAYMENT_MODE_USER_FUNDED,
-            vec![],
-        )),
-        crate::types::TapPaymentMode::AgentFunded => Ok(tap_interface_call(
-            tx,
-            objects,
-            TapStandard::PAYMENT_MODE_AGENT_FUNDED,
-            vec![],
-        )),
+    match value {
+        Some(value) => {
+            let value = tx.pure(value);
+            Ok(move_std::Option::some(tx, sui::types::TypeTag::U64, value))
+        }
+        None => Ok(move_std::Option::none(tx, sui::types::TypeTag::U64)),
     }
 }
 
@@ -794,44 +752,48 @@ fn payment_policy_arg(
     objects: &NexusObjects,
     payment_policy: &TapPaymentPolicy,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let mode = payment_mode_arg(tx, objects, &payment_policy.mode)?;
-    let max_budget = tx.pure(&payment_policy.max_budget);
-    let token_type_commitment = tx.pure(&payment_policy.token_type_commitment);
-    let refund_mode = tx.pure(&payment_policy.refund_mode);
+    Ok(match payment_policy {
+        TapPaymentPolicy::UserFunded => {
+            tap_interface_call(tx, objects, TapStandard::PAYMENT_POLICY_USER_FUNDED, vec![])
+        }
+        TapPaymentPolicy::AgentFunded { max_budget } => {
+            let max_budget = tx.pure(max_budget);
+            tap_interface_call(
+                tx,
+                objects,
+                TapStandard::PAYMENT_POLICY_AGENT_FUNDED,
+                vec![max_budget],
+            )
+        }
+    })
+}
+
+fn fixed_tool_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    fixed_tool: &TapFixedTool,
+) -> anyhow::Result<sui::tx::Argument> {
+    let tool_registry_id =
+        sui_framework::Object::id_from_object_id(tx, fixed_tool.tool_registry_id)?;
+    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &fixed_tool.tool_fqn)?;
 
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::PAYMENT_POLICY,
-        vec![mode, max_budget, token_type_commitment, refund_mode],
+        TapStandard::FIXED_TOOL,
+        vec![tool_registry_id, tool_fqn],
     ))
 }
 
-fn shared_object_ref_arg(
+fn fixed_tools_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    shared_object: &TapSharedObjectRef,
+    fixed_tools: &[TapFixedTool],
 ) -> anyhow::Result<sui::tx::Argument> {
-    let id = tx.pure(&shared_object.id);
-    let mutable = tx.pure(&shared_object.mutable);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::SHARED_OBJECT_REF,
-        vec![id, mutable],
-    ))
-}
-
-fn shared_object_refs_arg(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    shared_objects: &[TapSharedObjectRef],
-) -> anyhow::Result<sui::tx::Argument> {
-    let shared_object_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+    let fixed_tool_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         objects.interface_pkg_id,
         crate::idents::tap::STANDARD_TAP_MODULE,
-        sui::types::Identifier::from_static("TapSharedObjectRef"),
+        sui::types::Identifier::from_static("TapFixedTool"),
         vec![],
     )));
     let vector = tx.move_call(
@@ -840,19 +802,19 @@ fn shared_object_refs_arg(
             move_std::Vector::EMPTY.module,
             move_std::Vector::EMPTY.name,
         )
-        .with_type_args(vec![shared_object_type.clone()]),
+        .with_type_args(vec![fixed_tool_type.clone()]),
         vec![],
     );
 
-    for shared_object in shared_objects {
-        let item = shared_object_ref_arg(tx, objects, shared_object)?;
+    for fixed_tool in fixed_tools {
+        let item = fixed_tool_arg(tx, objects, fixed_tool)?;
         tx.move_call(
             sui::tx::Function::new(
                 move_std::PACKAGE_ID,
                 move_std::Vector::PUSH_BACK.module,
                 move_std::Vector::PUSH_BACK.name,
             )
-            .with_type_args(vec![shared_object_type.clone()]),
+            .with_type_args(vec![fixed_tool_type.clone()]),
             vec![vector, item],
         );
     }
@@ -989,10 +951,7 @@ fn scheduled_occurrence_final_state_arg(
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::{test_utils::sui_mocks, types::TapPaymentMode},
-    };
+    use {super::*, crate::test_utils::sui_mocks};
 
     struct TxInspector {
         tx: sui::types::Transaction,
@@ -1084,9 +1043,9 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         let worksheet_call = inspector.move_call(1);
-        assert_eq!(call.package, objects.interface_pkg_id);
-        assert_eq!(call.module, TapStandard::AGENT_ID_FROM_ADDRESS.module);
-        assert_eq!(call.function, TapStandard::AGENT_ID_FROM_ADDRESS.name);
+        assert_eq!(call.package, sui_framework::PACKAGE_ID);
+        assert_eq!(call.module, sui_framework::Object::ID_FROM_ADDRESS.module);
+        assert_eq!(call.function, sui_framework::Object::ID_FROM_ADDRESS.name);
         assert_eq!(worksheet_call.package, objects.registry_pkg_id);
         assert_eq!(
             worksheet_call.module,
@@ -1229,21 +1188,10 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xd"),
-            vec![1],
-            vec![2],
             vec![3],
-            TapPaymentPolicy {
-                mode: TapPaymentMode::UserFunded,
-                max_budget: 100,
-                token_type_commitment: Vec::new(),
-                refund_mode: 0,
-            },
+            vec![2],
+            TapPaymentPolicy::UserFunded,
             TapSchedulePolicy::default(),
-            vec![4],
-            vec![TapSharedObjectRef::immutable(
-                sui::types::Address::from_static("0x10"),
-            )],
-            vec![6],
         )
         .expect("register skill builder succeeds");
 
@@ -1265,7 +1213,7 @@ mod tests {
         assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(call.module, AgentRegistry::REGISTER_SKILL.module);
         assert_eq!(call.function, AgentRegistry::REGISTER_SKILL.name);
-        assert_eq!(call.arguments.len(), 11);
+        assert_eq!(call.arguments.len(), 7);
     }
 
     #[test]
@@ -1285,7 +1233,6 @@ mod tests {
             11,
             sui::types::Address::from_static("0x1"),
             100,
-            0,
         )
         .expect("invoker source");
         assert_eq!(invoker_input.skill_id, 11);
@@ -1293,7 +1240,6 @@ mod tests {
             sui::types::Address::from_static("0xa"),
             12,
             101,
-            1,
         )
         .expect("agent vault source");
         assert_eq!(vault_input.max_budget, 101);
@@ -1331,17 +1277,20 @@ mod tests {
     fn endpoint_and_schedule_builders_cover_variants() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry");
         let immutable_registry = tx.object(sui::tx::ObjectInput::shared(
             *objects.agent_registry.object_id(),
             objects.agent_registry.version(),
             false,
         ));
-        let agent = tx.object(sui::tx::ObjectInput::shared(
-            sui::types::Address::from_static("0xa"),
-            1,
-            true,
-        ));
+        let registry_arg =
+            |tx: &mut sui::tx::TransactionBuilder| agent_registry_arg(tx, &objects, true).unwrap();
+        let agent_arg = |tx: &mut sui::tx::TransactionBuilder| {
+            tx.object(sui::tx::ObjectInput::shared(
+                sui::types::Address::from_static("0xa"),
+                1,
+                true,
+            ))
+        };
         let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0x50"),
             3,
@@ -1353,25 +1302,34 @@ mod tests {
         agent_id_from_address(&mut tx, &objects, sui::types::Address::from_static("0xa"))
             .expect("agent id");
         interface_revision(&mut tx, &objects, InterfaceRevision(3)).expect("interface revision");
+        let registry = registry_arg(&mut tx);
+        let agent = agent_arg(&mut tx);
         get_skill_requirements(&mut tx, &objects, registry, agent, 11).expect("requirements");
-        announce_endpoint_revision(
+        let registry = registry_arg(&mut tx);
+        let agent = agent_arg(&mut tx);
+        update_dag(
             &mut tx,
             &objects,
             registry,
             agent,
             11,
-            InterfaceRevision(3),
-            vec![TapSharedObjectRef::mutable(
-                sui::types::Address::from_static("0x61"),
-            )],
+            sui::types::Address::from_static("0xd"),
+        )
+        .expect("update dag");
+        let registry = registry_arg(&mut tx);
+        let agent = agent_arg(&mut tx);
+        update_skill_policies(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            11,
             TapPaymentPolicy::default(),
             TapSchedulePolicy::default(),
-            vec![8],
-            vec![9],
         )
-        .expect("announce");
-        set_skill_active_revision(&mut tx, &objects, registry, agent, 11, InterfaceRevision(3))
-            .expect("set active");
+        .expect("update policies");
+        let registry = registry_arg(&mut tx);
+        let agent = agent_arg(&mut tx);
         schedule_skill_execution_address_funded(
             &mut tx,
             &objects,
@@ -1383,7 +1341,6 @@ mod tests {
             sui::types::Address::from_static("0x81"),
             vec![2],
             100,
-            0,
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
@@ -1399,13 +1356,14 @@ mod tests {
             sui::types::Address::from_static("0x83"),
             vec![12],
             100,
-            0,
             TapSchedulePolicy::default(),
             vec![14],
             vec![15],
             201,
         )
         .expect("default address funded schedule");
+        let registry = registry_arg(&mut tx);
+        let agent = agent_arg(&mut tx);
         schedule_skill_execution_from_agent_vault(
             &mut tx,
             &objects,
@@ -1415,13 +1373,13 @@ mod tests {
             11,
             300,
             100,
-            0,
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
             200,
         )
         .expect("vault schedule");
+        let registry = registry_arg(&mut tx);
         trigger_scheduled_skill_execution(
             &mut tx,
             &objects,
@@ -1458,11 +1416,11 @@ mod tests {
             })
             .collect::<Vec<_>>();
         for expected in [
-            TapStandard::AGENT_ID_FROM_ADDRESS.name,
+            sui_framework::Object::ID_FROM_ADDRESS.name,
             TapStandard::INTERFACE_REVISION.name,
             AgentRegistry::GET_SKILL_REQUIREMENTS.name,
-            AgentRegistry::ANNOUNCE_ENDPOINT_REVISION.name,
-            AgentRegistry::SET_SKILL_ACTIVE_REVISION.name,
+            AgentRegistry::UPDATE_DAG.name,
+            AgentRegistry::UPDATE_SKILL_POLICIES.name,
             AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED.name,
             AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name,
             AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT.name,
@@ -1499,7 +1457,6 @@ mod tests {
             sui::types::Address::from_static("0x83"),
             vec![12],
             100,
-            0,
             TapSchedulePolicy::default(),
             vec![14],
             vec![15],
@@ -1521,7 +1478,7 @@ mod tests {
                         == AgentRegistry::SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED.name
             })
             .expect("default address funded schedule call");
-        assert_eq!(schedule_call.arguments.len(), 11);
+        assert_eq!(schedule_call.arguments.len(), 10);
         inspector.expect_shared_object(&schedule_call.arguments[0], &objects.agent_registry, false);
     }
 
@@ -1548,7 +1505,6 @@ mod tests {
             sui::types::Address::from_static("0x81"),
             vec![2],
             100,
-            0,
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
@@ -1596,7 +1552,7 @@ mod tests {
             schedule_call.function,
             AgentRegistry::SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS.name
         );
-        assert_eq!(schedule_call.arguments.len(), 14);
+        assert_eq!(schedule_call.arguments.len(), 13);
         inspector.expect_u64(&schedule_call.arguments[3], 11);
     }
 
@@ -1620,7 +1576,6 @@ mod tests {
             12,
             50,
             25,
-            0,
             TapSchedulePolicy::default(),
             vec![4],
             vec![5],
@@ -1659,7 +1614,7 @@ mod tests {
                         == AgentRegistry::SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT_WITH_GRANTS.name
             })
             .expect("agent vault schedule with grants call");
-        assert_eq!(schedule_call.arguments.len(), 12);
+        assert_eq!(schedule_call.arguments.len(), 11);
         inspector.expect_u64(&schedule_call.arguments[3], 12);
         inspector.expect_u64(&schedule_call.arguments[4], 50);
     }
@@ -1681,19 +1636,10 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xd"),
-            vec![1],
-            vec![2],
             vec![3],
-            TapPaymentPolicy {
-                mode: TapPaymentMode::AgentFunded,
-                max_budget: 100,
-                token_type_commitment: Vec::new(),
-                refund_mode: 0,
-            },
+            vec![2],
+            TapPaymentPolicy::AgentFunded { max_budget: 100 },
             TapSchedulePolicy::default(),
-            vec![4],
-            vec![],
-            vec![6],
         )
         .expect("agent funded payment mode is supported");
 
@@ -1710,234 +1656,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(
-            function_names.contains(&TapStandard::PAYMENT_MODE_AGENT_FUNDED.name),
-            "missing agent-funded payment mode constructor"
-        );
-    }
-
-    fn authorized_tool_fixture() -> TapAuthorizedTool {
-        TapAuthorizedTool {
-            package_id: sui::types::Address::from_static("0x42"),
-            module: "tap_demo".to_string(),
-            function: "execute_authorized".to_string(),
-            operation_commitment: vec![1, 2, 3],
-        }
-    }
-
-    #[test]
-    fn authorized_tool_arg_targets_tap_authorized_tool_constructor() {
-        // The cap-gated register path needs to construct a Move
-        // `TapAuthorizedTool` value from a typed entry before assembling the
-        // schema. Verify the helper emits exactly one move call to
-        // `tap::authorized_tool` on the interface package and passes the four
-        // expected arguments — a regression that drops one of these would
-        // mismatch the requirements digest on chain.
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let tool = authorized_tool_fixture();
-        authorized_tool_arg(&mut tx, &objects, &tool).expect("authorized tool arg");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let authorized_call = inspector
-            .commands()
-            .iter()
-            .filter_map(|command| match command {
-                sui::types::Command::MoveCall(call) => Some(call),
-                _ => None,
-            })
-            .find(|call| {
-                call.package == objects.interface_pkg_id
-                    && call.module == TapStandard::AUTHORIZED_TOOL.module
-                    && call.function == TapStandard::AUTHORIZED_TOOL.name
-            })
-            .expect("authorized_tool call");
-        // (package_id, module_name, function_name, operation_commitment).
-        assert_eq!(authorized_call.arguments.len(), 4);
-    }
-
-    #[test]
-    fn vertex_authorization_schema_arg_builds_fixed_tools_vector_in_order() {
-        // The schema helper must build the `fixed_tools` vector with one
-        // `vector::push_back` per entry and a single trailing
-        // `tap::vertex_authorization_schema` call. We assert the count of
-        // both move calls so a refactor that drops a push or collapses the
-        // vector into a pure input is caught — the on-chain digest binds the
-        // exact construction sequence, so any drift breaks register_skill.
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let schema = TapVertexAuthorizationSchema {
-            schema_commitment: vec![9],
-            fixed_tools: vec![authorized_tool_fixture(), authorized_tool_fixture()],
-            requires_payment: true,
-        };
-
-        vertex_authorization_schema_arg(&mut tx, &objects, &schema).expect("schema arg");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let move_calls: Vec<&sui::types::MoveCall> = inspector
-            .commands()
-            .iter()
-            .filter_map(|command| match command {
-                sui::types::Command::MoveCall(call) => Some(call),
-                _ => None,
-            })
-            .collect();
-
-        let empty_calls = move_calls
-            .iter()
-            .filter(|call| call.function == move_std::Vector::EMPTY.name)
-            .count();
-        let push_back_calls = move_calls
-            .iter()
-            .filter(|call| call.function == move_std::Vector::PUSH_BACK.name)
-            .count();
-        let schema_calls = move_calls
-            .iter()
-            .filter(|call| {
-                call.package == objects.interface_pkg_id
-                    && call.function == TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name
-            })
-            .count();
-        let authorized_tool_calls = move_calls
-            .iter()
-            .filter(|call| call.function == TapStandard::AUTHORIZED_TOOL.name)
-            .count();
-
-        assert_eq!(empty_calls, 1, "exactly one vector::empty for fixed_tools");
-        assert_eq!(push_back_calls, 2, "one push_back per fixed_tool");
-        assert_eq!(authorized_tool_calls, 2, "one authorized_tool per entry");
-        assert_eq!(
-            schema_calls, 1,
-            "one trailing vertex_authorization_schema call"
-        );
-    }
-
-    #[test]
-    fn vertex_authorization_schema_arg_empty_fixed_tools_skips_push_back() {
-        // The default/empty schema produces a `vector::empty` followed
-        // immediately by the `vertex_authorization_schema` constructor; no
-        // push_back calls should run. This is the shape the SDK passes when
-        // the higher-level `is_default` check is true and the caller chose
-        // the cap-gated path anyway (e.g. `requires_payment = true` with no
-        // fixed tools).
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let schema = TapVertexAuthorizationSchema {
-            schema_commitment: Vec::new(),
-            fixed_tools: Vec::new(),
-            requires_payment: true,
-        };
-
-        vertex_authorization_schema_arg(&mut tx, &objects, &schema).expect("empty schema arg");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let push_back_calls = inspector
-            .commands()
-            .iter()
-            .filter(|command| {
-                matches!(
-                    command,
-                    sui::types::Command::MoveCall(call)
-                        if call.function == move_std::Vector::PUSH_BACK.name
-                )
-            })
-            .count();
-        assert_eq!(push_back_calls, 0);
-    }
-
-    #[test]
-    fn register_skill_with_vertex_authorization_schema_routes_through_cap_gated_entrypoint() {
-        // The cap-gated registration path must route through
-        // `register_skill_with_vertex_authorization_schema` on the registry
-        // package — never the simpler `register_skill`. Routing through the
-        // wrong entrypoint causes an on-chain digest mismatch because the
-        // chain reconstructs requirements with the full schema. We assert
-        // the right registry call and that the schema sub-builder is
-        // invoked (one `vertex_authorization_schema` interface call).
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.pure(&1_u64);
-        let agent = tx.object(sui::tx::ObjectInput::shared(
-            sui::types::Address::from_static("0xa"),
-            1,
-            true,
-        ));
-        let schema = TapVertexAuthorizationSchema {
-            schema_commitment: vec![1, 2],
-            fixed_tools: vec![authorized_tool_fixture()],
-            requires_payment: false,
-        };
-
-        register_skill_with_vertex_authorization_schema(
-            &mut tx,
-            &objects,
-            registry,
-            agent,
-            sui::types::Address::from_static("0xd"),
-            vec![1],
-            vec![2],
-            vec![3],
-            TapPaymentPolicy {
-                mode: TapPaymentMode::UserFunded,
-                max_budget: 100,
-                token_type_commitment: Vec::new(),
-                refund_mode: 0,
-            },
-            TapSchedulePolicy::default(),
-            vec![4],
-            &schema,
-            vec![TapSharedObjectRef::immutable(
-                sui::types::Address::from_static("0x10"),
-            )],
-            vec![6],
-        )
-        .expect("cap-gated register builder succeeds");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let move_calls: Vec<&sui::types::MoveCall> = inspector
-            .commands()
-            .iter()
-            .filter_map(|command| match command {
-                sui::types::Command::MoveCall(call) => Some(call),
-                _ => None,
-            })
-            .collect();
-
-        let cap_gated_register = move_calls
-            .iter()
-            .find(|call| {
-                call.package == objects.registry_pkg_id
-                    && call.module
-                        == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA.module
-                    && call.function
-                        == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA.name
-            })
-            .expect("cap-gated register call");
-        // (registry, agent, dag_id, workflow_commitment, requirements_commitment,
-        //  metadata_commitment, payment_policy, schedule_policy,
-        //  capability_schema_commitment, vertex_authorization_schema,
-        //  shared_objects, config_digest)
-        assert_eq!(cap_gated_register.arguments.len(), 12);
-
-        // Verify the schema sub-builder also ran (no regression collapsing it
-        // into a bare input).
-        let schema_call_present = move_calls.iter().any(|call| {
-            call.package == objects.interface_pkg_id
-                && call.function == TapStandard::VERTEX_AUTHORIZATION_SCHEMA.name
-        });
-        assert!(
-            schema_call_present,
-            "vertex_authorization_schema constructor must run inside cap-gated register"
-        );
-
-        // The simpler register_skill entrypoint must NOT have been called.
-        let non_cap_gated_register = move_calls.iter().any(|call| {
-            call.package == objects.registry_pkg_id
-                && call.function == AgentRegistry::REGISTER_SKILL.name
-        });
-        assert!(
-            !non_cap_gated_register,
-            "cap-gated path must not fall back to plain register_skill"
+            function_names.contains(&TapStandard::PAYMENT_POLICY_AGENT_FUNDED.name),
+            "missing agent-funded payment policy constructor"
         );
     }
 }

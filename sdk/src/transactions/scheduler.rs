@@ -992,12 +992,10 @@ pub fn prepare_default_agent_execution_from_scheduler(
     payment_coin: sui::tx::Argument,
     payment_source: Vec<u8>,
     payment_max_budget: u64,
-    payment_refund_mode: u8,
     clock: sui::tx::Argument,
 ) -> anyhow::Result<sui::tx::Argument> {
     let payment_source = tx.pure(&payment_source);
     let payment_max_budget = tx.pure(&payment_max_budget);
-    let payment_refund_mode = tx.pure(&payment_refund_mode);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
@@ -1013,7 +1011,6 @@ pub fn prepare_default_agent_execution_from_scheduler(
             payment_coin,
             payment_source,
             payment_max_budget,
-            payment_refund_mode,
             clock,
         ],
     ))

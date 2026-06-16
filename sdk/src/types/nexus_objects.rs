@@ -7,6 +7,8 @@ use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(all(test, feature = "sui_idents"))]
+use crate::idents::registry;
+#[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::workflow;
 #[cfg(feature = "sui_idents")]
 use crate::idents::{scheduler, tap, ModuleAndNameIdent};
@@ -29,7 +31,7 @@ pub struct NexusObjects {
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub agent_registry: sui::types::ObjectReference,
-    pub default_tap_executor: DefaultDagExecutor,
+    pub default_dag_executor: DefaultDagExecutor,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -298,7 +300,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            default_tap_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutor {
                 agent_id: sui::types::Address::generate(&mut rng),
                 skill_id: 1,
             },
@@ -367,8 +369,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.registry_pkg_id,
-                tap::STANDARD_TAP_MODULE,
-                tap::TapStandard::ENDPOINT_REVISION_ANNOUNCED_EVENT.name,
+                registry::AGENT_REGISTRY_MODULE,
+                tap::TapStandard::SKILL_REGISTERED_EVENT.name,
                 vec![],
             ),
         );
@@ -380,7 +382,7 @@ mod tests {
             sui::types::StructTag::new(
                 objects.interface_pkg_id,
                 sui::types::Identifier::from_static("unrelated"),
-                sui::types::Identifier::from_static("EndpointRevisionAnnouncedEvent"),
+                sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
                 vec![],
             ),
         );
