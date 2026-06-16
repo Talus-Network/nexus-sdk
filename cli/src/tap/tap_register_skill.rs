@@ -72,23 +72,15 @@ mod tests {
             tap_package_path: PathBuf::from("tap"),
             requirements: nexus_sdk::types::TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: nexus_sdk::types::TapPaymentPolicy::default(),
                 schedule_policy: nexus_sdk::types::TapSchedulePolicy::default(),
-                vertex_authorization_schema:
-                    nexus_sdk::types::TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: Vec::new(),
             interface_revision: nexus_sdk::types::InterfaceRevision(1),
         };
 
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xe"),
-        )
-        .expect("artifact")
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("artifact")
     }
 
     #[tokio::test]

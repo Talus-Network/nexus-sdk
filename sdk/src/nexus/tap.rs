@@ -15,8 +15,8 @@ use {
         sui,
         transactions::{dag as dag_tx, scheduler as scheduler_tx, tap as tap_tx},
         types::{
-            resolve_active_tap_endpoint,
             resolve_active_tap_skill_execution_target,
+            resolve_active_tap_skill_revision,
             resolve_default_tap_dag_executor,
             AgentId,
             DefaultDagExecutor,
@@ -30,10 +30,6 @@ use {
             TapActiveSkillExecutionTarget,
             TapAgentPaymentVault,
             TapAgentVaultFieldKey,
-            TapConfigDigestInput,
-            TapEndpointKey,
-            TapEndpointRecord,
-            TapEndpointResolutionError,
             TapExecutionPayment,
             TapExecutionPaymentFinalState,
             TapExecutionPaymentHistoryFieldKey,
@@ -48,6 +44,9 @@ use {
             TapScheduledSkillTask,
             TapSkillRecord,
             TapSkillRequirements,
+            TapSkillRevisionKey,
+            TapSkillRevisionRecord,
+            TapSkillRevisionResolutionError,
             WorkflowVertexAuthorizationGrant,
             WorkflowVertexAuthorizationGrantAccess,
             WorkflowVertexAuthorizationGrantFieldKey,
@@ -82,14 +81,16 @@ pub struct RegisterSkillResult {
     pub skill_id: SkillId,
 }
 
-/// Result returned after announcing a TAP endpoint revision.
+/// Result returned after updating an existing skill from a publish artifact.
 #[derive(Clone, Debug)]
-pub struct AnnounceEndpointRevisionResult {
+pub struct UpdateSkillResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
-    pub endpoint_key: TapEndpointKey,
-    pub config_digest: Vec<u8>,
-    pub config_digest_input: TapConfigDigestInput,
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub current_interface_revision: InterfaceRevision,
+    pub dag_binding: crate::types::TapDagBinding,
+    pub requirements: TapSkillRequirements,
 }
 
 /// Result returned after resolving live skill requirements.
@@ -97,7 +98,7 @@ pub struct AnnounceEndpointRevisionResult {
 pub struct GetSkillRequirementsResult {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub active_endpoint_key: TapEndpointKey,
+    pub active_skill_revision_key: TapSkillRevisionKey,
     pub requirements: TapSkillRequirements,
 }
 
@@ -130,7 +131,6 @@ pub struct ScheduleSkillExecutionAddressFundedParams {
     pub refund_recipient: Option<sui::types::Address>,
     pub payment_source: Vec<u8>,
     pub occurrence_budget: u64,
-    pub refund_mode: u8,
     pub schedule_policy: TapSchedulePolicy,
     pub refill_policy_commitment: Vec<u8>,
     pub schedule_entries_commitment: Vec<u8>,
@@ -147,7 +147,6 @@ pub struct ScheduleSkillExecutionFromAgentVaultParams {
     pub skill_id: SkillId,
     pub prepay_amount: u64,
     pub occurrence_budget: u64,
-    pub refund_mode: u8,
     pub schedule_policy: TapSchedulePolicy,
     pub refill_policy_commitment: Vec<u8>,
     pub schedule_entries_commitment: Vec<u8>,
@@ -164,7 +163,6 @@ pub struct ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
     pub refund_recipient: Option<sui::types::Address>,
     pub payment_source: Vec<u8>,
     pub occurrence_budget: u64,
-    pub refund_mode: u8,
     pub schedule_policy: TapSchedulePolicy,
     pub refill_policy_commitment: Vec<u8>,
     pub schedule_entries_commitment: Vec<u8>,
@@ -177,10 +175,7 @@ pub struct ScheduleDefaultDagExecutorSkillExecutionAddressFundedParams {
 pub struct TapPackagePublishOptions {
     pub package_path: PathBuf,
     pub named_address_overrides: Vec<(String, sui::types::Address)>,
-    /// Build environment to feed into Sui's Move builder. New-style 2024
-    /// packages need this so dependency `Published.toml` files resolve to
-    /// the right addresses for the connected network.
-    pub environment: Option<crate::sui::build::Environment>,
+    pub environment: Option<String>,
 }
 
 /// Result returned after publishing a TAP Move package.
@@ -201,21 +196,9 @@ pub struct PublishSkillResult {
     pub artifact: TapPublishArtifact,
 }
 
-/// Endpoint object metadata. In the current TAP model, endpoint revisions
-/// live on the agent registry keyed by (agent_id, skill_id, interface_revision)
-/// without a back-reference to the standalone `StandardEndpoint` object, so
-/// this struct surfaces the on-chain object ref alone. Use
-/// `nexus tap registry show` to inspect revisions and active endpoints.
-#[derive(Clone, Debug)]
-pub struct EndpointInspection {
-    /// On-chain object ref of the endpoint itself.
-    pub object_ref: sui::types::ObjectReference,
-}
-
 /// Inputs to [`TapActions::bind_agent_skill`].
 #[derive(Clone, Debug)]
 pub struct BindAgentSkillParams {
-    pub operator: sui::types::Address,
     pub artifact: TapPublishArtifact,
 }
 
@@ -227,8 +210,6 @@ pub struct BindAgentSkillResult {
     pub agent_id: AgentId,
     pub agent_object: sui::types::ObjectReference,
     pub skill_id: SkillId,
-    pub config_digest: Vec<u8>,
-    pub config_digest_input: TapConfigDigestInput,
 }
 
 /// Result returned by [`TapActions::wait_for_payment_settled`].
@@ -356,9 +337,8 @@ impl TapActions {
 
         let tap_package = self.publish_tap_package(package_options).await?;
         let dag = self.client.workflow().publish(dag).await?;
-        let artifact =
-            TapPublishArtifact::from_config(config, dag.dag_object_id, tap_package.package_id)
-                .map_err(NexusError::TransactionBuilding)?;
+        let artifact = TapPublishArtifact::from_config(config, dag.dag_object_id)
+            .map_err(NexusError::TransactionBuilding)?;
 
         Ok(PublishSkillResult {
             tap_package,
@@ -368,17 +348,14 @@ impl TapActions {
     }
 
     /// Create a standard Talus agent through the configured TAP registry.
-    pub async fn create_agent(
-        &self,
-        operator: sui::types::Address,
-    ) -> Result<CreateAgentResult, NexusError> {
+    pub async fn create_agent(&self) -> Result<CreateAgentResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry)
             .map_err(NexusError::TransactionBuilding)?;
         tx.move_call(
             sui::tx::Function::new(
@@ -450,63 +427,25 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let config_digest = artifact
-            .endpoint_config_digest()
-            .map_err(NexusError::TransactionBuilding)?;
         let agent = tx.input(sui::tx::Input::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
         ));
 
-        if artifact
-            .requirements
-            .vertex_authorization_schema
-            .is_default()
-        {
-            tap_tx::register_skill(
-                &mut tx,
-                nexus_objects,
-                registry,
-                agent,
-                artifact.dag_id,
-                artifact.requirements.workflow_commitment.clone(),
-                artifact.requirements.input_schema_commitment.clone(),
-                artifact.requirements.metadata_commitment.clone(),
-                artifact.requirements.payment_policy.clone(),
-                artifact.requirements.schedule_policy.clone(),
-                artifact
-                    .requirements
-                    .vertex_authorization_schema
-                    .schema_commitment
-                    .clone(),
-                artifact.shared_objects.clone(),
-                config_digest,
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-        } else {
-            tap_tx::register_skill_with_vertex_authorization_schema(
-                &mut tx,
-                nexus_objects,
-                registry,
-                agent,
-                artifact.dag_id,
-                artifact.requirements.workflow_commitment.clone(),
-                artifact.requirements.input_schema_commitment.clone(),
-                artifact.requirements.metadata_commitment.clone(),
-                artifact.requirements.payment_policy.clone(),
-                artifact.requirements.schedule_policy.clone(),
-                artifact
-                    .requirements
-                    .vertex_authorization_schema
-                    .schema_commitment
-                    .clone(),
-                &artifact.requirements.vertex_authorization_schema,
-                artifact.shared_objects.clone(),
-                config_digest,
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-        }
+        tap_tx::register_skill_with_fixed_tools(
+            &mut tx,
+            nexus_objects,
+            registry,
+            agent,
+            artifact.dag_id,
+            artifact.skill_name.as_bytes().to_vec(),
+            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.schedule_policy.clone(),
+            artifact.requirements.fixed_tools.clone(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.submit_tap_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
@@ -546,23 +485,18 @@ impl TapActions {
         Ok(GetSkillRequirementsResult {
             agent_id,
             skill_id,
-            active_endpoint_key: target.endpoint.key,
-            requirements: target.endpoint.requirements,
+            active_skill_revision_key: target.skill_revision.key,
+            requirements: target.skill_revision.requirements,
         })
     }
 
-    /// Announce a new endpoint revision for a registered TAP skill.
-    pub async fn announce_endpoint_revision(
+    /// Update an existing skill's current contract from a publish artifact.
+    pub async fn update_skill_from_artifact(
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
         artifact: &TapPublishArtifact,
-    ) -> Result<AnnounceEndpointRevisionResult, NexusError> {
-        let config_digest_input = artifact.endpoint_config_digest_input();
-        let config_digest = config_digest_input
-            .digest()
-            .map_err(NexusError::TransactionBuilding)?;
-
+    ) -> Result<UpdateSkillResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
         let agent_object = self
@@ -572,61 +506,74 @@ impl TapActions {
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
+
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
+        let registry_for_dag = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tx.input(sui::tx::Input::shared(
+        let registry_for_policies = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
+            .map_err(NexusError::TransactionBuilding)?;
+        let agent_for_dag = tx.input(sui::tx::Input::shared(
+            *agent_object.object_id(),
+            agent_object.version(),
+            true,
+        ));
+        let agent_for_policies = tx.input(sui::tx::Input::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
         ));
 
-        tap_tx::announce_endpoint_revision(
+        tap_tx::update_dag(
             &mut tx,
             nexus_objects,
-            registry,
-            agent,
+            registry_for_dag,
+            agent_for_dag,
             skill_id,
-            artifact.interface_revision,
-            artifact.shared_objects.clone(),
+            artifact.dag_id,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+
+        tap_tx::update_skill_policies(
+            &mut tx,
+            nexus_objects,
+            registry_for_policies,
+            agent_for_policies,
+            skill_id,
             artifact.requirements.payment_policy.clone(),
             artifact.requirements.schedule_policy.clone(),
-            artifact
-                .requirements
-                .vertex_authorization_schema
-                .schema_commitment
-                .clone(),
-            config_digest.clone(),
         )
         .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.submit_tap_transaction(tx, address).await?;
-        let event = find_event(&response, |kind| match kind {
-            NexusEventKind::EndpointRevisionAnnounced(event) => Some(event),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "EndpointRevisionAnnouncedEvent not found in TAP announce response"
-            ))
-        })?;
+        let event = response
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| match &event.data {
+                NexusEventKind::SkillContractRevisioned(event) => Some(event),
+                _ => None,
+            })
+            .cloned()
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "SkillContractRevisionedEvent not found in TAP skill update response"
+                ))
+            })?;
 
-        Ok(AnnounceEndpointRevisionResult {
+        Ok(UpdateSkillResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            endpoint_key: TapEndpointKey {
-                agent_id: event.agent_id,
-                skill_id: event.skill_id,
-                interface_revision: event.interface_revision,
-            },
-            config_digest,
-            config_digest_input,
+            agent_id: event.agent_id,
+            skill_id: event.skill_id,
+            current_interface_revision: event.current_interface_revision,
+            dag_binding: event.dag_binding,
+            requirements: event.requirements,
         })
     }
 
     /// Deposit `amount` MIST into the agent's payment vault, splitting from
     /// the transaction gas coin. The vault is shared so any address can
-    /// deposit; withdrawal stays gated on the agent owner or operator.
+    /// deposit; withdrawal stays gated on mutable agent custody.
     pub async fn deposit_agent_payment_vault(
         &self,
         params: DepositAgentVaultParams,
@@ -863,7 +810,6 @@ impl TapActions {
             refund_recipient,
             params.payment_source,
             params.occurrence_budget,
-            params.refund_mode,
             params.schedule_policy,
             params.refill_policy_commitment,
             params.schedule_entries_commitment,
@@ -949,7 +895,6 @@ impl TapActions {
             params.skill_id,
             params.prepay_amount,
             params.occurrence_budget,
-            params.refund_mode,
             params.schedule_policy,
             params.refill_policy_commitment,
             params.schedule_entries_commitment,
@@ -1039,7 +984,6 @@ impl TapActions {
             refund_recipient,
             params.payment_source,
             params.occurrence_budget,
-            params.refund_mode,
             params.schedule_policy,
             params.refill_policy_commitment,
             params.schedule_entries_commitment,
@@ -1072,7 +1016,7 @@ impl TapActions {
         })
         .ok_or_else(|| {
             NexusError::Parsing(anyhow::anyhow!(
-                "ScheduledSkillExecutionCreatedEvent not found in default TAP schedule response"
+                "ScheduledSkillExecutionCreatedEvent not found in default-agent schedule response"
             ))
         })?;
 
@@ -1085,39 +1029,12 @@ impl TapActions {
         })
     }
 
-    /// Read the on-chain metadata of an endpoint object and return its object
-    /// ref, so callers do not need to walk raw Sui object internals. In the
-    /// current TAP model endpoint revisions live on the agent registry keyed by
-    /// (agent_id, skill_id, interface_revision) without a back-reference to the
-    /// standalone object, so use `nexus tap registry show` to inspect revisions
-    /// and active endpoints. See [`EndpointInspection`].
-    pub async fn inspect_endpoint(
-        &self,
-        endpoint_object_id: sui::types::Address,
-    ) -> Result<EndpointInspection, NexusError> {
-        let object_meta = self
-            .client
-            .crawler()
-            .get_object_metadata(endpoint_object_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        Ok(EndpointInspection {
-            object_ref: object_meta.object_ref(),
-        })
-    }
-
     /// Create a standard Talus agent and register its first skill atomically.
     pub async fn bind_agent_skill(
         &self,
         params: BindAgentSkillParams,
     ) -> Result<BindAgentSkillResult, NexusError> {
-        let BindAgentSkillParams { operator, artifact } = params;
-
-        let config_digest_input = artifact.endpoint_config_digest_input();
-        let config_digest = config_digest_input
-            .digest()
-            .map_err(NexusError::TransactionBuilding)?;
+        let BindAgentSkillParams { artifact } = params;
 
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
@@ -1125,57 +1042,22 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry, operator)
+        let agent = tap_tx::create_agent(&mut tx, nexus_objects, registry)
             .map_err(NexusError::TransactionBuilding)?;
 
-        if artifact
-            .requirements
-            .vertex_authorization_schema
-            .is_default()
-        {
-            tap_tx::register_skill(
-                &mut tx,
-                nexus_objects,
-                registry,
-                agent,
-                artifact.dag_id,
-                artifact.requirements.workflow_commitment.clone(),
-                artifact.requirements.input_schema_commitment.clone(),
-                artifact.requirements.metadata_commitment.clone(),
-                artifact.requirements.payment_policy.clone(),
-                artifact.requirements.schedule_policy.clone(),
-                artifact
-                    .requirements
-                    .vertex_authorization_schema
-                    .schema_commitment
-                    .clone(),
-                artifact.shared_objects.clone(),
-                config_digest.clone(),
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-        } else {
-            tap_tx::register_skill_with_vertex_authorization_schema(
-                &mut tx,
-                nexus_objects,
-                registry,
-                agent,
-                artifact.dag_id,
-                artifact.requirements.workflow_commitment.clone(),
-                artifact.requirements.input_schema_commitment.clone(),
-                artifact.requirements.metadata_commitment.clone(),
-                artifact.requirements.payment_policy.clone(),
-                artifact.requirements.schedule_policy.clone(),
-                artifact
-                    .requirements
-                    .vertex_authorization_schema
-                    .schema_commitment
-                    .clone(),
-                &artifact.requirements.vertex_authorization_schema,
-                artifact.shared_objects.clone(),
-                config_digest.clone(),
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-        }
+        tap_tx::register_skill_with_fixed_tools(
+            &mut tx,
+            nexus_objects,
+            registry,
+            agent,
+            artifact.dag_id,
+            artifact.skill_name.as_bytes().to_vec(),
+            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.payment_policy.clone(),
+            artifact.requirements.schedule_policy.clone(),
+            artifact.requirements.fixed_tools.clone(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
         tx.move_call(
             sui::tx::Function::new(
@@ -1239,8 +1121,6 @@ impl TapActions {
             agent_id: agent_event.agent_id,
             agent_object,
             skill_id: skill_event.skill_id,
-            config_digest,
-            config_digest_input,
         })
     }
 
@@ -1346,7 +1226,7 @@ where
 fn build_move_package(
     package_path: &std::path::Path,
     named_address_overrides: &[(String, sui::types::Address)],
-    environment: Option<crate::sui::build::Environment>,
+    environment: Option<String>,
 ) -> anyhow::Result<CompiledPackage> {
     let mut build_config = crate::sui::build::BuildConfig::new_for_testing_replace_addresses(
         named_address_overrides
@@ -1354,10 +1234,8 @@ fn build_move_package(
             .map(|(name, address)| (name.clone(), address.to_string().parse().unwrap()))
             .collect::<Vec<_>>(),
     );
+    build_config.config.environment = environment;
     build_config.print_diags_to_stderr = false;
-    if let Some(env) = environment {
-        build_config.environment = env;
-    }
     build_config.build(package_path)
 }
 
@@ -1388,23 +1266,18 @@ async fn fetch_agent_registry_tables(
 
     let mut agents = Vec::with_capacity(agent_records.len());
     let mut skills = Vec::new();
-    let mut endpoints = Vec::new();
-    for (_, agent) in agent_records {
+    for (agent_id, agent) in agent_records {
         let skill_records = crawler
             .get_dynamic_fields_bcs::<SkillId, TapSkillRecord>(agent.skills.id, agent.skills.size())
             .await?;
-        let endpoint_records = crawler
-            .get_dynamic_fields_bcs::<crate::types::TapEndpointRevisionKey, crate::types::TapEndpointRevision>(
-                agent.endpoints.id,
-                agent.endpoints.size(),
-            )
-            .await?;
 
-        skills.extend(skill_records.into_values());
-        endpoints.extend(endpoint_records.into_values());
+        for (skill_id, mut skill) in skill_records {
+            skill.agent_id = Some(agent_id);
+            skill.skill_id = Some(skill_id);
+            skills.push(skill);
+        }
         agents.push(agent);
     }
-
     Ok(Response {
         object_id: raw.object_id,
         owner: raw.owner,
@@ -1415,7 +1288,6 @@ async fn fetch_agent_registry_tables(
             id: raw.data.id,
             agents,
             skills,
-            endpoints,
             default_executor: None,
         },
     })
@@ -1470,16 +1342,16 @@ async fn fetch_default_dag_executor(
     Ok(default_executor)
 }
 
-/// Fetch a pinned TAP endpoint from the real `AgentRegistry` vector layout.
-pub async fn fetch_tap_endpoint(
+/// Fetch a pinned TAP skill revision from the real `AgentRegistry` vector layout.
+pub async fn fetch_tap_skill_revision(
     crawler: &Crawler,
     registry_id: sui::types::Address,
     agent_id: AgentId,
     skill_id: SkillId,
     interface_revision: InterfaceRevision,
-) -> anyhow::Result<Response<TapEndpointRecord>> {
+) -> anyhow::Result<Response<TapSkillRevisionRecord>> {
     let registry = fetch_agent_registry_tables(crawler, registry_id).await?;
-    let record = registry.data.endpoint_record(TapEndpointKey {
+    let record = registry.data.skill_revision_record(TapSkillRevisionKey {
         agent_id,
         skill_id,
         interface_revision,
@@ -1488,15 +1360,17 @@ pub async fn fetch_tap_endpoint(
     Ok(registry_response_with_data(registry, record))
 }
 
-/// Resolve a fresh execution endpoint through the active revision stored on the skill.
-pub async fn fetch_active_tap_endpoint(
+/// Resolve a fresh execution skill revision through the active revision stored on the skill.
+pub async fn fetch_active_tap_skill_revision(
     crawler: &Crawler,
     registry_id: sui::types::Address,
     agent_id: AgentId,
     skill_id: SkillId,
-) -> anyhow::Result<Response<TapEndpointRecord>> {
+) -> anyhow::Result<Response<TapSkillRevisionRecord>> {
     let registry = fetch_agent_registry_tables(crawler, registry_id).await?;
-    let record = registry.data.active_endpoint_record(agent_id, skill_id)?;
+    let record = registry
+        .data
+        .active_skill_revision_record(agent_id, skill_id)?;
 
     Ok(registry_response_with_data(registry, record))
 }
@@ -1509,14 +1383,14 @@ pub async fn fetch_configured_agent_registry(
     fetch_agent_registry(crawler, *objects.agent_registry.object_id()).await
 }
 
-/// Resolve a fresh execution endpoint through the configured TAP registry.
-pub async fn fetch_configured_active_tap_endpoint(
+/// Resolve a fresh execution skill revision through the configured TAP registry.
+pub async fn fetch_configured_active_tap_skill_revision(
     crawler: &Crawler,
     objects: &NexusObjects,
     agent_id: AgentId,
     skill_id: SkillId,
-) -> anyhow::Result<Response<TapEndpointRecord>> {
-    fetch_active_tap_endpoint(
+) -> anyhow::Result<Response<TapSkillRevisionRecord>> {
+    fetch_active_tap_skill_revision(
         crawler,
         *objects.agent_registry.object_id(),
         agent_id,
@@ -1525,7 +1399,7 @@ pub async fn fetch_configured_active_tap_endpoint(
     .await
 }
 
-/// Resolve the active skill registration plus endpoint from the configured TAP registry.
+/// Resolve the active skill registration plus skill revision from the configured TAP registry.
 pub async fn fetch_configured_active_tap_skill_execution_target(
     crawler: &Crawler,
     objects: &NexusObjects,
@@ -1538,7 +1412,7 @@ pub async fn fetch_configured_active_tap_skill_execution_target(
     Ok(registry_response_with_data(registry, target))
 }
 
-/// Resolve the configured default TAP DAG executor from the configured registry.
+/// Resolve the configured default agent from the configured registry.
 pub async fn fetch_configured_default_tap_dag_executor(
     crawler: &Crawler,
     objects: &NexusObjects,
@@ -1732,14 +1606,14 @@ pub async fn fetch_tap_scheduled_skill_task(
         .await
 }
 
-/// Resolve a fresh execution endpoint from already fetched records.
-pub fn resolve_active_endpoint_record<'a>(
-    records: &'a [TapEndpointRecord],
+/// Resolve a fresh execution skill revision from already fetched records.
+pub fn resolve_active_skill_revision_record<'a>(
+    records: &'a [TapSkillRevisionRecord],
     skills: &[TapSkillRecord],
     agent_id: AgentId,
     skill_id: SkillId,
-) -> Result<&'a TapEndpointRecord, TapEndpointResolutionError> {
-    resolve_active_tap_endpoint(records, skills, agent_id, skill_id)
+) -> Result<&'a TapSkillRevisionRecord, TapSkillRevisionResolutionError> {
+    resolve_active_tap_skill_revision(records, skills, agent_id, skill_id)
 }
 
 fn registry_response_with_data<T>(registry: Response<TapRegistry>, data: T) -> Response<T> {
@@ -1768,17 +1642,13 @@ mod tests {
                 NexusObjects,
                 TapAgentRecord,
                 TapDagBinding,
-                TapEndpointKey,
-                TapEndpointRevision,
-                TapEndpointRevisionKey,
                 TapPaymentPolicy,
                 TapRegistryObject,
                 TapSchedulePolicy,
-                TapSharedObjectRef,
                 TapSkillConfig,
                 TapSkillRecord,
                 TapSkillRequirements,
-                TapVertexAuthorizationSchema,
+                TapSkillRevisionKey,
             },
         },
     };
@@ -1788,37 +1658,19 @@ mod tests {
         event: T,
     }
 
-    fn endpoint(revision: u64) -> TapEndpointRecord {
-        TapEndpointRecord {
-            key: TapEndpointKey {
+    fn skill_revision(revision: u64) -> TapSkillRevisionRecord {
+        TapSkillRevisionRecord {
+            key: TapSkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(revision),
             },
-            shared_objects: vec![TapSharedObjectRef::immutable(
-                sui::types::Address::from_static("0xe"),
-            )],
-            config_digest: vec![1],
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![2],
-                workflow_commitment: vec![3],
-                metadata_commitment: vec![4],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-        }
-    }
-
-    fn endpoint_revision(revision: u64) -> TapEndpointRevision {
-        let endpoint = endpoint(revision);
-        TapEndpointRevision {
-            agent_id: endpoint.key.agent_id,
-            skill_id: endpoint.key.skill_id,
-            interface_revision: InterfaceRevision(revision),
-            shared_objects: endpoint.shared_objects,
-            requirements: endpoint.requirements,
-            config_digest: endpoint.config_digest,
         }
     }
 
@@ -1827,45 +1679,27 @@ mod tests {
         let skill_id = 11;
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![2],
-            workflow_commitment: vec![3],
-            metadata_commitment: vec![4],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            fixed_tools: Vec::new(),
         };
 
         TapRegistry {
             id: sui::types::Address::from_static("0xf"),
             agents: vec![TapAgentRecord {
-                agent_id: agent,
-                owner: sui::types::Address::from_static("0x1"),
-                operator: sui::types::Address::from_static("0x2"),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::from_static("0x90"), 1),
-                endpoints: MoveTable::new(sui::types::Address::from_static("0x91"), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id: agent,
-                skill_id,
-                dag_id: sui::types::Address::from_static("0x3"),
-                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x3")),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![5],
-                active_interface_revision: InterfaceRevision(2),
+                agent_id: Some(agent),
+                skill_id: Some(skill_id),
+                description: vec![4],
                 active: true,
+                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0x3")),
+                requirements: requirements.clone(),
+                current_interface_revision: InterfaceRevision(2),
+                scheduled_task_count: 0,
             }],
-            endpoints: vec![
-                endpoint_revision(1),
-                TapEndpointRevision {
-                    requirements,
-                    ..endpoint_revision(2)
-                },
-            ],
             default_executor: Some(DefaultDagExecutor {
                 agent_id: agent,
                 skill_id,
@@ -1878,40 +1712,26 @@ mod tests {
         registry_object: TapRegistryObject,
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
-        endpoint_field_ref: sui::types::ObjectReference,
         default_executor_field_ref: Option<sui::types::ObjectReference>,
         default_executor_value: Option<DefaultDagExecutorValue>,
         agent_record: TapAgentRecord,
         skill_record: TapSkillRecord,
-        endpoint_record: TapEndpointRevision,
+        skill_revision_record: TapSkillRevisionRecord,
     }
 
     fn registry_object_mock(registry: &TapRegistry) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
-        assert!(
-            !registry.endpoints.is_empty(),
-            "test registry has at least one endpoint"
-        );
-
         let agent = registry.agents[0].clone();
         let skill_record = registry.skills[0].clone();
-        let endpoint_record = registry
-            .active_endpoint_record(skill_record.agent_id, skill_record.skill_id)
-            .ok()
-            .and_then(|active| {
-                registry.endpoints.iter().find(|endpoint| {
-                    endpoint.agent_id == active.key.agent_id
-                        && endpoint.skill_id == active.key.skill_id
-                        && endpoint.interface_revision == active.key.interface_revision
-                })
-            })
-            .or_else(|| registry.endpoints.first())
-            .expect("endpoint selected")
-            .clone();
+        let skill_revision_record = registry
+            .active_skill_revision_record(
+                skill_record.agent_id.expect("skill has agent id"),
+                skill_record.skill_id.expect("skill has skill id"),
+            )
+            .expect("active skill revision derives from skill");
         let agent_field_ref = sui_mocks::mock_sui_object_ref();
         let skill_field_ref = sui_mocks::mock_sui_object_ref();
-        let endpoint_field_ref = sui_mocks::mock_sui_object_ref();
         let default_executor_field_ref = registry
             .default_executor
             .map(|_| sui_mocks::mock_sui_object_ref());
@@ -1921,8 +1741,7 @@ mod tests {
                 .map(|default_executor| DefaultDagExecutorValue {
                     agent: crate::types::TapAgentObject {
                         id: default_executor.agent_id,
-                        next_skill_index: agent.next_skill_index,
-                        owner: agent.owner,
+                        next_skill_id: 1,
                         registry_id: Some(registry.id).into(),
                     },
                     skill_id: default_executor.skill_id,
@@ -1935,12 +1754,11 @@ mod tests {
             },
             agent_field_ref,
             skill_field_ref,
-            endpoint_field_ref,
             default_executor_field_ref,
             default_executor_value,
             agent_record: agent,
             skill_record,
-            endpoint_record,
+            skill_revision_record,
         }
     }
 
@@ -1967,7 +1785,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id,
+                mock.skill_revision_record.key.agent_id,
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1976,14 +1794,14 @@ mod tests {
             vec![(
                 mock.agent_field_ref.clone(),
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id,
+                mock.skill_revision_record.key.agent_id,
                 mock.agent_record.clone(),
             )],
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.skill_record.skill_id,
+                mock.skill_revision_record.key.skill_id,
                 mock.skill_field_ref.object_id().to_owned(),
             )],
         );
@@ -1992,30 +1810,8 @@ mod tests {
             vec![(
                 mock.skill_field_ref.clone(),
                 sui::types::Owner::Shared(1),
-                mock.skill_record.skill_id,
+                mock.skill_revision_record.key.skill_id,
                 mock.skill_record.clone(),
-            )],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            state_service_mock,
-            vec![(
-                TapEndpointRevisionKey::new(
-                    mock.endpoint_record.skill_id,
-                    mock.endpoint_record.interface_revision,
-                ),
-                mock.endpoint_field_ref.object_id().to_owned(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            ledger_service_mock,
-            vec![(
-                mock.endpoint_field_ref.clone(),
-                sui::types::Owner::Shared(1),
-                TapEndpointRevisionKey::new(
-                    mock.endpoint_record.skill_id,
-                    mock.endpoint_record.interface_revision,
-                ),
-                mock.endpoint_record.clone(),
             )],
         );
         mock
@@ -2080,16 +1876,16 @@ mod tests {
     }
 
     #[test]
-    fn resolve_active_endpoint_record_reuses_sdk_fail_closed_rule() {
-        let records = vec![endpoint(1), endpoint(2)];
+    fn resolve_active_skill_revision_record_reuses_sdk_fail_closed_rule() {
+        let records = vec![skill_revision(1), skill_revision(2)];
         let skills = vec![registry().skills[0].clone()];
-        let resolved = resolve_active_endpoint_record(
+        let resolved = resolve_active_skill_revision_record(
             &records,
             &skills,
             sui::types::Address::from_static("0xa"),
             11,
         )
-        .expect("one active endpoint");
+        .expect("one active skill revision");
 
         assert_eq!(resolved.key.interface_revision, InterfaceRevision(2));
     }
@@ -2097,13 +1893,15 @@ mod tests {
     #[test]
     fn registry_active_resolution_uses_skill_active_revision() {
         let registry = registry();
-        let records = registry.endpoint_records().expect("endpoint records");
+        let records = registry
+            .skill_revision_records()
+            .expect("skill revision records");
 
-        assert_eq!(records.len(), 2);
+        assert_eq!(records.len(), 1);
 
         let resolved = registry
-            .active_endpoint_record(sui::types::Address::from_static("0xa"), 11)
-            .expect("active endpoint");
+            .active_skill_revision_record(sui::types::Address::from_static("0xa"), 11)
+            .expect("active skill revision");
 
         assert_eq!(resolved.key.interface_revision, InterfaceRevision(2));
     }
@@ -2118,18 +1916,20 @@ mod tests {
         )
         .expect("active skill target");
 
-        assert_eq!(target.skill.dag_id, sui::types::Address::from_static("0x3"));
         assert_eq!(
             target.skill.dag_binding,
             TapDagBinding::pinned(sui::types::Address::from_static("0x3"))
         );
-        assert_eq!(target.endpoint.key.interface_revision, InterfaceRevision(2));
+        assert_eq!(
+            target.skill_revision.key.interface_revision,
+            InterfaceRevision(2)
+        );
     }
 
     #[test]
     fn configured_default_executor_reads_nexus_objects_metadata() {
         let objects = NexusObjects {
-            default_tap_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             },
@@ -2137,7 +1937,7 @@ mod tests {
         };
 
         assert_eq!(
-            objects.default_tap_executor,
+            objects.default_dag_executor,
             DefaultDagExecutor {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
@@ -2146,7 +1946,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_tap_endpoint_does_not_decode_default_executor() {
+    async fn fetch_tap_skill_revision_does_not_decode_default_executor() {
         let registry = registry();
         let registry_ref = sui_mocks::object_ref_for_id(registry.id);
         let nexus_objects = NexusObjects {
@@ -2171,7 +1971,7 @@ mod tests {
         let client = sui::grpc::Client::new(rpc_url).expect("mock client");
         let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
 
-        let response = fetch_tap_endpoint(
+        let response = fetch_tap_skill_revision(
             &crawler,
             registry.id,
             sui::types::Address::from_static("0xa"),
@@ -2179,7 +1979,7 @@ mod tests {
             InterfaceRevision(2),
         )
         .await
-        .expect("endpoint recovery should not require default executor decoding");
+        .expect("skill revision recovery should not require default executor decoding");
 
         assert_eq!(response.data.key.interface_revision, InterfaceRevision(2));
     }
@@ -2257,24 +2057,15 @@ mod tests {
             tap_package_path: std::path::PathBuf::from("tap"),
             requirements: TapSkillRequirements {
                 input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
                 payment_policy: TapPaymentPolicy::default(),
                 schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+                fixed_tools: Vec::new(),
             },
-            shared_objects: vec![TapSharedObjectRef::immutable(
-                sui::types::Address::from_static("0xe"),
-            )],
             interface_revision: InterfaceRevision(1),
         };
 
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xc"),
-        )
-        .expect("artifact")
+        TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
+            .expect("artifact")
     }
 
     #[tokio::test]
@@ -2329,8 +2120,6 @@ mod tests {
                     event: events::AgentCreatedEvent {
                         agent_id: sui::types::Address::from_static("0xa"),
                         vault_id: sui::types::Address::from_static("0xb"),
-                        owner: sui::types::Address::from_static("0x1"),
-                        operator: sui::types::Address::from_static("0x2"),
                     },
                 })
                 .unwrap(),
@@ -2347,7 +2136,7 @@ mod tests {
 
         let result = client
             .tap()
-            .create_agent(sui::types::Address::from_static("0x2"))
+            .create_agent()
             .await
             .expect("create agent succeeds");
 
@@ -2394,8 +2183,8 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.interface_pkg_id,
-                "tap",
+                nexus_objects.registry_pkg_id,
+                "agent_registry",
                 "SkillRegisteredEvent",
                 bcs::to_bytes(&Wrapper {
                     event: events::SkillRegisteredEvent {
@@ -2403,16 +2192,6 @@ mod tests {
                         skill_id: 11,
                         dag_id: artifact.dag_id,
                         dag_binding: TapDagBinding::pinned(artifact.dag_id),
-                        workflow_commitment: artifact.requirements.workflow_commitment.clone(),
-                        requirements_commitment: artifact
-                            .requirements
-                            .input_schema_commitment
-                            .clone(),
-                        capability_schema_commitment: artifact
-                            .requirements
-                            .vertex_authorization_schema
-                            .schema_commitment
-                            .clone(),
                     },
                 })
                 .unwrap(),
@@ -2432,7 +2211,7 @@ mod tests {
                     sui::types::Command::MoveCall(call)
                         if call.package == expected_registry_pkg_id
                             && call.function
-                                == AgentRegistry::REGISTER_SKILL.name
+                                == AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS.name
                 )));
             },
         );
@@ -2456,59 +2235,8 @@ mod tests {
         assert_eq!(result.tx_digest, digest);
     }
 
-    /// Build an artifact with a non-default vertex authorization schema. This
-    /// pushes [`TapVertexAuthorizationSchema::is_default`] to `false` so the
-    /// SDK branches into `register_skill_with_vertex_authorization_schema`
-    /// instead of the simpler `register_skill`. The shape must include the
-    /// 0x0-sentinel fixed tool to keep the digest stable across the
-    /// [`TapPublishArtifact::from_config`] substitution path.
-    fn cap_gated_artifact() -> TapPublishArtifact {
-        let config = TapSkillConfig {
-            name: "cap-gated weather".to_string(),
-            tap_package_name: "weather_tap".to_string(),
-            dag_path: std::path::PathBuf::from("dag.json"),
-            tap_package_path: std::path::PathBuf::from("tap"),
-            requirements: TapSkillRequirements {
-                input_schema_commitment: vec![1],
-                workflow_commitment: vec![2],
-                metadata_commitment: vec![3],
-                payment_policy: TapPaymentPolicy::default(),
-                schedule_policy: TapSchedulePolicy::default(),
-                vertex_authorization_schema: TapVertexAuthorizationSchema {
-                    schema_commitment: vec![9],
-                    fixed_tools: vec![crate::types::TapAuthorizedTool {
-                        package_id: sui::types::Address::ZERO,
-                        module: "weather_tap".to_string(),
-                        function: "execute".to_string(),
-                        operation_commitment: vec![],
-                    }],
-                    requires_payment: false,
-                },
-            },
-            shared_objects: vec![TapSharedObjectRef::immutable(
-                sui::types::Address::from_static("0xe"),
-            )],
-            interface_revision: InterfaceRevision(1),
-        };
-
-        TapPublishArtifact::from_config(
-            &config,
-            sui::types::Address::from_static("0xd"),
-            sui::types::Address::from_static("0xc"),
-        )
-        .expect("cap-gated artifact")
-    }
-
     #[tokio::test]
-    async fn tap_actions_register_skill_routes_through_cap_gated_entrypoint_when_schema_non_default(
-    ) {
-        // When `TapVertexAuthorizationSchema::is_default` is false the SDK
-        // must route through `register_skill_with_vertex_authorization_schema`
-        // — the on-chain digest assertion would otherwise reject the artifact
-        // because the cap-gated chain entrypoint reconstructs the
-        // requirements digest with the full schema baked in. We mock the
-        // submitted PTB and assert the move-call shape; the simpler
-        // `register_skill` entry must not appear in the tx.
+    async fn tap_actions_update_skill_from_artifact_extracts_event() {
         let mut rng = rand::thread_rng();
         let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
@@ -2518,7 +2246,7 @@ mod tests {
             3,
             sui::types::Digest::generate(&mut rng),
         );
-        let artifact = cap_gated_artifact();
+        let artifact = artifact();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -2541,25 +2269,16 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.interface_pkg_id,
-                "tap",
-                "SkillRegisteredEvent",
+                nexus_objects.registry_pkg_id,
+                "agent_registry",
+                "SkillContractRevisionedEvent",
                 bcs::to_bytes(&Wrapper {
-                    event: events::SkillRegisteredEvent {
+                    event: events::SkillContractRevisionedEvent {
                         agent_id: *agent_ref.object_id(),
                         skill_id: 11,
-                        dag_id: artifact.dag_id,
+                        current_interface_revision: InterfaceRevision(2),
                         dag_binding: TapDagBinding::pinned(artifact.dag_id),
-                        workflow_commitment: artifact.requirements.workflow_commitment.clone(),
-                        requirements_commitment: artifact
-                            .requirements
-                            .input_schema_commitment
-                            .clone(),
-                        capability_schema_commitment: artifact
-                            .requirements
-                            .vertex_authorization_schema
-                            .schema_commitment
-                            .clone(),
+                        requirements: artifact.requirements.clone(),
                     },
                 })
                 .unwrap(),
@@ -2574,30 +2293,26 @@ mod tests {
                 else {
                     panic!("expected programmable transaction");
                 };
-                let mut saw_cap_gated = false;
-                let mut saw_plain = false;
-                for command in commands {
-                    if let sui::types::Command::MoveCall(call) = command {
-                        if call.package == expected_registry_pkg_id {
-                            if call.function
-                                == AgentRegistry::REGISTER_SKILL_WITH_VERTEX_AUTHORIZATION_SCHEMA
-                                    .name
-                            {
-                                saw_cap_gated = true;
-                            } else if call.function == AgentRegistry::REGISTER_SKILL.name {
-                                saw_plain = true;
-                            }
-                        }
-                    }
-                }
-                assert!(
-                    saw_cap_gated,
-                    "cap-gated artifact must route through register_skill_with_vertex_authorization_schema"
-                );
-                assert!(
-                    !saw_plain,
-                    "cap-gated artifact must not also call the simpler register_skill"
-                );
+
+                let move_calls = commands
+                    .iter()
+                    .filter_map(|command| match command {
+                        sui::types::Command::MoveCall(call) => Some(call),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+
+                assert!(move_calls.iter().any(|call| {
+                    call.package == expected_registry_pkg_id
+                        && call.function == AgentRegistry::UPDATE_DAG.name
+                }));
+                assert!(move_calls.iter().any(|call| {
+                    call.package == expected_registry_pkg_id
+                        && call.function == AgentRegistry::UPDATE_SKILL_POLICIES.name
+                }));
+                assert!(!move_calls
+                    .iter()
+                    .any(|call| call.function.as_str() == "update_skill"));
             },
         );
 
@@ -2611,210 +2326,13 @@ mod tests {
 
         let result = client
             .tap()
-            .register_skill(*agent_ref.object_id(), &artifact)
+            .update_skill_from_artifact(*agent_ref.object_id(), 11, &artifact)
             .await
-            .expect("cap-gated register skill succeeds");
+            .expect("update skill succeeds");
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
-        assert_eq!(result.tx_digest, digest);
-    }
-
-    #[tokio::test]
-    async fn tap_actions_bind_agent_skill_extracts_agent_and_skill_events() {
-        // Default-schema happy path for `bind_agent_skill`: a single PTB
-        // creates the agent, registers the skill (default branch), and
-        // shares the Agent object. The mock returns both AgentCreatedEvent
-        // and SkillRegisteredEvent plus the shared Agent object so the
-        // helper can recover the agent ref. A regression that drops the
-        // share call or events would fail the assertions below.
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let artifact = artifact();
-
-        let agent_addr = sui::types::Address::from_static("0xa");
-        let agent_ref =
-            sui::types::ObjectReference::new(agent_addr, 1, sui::types::Digest::generate(&mut rng));
-        let agent_object = sui::types::Object::new(
-            sui::types::ObjectData::Struct(
-                sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.interface_pkg_id,
-                        crate::idents::tap::STANDARD_TAP_MODULE,
-                        sui::types::Identifier::from_static("Agent"),
-                        vec![],
-                    ),
-                    true,
-                    agent_ref.version(),
-                    agent_ref.object_id().as_bytes().to_vec(),
-                )
-                .expect("agent object contents"),
-            ),
-            sui::types::Owner::Shared(agent_ref.version()),
-            digest,
-            0,
-        );
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![agent_object],
-            vec![],
-            vec![
-                wrapped_event(
-                    &nexus_objects,
-                    nexus_objects.interface_pkg_id,
-                    "tap",
-                    "AgentCreatedEvent",
-                    bcs::to_bytes(&Wrapper {
-                        event: events::AgentCreatedEvent {
-                            agent_id: agent_addr,
-                            vault_id: sui::types::Address::from_static("0xb"),
-                            owner: sui::types::Address::from_static("0x1"),
-                            operator: sui::types::Address::from_static("0x2"),
-                        },
-                    })
-                    .unwrap(),
-                ),
-                wrapped_event(
-                    &nexus_objects,
-                    nexus_objects.interface_pkg_id,
-                    "tap",
-                    "SkillRegisteredEvent",
-                    bcs::to_bytes(&Wrapper {
-                        event: events::SkillRegisteredEvent {
-                            agent_id: agent_addr,
-                            skill_id: 17,
-                            dag_id: artifact.dag_id,
-                            dag_binding: TapDagBinding::pinned(artifact.dag_id),
-                            workflow_commitment: artifact.requirements.workflow_commitment.clone(),
-                            requirements_commitment: artifact
-                                .requirements
-                                .input_schema_commitment
-                                .clone(),
-                            capability_schema_commitment: artifact
-                                .requirements
-                                .vertex_authorization_schema
-                                .schema_commitment
-                                .clone(),
-                        },
-                    })
-                    .unwrap(),
-                ),
-            ],
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .bind_agent_skill(BindAgentSkillParams {
-                operator: sui::types::Address::from_static("0x2"),
-                artifact: artifact.clone(),
-            })
-            .await
-            .expect("bind agent + skill");
-
-        assert_eq!(result.agent_id, agent_addr);
-        assert_eq!(result.skill_id, 17);
-        assert_eq!(result.agent_object.object_id(), &agent_addr);
-        assert_eq!(result.tx_digest, digest);
-        // The bind result carries the digest input used to compute the
-        // config_digest, so callers can re-derive it for evidence.
-        assert_eq!(
-            result.config_digest_input,
-            artifact.endpoint_config_digest_input()
-        );
-        let expected_digest = result
-            .config_digest_input
-            .digest()
-            .expect("recompute config digest");
-        assert_eq!(result.config_digest, expected_digest);
-    }
-
-    #[tokio::test]
-    async fn tap_actions_announce_endpoint_revision_extracts_event() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let agent_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xa"),
-            3,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let artifact = artifact();
-        let config_digest = artifact.endpoint_config_digest().expect("endpoint digest");
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            agent_ref.clone(),
-            sui::types::Owner::Shared(agent_ref.version()),
-            None,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![],
-            vec![],
-            vec![wrapped_event(
-                &nexus_objects,
-                nexus_objects.registry_pkg_id,
-                "tap",
-                "EndpointRevisionAnnouncedEvent",
-                bcs::to_bytes(&Wrapper {
-                    event: events::EndpointRevisionAnnouncedEvent {
-                        agent_id: *agent_ref.object_id(),
-                        skill_id: 11,
-                        interface_revision: artifact.interface_revision,
-                        shared_objects: artifact.shared_objects.clone(),
-                        requirements: artifact.requirements.clone(),
-                        config_digest: config_digest.clone(),
-                    },
-                })
-                .unwrap(),
-            )],
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .announce_endpoint_revision(*agent_ref.object_id(), 11, &artifact)
-            .await
-            .expect("announce succeeds");
-
-        assert_eq!(result.endpoint_key.agent_id, *agent_ref.object_id());
-        assert_eq!(result.endpoint_key.skill_id, 11);
-        assert_eq!(result.config_digest, config_digest);
+        assert_eq!(result.current_interface_revision, InterfaceRevision(2));
     }
 
     #[tokio::test]
@@ -2867,7 +2385,6 @@ mod tests {
                         source_identity: sui::types::Address::from_static("0xc"),
                         prepaid_amount: 0,
                         occurrence_budget: 0,
-                        refund_mode: 0,
                     },
                 })
                 .unwrap(),
@@ -2956,7 +2473,6 @@ mod tests {
                         source_identity: sui::types::Address::from_static("0xc"),
                         prepaid_amount: 25,
                         occurrence_budget: 5,
-                        refund_mode: 0,
                     },
                 })
                 .unwrap(),
@@ -2981,7 +2497,6 @@ mod tests {
                 refund_recipient: None,
                 payment_source: vec![2],
                 occurrence_budget: 5,
-                refund_mode: 0,
                 schedule_policy: TapSchedulePolicy::default(),
                 refill_policy_commitment: vec![4],
                 schedule_entries_commitment: vec![5],
@@ -3343,7 +2858,6 @@ mod tests {
                         source_identity: *agent_ref.object_id(),
                         prepaid_amount: 25,
                         occurrence_budget: 5,
-                        refund_mode: 0,
                     },
                 })
                 .unwrap(),
@@ -3391,7 +2905,6 @@ mod tests {
                 skill_id: 12,
                 prepay_amount: 25,
                 occurrence_budget: 5,
-                refund_mode: 0,
                 schedule_policy: TapSchedulePolicy::default(),
                 refill_policy_commitment: vec![4],
                 schedule_entries_commitment: vec![5],
@@ -3460,7 +2973,6 @@ mod tests {
                         source_identity: sui::types::Address::from_static("0xc"),
                         prepaid_amount: 25,
                         occurrence_budget: 5,
-                        refund_mode: 0,
                     },
                 })
                 .unwrap(),
@@ -3484,7 +2996,6 @@ mod tests {
                     refund_recipient: None,
                     payment_source: vec![2],
                     occurrence_budget: 5,
-                    refund_mode: 0,
                     schedule_policy: TapSchedulePolicy::default(),
                     refill_policy_commitment: vec![4],
                     schedule_entries_commitment: vec![5],
@@ -3501,7 +3012,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tap_actions_get_skill_requirements_resolves_active_endpoint() {
+    async fn tap_actions_get_skill_requirements_resolves_active_skill_revision() {
         let registry = registry();
         let registry_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = NexusObjects {
@@ -3534,10 +3045,10 @@ mod tests {
             .expect("requirements fetch succeeds");
 
         assert_eq!(
-            result.active_endpoint_key.interface_revision,
+            result.active_skill_revision_key.interface_revision,
             InterfaceRevision(2)
         );
-        assert_eq!(result.requirements.workflow_commitment, vec![3]);
+        assert_eq!(result.requirements.input_schema_commitment, vec![2]);
     }
 
     fn baseline_payment(
@@ -3558,7 +3069,6 @@ mod tests {
             max_budget: 1_000_000,
             locked_budget: 0,
             consumed: 0,
-            refund_mode: 0,
             payment_source_hash: vec![],
             accomplished,
             refunded,

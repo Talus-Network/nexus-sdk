@@ -4,13 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## `Uncommitted`
+## [Unreleased]
 
 ### `nexus-cli`
 
 #### Added
 
 - `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
+- `tap publish-skill` now publishes the TAP Move package, publishes the DAG, derives the current skill artifact, and writes the agent/skill binding data needed for follow-up execution.
+- `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
+- `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
+
+#### Changed
+
+- TAP CLI terminology now uses default agent or `DefaultDAGExecutor` for Agent Registry surfaces, including the `tap default-agent show` command replacing `tap default-target show`.
+- `tap create-agent` and `tap bind` now derive authorization from the shared agent object flow and no longer accept an explicit `--operator` argument.
+- `tap publish-skill`, `tap bind`, `tap register-skill`, `tap dry-run`, registry inspection, default-agent inspection, requirements output, execution output, payment output, and scheduling output now reflect the simplified current-skill model rather than endpoint-revision/config-digest records.
+
+#### Removed
+
+- `tap announce` endpoint-revision command; use `tap update-skill` to move an existing skill to a new current revision.
+- TAP execute and schedule refund-mode flags; payment and schedule policy now come from the simplified skill requirements.
 
 ### `nexus-sdk`
 
@@ -18,6 +32,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
+- `TapActions::update_skill_from_artifact` and `transactions::tap` helpers for updating an existing skill's DAG binding, payment policy, schedule policy, fixed-tool requirements, and current interface revision from a `TapPublishArtifact`.
+- `TapFixedTool` requirements and DAG input commitment derivation for the current skill artifact shape.
+
+#### Changed
+
+- `TapPublishArtifact` no longer carries `tap_package_id`, shared objects, or config-digest fields; reusable skill artifacts now contain only `skill_name`, `dag_id`, `interface_revision`, and simplified requirements consumed by register, bind, and update flows.
+- `TapSkillRequirements` now carries `input_schema_commitment`, `payment_policy`, `schedule_policy`, and `fixed_tools`, replacing workflow/metadata commitments and `TapVertexAuthorizationSchema`.
+- `TapPaymentPolicy` and `TapSchedulePolicy` now mirror the current on-chain enum shapes, including user-funded vs agent-funded payment policy and once vs recursive schedule recurrence.
+- `transactions::tap::register_skill_with_vertex_authorization_schema` is now `transactions::tap::register_skill_with_fixed_tools`, with fixed-tool argument helpers so skills can register registry-verified `TapFixedTool` requirements without carrying a vertex authorization schema.
+- TAP registry, default-agent, active execution, and requirement resolution models now use current skill records and derived skill revisions instead of endpoint revision records.
+- TAP package publishing options now pass the selected Sui Move build environment by name.
+
+#### Removed
+
+- Endpoint-revision announcement and inspection SDK surfaces, endpoint config-digest helpers, shared-object requirement plumbing, and stale `TapV1`/default-target terminology from active TAP paths.
+
+### `docs`
+
+#### Changed
+
+- TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled-task reserve flows.
+- Tool communication docs now cover registered-key leader verifier proof requirements for signed HTTP DAGs.
 
 ## [`2.0.0-rc.2`] - 2026-06-10
 

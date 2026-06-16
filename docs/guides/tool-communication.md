@@ -19,6 +19,7 @@ It is written for:
    - Leader node → Tool requests carry `X-Nexus-Sig-*` headers that authenticate the calling Leader node, bind the request metadata, and bind the request body bytes.
    - Tool → Leader node responses also carry `X-Nexus-Sig-*` headers so the Leader node can verify provenance and bind the response to the exact request.
 1. **Tools should not do on-chain reads at runtime** to validate Leader nodes. Instead, the Tool operator exports a local allowlist file of permitted Leader nodes and deploys it next to the Tool.
+1. **DAGs that require on-chain registered-key verification** set `leader_verifier.mode = "leader_registered_key"` and `method = "signed_http_v1"`. In that mode, the leader builds workflow proof from the signed HTTP transcript, so the Tool must have an active registered key and must sign the exact `/invoke` response body.
 
 {% hint style="info" %}
 Terminology: a **Leader node** is the Nexus node calling the Tool. In signed HTTP claims, `leader_id` identifies the Leader node (a Sui like `address`) that signed the request.
@@ -168,6 +169,33 @@ Each identity has:
 
 Registration uses a **proof-of-possession** (PoP) signature so the chain can verify the registrant actually controls the private key corresponding to the public key being registered.
 
+## On-chain registered-key verification
+
+Signed HTTP is the transport/session contract. The DAG can require that same signed session to be proven on chain by using registered-key verifier policy:
+
+```json
+{
+  "leader_verifier": {
+    "mode": "leader_registered_key",
+    "method": "signed_http_v1"
+  }
+}
+```
+
+This policy is configured as a `leader_verifier`, not a `tool_verifier`. A `tool_verifier` with `mode = "tool_verifier_contract"` is for a custom verifier package registered in the verifier registry.
+
+When `leader_registered_key` is active for a vertex, the leader submits a verifier-aware workflow transaction with proof derived from the signed HTTP request and response. Missing or invalid proof is handled as a verifier failure and routed through `_err_eval`; the no-verifier route is only valid when the effective policy is `None`.
+
+For the Tool, this means:
+
+- register the Tool message-signing public key on chain with `nexus tool auth register-key`;
+- configure the runtime with the returned `tool_kid` and matching private signing key;
+- keep `allowed_leaders.json` synced so the Tool verifies incoming Leader requests locally;
+- ensure the reverse proxy preserves all `X-Nexus-Sig-*` headers and does not rewrite bodies;
+- sign the exact response body sent to the Leader, including `_err_eval` bodies.
+
+If you implement a custom runtime instead of using `nexus-toolkit`, use the body-aware signed HTTP response signer. Status-only response signing is deprecated because a 2xx HTTP response can still carry an `_err_eval` outcome in the body.
+
 ---
 
 ## How to deploy a Tool (end-to-end checklist)
@@ -264,6 +292,8 @@ Notes:
 
 This creates (or updates) the Tool’s key binding in `network_auth` and returns the `tool_kid` you must configure in the Tool runtime.
 
+If an Agent developer configures `leader_verifier.mode = "leader_registered_key"` with method `signed_http_v1`, this registered key is also the key used by the workflow proof path. A stale `tool_kid`, inactive key, body-rewriting proxy, or unsigned response will prevent the leader from producing valid registered-key proof.
+
 ### 6) Export `allowed_leaders.json` for Tool-side verification
 
 Tools should not RPC to Sui on every request. Instead, generate a local allowlist file of permitted Leader nodes:
@@ -321,6 +351,21 @@ export NEXUS_TOOLKIT_CONFIG_PATH=./toolkit.json
 If you run multiple tools on the same server, add each tool id under `signed_http.tools` with its own signing key and `tool_kid`.
 {% endhint %}
 
+### 8) Configure DAG verification when you want on-chain proof
+
+Add the registered-key leader verifier to the DAG or to the specific vertex that requires proof:
+
+```json
+{
+  "leader_verifier": {
+    "mode": "leader_registered_key",
+    "method": "signed_http_v1"
+  }
+}
+```
+
+Use DAG-level configuration when every off-chain vertex should require the same proof policy. Use vertex-level configuration when only selected tool calls need the registered-key requirement.
+
 ---
 
 ## Optional: additional Tool-side authorization
@@ -352,6 +397,15 @@ Common causes:
 - Tool is using the wrong signing key or `tool_kid`.
 - Tool key is not registered (or not the active key) on-chain.
 - Tool response body is being modified by middleware.
+
+### Registered-key verifier proof fails
+
+Common causes:
+
+- DAG or vertex uses `leader_verifier.mode = "leader_registered_key"` but the Tool response is unsigned.
+- The Tool signed with a stale `tool_kid` or a key that is not active in Network Auth.
+- Middleware changed the response body after signing.
+- Custom runtime used status-only response signing instead of body-aware response signing.
 
 ### TLS / certificate errors from Leader nodes
 
