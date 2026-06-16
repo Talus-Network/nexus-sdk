@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
 - `tap publish-skill` now publishes the TAP Move package, publishes the DAG, derives the current skill artifact, and writes the agent/skill binding data needed for follow-up execution.
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
@@ -29,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
+- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 - `TapActions::update_skill_from_artifact` and `transactions::tap` helpers for updating an existing skill's DAG binding, payment policy, schedule policy, fixed-tool requirements, and current interface revision from a `TapPublishArtifact`.
 - `TapFixedTool` requirements and DAG input commitment derivation for the current skill artifact shape.
 
@@ -51,19 +54,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled-task reserve flows.
 - Tool communication docs now cover registered-key leader verifier proof requirements for signed HTTP DAGs.
-
-### `nexus-cli`
-
-#### Added
-
-- `dag abort-expired-execution` command that takes a DAGExecution ID, derives the selected DAG and expiry clock from on-chain state, discovers eligible ToolGas candidates for an expired TAP DAG execution, submits the ToolGas-assisted abort PTB, and emits the selected ToolGas plus matching walk metadata as JSON.
-
-### `nexus-sdk`
-
-#### Added
-
-- `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
-- `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduler task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 
 ## [`2.0.0-rc.2`] - 2026-06-10
 
