@@ -178,6 +178,7 @@ events! {
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
+    LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
     PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
     PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
     PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
@@ -862,6 +863,17 @@ pub struct LeaderCapIssuedEvent {
     pub leader_cap_id: sui::types::Address,
     pub network: sui::types::Address,
     pub leader: sui::types::Address,
+}
+
+/// Fired by `nexus_registry::leader::activate_and_claim` when a leader instance
+/// claims (or re-claims) ownership of its `Active` record. `claim_token` is the
+/// activating transaction's own digest. Each leader instance indexes this event
+/// to learn which activation currently owns the record (ADR-3 task gate).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaderClaimedEvent {
+    pub registry: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
+    pub claim_token: Vec<u8>,
 }
 
 /// Fired by the Gas service when a tool payment lock is updated. This event is
