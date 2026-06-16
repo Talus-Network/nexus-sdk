@@ -1236,13 +1236,6 @@ impl Leader {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("register"),
     };
-    /// Set a leader's status.
-    ///
-    /// `nexus_workflow::leader::set_status`
-    pub const SET_STATUS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("set_status"),
-    };
     /// Stake SUI into a leader's pool.
     ///
     /// `nexus_workflow::leader::stake`
