@@ -122,25 +122,12 @@ public fun init_for_test(): {witness} {{
   "tap_package_path": "tap",
   "requirements": {{
     "input_schema_commitment": [1],
-    "workflow_commitment": [1],
-    "metadata_commitment": [1],
-    "payment_policy": {{
-      "mode": "user_funded",
-      "max_budget": 0,
-      "token_type_commitment": [],
-      "refund_mode": 0
-    }},
+    "payment_policy": "UserFunded",
     "schedule_policy": {{
-      "recurrence_kind": "once",
-      "min_interval_ms": 0,
-      "max_occurrences": 1,
+      "recurrence": "Once",
       "allow_recursive": false
     }},
-    "vertex_authorization_schema": {{
-      "schema_commitment": [],
-      "fixed_tools": [],
-      "requires_payment": false
-    }}
+    "fixed_tools": []
   }},
   "shared_objects": [],
   "interface_revision": 1
