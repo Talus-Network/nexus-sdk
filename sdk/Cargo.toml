@@ -300,25 +300,25 @@ optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.67.3"
+tag = "mainnet-v1.72.5"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.67.3"
+tag = "mainnet-v1.72.5"
 package = "sui-package-management"
 optional = true
 
 [dependencies.move_package]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.67.3"
+tag = "mainnet-v1.72.5"
 package = "move-package"
 optional = true
 
 [dependencies.move_package_alt]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.67.3"
+tag = "mainnet-v1.72.5"
 package = "move-package-alt"
 optional = true
 
