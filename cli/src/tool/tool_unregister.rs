@@ -93,13 +93,13 @@ pub(crate) async fn unregister_tool(
     tx.set_gas_budget(gas_config.get_budget());
     tx.set_gas_price(nexus_client.get_reference_gas_price());
 
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
+    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
         *gas_coin.object_id(),
         gas_coin.version(),
         *gas_coin.digest(),
     )]);
 
-    let tx = tx.finish().map_err(|e| NexusCliError::Any(e.into()))?;
+    let tx = tx.try_build().map_err(|e| NexusCliError::Any(e.into()))?;
 
     let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
 

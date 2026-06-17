@@ -83,13 +83,13 @@ pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::type
     tx.set_sender(sui::types::Address::generate(&mut rng));
     tx.set_gas_budget(1000);
     tx.set_gas_price(1000);
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
+    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
         *gas.object_id(),
         gas.version(),
         *gas.digest(),
     )]);
 
-    tx.finish().expect("Transaction should build")
+    tx.try_build().expect("Transaction should build")
 }
 
 pub mod grpc {
@@ -238,12 +238,10 @@ pub mod grpc {
 
     #[tonic::async_trait]
     impl<W: SubscriptionServiceWrapper> SubscriptionService for SubscriptionServiceAdapter<W> {
-        type SubscribeCheckpointsStream = BoxCheckpointStream;
-
         async fn subscribe_checkpoints(
             &self,
             request: Request<SubscribeCheckpointsRequest>,
-        ) -> Result<Response<Self::SubscribeCheckpointsStream>, Status> {
+        ) -> Result<Response<BoxCheckpointStream>, Status> {
             self.inner.subscribe_checkpoints(request).await
         }
     }

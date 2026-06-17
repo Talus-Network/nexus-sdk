@@ -66,12 +66,12 @@ strum = "0.27"
 strum_macros = "0.27"
 tempfile = "3.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 tokio-stream = "0.1.17"
 tokio-retry = "0.3.0"
 tokio-util = "0.7.18"
 toml = "0.8.20"
-tonic = "0.14"
+tonic = "^0.14.6"
 tracing = "0.1.41"
 warp = "0.3.7"
 zeroize = "1.7"
@@ -89,8 +89,3 @@ split-debuginfo = "packed"
 strip = "debuginfo"
 # Exit process with SIGABRT when any thread panics
 panic = "abort"
-
-# Sui still depends on core2 which is yanked, use git
-# for tentative workround
-[patch.crates-io]
-core2 = { git = "https://github.com/bbqsrc/core2", rev = "545e84bcb0f235b12e21351e0c69767958efe2a7" }

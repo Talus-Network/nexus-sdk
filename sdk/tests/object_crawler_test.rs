@@ -457,25 +457,30 @@ async fn test_object_crawler_get_object_creation_checkpoint() {
     let mut bump_checkpoints = Vec::new();
     for _ in 0..3 {
         let mut tx = sui::tx::TransactionBuilder::new();
-        let guy_arg = tx.input(sui::tx::Input::shared(guy_id, initial_shared_version, true));
+        let guy_arg = tx.object(sui::tx::ObjectInput::shared(
+            guy_id,
+            initial_shared_version,
+            true,
+        ));
         tx.move_call(
             sui::tx::Function::new(
                 pkg_id,
                 sui::types::Identifier::from_static("main"),
                 sui::types::Identifier::from_static("bump_age"),
-                vec![],
             ),
             vec![guy_arg],
         );
         tx.set_sender(addr);
         tx.set_gas_budget(1_000_000_000);
         tx.set_gas_price(reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin_ref.object_id(),
             gas_coin_ref.version(),
             *gas_coin_ref.digest(),
         )]);
-        let tx = tx.finish().expect("Failed to finish bump_age transaction.");
+        let tx = tx
+            .try_build()
+            .expect("Failed to finish bump_age transaction.");
         let signature = signer
             .sign_tx(&tx)
             .await

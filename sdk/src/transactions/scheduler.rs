@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, primitives, pure_arg, scheduler, sui_framework, workflow},
+        idents::{move_std, primitives, scheduler, sui_framework, workflow},
         sui,
         transactions,
         types::{
@@ -38,8 +38,8 @@ pub struct PeriodicScheduleInputs {
 fn shared_task_arg(
     tx: &mut sui::tx::TransactionBuilder,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
-    Ok(tx.input(sui::tx::Input::shared(
+) -> anyhow::Result<sui::tx::Argument> {
+    Ok(tx.object(sui::tx::ObjectInput::shared(
         *task.object_id(),
         task.version(),
         true,
@@ -53,7 +53,7 @@ pub fn new_metadata<K, V>(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     key_values: impl IntoIterator<Item = (K, V)>,
-) -> anyhow::Result<sui::types::Argument>
+) -> anyhow::Result<sui::tx::Argument>
 where
     K: AsRef<str>,
     V: AsRef<str>,
@@ -65,23 +65,23 @@ where
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module,
             sui_framework::VecMap::EMPTY.name,
-            vec![string_type.clone(), string_type.clone()],
-        ),
+        )
+        .with_type_args(vec![string_type.clone(), string_type.clone()]),
         vec![],
     );
 
     for (key, value) in key_values.into_iter() {
-        let key = tx.input(pure_arg(&key.as_ref().to_string())?);
+        let key = tx.pure(&key.as_ref().to_string());
 
-        let value = tx.input(pure_arg(&value.as_ref().to_string())?);
+        let value = tx.pure(&value.as_ref().to_string());
 
         tx.move_call(
             sui::tx::Function::new(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module,
                 sui_framework::VecMap::INSERT.name,
-                vec![string_type.clone(), string_type.clone()],
-            ),
+            )
+            .with_type_args(vec![string_type.clone(), string_type.clone()]),
             vec![metadata, key, value],
         );
     }
@@ -91,7 +91,6 @@ where
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_METADATA.module,
             scheduler::Scheduler::NEW_METADATA.name,
-            vec![],
         ),
         vec![metadata],
     ))
@@ -103,16 +102,15 @@ where
 pub fn new_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    metadata: sui::types::Argument,
-    constraints: sui::types::Argument,
-    execution: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    metadata: sui::tx::Argument,
+    constraints: sui::tx::Argument,
+    execution: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW.module,
             scheduler::Scheduler::NEW.name,
-            vec![],
         ),
         vec![metadata, constraints, execution],
     ))
@@ -122,15 +120,14 @@ pub fn new_task(
 pub fn attach_tap_scheduled_task_link(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    task: sui::types::Argument,
-    scheduled_task: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    task: sui::tx::Argument,
+    scheduled_task: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.module,
             scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.name,
-            vec![],
         ),
         vec![task, scheduled_task],
     ))
@@ -141,8 +138,8 @@ pub fn update_metadata(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-    metadata: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    metadata: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -150,7 +147,6 @@ pub fn update_metadata(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::UPDATE_METADATA.module,
             scheduler::Scheduler::UPDATE_METADATA.name,
-            vec![],
         ),
         vec![task, metadata],
     ))
@@ -161,7 +157,7 @@ pub fn new_constraints_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     generator: OccurrenceGenerator,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let constraint_symbol = match generator {
@@ -175,8 +171,8 @@ pub fn new_constraints_policy(
                     objects.primitives_pkg_id,
                     primitives::Policy::WITNESS_SYMBOL.module,
                     primitives::Policy::WITNESS_SYMBOL.name,
-                    vec![witness_tag],
-                ),
+                )
+                .with_type_args(vec![witness_tag]),
                 vec![],
             )
         }
@@ -190,8 +186,8 @@ pub fn new_constraints_policy(
                     objects.primitives_pkg_id,
                     primitives::Policy::WITNESS_SYMBOL.module,
                     primitives::Policy::WITNESS_SYMBOL.name,
-                    vec![witness_tag],
-                ),
+                )
+                .with_type_args(vec![witness_tag]),
                 vec![],
             )
         }
@@ -202,8 +198,8 @@ pub fn new_constraints_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::EMPTY.module,
             sui_framework::TableVec::EMPTY.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![],
     );
 
@@ -212,8 +208,8 @@ pub fn new_constraints_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::PUSH_BACK.module,
             sui_framework::TableVec::PUSH_BACK.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![constraint_sequence, constraint_symbol],
     );
 
@@ -222,7 +218,6 @@ pub fn new_constraints_policy(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_CONSTRAINTS_POLICY.module,
             scheduler::Scheduler::NEW_CONSTRAINTS_POLICY.name,
-            vec![],
         ),
         vec![constraint_sequence],
     );
@@ -232,8 +227,8 @@ pub fn new_constraints_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::DROP.module,
             sui_framework::TableVec::DROP.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![constraint_sequence],
     );
 
@@ -255,13 +250,12 @@ pub fn new_constraints_policy(
 pub fn new_queue_generator_state(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.module,
             scheduler::Scheduler::NEW_QUEUE_GENERATOR_STATE.name,
-            vec![],
         ),
         vec![],
     ))
@@ -271,15 +265,14 @@ pub fn new_queue_generator_state(
 pub fn register_queue_generator(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    constraints: sui::types::Argument,
-    queue_state: sui::types::Argument,
+    constraints: sui::tx::Argument,
+    queue_state: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.module,
             scheduler::Scheduler::REGISTER_QUEUE_GENERATOR.name,
-            vec![],
         ),
         vec![constraints, queue_state],
     );
@@ -291,13 +284,12 @@ pub fn register_queue_generator(
 pub fn new_periodic_generator_state(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.module,
             scheduler::Scheduler::NEW_PERIODIC_GENERATOR_STATE.name,
-            vec![],
         ),
         vec![],
     ))
@@ -307,15 +299,14 @@ pub fn new_periodic_generator_state(
 pub fn register_periodic_generator(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    constraints: sui::types::Argument,
-    periodic_state: sui::types::Argument,
+    constraints: sui::tx::Argument,
+    periodic_state: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.module,
             scheduler::Scheduler::REGISTER_PERIODIC_GENERATOR.name,
-            vec![],
         ),
         vec![constraints, periodic_state],
     );
@@ -332,7 +323,7 @@ pub fn new_execution_policy(
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
@@ -345,8 +336,8 @@ pub fn new_execution_policy(
             objects.primitives_pkg_id,
             primitives::Policy::WITNESS_SYMBOL.module,
             primitives::Policy::WITNESS_SYMBOL.name,
-            vec![witness_tag],
-        ),
+        )
+        .with_type_args(vec![witness_tag]),
         vec![],
     );
 
@@ -355,8 +346,8 @@ pub fn new_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::EMPTY.module,
             sui_framework::TableVec::EMPTY.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![],
     );
 
@@ -365,8 +356,8 @@ pub fn new_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::PUSH_BACK.module,
             sui_framework::TableVec::PUSH_BACK.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![execution_sequence, execution_symbol],
     );
 
@@ -375,7 +366,6 @@ pub fn new_execution_policy(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_EXECUTION_POLICY.module,
             scheduler::Scheduler::NEW_EXECUTION_POLICY.name,
-            vec![],
         ),
         vec![execution_sequence],
     );
@@ -385,14 +375,14 @@ pub fn new_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::DROP.module,
             sui_framework::TableVec::DROP.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![execution_sequence],
     );
 
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
@@ -404,7 +394,6 @@ pub fn new_execution_policy(
             objects.workflow_pkg_id,
             workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
             workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-            vec![],
         ),
         vec![
             dag_id_arg,
@@ -433,7 +422,7 @@ pub fn new_agent_execution_policy(
     skill_id: SkillId,
     authorization_plan_commitment: Option<Vec<u8>>,
     authorization_plan: &[TapVertexAuthorizationPlanEntry],
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
@@ -446,8 +435,8 @@ pub fn new_agent_execution_policy(
             objects.primitives_pkg_id,
             primitives::Policy::WITNESS_SYMBOL.module,
             primitives::Policy::WITNESS_SYMBOL.name,
-            vec![witness_tag],
-        ),
+        )
+        .with_type_args(vec![witness_tag]),
         vec![],
     );
 
@@ -456,8 +445,8 @@ pub fn new_agent_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::EMPTY.module,
             sui_framework::TableVec::EMPTY.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![],
     );
 
@@ -466,8 +455,8 @@ pub fn new_agent_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::PUSH_BACK.module,
             sui_framework::TableVec::PUSH_BACK.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![execution_sequence, execution_symbol],
     );
 
@@ -476,7 +465,6 @@ pub fn new_agent_execution_policy(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_EXECUTION_POLICY.module,
             scheduler::Scheduler::NEW_EXECUTION_POLICY.name,
-            vec![],
         ),
         vec![execution_sequence],
     );
@@ -486,17 +474,17 @@ pub fn new_agent_execution_policy(
             sui_framework::PACKAGE_ID,
             sui_framework::TableVec::DROP.module,
             sui_framework::TableVec::DROP.name,
-            vec![symbol_type.clone()],
-        ),
+        )
+        .with_type_args(vec![symbol_type.clone()]),
         vec![execution_sequence],
     );
 
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
     let agent_id_arg = transactions::tap::agent_id_from_address(tx, objects, agent_id)?;
-    let skill_id_arg = tx.input(pure_arg(&skill_id)?);
-    let authorization_plan_commitment = tx.input(pure_arg(&authorization_plan_commitment)?);
+    let skill_id_arg = tx.pure(&skill_id);
+    let authorization_plan_commitment = tx.pure(&authorization_plan_commitment);
     let authorization_plan =
         transactions::dag::tap_authorization_plan(tx, objects, authorization_plan)?;
 
@@ -510,7 +498,6 @@ pub fn new_agent_execution_policy(
             objects.workflow_pkg_id,
             workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module,
             workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.name,
-            vec![],
         ),
         vec![
             dag_id_arg,
@@ -534,7 +521,7 @@ fn build_inputs_vec_map(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let inner_vec_map_type = vec![
         workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
@@ -555,8 +542,8 @@ fn build_inputs_vec_map(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module,
             sui_framework::VecMap::EMPTY.name,
-            outer_vec_map_type.clone(),
-        ),
+        )
+        .with_type_args(outer_vec_map_type.clone()),
         vec![],
     );
 
@@ -570,8 +557,8 @@ fn build_inputs_vec_map(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::EMPTY.module,
                 sui_framework::VecMap::EMPTY.name,
-                inner_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(inner_vec_map_type.clone()),
             vec![],
         );
 
@@ -603,8 +590,8 @@ fn build_inputs_vec_map(
                     sui_framework::PACKAGE_ID,
                     sui_framework::VecMap::INSERT.module,
                     sui_framework::VecMap::INSERT.name,
-                    inner_vec_map_type.clone(),
-                ),
+                )
+                .with_type_args(inner_vec_map_type.clone()),
                 vec![with_vertex_input, port, value],
             );
         }
@@ -615,8 +602,8 @@ fn build_inputs_vec_map(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module,
                 sui_framework::VecMap::INSERT.name,
-                outer_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(outer_vec_map_type.clone()),
             vec![with_vertex_inputs, vertex, with_vertex_input],
         );
     }
@@ -629,7 +616,7 @@ pub fn execute(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -637,7 +624,6 @@ pub fn execute(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::EXECUTE.module,
             scheduler::Scheduler::EXECUTE.name,
-            vec![],
         ),
         vec![task],
     ))
@@ -648,8 +634,8 @@ pub fn finish(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-    proof: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    proof: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -657,7 +643,6 @@ pub fn finish(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::FINISH.module,
             scheduler::Scheduler::FINISH.name,
-            vec![],
         ),
         vec![task, proof],
     ))
@@ -673,28 +658,28 @@ pub fn add_occurrence_absolute_for_task(
     start_time_ms: u64,
     deadline_offset_ms: Option<u64>,
     priority_fee_per_gas_unit: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
 
     // `start_time_ms: u64`
-    let start_time_ms = tx.input(pure_arg(&start_time_ms)?);
+    let start_time_ms = tx.pure(&start_time_ms);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
 
     // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
     // `leader_registry: &LeaderRegistry`
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -705,7 +690,6 @@ pub fn add_occurrence_absolute_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.module,
             scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_TASK.name,
-            vec![],
         ),
         vec![
             task,
@@ -726,28 +710,28 @@ pub fn add_occurrence_relative_for_task(
     start_offset_ms: u64,
     deadline_offset_ms: Option<u64>,
     priority_fee_per_gas_unit: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `task: &mut Task`
     let task = shared_task_arg(tx, task)?;
 
     // `start_offset_ms: u64`
-    let start_offset_ms = tx.input(pure_arg(&start_offset_ms)?);
+    let start_offset_ms = tx.pure(&start_offset_ms);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
 
     // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
     // `leader_registry: &LeaderRegistry`
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -758,7 +742,6 @@ pub fn add_occurrence_relative_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.module,
             scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_TASK.name,
-            vec![],
         ),
         vec![
             task,
@@ -780,7 +763,7 @@ pub fn new_or_modify_periodic_for_task(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
     schedule: PeriodicScheduleInputs,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let PeriodicScheduleInputs {
         first_start_ms,
         period_ms,
@@ -793,29 +776,29 @@ pub fn new_or_modify_periodic_for_task(
     let task = shared_task_arg(tx, task)?;
 
     // `first_start_ms: u64`
-    let first_start_ms = tx.input(pure_arg(&first_start_ms)?);
+    let first_start_ms = tx.pure(&first_start_ms);
 
     // `period_ms: u64`
-    let period_ms = tx.input(pure_arg(&period_ms)?);
+    let period_ms = tx.pure(&period_ms);
 
     // `deadline_offset_ms: option::Option<u64>`
-    let deadline_offset_ms = tx.input(pure_arg(&deadline_offset_ms)?);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
 
     // `max_iterations: option::Option<u64>`
-    let max_iterations = tx.input(pure_arg(&max_iterations)?);
+    let max_iterations = tx.pure(&max_iterations);
 
     // `priority_fee_per_gas_unit: u64`
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
     // `leader_registry: &LeaderRegistry`
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -826,7 +809,6 @@ pub fn new_or_modify_periodic_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.module,
             scheduler::Scheduler::NEW_OR_MODIFY_PERIODIC_FOR_TASK.name,
-            vec![],
         ),
         vec![
             task,
@@ -846,7 +828,7 @@ pub fn disable_periodic_for_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -854,7 +836,6 @@ pub fn disable_periodic_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::DISABLE_PERIODIC_FOR_TASK.module,
             scheduler::Scheduler::DISABLE_PERIODIC_FOR_TASK.name,
-            vec![],
         ),
         vec![task],
     ))
@@ -867,7 +848,7 @@ pub fn pause_time_constraint_for_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -875,7 +856,6 @@ pub fn pause_time_constraint_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::PAUSE.module,
             scheduler::Scheduler::PAUSE.name,
-            vec![],
         ),
         vec![task],
     ))
@@ -886,7 +866,7 @@ pub fn resume_time_constraint_for_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -894,7 +874,6 @@ pub fn resume_time_constraint_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::RESUME.module,
             scheduler::Scheduler::RESUME.name,
-            vec![],
         ),
         vec![task],
     ))
@@ -905,7 +884,7 @@ pub fn cancel_time_constraint_for_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
 
     Ok(tx.move_call(
@@ -913,7 +892,6 @@ pub fn cancel_time_constraint_for_task(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::CANCEL.module,
             scheduler::Scheduler::CANCEL.name,
-            vec![],
         ),
         vec![task],
     ))
@@ -926,9 +904,9 @@ pub fn check_queue_occurrence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -939,7 +917,6 @@ pub fn check_queue_occurrence(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
             scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
-            vec![],
         ),
         vec![task, clock],
     ))
@@ -950,9 +927,9 @@ pub fn check_periodic_occurrence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -963,7 +940,6 @@ pub fn check_periodic_occurrence(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
             scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
-            vec![],
         ),
         vec![task, clock],
     ))
@@ -973,15 +949,14 @@ pub fn check_periodic_occurrence(
 pub fn register_begin_default_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    policy: sui::types::Argument,
-    config: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    policy: sui::tx::Argument,
+    config: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.module,
             scheduler::Scheduler::REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION.name,
-            vec![],
         ),
         vec![policy, config],
     ))
@@ -991,15 +966,14 @@ pub fn register_begin_default_agent_execution(
 pub fn register_begin_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    policy: sui::types::Argument,
-    config: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    policy: sui::tx::Argument,
+    config: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.module,
             scheduler::Scheduler::REGISTER_BEGIN_AGENT_EXECUTION.name,
-            vec![],
         ),
         vec![policy, config],
     ))
@@ -1010,24 +984,23 @@ pub fn register_begin_agent_execution(
 pub fn prepare_default_agent_execution_from_scheduler(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    task: sui::types::Argument,
-    dag: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    payment_coin: sui::types::Argument,
+    tool_registry: sui::tx::Argument,
+    agent_registry: sui::tx::Argument,
+    task: sui::tx::Argument,
+    dag: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    payment_coin: sui::tx::Argument,
     payment_source: Vec<u8>,
     payment_max_budget: u64,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    let payment_source = tx.input(pure_arg(&payment_source)?);
-    let payment_max_budget = tx.input(pure_arg(&payment_max_budget)?);
+    clock: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
+    let payment_source = tx.pure(&payment_source);
+    let payment_max_budget = tx.pure(&payment_max_budget);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.module,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1048,20 +1021,19 @@ pub fn prepare_default_agent_execution_from_scheduler(
 pub fn prepare_default_agent_execution_from_scheduled_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    scheduled_task: sui::types::Argument,
-    task: sui::types::Argument,
-    dag: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    tool_registry: sui::tx::Argument,
+    agent_registry: sui::tx::Argument,
+    scheduled_task: sui::tx::Argument,
+    task: sui::tx::Argument,
+    dag: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1080,20 +1052,19 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
 pub fn prepare_agent_execution_from_scheduled_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    scheduled_task: sui::types::Argument,
-    task: sui::types::Argument,
-    dag: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    tool_registry: sui::tx::Argument,
+    agent_registry: sui::tx::Argument,
+    scheduled_task: sui::tx::Argument,
+    task: sui::tx::Argument,
+    dag: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
             scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1124,13 +1095,13 @@ pub fn execute_scheduled_occurrence(
     let task = shared_task_arg(tx, task)?;
 
     // `leader_registry: &LeaderRegistry`
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -1143,7 +1114,6 @@ pub fn execute_scheduled_occurrence(
                 objects.scheduler_pkg_id,
                 scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
                 scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
-                vec![],
             ),
             vec![task, leader_registry, clock],
         ),
@@ -1152,38 +1122,37 @@ pub fn execute_scheduled_occurrence(
                 objects.scheduler_pkg_id,
                 scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
                 scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
-                vec![],
             ),
             vec![task, leader_registry, clock],
         ),
     };
 
     // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
+    let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         false,
     ));
 
     // `agent_registry: &TapRegistry`
-    let agent_registry = tx.input(sui::tx::Input::shared(
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.agent_registry.object_id(),
         objects.agent_registry.version(),
         false,
     ));
 
     // `dag: &DAG`
-    let dag = tx.input(sui::tx::Input::shared(
+    let dag = tx.object(sui::tx::ObjectInput::shared(
         *dag.object_id(),
         dag.version(),
         false,
     ));
-    let scheduled_task = tx.input(sui::tx::Input::shared(
+    let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
         *scheduled_task.object_id(),
         scheduled_task.version(),
         true,
     ));
-    let leader_cap = tx.input(sui::tx::Input::shared(
+    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
         false,
@@ -1201,17 +1170,14 @@ pub fn execute_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`
-    let Some(execution) = results.nested(0) else {
-        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
+    let [execution, ticket] = results.to_nested(2)[..] else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive execution and ticket arguments"
+        ));
     };
 
-    // `ticket: RequestWalkExecution`
-    let Some(ticket) = results.nested(1) else {
-        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
-    };
-
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         false,
@@ -1221,7 +1187,7 @@ pub fn execute_scheduled_occurrence(
     // `tools_gas: Vec<&mut ToolGas>`
     let tools_gas = tools_gas
         .iter()
-        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
     transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
@@ -1232,7 +1198,6 @@ pub fn execute_scheduled_occurrence(
             objects.workflow_pkg_id,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
-            vec![],
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
@@ -1247,8 +1212,8 @@ pub fn execute_scheduled_occurrence(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![execution_type],
-        ),
+        )
+        .with_type_args(vec![execution_type]),
         vec![execution],
     );
 
@@ -1258,7 +1223,6 @@ pub fn execute_scheduled_occurrence(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::FINISH.module,
             scheduler::Scheduler::FINISH.name,
-            vec![],
         ),
         vec![task, proof],
     );
@@ -1283,13 +1247,13 @@ pub fn execute_registered_scheduled_occurrence(
     let task = shared_task_arg(tx, task)?;
 
     // `leader_registry: &LeaderRegistry`
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
 
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -1302,7 +1266,6 @@ pub fn execute_registered_scheduled_occurrence(
                 objects.scheduler_pkg_id,
                 scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.module,
                 scheduler::Scheduler::CHECK_QUEUE_OCCURRENCE.name,
-                vec![],
             ),
             vec![task, leader_registry, clock],
         ),
@@ -1311,38 +1274,37 @@ pub fn execute_registered_scheduled_occurrence(
                 objects.scheduler_pkg_id,
                 scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.module,
                 scheduler::Scheduler::CHECK_PERIODIC_OCCURRENCE.name,
-                vec![],
             ),
             vec![task, leader_registry, clock],
         ),
     };
 
     // `tool_registry: &ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
+    let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         false,
     ));
 
     // `agent_registry: &TapRegistry`
-    let agent_registry = tx.input(sui::tx::Input::shared(
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.agent_registry.object_id(),
         objects.agent_registry.version(),
         false,
     ));
 
     // `dag: &DAG`
-    let dag = tx.input(sui::tx::Input::shared(
+    let dag = tx.object(sui::tx::ObjectInput::shared(
         *dag.object_id(),
         dag.version(),
         false,
     ));
-    let scheduled_task = tx.input(sui::tx::Input::shared(
+    let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
         *scheduled_task.object_id(),
         scheduled_task.version(),
         true,
     ));
-    let leader_cap = tx.input(sui::tx::Input::shared(
+    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
         false,
@@ -1360,17 +1322,14 @@ pub fn execute_registered_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`
-    let Some(execution) = results.nested(0) else {
-        return Err(anyhow::anyhow!("Failed to receive execution argument"));
+    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
+    let [execution, ticket] = results.to_nested(2)[..] else {
+        return Err(anyhow::anyhow!(
+            "Failed to receive execution and ticket arguments"
+        ));
     };
 
-    // `ticket: RequestWalkExecution`
-    let Some(ticket) = results.nested(1) else {
-        return Err(anyhow::anyhow!("Failed to receive ticket argument"));
-    };
-
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         false,
@@ -1380,7 +1339,7 @@ pub fn execute_registered_scheduled_occurrence(
     // `tools_gas: Vec<&mut ToolGas>`
     let tools_gas = tools_gas
         .iter()
-        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
     transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
@@ -1391,7 +1350,6 @@ pub fn execute_registered_scheduled_occurrence(
             objects.workflow_pkg_id,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
-            vec![],
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
@@ -1406,8 +1364,8 @@ pub fn execute_registered_scheduled_occurrence(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![execution_type],
-        ),
+        )
+        .with_type_args(vec![execution_type]),
         vec![execution],
     );
 
@@ -1417,7 +1375,6 @@ pub fn execute_registered_scheduled_occurrence(
             objects.scheduler_pkg_id,
             scheduler::Scheduler::FINISH.module,
             scheduler::Scheduler::FINISH.name,
-            vec![],
         ),
         vec![task, proof],
     );
@@ -1488,43 +1445,36 @@ mod tests {
             expected: &sui::types::ObjectReference,
             mutable: bool,
         ) {
-            let sui::types::Input::Shared {
-                object_id,
-                initial_shared_version,
-                mutable: actual_mutable,
-            } = self.input(argument)
-            else {
+            let sui::types::Input::Shared(shared) = self.input(argument) else {
                 panic!(
                     "expected shared object argument, got {:?}",
                     self.input(argument)
                 );
             };
 
-            assert_eq!(object_id, expected.object_id());
-            assert_eq!(*initial_shared_version, expected.version());
-            assert_eq!(*actual_mutable, mutable);
+            assert_eq!(shared.object_id(), *expected.object_id());
+            assert_eq!(shared.version(), expected.version());
+            assert_eq!(shared.mutability().is_mutable(), mutable);
         }
 
         fn expect_clock(&self, argument: &sui::types::Argument) {
-            let sui::types::Input::Shared {
-                object_id,
-                initial_shared_version,
-                mutable,
-            } = self.input(argument)
-            else {
+            let sui::types::Input::Shared(shared) = self.input(argument) else {
                 panic!(
                     "expected clock shared object argument, got {:?}",
                     self.input(argument)
                 );
             };
 
-            assert_eq!(*object_id, sui_framework::CLOCK_OBJECT_ID);
-            assert_eq!(*initial_shared_version, 1);
-            assert!(!*mutable, "clock object must be immutable");
+            assert_eq!(shared.object_id(), sui_framework::CLOCK_OBJECT_ID);
+            assert_eq!(shared.version(), 1);
+            assert!(
+                !shared.mutability().is_mutable(),
+                "clock object must be immutable"
+            );
         }
 
         fn expect_pure_bytes(&self, argument: &sui::types::Argument, expected: &[u8]) {
-            let sui::types::Input::Pure { value } = self.input(argument) else {
+            let sui::types::Input::Pure(value) = self.input(argument) else {
                 panic!("expected pure argument, got {:?}", self.input(argument));
             };
 
@@ -1552,10 +1502,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        let scheduler_arg =
-            new_metadata(&mut tx, &objects, [("foo", "bar")]).expect("ptb construction succeeds");
-
-        assert_matches!(scheduler_arg, sui::types::Argument::Result(2));
+        new_metadata(&mut tx, &objects, [("foo", "bar")]).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 3);
@@ -1588,14 +1535,12 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        let result = new_metadata(
+        new_metadata(
             &mut tx,
             &objects,
             std::iter::empty::<(&'static str, &'static str)>(),
         )
         .expect("ptb construction succeeds");
-
-        assert_matches!(result, sui::types::Argument::Result(1));
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 2);
@@ -1605,14 +1550,12 @@ mod tests {
     fn new_task_builds_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let metadata = tx.input(pure_arg(&1_u64).unwrap());
-        let constraints = tx.input(pure_arg(&2_u64).unwrap());
-        let execution = tx.input(pure_arg(&3_u64).unwrap());
+        let metadata = tx.pure(&1_u64);
+        let constraints = tx.pure(&2_u64);
+        let execution = tx.pure(&3_u64);
 
-        let result = new_task(&mut tx, &objects, metadata, constraints, execution)
+        new_task(&mut tx, &objects, metadata, constraints, execution)
             .expect("ptb construction succeeds");
-
-        assert_matches!(result, sui::types::Argument::Result(0));
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
@@ -1633,7 +1576,7 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let metadata = tx.input(pure_arg(&9_u64).unwrap());
+        let metadata = tx.pure(&9_u64);
 
         update_metadata(&mut tx, &objects, &task, metadata).expect("ptb construction succeeds");
 
@@ -1653,8 +1596,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        let arg = new_queue_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
-        assert_matches!(arg, sui::types::Argument::Result(0));
+        new_queue_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
@@ -1675,8 +1617,8 @@ mod tests {
     fn register_queue_generator_invokes_scheduler() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let constraints = tx.input(pure_arg(&11_u64).unwrap());
-        let queue_state = tx.input(pure_arg(&12_u64).unwrap());
+        let constraints = tx.pure(&11_u64);
+        let queue_state = tx.pure(&12_u64);
 
         register_queue_generator(&mut tx, &objects, constraints, queue_state)
             .expect("ptb construction succeeds");
@@ -1703,9 +1645,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        let arg =
-            new_periodic_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
-        assert_matches!(arg, sui::types::Argument::Result(0));
+        new_periodic_generator_state(&mut tx, &objects).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
@@ -1726,8 +1666,8 @@ mod tests {
     fn register_periodic_generator_invokes_scheduler() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let constraints = tx.input(pure_arg(&21_u64).unwrap());
-        let periodic_state = tx.input(pure_arg(&22_u64).unwrap());
+        let constraints = tx.pure(&21_u64);
+        let periodic_state = tx.pure(&22_u64);
 
         register_periodic_generator(&mut tx, &objects, constraints, periodic_state)
             .expect("ptb construction succeeds");
@@ -1755,8 +1695,7 @@ mod tests {
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::tx::TransactionBuilder::new();
 
-        let witness = execute(&mut tx, &objects, &task).expect("ptb construction succeeds");
-        assert_matches!(witness, sui::types::Argument::Result(0));
+        execute(&mut tx, &objects, &task).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
@@ -1773,7 +1712,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let proof = tx.input(pure_arg(&5_u64).unwrap());
+        let proof = tx.pure(&5_u64);
         finish(&mut tx, &objects, &task, proof).expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
@@ -1999,8 +1938,8 @@ mod tests {
     fn register_begin_default_agent_execution_routes_through_dag() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let policy = tx.input(pure_arg(&13_u64).unwrap());
-        let config = tx.input(pure_arg(&14_u64).unwrap());
+        let policy = tx.pure(&13_u64);
+        let config = tx.pure(&14_u64);
         register_begin_default_agent_execution(&mut tx, &objects, policy, config)
             .expect("ptb construction succeeds");
 
@@ -2024,8 +1963,8 @@ mod tests {
     fn register_begin_agent_execution_routes_through_dag() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let policy = tx.input(pure_arg(&23_u64).unwrap());
-        let config = tx.input(pure_arg(&24_u64).unwrap());
+        let policy = tx.pure(&23_u64);
+        let config = tx.pure(&24_u64);
         register_begin_agent_execution(&mut tx, &objects, policy, config)
             .expect("ptb construction succeeds");
 
@@ -2125,20 +2064,15 @@ mod tests {
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
         assert_eq!(tap_call.arguments.len(), 7);
-        let sui::types::Input::Shared {
-            object_id,
-            initial_shared_version,
-            mutable,
-        } = inspector.input(&tap_call.arguments[0])
-        else {
+        let sui::types::Input::Shared(shared) = inspector.input(&tap_call.arguments[0]) else {
             panic!(
                 "expected shared DAG object, got {:?}",
                 inspector.input(&tap_call.arguments[0])
             );
         };
-        assert_eq!(object_id, dag.object_id());
-        assert_eq!(*initial_shared_version, dag.version());
-        assert!(!*mutable);
+        assert_eq!(shared.object_id(), *dag.object_id());
+        assert_eq!(shared.version(), dag.version());
+        assert!(!shared.mutability().is_mutable());
         inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
         inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
         inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);

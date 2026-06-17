@@ -362,10 +362,10 @@ impl TapActions {
                 sui_framework::PACKAGE_ID,
                 sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![crate::idents::tap::agent_type(
-                    nexus_objects.interface_pkg_id,
-                )],
-            ),
+            )
+            .with_type_args(vec![crate::idents::tap::agent_type(
+                nexus_objects.interface_pkg_id,
+            )]),
             vec![agent],
         );
 
@@ -427,7 +427,7 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
@@ -512,12 +512,12 @@ impl TapActions {
             .map_err(NexusError::TransactionBuilding)?;
         let registry_for_policies = tap_tx::agent_registry_arg(&mut tx, nexus_objects, true)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent_for_dag = tx.input(sui::tx::Input::shared(
+        let agent_for_dag = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
         ));
-        let agent_for_policies = tx.input(sui::tx::Input::shared(
+        let agent_for_policies = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
@@ -589,17 +589,17 @@ impl TapActions {
             .object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
         ));
-        let amount_input =
-            crate::idents::pure_arg(&params.amount).map_err(NexusError::TransactionBuilding)?;
-        let amount_arg = tx.input(amount_input);
+        let amount_arg = tx.pure(&params.amount);
+        let gas = tx.gas();
         let deposit_coin = tx
-            .split_coins(tx.gas(), vec![amount_arg])
-            .nested(0)
+            .split_coins(gas, vec![amount_arg])
+            .into_iter()
+            .next()
             .ok_or_else(|| {
                 NexusError::TransactionBuilding(anyhow::anyhow!(
                     "failed to split agent vault deposit coin"
@@ -642,7 +642,7 @@ impl TapActions {
             .object_ref();
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let execution = tx.input(sui::tx::Input::shared(
+        let execution = tx.object(sui::tx::ObjectInput::shared(
             *execution_ref.object_id(),
             execution_ref.version(),
             true,
@@ -654,7 +654,7 @@ impl TapActions {
                 .await
                 .map_err(NexusError::Rpc)?
                 .object_ref();
-            let agent = tx.input(sui::tx::Input::shared(
+            let agent = tx.object(sui::tx::ObjectInput::shared(
                 *agent_ref.object_id(),
                 agent_ref.version(),
                 true,
@@ -706,7 +706,7 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, false)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             false,
@@ -732,8 +732,8 @@ impl TapActions {
                 crate::idents::sui_framework::PACKAGE_ID,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![scheduled_task_type],
-            ),
+            )
+            .with_type_args(vec![scheduled_task_type]),
             vec![scheduled_task],
         );
 
@@ -777,22 +777,22 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, false)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             false,
         ));
-        let scheduler_task = tx.input(sui::tx::Input::shared(
+        let scheduler_task = tx.object(sui::tx::ObjectInput::shared(
             *params.scheduler_task.object_id(),
             params.scheduler_task.version(),
             true,
         ));
-        let prepay_amount_input = crate::idents::pure_arg(&params.prepay_amount)
-            .map_err(NexusError::TransactionBuilding)?;
-        let prepay_amount = tx.input(prepay_amount_input);
+        let prepay_amount = tx.pure(&params.prepay_amount);
+        let gas = tx.gas();
         let prepayment_coin = tx
-            .split_coins(tx.gas(), vec![prepay_amount])
-            .nested(0)
+            .split_coins(gas, vec![prepay_amount])
+            .into_iter()
+            .next()
             .ok_or_else(|| {
                 NexusError::TransactionBuilding(anyhow::anyhow!(
                     "failed to split scheduled TAP prepayment coin"
@@ -831,8 +831,8 @@ impl TapActions {
                 crate::idents::sui_framework::PACKAGE_ID,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![scheduled_task_type],
-            ),
+            )
+            .with_type_args(vec![scheduled_task_type]),
             vec![scheduled_task],
         );
 
@@ -875,12 +875,12 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = tap_tx::agent_registry_arg(&mut tx, nexus_objects, false)
             .map_err(NexusError::TransactionBuilding)?;
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             *agent_object.object_id(),
             agent_object.version(),
             true,
         ));
-        let scheduler_task = tx.input(sui::tx::Input::shared(
+        let scheduler_task = tx.object(sui::tx::ObjectInput::shared(
             *params.scheduler_task.object_id(),
             params.scheduler_task.version(),
             true,
@@ -916,8 +916,8 @@ impl TapActions {
                 crate::idents::sui_framework::PACKAGE_ID,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![scheduled_task_type],
-            ),
+            )
+            .with_type_args(vec![scheduled_task_type]),
             vec![scheduled_task],
         );
 
@@ -953,22 +953,22 @@ impl TapActions {
         let refund_recipient = params.refund_recipient.unwrap_or(address);
 
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(sui::tx::Input::shared(
+        let registry = tx.object(sui::tx::ObjectInput::shared(
             *nexus_objects.agent_registry.object_id(),
             nexus_objects.agent_registry.version(),
             false,
         ));
-        let scheduler_task = tx.input(sui::tx::Input::shared(
+        let scheduler_task = tx.object(sui::tx::ObjectInput::shared(
             *params.scheduler_task.object_id(),
             params.scheduler_task.version(),
             true,
         ));
-        let prepay_amount_input = crate::idents::pure_arg(&params.prepay_amount)
-            .map_err(NexusError::TransactionBuilding)?;
-        let prepay_amount = tx.input(prepay_amount_input);
+        let prepay_amount = tx.pure(&params.prepay_amount);
+        let gas = tx.gas();
         let prepayment_coin = tx
-            .split_coins(tx.gas(), vec![prepay_amount])
-            .nested(0)
+            .split_coins(gas, vec![prepay_amount])
+            .into_iter()
+            .next()
             .ok_or_else(|| {
                 NexusError::TransactionBuilding(anyhow::anyhow!(
                     "failed to split default scheduled TAP prepayment coin"
@@ -1004,8 +1004,8 @@ impl TapActions {
                 crate::idents::sui_framework::PACKAGE_ID,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 crate::idents::sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![scheduled_task_type],
-            ),
+            )
+            .with_type_args(vec![scheduled_task_type]),
             vec![scheduled_task],
         );
 
@@ -1064,10 +1064,10 @@ impl TapActions {
                 sui_framework::PACKAGE_ID,
                 sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
                 sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-                vec![crate::idents::tap::agent_type(
-                    nexus_objects.interface_pkg_id,
-                )],
-            ),
+            )
+            .with_type_args(vec![crate::idents::tap::agent_type(
+                nexus_objects.interface_pkg_id,
+            )]),
             vec![agent],
         );
 
@@ -1188,14 +1188,14 @@ impl TapActions {
         tx.set_sender(address);
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
         let signature = self.client.signer.sign_tx(&tx).await?;
         let response = self

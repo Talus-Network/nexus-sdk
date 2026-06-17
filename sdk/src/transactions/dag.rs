@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, primitives, pure_arg, sui_framework, workflow},
+        idents::{move_std, primitives, sui_framework, workflow},
         sui,
         transactions::tap,
         types::{
@@ -119,11 +119,11 @@ fn tap_authorization_grant_ref_type(objects: &NexusObjects) -> sui::types::TypeT
 fn prepare_option_address(
     tx: &mut sui::tx::TransactionBuilder,
     value: Option<sui::types::Address>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let element = sui::types::TypeTag::Address;
     match value {
         Some(value) => {
-            let value = tx.input(pure_arg(&value)?);
+            let value = tx.pure(&value);
             Ok(move_std::Option::some(tx, element, value))
         }
         None => Ok(move_std::Option::none(tx, element)),
@@ -134,7 +134,7 @@ fn prepare_option_interface_revision(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     value: Option<crate::types::InterfaceRevision>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let element = crate::idents::tap::interface_revision_type(objects.interface_pkg_id);
     match value {
         Some(value) => {
@@ -149,15 +149,15 @@ fn tap_authorization_grant_ref(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     entry: &TapVertexAuthorizationPlanEntry,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, &entry.vertex)?;
-    let grant_id = tx.input(pure_arg(&entry.grant_id)?);
-    let tool_package = tx.input(pure_arg(&entry.tool_package)?);
+    let grant_id = tx.pure(&entry.grant_id);
+    let tool_package = tx.pure(&entry.tool_package);
     let tool_module = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_module)?;
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &entry.tool_function)?;
-    let operation_commitment = tx.input(pure_arg(&entry.operation_commitment)?);
-    let constraints_commitment = tx.input(pure_arg(&entry.constraints_commitment)?);
+    let operation_commitment = tx.pure(&entry.operation_commitment);
+    let constraints_commitment = tx.pure(&entry.constraints_commitment);
     let interface_revision =
         prepare_option_interface_revision(tx, objects, entry.interface_revision)?;
     let payment_id = prepare_option_address(tx, entry.payment_id)?;
@@ -167,7 +167,6 @@ fn tap_authorization_grant_ref(
             objects.workflow_pkg_id,
             workflow::Dag::TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.module,
             workflow::Dag::TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR.name,
-            vec![],
         ),
         vec![
             vertex,
@@ -187,7 +186,7 @@ pub(crate) fn tap_authorization_plan(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     entries: &[TapVertexAuthorizationPlanEntry],
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let element_type = tap_authorization_grant_ref_type(objects);
     let mut args = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -198,13 +197,12 @@ pub(crate) fn tap_authorization_plan(
 }
 
 /// PTB template for creating a new empty DAG.
-pub fn empty(tx: &mut sui::tx::TransactionBuilder, objects: &NexusObjects) -> sui::types::Argument {
+pub fn empty(tx: &mut sui::tx::TransactionBuilder, objects: &NexusObjects) -> sui::tx::Argument {
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::NEW.module,
             workflow::Dag::NEW.name,
-            vec![],
         ),
         vec![],
     )
@@ -214,8 +212,8 @@ pub fn empty(tx: &mut sui::tx::TransactionBuilder, objects: &NexusObjects) -> su
 pub fn publish(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-) -> sui::types::Argument {
+    dag: sui::tx::Argument,
+) -> sui::tx::Argument {
     let dag_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG);
 
     tx.move_call(
@@ -223,8 +221,8 @@ pub fn publish(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![dag_type],
-        ),
+        )
+        .with_type_args(vec![dag_type]),
         vec![dag],
     )
 }
@@ -233,9 +231,9 @@ pub fn publish(
 pub fn create(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    mut dag_arg: sui::types::Argument,
+    mut dag_arg: sui::tx::Argument,
     dag: Dag,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // Create all vertices.
     for vertex in &dag.vertices {
         dag_arg = create_vertex(tx, objects, dag_arg, vertex)?;
@@ -337,8 +335,8 @@ pub fn create(
 fn verifier_registry_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-) -> anyhow::Result<sui::types::Argument> {
-    Ok(tx.input(sui::tx::Input::shared(
+) -> anyhow::Result<sui::tx::Argument> {
+    Ok(tx.object(sui::tx::ObjectInput::shared(
         *objects.verifier_registry.object_id(),
         objects.verifier_registry.version(),
         false,
@@ -349,9 +347,9 @@ fn verifier_registry_arg(
 pub fn create_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &Vertex,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `name: Vertex`
     let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name)?;
 
@@ -371,7 +369,6 @@ pub fn create_vertex(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_VERTEX.module,
             workflow::Dag::WITH_VERTEX.name,
-            vec![],
         ),
         vec![dag, name, kind],
     ))
@@ -381,9 +378,9 @@ pub fn create_vertex(
 pub fn create_post_failure_action(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     action: &PostFailureAction,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let action = workflow::Dag::post_failure_action_from_enum(tx, objects.workflow_pkg_id, action);
 
     Ok(tx.move_call(
@@ -391,7 +388,6 @@ pub fn create_post_failure_action(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_POST_FAILURE_ACTION.module,
             workflow::Dag::WITH_POST_FAILURE_ACTION.name,
-            vec![],
         ),
         vec![dag, action],
     ))
@@ -401,10 +397,10 @@ pub fn create_post_failure_action(
 pub fn create_vertex_post_failure_action(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &str,
     action: &PostFailureAction,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
     let action = workflow::Dag::post_failure_action_from_enum(tx, objects.workflow_pkg_id, action);
 
@@ -413,7 +409,6 @@ pub fn create_vertex_post_failure_action(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module,
             workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name,
-            vec![],
         ),
         vec![dag, vertex, action],
     ))
@@ -422,9 +417,9 @@ pub fn create_vertex_post_failure_action(
 pub fn create_default_leader_verifier(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     verifier: &VerifierConfig,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
     let verifier = workflow::Dag::verifier_config(tx, objects.workflow_pkg_id, verifier)?;
 
@@ -433,7 +428,6 @@ pub fn create_default_leader_verifier(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.module,
             workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.name,
-            vec![],
         ),
         vec![dag, verifier_registry, verifier],
     ))
@@ -442,9 +436,9 @@ pub fn create_default_leader_verifier(
 pub fn create_default_tool_verifier(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     verifier: &VerifierConfig,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
     let verifier = workflow::Dag::verifier_config(tx, objects.workflow_pkg_id, verifier)?;
 
@@ -453,7 +447,6 @@ pub fn create_default_tool_verifier(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.module,
             workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.name,
-            vec![],
         ),
         vec![dag, verifier_registry, verifier],
     ))
@@ -462,10 +455,10 @@ pub fn create_default_tool_verifier(
 pub fn create_vertex_leader_verifier(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &str,
     verifier: &VerifierConfig,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
     let verifier = workflow::Dag::verifier_config(tx, objects.workflow_pkg_id, verifier)?;
@@ -475,7 +468,6 @@ pub fn create_vertex_leader_verifier(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.module,
             workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.name,
-            vec![],
         ),
         vec![dag, vertex, verifier_registry, verifier],
     ))
@@ -484,10 +476,10 @@ pub fn create_vertex_leader_verifier(
 pub fn create_vertex_tool_verifier(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &str,
     verifier: &VerifierConfig,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
     let verifier = workflow::Dag::verifier_config(tx, objects.workflow_pkg_id, verifier)?;
@@ -497,7 +489,6 @@ pub fn create_vertex_tool_verifier(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.module,
             workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.name,
-            vec![],
         ),
         vec![dag, vertex, verifier_registry, verifier],
     ))
@@ -509,28 +500,28 @@ pub fn abort_expired_execution(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
-) -> sui::types::Argument {
-    let dag_arg = tx.input(sui::tx::Input::shared(
+) -> sui::tx::Argument {
+    let dag_arg = tx.object(sui::tx::ObjectInput::shared(
         *dag.object_id(),
         dag.version(),
         false,
     ));
-    let execution_arg = tx.input(sui::tx::Input::shared(
+    let execution_arg = tx.object(sui::tx::ObjectInput::shared(
         *execution.object_id(),
         execution.version(),
         true,
     ));
-    let tool_registry_arg = tx.input(sui::tx::Input::shared(
+    let tool_registry_arg = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         false,
     ));
-    let leader_registry_arg = tx.input(sui::tx::Input::shared(
+    let leader_registry_arg = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
     ));
-    let clock_arg = tx.input(sui::tx::Input::shared(
+    let clock_arg = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -541,7 +532,6 @@ pub fn abort_expired_execution(
             objects.workflow_pkg_id,
             workflow::Dag::ABORT_EXPIRED_EXECUTION.module,
             workflow::Dag::ABORT_EXPIRED_EXECUTION.name,
-            vec![],
         ),
         vec![
             dag_arg,
@@ -556,14 +546,13 @@ pub fn abort_expired_execution(
 pub fn accomplish_tap_execution_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
-) -> sui::types::Argument {
+    execution: sui::tx::Argument,
+) -> sui::tx::Argument {
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module,
             workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name,
-            vec![],
         ),
         vec![execution],
     )
@@ -572,15 +561,14 @@ pub fn accomplish_tap_execution_payment(
 pub fn accomplish_tap_execution_payment_from_agent_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution: sui::types::Argument,
-) -> sui::types::Argument {
+    agent: sui::tx::Argument,
+    execution: sui::tx::Argument,
+) -> sui::tx::Argument {
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
             workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
-            vec![],
         ),
         vec![agent, execution],
     )
@@ -589,16 +577,15 @@ pub fn accomplish_tap_execution_payment_from_agent_vault(
 pub fn refund_tap_execution_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
+    execution: sui::tx::Argument,
     refund_reason: Vec<u8>,
-) -> anyhow::Result<sui::types::Argument> {
-    let refund_reason = tx.input(pure_arg(&refund_reason)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let refund_reason = tx.pure(&refund_reason);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT.module,
             workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT.name,
-            vec![],
         ),
         vec![execution, refund_reason],
     ))
@@ -607,17 +594,16 @@ pub fn refund_tap_execution_payment(
 pub fn refund_tap_execution_payment_from_agent_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    agent: sui::types::Argument,
-    execution: sui::types::Argument,
+    agent: sui::tx::Argument,
+    execution: sui::tx::Argument,
     refund_reason: Vec<u8>,
-) -> anyhow::Result<sui::types::Argument> {
-    let refund_reason = tx.input(pure_arg(&refund_reason)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let refund_reason = tx.pure(&refund_reason);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
             workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
-            vec![],
         ),
         vec![agent, execution, refund_reason],
     ))
@@ -627,22 +613,21 @@ pub fn refund_tap_execution_payment_from_agent_vault(
 pub fn refund_scheduled_tap_execution_payment_from_agent_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    agent: sui::types::Argument,
-    scheduled_task: sui::types::Argument,
-    execution: sui::types::Argument,
+    agent: sui::tx::Argument,
+    scheduled_task: sui::tx::Argument,
+    execution: sui::tx::Argument,
     refund_reason: Vec<u8>,
     continue_recurring: bool,
     next_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let refund_reason = tx.input(pure_arg(&refund_reason)?);
-    let continue_recurring = tx.input(pure_arg(&continue_recurring)?);
-    let next_after_ms = tx.input(pure_arg(&next_after_ms)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let refund_reason = tx.pure(&refund_reason);
+    let continue_recurring = tx.pure(&continue_recurring);
+    let next_after_ms = tx.pure(&next_after_ms);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::REFUND_SCHEDULED_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
             workflow::Dag::REFUND_SCHEDULED_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
-            vec![],
         ),
         vec![
             agent,
@@ -660,7 +645,7 @@ pub fn create_failure_evidence_kind(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     evidence_kind: &FailureEvidenceKind,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     workflow::Dag::failure_evidence_kind_from_enum(tx, objects.workflow_pkg_id, evidence_kind)
 }
 
@@ -668,7 +653,7 @@ fn prepare_tool_output(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     prepared: &PreparedToolOutput,
-) -> anyhow::Result<(sui::types::Argument, sui::types::Argument)> {
+) -> anyhow::Result<(sui::tx::Argument, sui::tx::Argument)> {
     let output_variant = workflow::Dag::output_variant_from_str(
         tx,
         objects.workflow_pkg_id,
@@ -685,8 +670,8 @@ fn prepare_tool_output(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module,
             sui_framework::VecMap::EMPTY.name,
-            map_generics.clone(),
-        ),
+        )
+        .with_type_args(map_generics.clone()),
         vec![],
     );
 
@@ -712,8 +697,8 @@ fn prepare_tool_output(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module,
                 sui_framework::VecMap::INSERT.name,
-                map_generics.clone(),
-            ),
+            )
+            .with_type_args(map_generics.clone()),
             vec![output_ports_data, output_port, value],
         );
     }
@@ -725,7 +710,7 @@ fn prepare_offchain_tool_result_bytes(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     result: &PreparedToolOutputV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let output_variant = move_std::Ascii::ascii_string_from_str(tx, &result.output_variant)?;
     let port_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         objects.interface_pkg_id,
@@ -739,8 +724,8 @@ fn prepare_offchain_tool_result_bytes(
             move_std::PACKAGE_ID,
             move_std::Vector::EMPTY.module,
             move_std::Vector::EMPTY.name,
-            vec![port_type.clone()],
-        ),
+        )
+        .with_type_args(vec![port_type.clone()]),
         vec![],
     );
 
@@ -757,7 +742,6 @@ fn prepare_offchain_tool_result_bytes(
                 objects.interface_pkg_id,
                 VERIFIER_V1_MODULE,
                 NEW_PREPARED_TOOL_OUTPUT_PORT_V1,
-                vec![],
             ),
             vec![port, data],
         );
@@ -767,8 +751,8 @@ fn prepare_offchain_tool_result_bytes(
                 move_std::PACKAGE_ID,
                 move_std::Vector::PUSH_BACK.module,
                 move_std::Vector::PUSH_BACK.name,
-                vec![port_type.clone()],
-            ),
+            )
+            .with_type_args(vec![port_type.clone()]),
             vec![output_ports_data, output_port],
         );
     }
@@ -778,7 +762,6 @@ fn prepare_offchain_tool_result_bytes(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_PREPARED_TOOL_OUTPUT_V1,
-            vec![],
         ),
         vec![output_variant, output_ports_data],
     );
@@ -788,7 +771,6 @@ fn prepare_offchain_tool_result_bytes(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             PREPARED_TOOL_OUTPUT_V1_INTO_BCS_BYTES,
-            vec![],
         ),
         vec![prepared_tool_output],
     ))
@@ -799,7 +781,7 @@ fn prepare_nexus_data(
     primitives_pkg_id: sui::types::Address,
     storage_kind: StorageKind,
     value: &serde_json::Value,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let element_type = sui::types::TypeTag::Vector(Box::new(sui::types::TypeTag::U8));
 
     match value {
@@ -841,20 +823,14 @@ fn prepare_nexus_data(
                     .expect("non-empty values should yield a first chunk");
                 let first_args = first
                     .into_iter()
-                    .map(|value| pure_arg(&value))
-                    .collect::<anyhow::Result<Vec<_>>>()?
-                    .into_iter()
-                    .map(|input| tx.input(input))
+                    .map(|value| tx.pure(&value))
                     .collect::<Vec<_>>();
                 let array = tx.make_move_vec(Some(element_type.clone()), first_args);
 
                 for chunk in chunks {
                     let chunk_args = chunk
                         .into_iter()
-                        .map(|value| pure_arg(&value))
-                        .collect::<anyhow::Result<Vec<_>>>()?
-                        .into_iter()
-                        .map(|input| tx.input(input))
+                        .map(|value| tx.pure(&value))
                         .collect::<Vec<_>>();
                     let chunk = tx.make_move_vec(Some(element_type.clone()), chunk_args);
                     tx.move_call(
@@ -862,8 +838,8 @@ fn prepare_nexus_data(
                             move_std::PACKAGE_ID,
                             move_std::Vector::EMPTY.module,
                             VECTOR_APPEND,
-                            vec![element_type.clone()],
-                        ),
+                        )
+                        .with_type_args(vec![element_type.clone()]),
                         vec![array, chunk],
                     );
                 }
@@ -876,12 +852,7 @@ fn prepare_nexus_data(
                 StorageKind::Walrus => primitives::Data::WALRUS_MANY,
             };
             Ok(tx.move_call(
-                sui::tx::Function::new(
-                    primitives_pkg_id,
-                    constructor.module,
-                    constructor.name,
-                    vec![],
-                ),
+                sui::tx::Function::new(primitives_pkg_id, constructor.module, constructor.name),
                 vec![array],
             ))
         }
@@ -899,15 +870,15 @@ fn prepare_nexus_data(
 fn prepare_move_option_vec_u8(
     tx: &mut sui::tx::TransactionBuilder,
     value: &Option<Vec<u8>>,
-) -> sui::types::Argument {
-    tx.input(pure_arg(value).expect("option<vector<u8>> should encode"))
+) -> sui::tx::Argument {
+    tx.pure(value)
 }
 
 fn prepare_move_option_failure_evidence_kind(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     value: Option<&FailureEvidenceKind>,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     match value {
         Some(value) => {
             let kind = create_failure_evidence_kind(tx, objects, value);
@@ -916,11 +887,11 @@ fn prepare_move_option_failure_evidence_kind(
                     move_std::PACKAGE_ID,
                     move_std::Option::SOME.module,
                     move_std::Option::SOME.name,
-                    vec![workflow::into_type_tag(
-                        objects.workflow_pkg_id,
-                        workflow::Dag::FAILURE_EVIDENCE_KIND,
-                    )],
-                ),
+                )
+                .with_type_args(vec![workflow::into_type_tag(
+                    objects.workflow_pkg_id,
+                    workflow::Dag::FAILURE_EVIDENCE_KIND,
+                )]),
                 vec![kind],
             )
         }
@@ -929,11 +900,11 @@ fn prepare_move_option_failure_evidence_kind(
                 move_std::PACKAGE_ID,
                 move_std::Option::NONE.module,
                 move_std::Option::NONE.name,
-                vec![workflow::into_type_tag(
-                    objects.workflow_pkg_id,
-                    workflow::Dag::FAILURE_EVIDENCE_KIND,
-                )],
-            ),
+            )
+            .with_type_args(vec![workflow::into_type_tag(
+                objects.workflow_pkg_id,
+                workflow::Dag::FAILURE_EVIDENCE_KIND,
+            )]),
             vec![],
         ),
     }
@@ -943,14 +914,14 @@ fn prepare_submission_kind(
     tx: &mut sui::tx::TransactionBuilder,
     interface_pkg_id: sui::types::Address,
     submission_kind: crate::types::VerificationSubmissionKind,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     let function = match submission_kind {
         crate::types::VerificationSubmissionKind::Success => VERIFIER_SUBMISSION_KIND_SUCCESS,
         crate::types::VerificationSubmissionKind::ErrEval => VERIFIER_SUBMISSION_KIND_ERR_EVAL,
     };
 
     tx.move_call(
-        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function, vec![]),
+        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function),
         vec![],
     )
 }
@@ -959,14 +930,14 @@ fn prepare_verifier_evidence_kind(
     tx: &mut sui::tx::TransactionBuilder,
     interface_pkg_id: sui::types::Address,
     failure_evidence_kind: FailureEvidenceKind,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     let function = match failure_evidence_kind {
         FailureEvidenceKind::ToolEvidence => VERIFIER_EVIDENCE_KIND_TOOL_EVIDENCE,
         FailureEvidenceKind::LeaderEvidence => VERIFIER_EVIDENCE_KIND_LEADER_EVIDENCE,
     };
 
     tx.move_call(
-        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function, vec![]),
+        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function),
         vec![],
     )
 }
@@ -975,14 +946,14 @@ fn prepare_verifier_decision(
     tx: &mut sui::tx::TransactionBuilder,
     interface_pkg_id: sui::types::Address,
     decision: crate::types::VerifierDecisionV1,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     let function = match decision {
         crate::types::VerifierDecisionV1::Accept => VERIFIER_DECISION_ACCEPT,
         crate::types::VerifierDecisionV1::Reject => VERIFIER_DECISION_REJECT,
     };
 
     tx.move_call(
-        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function, vec![]),
+        sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function),
         vec![],
     )
 }
@@ -991,7 +962,7 @@ fn prepare_failure_evidence_kind_option(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     value: Option<&FailureEvidenceKind>,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     let element = workflow::into_type_tag(
         objects.workflow_pkg_id,
         workflow::Dag::FAILURE_EVIDENCE_KIND,
@@ -1009,19 +980,19 @@ fn prepare_failure_evidence_kind_option(
 fn prepare_object_id(
     tx: &mut sui::tx::TransactionBuilder,
     object_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     sui_framework::Object::id_from_object_id(tx, object_id)
 }
 
 pub fn prepare_on_chain_tool_result_submission_v1_bytes(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    output_variant: sui::types::Argument,
-    output_ports_data: sui::types::Argument,
+    output_variant: sui::tx::Argument,
+    output_ports_data: sui::tx::Argument,
     failure_evidence_kind: Option<&FailureEvidenceKind>,
     submitted_failure_reason: &Option<Vec<u8>>,
     tool_witness_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let failure_evidence_kind =
         prepare_failure_evidence_kind_option(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, submitted_failure_reason);
@@ -1032,7 +1003,6 @@ pub fn prepare_on_chain_tool_result_submission_v1_bytes(
             objects.workflow_pkg_id,
             workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.module,
             workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name,
-            vec![],
         ),
         vec![
             output_variant,
@@ -1048,23 +1018,22 @@ fn prepare_verifier_contract_result(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     result: &crate::types::VerifierContractResultV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let method = move_std::Ascii::ascii_string_from_str(tx, &result.method)?;
     let decision = prepare_verifier_decision(tx, objects.interface_pkg_id, result.decision);
     let submission_kind =
         prepare_submission_kind(tx, objects.interface_pkg_id, result.submission_kind);
     let failure_evidence_kind =
         prepare_verifier_evidence_kind(tx, objects.interface_pkg_id, result.failure_evidence_kind);
-    let payload_or_reason_hash = tx.input(pure_arg(&result.payload_or_reason_hash)?);
-    let credential = tx.input(pure_arg(&result.credential)?);
-    let detail = tx.input(pure_arg(&result.detail)?);
+    let payload_or_reason_hash = tx.pure(&result.payload_or_reason_hash);
+    let credential = tx.pure(&result.credential);
+    let detail = tx.pure(&result.detail);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_VERIFIER_CONTRACT_RESULT_V1,
-            vec![],
         ),
         vec![
             method,
@@ -1082,16 +1051,15 @@ fn prepare_external_verifier_submit_evidence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     evidence: &crate::types::ExternalVerifierSubmitEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let result = prepare_verifier_contract_result(tx, objects, &evidence.result)?;
-    let communication_evidence = tx.input(pure_arg(&evidence.communication_evidence)?);
+    let communication_evidence = tx.pure(&evidence.communication_evidence);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_EXTERNAL_VERIFIER_SUBMIT_EVIDENCE_V1,
-            vec![],
         ),
         vec![result, communication_evidence],
     ))
@@ -1101,20 +1069,19 @@ fn prepare_offchain_verifier_proof(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     proof: &OffChainVerifierProofV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     match proof {
         OffChainVerifierProofV1::RegisteredKey {
             verifier_credential,
             communication_evidence,
         } => {
-            let verifier_credential = tx.input(pure_arg(verifier_credential)?);
-            let communication_evidence = tx.input(pure_arg(communication_evidence)?);
+            let verifier_credential = tx.pure(verifier_credential);
+            let communication_evidence = tx.pure(communication_evidence);
             Ok(tx.move_call(
                 sui::tx::Function::new(
                     objects.interface_pkg_id,
                     VERIFIER_V1_MODULE,
                     NEW_OFF_CHAIN_VERIFIER_PROOF_REGISTERED_KEY_V1,
-                    vec![],
                 ),
                 vec![verifier_credential, communication_evidence],
             ))
@@ -1126,7 +1093,6 @@ fn prepare_offchain_verifier_proof(
                     objects.interface_pkg_id,
                     VERIFIER_V1_MODULE,
                     NEW_OFF_CHAIN_VERIFIER_PROOF_EXTERNAL_VERIFIER_V1,
-                    vec![],
                 ),
                 vec![evidence],
             ))
@@ -1137,22 +1103,21 @@ fn prepare_offchain_verifier_proof(
 fn prepare_authenticated_offchain_request_evidence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    expected_vertex: sui::types::Argument,
+    execution: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    expected_vertex: sui::tx::Argument,
     request: &AuthenticatedOffchainRequestEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
-    let walk_index = tx.input(pure_arg(&request.walk_index)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let walk_index = tx.pure(&request.walk_index);
     let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &request.tool_fqn)?;
-    let request_hash = tx.input(pure_arg(&request.request_hash)?);
-    let request_signature = tx.input(pure_arg(&request.request_signature)?);
+    let request_hash = tx.pure(&request.request_hash);
+    let request_signature = tx.pure(&request.request_signature);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module,
             workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name,
-            vec![],
         ),
         vec![
             execution,
@@ -1170,21 +1135,20 @@ fn prepare_raw_offchain_request_evidence_for_preflight(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     request: &OffchainRequestEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let execution = sui_framework::Object::id_from_object_id(tx, request.execution)?;
-    let walk_index = tx.input(pure_arg(&request.walk_index)?);
+    let walk_index = tx.pure(&request.walk_index);
     let vertex = move_std::Ascii::ascii_string_from_str(tx, &request.vertex)?;
     let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &request.tool_fqn)?;
     let leader_cap_id = sui_framework::Object::id_from_object_id(tx, request.leader_cap_id)?;
-    let request_hash = tx.input(pure_arg(&request.request_hash)?);
-    let request_signature = tx.input(pure_arg(&request.request_signature)?);
+    let request_hash = tx.pure(&request.request_hash);
+    let request_signature = tx.pure(&request.request_signature);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_OFFCHAIN_REQUEST_EVIDENCE_V1,
-            vec![],
         ),
         vec![
             execution,
@@ -1202,10 +1166,10 @@ fn prepare_offchain_response_evidence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     response: &OffchainResponseEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
-    let status_code = tx.input(pure_arg(&response.status_code)?);
-    let response_hash = tx.input(pure_arg(&response.response_hash)?);
-    let response_signature = tx.input(pure_arg(&response.response_signature)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let status_code = tx.pure(&response.status_code);
+    let response_hash = tx.pure(&response.response_hash);
+    let response_signature = tx.pure(&response.response_signature);
     let normalized_err_eval_reason_hash =
         prepare_move_option_vec_u8(tx, &response.normalized_err_eval_reason_hash);
 
@@ -1214,7 +1178,6 @@ fn prepare_offchain_response_evidence(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_OFFCHAIN_RESPONSE_EVIDENCE_V1,
-            vec![],
         ),
         vec![
             status_code,
@@ -1228,15 +1191,15 @@ fn prepare_offchain_response_evidence(
 fn prepare_offchain_verifier_evidence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    expected_vertex: sui::types::Argument,
+    execution: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    expected_vertex: sui::tx::Argument,
     evidence: &AuthenticatedOffchainVerifierEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let submission_kind =
         prepare_submission_kind(tx, objects.interface_pkg_id, evidence.submission_kind);
-    let payload_or_reason_hash = tx.input(pure_arg(&evidence.payload_or_reason_hash)?);
-    let transport_proof = tx.input(pure_arg(&evidence.transport_proof)?);
+    let payload_or_reason_hash = tx.pure(&evidence.payload_or_reason_hash);
+    let transport_proof = tx.pure(&evidence.transport_proof);
     let request = prepare_authenticated_offchain_request_evidence(
         tx,
         objects,
@@ -1252,7 +1215,6 @@ fn prepare_offchain_verifier_evidence(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_OFFCHAIN_VERIFIER_EVIDENCE_V1,
-            vec![],
         ),
         vec![
             submission_kind,
@@ -1268,11 +1230,11 @@ fn prepare_offchain_verifier_evidence_for_preflight(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     evidence: &OffchainVerifierEvidenceV1,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let submission_kind =
         prepare_submission_kind(tx, objects.interface_pkg_id, evidence.submission_kind);
-    let payload_or_reason_hash = tx.input(pure_arg(&evidence.payload_or_reason_hash)?);
-    let transport_proof = tx.input(pure_arg(&evidence.transport_proof)?);
+    let payload_or_reason_hash = tx.pure(&evidence.payload_or_reason_hash);
+    let transport_proof = tx.pure(&evidence.transport_proof);
     let request =
         prepare_raw_offchain_request_evidence_for_preflight(tx, objects, &evidence.request)?;
     let response = prepare_offchain_response_evidence(tx, objects, &evidence.response)?;
@@ -1282,7 +1244,6 @@ fn prepare_offchain_verifier_evidence_for_preflight(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_OFFCHAIN_VERIFIER_EVIDENCE_V1,
-            vec![],
         ),
         vec![
             submission_kind,
@@ -1297,13 +1258,13 @@ fn prepare_offchain_verifier_evidence_for_preflight(
 pub fn call_external_verifier_v1_with_authenticated_request(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    expected_vertex: sui::types::Argument,
+    execution: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    expected_vertex: sui::tx::Argument,
     verifier_evidence: &AuthenticatedOffchainVerifierEvidenceV1,
     runtime_call: &ExternalVerifierRuntimeCallV1,
-) -> anyhow::Result<sui::types::Argument> {
-    let witness = tx.input(sui::tx::Input::shared(
+) -> anyhow::Result<sui::tx::Argument> {
+    let witness = tx.object(sui::tx::ObjectInput::shared(
         *runtime_call.witness.object_id(),
         runtime_call.witness.version(),
         true,
@@ -1312,7 +1273,7 @@ pub fn call_external_verifier_v1_with_authenticated_request(
         .shared_objects
         .iter()
         .map(|(shared, object_ref)| {
-            tx.input(sui::tx::Input::shared(
+            tx.object(sui::tx::ObjectInput::shared(
                 *object_ref.object_id(),
                 object_ref.version(),
                 shared.ref_mut,
@@ -1331,7 +1292,7 @@ pub fn call_external_verifier_v1_with_authenticated_request(
     let function = sui::types::Identifier::from_str(&runtime_call.function_name)?;
 
     Ok(tx.move_call(
-        sui::tx::Function::new(runtime_call.package_address, module, function, vec![]),
+        sui::tx::Function::new(runtime_call.package_address, module, function),
         {
             let mut args = Vec::with_capacity(shared_objects.len() + 2);
             args.push(witness);
@@ -1351,8 +1312,8 @@ pub fn call_external_verifier_v1(
     objects: &NexusObjects,
     verifier_evidence: &OffchainVerifierEvidenceV1,
     runtime_call: &ExternalVerifierRuntimeCallV1,
-) -> anyhow::Result<sui::types::Argument> {
-    let witness = tx.input(sui::tx::Input::shared(
+) -> anyhow::Result<sui::tx::Argument> {
+    let witness = tx.object(sui::tx::ObjectInput::shared(
         *runtime_call.witness.object_id(),
         runtime_call.witness.version(),
         true,
@@ -1361,7 +1322,7 @@ pub fn call_external_verifier_v1(
         .shared_objects
         .iter()
         .map(|(shared, object_ref)| {
-            tx.input(sui::tx::Input::shared(
+            tx.object(sui::tx::ObjectInput::shared(
                 *object_ref.object_id(),
                 object_ref.version(),
                 shared.ref_mut,
@@ -1374,7 +1335,7 @@ pub fn call_external_verifier_v1(
     let function = sui::types::Identifier::from_str(&runtime_call.function_name)?;
 
     Ok(tx.move_call(
-        sui::tx::Function::new(runtime_call.package_address, module, function, vec![]),
+        sui::tx::Function::new(runtime_call.package_address, module, function),
         {
             let mut args = Vec::with_capacity(shared_objects.len() + 2);
             args.push(witness);
@@ -1389,43 +1350,42 @@ pub fn call_external_verifier_v1(
 pub fn submit_off_chain_tool_result_for_walk_v1(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
     auxiliary: Option<&OffChainToolResultAuxiliaryV1>,
     proof: &OffChainVerifierProofV1,
-    verifier_registry: sui::types::Argument,
-    leader_registry: sui::types::Argument,
-    network_auth: sui::types::Argument,
-    leader_key_binding: sui::types::Argument,
-    tool_key_binding: sui::types::Argument,
+    verifier_registry: sui::tx::Argument,
+    leader_registry: sui::tx::Argument,
+    network_auth: sui::tx::Argument,
+    leader_key_binding: sui::tx::Argument,
+    tool_key_binding: sui::tx::Argument,
     gas_charge: u64,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let walk_index = tx.pure(&walk_index);
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
-    let auxiliary_bytes = tx.input(pure_arg(
+    let auxiliary_bytes = tx.pure(
         &auxiliary
             .map(OffChainToolResultAuxiliaryV1::to_bcs_bytes)
             .transpose()?,
-    )?);
+    );
     let proof = prepare_offchain_verifier_proof(tx, objects, proof)?;
-    let gas_charge = tx.input(pure_arg(&gas_charge)?);
+    let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1456,36 +1416,35 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
 pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
     auxiliary: Option<&OffChainToolResultAuxiliaryV1>,
     gas_charge: u64,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let walk_index = tx.pure(&walk_index);
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
-    let auxiliary_bytes = tx.input(pure_arg(
+    let auxiliary_bytes = tx.pure(
         &auxiliary
             .map(OffChainToolResultAuxiliaryV1::to_bcs_bytes)
             .transpose()?,
-    )?);
-    let gas_charge = tx.input(pure_arg(&gas_charge)?);
+    );
+    let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1510,25 +1469,25 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
 pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
     verifier_evidence: &AuthenticatedOffchainVerifierEvidenceV1,
     communication_evidence: &[u8],
     runtime_call: &ExternalVerifierRuntimeCallV1,
-    verifier_registry: sui::types::Argument,
-    leader_registry: sui::types::Argument,
-    network_auth: sui::types::Argument,
-    leader_key_binding: sui::types::Argument,
-    tool_key_binding: sui::types::Argument,
+    verifier_registry: sui::tx::Argument,
+    leader_registry: sui::tx::Argument,
+    network_auth: sui::tx::Argument,
+    leader_key_binding: sui::tx::Argument,
+    tool_key_binding: sui::tx::Argument,
     gas_charge: u64,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     let expected_vertex_arg =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
@@ -1541,13 +1500,12 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
         verifier_evidence,
         runtime_call,
     )?;
-    let communication_evidence = tx.input(pure_arg(&communication_evidence.to_vec())?);
+    let communication_evidence = tx.pure(&communication_evidence.to_vec());
     let external_verifier_evidence = tx.move_call(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_EXTERNAL_VERIFIER_SUBMIT_EVIDENCE_V1,
-            vec![],
         ),
         vec![verifier_result, communication_evidence],
     );
@@ -1556,23 +1514,21 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
             NEW_OFF_CHAIN_VERIFIER_PROOF_EXTERNAL_VERIFIER_V1,
-            vec![],
         ),
         vec![external_verifier_evidence],
     );
-    let auxiliary = tx.input(pure_arg(&Option::<Vec<u8>>::None)?);
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let auxiliary = tx.pure(&Option::<Vec<u8>>::None);
+    let walk_index = tx.pure(&walk_index);
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
-    let gas_charge = tx.input(pure_arg(&gas_charge)?);
+    let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
             workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1602,17 +1558,16 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
 pub fn leader_stamp_tap_worksheet(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    leader_registry: sui::types::Argument,
-    execution: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-) -> sui::types::Argument {
+    leader_registry: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+) -> sui::tx::Argument {
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::LEADER_STAMP_TAP_WORKSHEET.module,
             workflow::Dag::LEADER_STAMP_TAP_WORKSHEET.name,
-            vec![],
         ),
         vec![leader_registry, execution, worksheet, leader_cap],
     )
@@ -1621,18 +1576,17 @@ pub fn leader_stamp_tap_worksheet(
 pub fn pre_stamp_tap_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
+    execution: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
     vertex: &RuntimeVertex,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::PRE_STAMP_TAP_EXECUTION.module,
             workflow::Dag::PRE_STAMP_TAP_EXECUTION.name,
-            vec![],
         ),
         vec![execution, worksheet, leader_cap, vertex],
     ))
@@ -1642,21 +1596,20 @@ pub fn pre_stamp_tap_execution(
 pub fn create_vertex_authorization_grant(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     vertex: &RuntimeVertex,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.module,
             workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.name,
-            vec![],
         ),
         vec![dag, execution, tool_registry, agent, skill_id, vertex],
     ))
@@ -1665,16 +1618,15 @@ pub fn create_vertex_authorization_grant(
 pub fn request_walk_execution_for_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    execution: sui::types::Argument,
+    execution: sui::tx::Argument,
     walk_index: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let walk_index = tx.pure(&walk_index);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.module,
             workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.name,
-            vec![],
         ),
         vec![execution, walk_index],
     ))
@@ -1684,18 +1636,17 @@ pub fn request_walk_execution_for_walk(
 pub fn mint_vertex_authorization_check_cap_for_onchain_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    leader_cap: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
     walk_index: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let walk_index = tx.pure(&walk_index);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.module,
             workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name,
-            vec![],
         ),
         vec![dag, execution, leader_cap, walk_index],
     ))
@@ -1705,12 +1656,12 @@ pub fn mint_vertex_authorization_check_cap_for_onchain_walk(
 pub fn submit_on_chain_tool_result_for_walk_v1(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     prepared_output: &PreparedToolOutput,
@@ -1718,9 +1669,9 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
     submitted_failure_reason: Option<Vec<u8>>,
     tool_witness_id: sui::types::Address,
     gas_charge: u64,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let walk_index = tx.pure(&walk_index);
     let expected_vertex =
         workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
     let (output_variant, output_ports_data) = prepare_tool_output(tx, objects, prepared_output)?;
@@ -1728,14 +1679,13 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
     let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
-    let gas_charge = tx.input(pure_arg(&gas_charge)?);
+    let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1763,35 +1713,34 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
 pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
-    expected_vertex: sui::types::Argument,
-    output_variant: sui::types::Argument,
-    output_ports_data: sui::types::Argument,
+    expected_vertex: sui::tx::Argument,
+    output_variant: sui::tx::Argument,
+    output_ports_data: sui::tx::Argument,
     failure_evidence_kind: Option<&FailureEvidenceKind>,
     submitted_failure_reason: Option<Vec<u8>>,
     tool_witness_id: sui::types::Address,
     gas_charge: u64,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
-    let walk_index = tx.input(pure_arg(&walk_index)?);
+    let walk_index = tx.pure(&walk_index);
     let failure_evidence_kind =
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
     let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
     let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
-    let gas_charge = tx.input(pure_arg(&gas_charge)?);
+    let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
             workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1819,18 +1768,18 @@ pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
 pub fn submit_on_chain_terminal_err_eval_for_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    leader_cap: sui::types::Argument,
-    request_walk_execution: sui::types::Argument,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    request_walk_execution: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     reason: DataStorage,
     failure_evidence_kind: &FailureEvidenceKind,
     tool_witness_id: Option<sui::types::Address>,
-    clock: sui::types::Argument,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     submit_on_chain_tool_result_for_walk_v1(
         tx,
@@ -1856,9 +1805,9 @@ pub fn submit_on_chain_terminal_err_eval_for_walk(
 pub fn create_default_value(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     default_value: &DefaultValue,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
     let vertex =
         workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex)?;
@@ -1887,7 +1836,6 @@ pub fn create_default_value(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_DEFAULT_VALUE.module,
             workflow::Dag::WITH_DEFAULT_VALUE.name,
-            vec![],
         ),
         vec![dag, vertex, port, value],
     ))
@@ -1897,9 +1845,9 @@ pub fn create_default_value(
 pub fn create_edge(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     edge: &Edge,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `from_vertex: Vertex`
     let from_vertex =
         workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex)?;
@@ -1931,7 +1879,6 @@ pub fn create_edge(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_EDGE.module,
             workflow::Dag::WITH_EDGE.name,
-            vec![],
         ),
         vec![
             dag,
@@ -1949,9 +1896,9 @@ pub fn create_edge(
 pub fn create_output(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     output: &FromPort,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex)?;
 
@@ -1972,7 +1919,6 @@ pub fn create_output(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_OUTPUT.module,
             workflow::Dag::WITH_OUTPUT.name,
-            vec![],
         ),
         vec![dag, vertex, variant, port],
     ))
@@ -1982,10 +1928,10 @@ pub fn create_output(
 pub fn mark_entry_vertex(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &str,
     entry_group: &str,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
@@ -1999,7 +1945,6 @@ pub fn mark_entry_vertex(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_ENTRY_IN_GROUP.module,
             workflow::Dag::WITH_ENTRY_IN_GROUP.name,
-            vec![],
         ),
         vec![dag, vertex, entry_group],
     ))
@@ -2009,11 +1954,11 @@ pub fn mark_entry_vertex(
 pub fn mark_entry_input_port(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag: sui::types::Argument,
+    dag: sui::tx::Argument,
     vertex: &str,
     entry_port: &EntryPort,
     entry_group: &str,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
     let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
 
@@ -2031,7 +1976,6 @@ pub fn mark_entry_input_port(
             objects.workflow_pkg_id,
             workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module,
             workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name,
-            vec![],
         ),
         vec![dag, vertex, entry_port, entry_group],
     ))
@@ -2041,18 +1985,18 @@ pub fn mark_entry_input_port(
 pub fn prepare_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    dag: sui::types::Argument,
-    dag_id: sui::types::Argument,
+    tool_registry: sui::tx::Argument,
+    agent_registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
+    dag: sui::tx::Argument,
+    dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
-    payment_coin: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    payment_coin: sui::tx::Argument,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
@@ -2081,8 +2025,8 @@ pub fn prepare_agent_execution(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module,
             sui_framework::VecMap::EMPTY.name,
-            outer_vec_map_type.clone(),
-        ),
+        )
+        .with_type_args(outer_vec_map_type.clone()),
         vec![],
     );
 
@@ -2093,8 +2037,8 @@ pub fn prepare_agent_execution(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::EMPTY.module,
                 sui_framework::VecMap::EMPTY.name,
-                inner_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(inner_vec_map_type.clone()),
             vec![],
         );
 
@@ -2123,8 +2067,8 @@ pub fn prepare_agent_execution(
                     sui_framework::PACKAGE_ID,
                     sui_framework::VecMap::INSERT.module,
                     sui_framework::VecMap::INSERT.name,
-                    inner_vec_map_type.clone(),
-                ),
+                )
+                .with_type_args(inner_vec_map_type.clone()),
                 vec![with_vertex_input, port, value],
             );
         }
@@ -2134,17 +2078,16 @@ pub fn prepare_agent_execution(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module,
                 sui_framework::VecMap::INSERT.name,
-                outer_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(outer_vec_map_type.clone()),
             vec![with_vertex_inputs, vertex, with_vertex_input],
         );
     }
 
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
     let agent_id = tap::agent_id_from_address(tx, objects, agent_execution.agent_id)?;
-    let skill_id = tx.input(pure_arg(&agent_execution.skill_id)?);
-    let authorization_plan_commitment =
-        tx.input(pure_arg(&agent_execution.authorization_plan_commitment)?);
+    let skill_id = tx.pure(&agent_execution.skill_id);
+    let authorization_plan_commitment = tx.pure(&agent_execution.authorization_plan_commitment);
     let authorization_plan =
         tap_authorization_plan(tx, objects, &agent_execution.authorization_plan)?;
 
@@ -2153,7 +2096,6 @@ pub fn prepare_agent_execution(
             objects.workflow_pkg_id,
             workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module,
             workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.name,
-            vec![],
         ),
         vec![
             dag_id,
@@ -2168,15 +2110,14 @@ pub fn prepare_agent_execution(
         ],
     );
 
-    let payment_source = tx.input(pure_arg(&agent_execution.payment_source)?);
-    let payment_max_budget = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
+    let payment_source = tx.pure(&agent_execution.payment_source);
+    let payment_max_budget = tx.pure(&agent_execution.payment_max_budget);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.module,
             workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name,
-            vec![],
         ),
         vec![
             dag,
@@ -2196,17 +2137,17 @@ pub fn prepare_agent_execution(
 pub fn prepare_default_agent_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    dag: sui::types::Argument,
-    dag_id: sui::types::Argument,
+    tool_registry: sui::tx::Argument,
+    agent_registry: sui::tx::Argument,
+    dag: sui::tx::Argument,
+    dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_execution: &AgentDagExecuteInput,
-    payment_coin: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    payment_coin: sui::tx::Argument,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     // `network: ID`
     let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
 
@@ -2235,8 +2176,8 @@ pub fn prepare_default_agent_execution(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::EMPTY.module,
             sui_framework::VecMap::EMPTY.name,
-            outer_vec_map_type.clone(),
-        ),
+        )
+        .with_type_args(outer_vec_map_type.clone()),
         vec![],
     );
 
@@ -2247,8 +2188,8 @@ pub fn prepare_default_agent_execution(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::EMPTY.module,
                 sui_framework::VecMap::EMPTY.name,
-                inner_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(inner_vec_map_type.clone()),
             vec![],
         );
 
@@ -2277,8 +2218,8 @@ pub fn prepare_default_agent_execution(
                     sui_framework::PACKAGE_ID,
                     sui_framework::VecMap::INSERT.module,
                     sui_framework::VecMap::INSERT.name,
-                    inner_vec_map_type.clone(),
-                ),
+                )
+                .with_type_args(inner_vec_map_type.clone()),
                 vec![with_vertex_input, port, value],
             );
         }
@@ -2288,19 +2229,18 @@ pub fn prepare_default_agent_execution(
                 sui_framework::PACKAGE_ID,
                 sui_framework::VecMap::INSERT.module,
                 sui_framework::VecMap::INSERT.name,
-                outer_vec_map_type.clone(),
-            ),
+            )
+            .with_type_args(outer_vec_map_type.clone()),
             vec![with_vertex_inputs, vertex, with_vertex_input],
         );
     }
 
-    let priority_fee_per_gas_unit = tx.input(pure_arg(&priority_fee_per_gas_unit)?);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
     let config = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
             workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-            vec![],
         ),
         vec![
             dag_id,
@@ -2311,10 +2251,9 @@ pub fn prepare_default_agent_execution(
         ],
     );
 
-    let payment_source = tx.input(pure_arg(&agent_execution.payment_source)?);
-    let payment_max_budget = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
-    let authorization_plan_commitment =
-        tx.input(pure_arg(&agent_execution.authorization_plan_commitment)?);
+    let payment_source = tx.pure(&agent_execution.payment_source);
+    let payment_max_budget = tx.pure(&agent_execution.payment_max_budget);
+    let authorization_plan_commitment = tx.pure(&agent_execution.authorization_plan_commitment);
     let authorization_plan =
         tap_authorization_plan(tx, objects, &agent_execution.authorization_plan)?;
 
@@ -2323,7 +2262,6 @@ pub fn prepare_default_agent_execution(
             objects.workflow_pkg_id,
             workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module,
             workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name,
-            vec![],
         ),
         vec![
             dag,
@@ -2345,10 +2283,10 @@ pub fn prepare_default_agent_execution(
 pub fn lock_payment_state_for_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    tools_gas: Vec<sui::types::Argument>,
-    dag: sui::types::Argument,
-    execution: sui::types::Argument,
-    ticket: sui::types::Argument,
+    tools_gas: Vec<sui::tx::Argument>,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    ticket: sui::tx::Argument,
 ) {
     for tool_gas in tools_gas {
         // `nexus_workflow::gas::lock_payment_state_for_tool()`
@@ -2357,7 +2295,6 @@ pub fn lock_payment_state_for_tools(
                 objects.workflow_pkg_id,
                 workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module,
                 workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name,
-                vec![],
             ),
             vec![tool_gas, dag, execution, ticket],
         );
@@ -2429,14 +2366,14 @@ fn execute_agent_dag_internal(
     default_executor: bool,
 ) -> anyhow::Result<()> {
     let dag_id = sui_framework::Object::id_from_object_id(tx, *dag.object_id())?;
-    let dag = tx.input(sui::tx::Input::shared(
+    let dag = tx.object(sui::tx::ObjectInput::shared(
         *dag.object_id(),
         dag.version(),
         false,
     ));
 
     let agent = match agent {
-        Some(agent) => Some(tx.input(sui::tx::Input::shared(
+        Some(agent) => Some(tx.object(sui::tx::ObjectInput::shared(
             *agent.object_id(),
             agent.version(),
             true,
@@ -2444,43 +2381,46 @@ fn execute_agent_dag_internal(
         None => None,
     };
 
-    let tool_registry = tx.input(sui::tx::Input::shared(
+    let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         false,
     ));
 
-    let agent_registry = tx.input(sui::tx::Input::shared(
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.agent_registry.object_id(),
         objects.agent_registry.version(),
         false,
     ));
 
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
     ));
 
     let payment_coin = if let Some(payment_coin_ref) = agent_execution.payment_coin.as_ref() {
-        let owned_payment_coin = tx.input(sui::tx::Input::owned(
+        let owned_payment_coin = tx.object(sui::tx::ObjectInput::owned(
             *payment_coin_ref.object_id(),
             payment_coin_ref.version(),
             *payment_coin_ref.digest(),
         ));
         match agent_execution.payment_coin_balance {
             Some(balance) if balance > agent_execution.payment_max_budget => {
-                let payment_amount = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
+                let payment_amount = tx.pure(&agent_execution.payment_max_budget);
                 tx.split_coins(owned_payment_coin, vec![payment_amount])
-                    .nested(0)
+                    .into_iter()
+                    .next()
                     .ok_or_else(|| anyhow::anyhow!("failed to split TAP execution payment coin"))?
             }
             _ => owned_payment_coin,
         }
     } else {
-        let payment_amount = tx.input(pure_arg(&agent_execution.payment_max_budget)?);
-        tx.split_coins(tx.gas(), vec![payment_amount])
-            .nested(0)
+        let payment_amount = tx.pure(&agent_execution.payment_max_budget);
+        let gas = tx.gas();
+        tx.split_coins(gas, vec![payment_amount])
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("failed to split TAP execution payment coin"))?
     };
 
@@ -2519,30 +2459,25 @@ fn execute_agent_dag_internal(
         )?
     };
 
-    let Some(execution) = results.nested(0) else {
+    let [execution, ticket] = results.to_nested(2)[..] else {
         return Err(anyhow::anyhow!(
-            "Failed to receive agent DAG execution argument"
+            "Failed to receive agent DAG execution and ticket arguments"
         ));
     };
-    let Some(ticket) = results.nested(1) else {
-        return Err(anyhow::anyhow!(
-            "Failed to receive agent DAG ticket argument"
-        ));
-    };
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         false,
     ));
     let tools_gas = tools_gas
         .iter()
-        .map(|(address, version)| tx.input(sui::tx::Input::shared(*address, *version, true)))
+        .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
     crate::transactions::gas::snapshot_dag_tool_costs(tx, objects, gas_service, execution, dag);
     lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
 
-    let leader_registry = tx.input(sui::tx::Input::shared(
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.leader_registry.object_id(),
         objects.leader_registry.version(),
         false,
@@ -2553,7 +2488,6 @@ fn execute_agent_dag_internal(
             objects.workflow_pkg_id,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
             workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
-            vec![],
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
@@ -2565,8 +2499,8 @@ fn execute_agent_dag_internal(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![execution_type],
-        ),
+        )
+        .with_type_args(vec![execution_type]),
         vec![execution],
     );
 
@@ -2667,7 +2601,7 @@ mod tests {
         }
 
         fn expect_address(&self, argument: &sui::types::Argument, expected: sui::types::Address) {
-            let sui::types::Input::Pure { value } = self.input(argument) else {
+            let sui::types::Input::Pure(value) = self.input(argument) else {
                 panic!("expected pure input, got {:?}", self.input(argument));
             };
 
@@ -2677,7 +2611,7 @@ mod tests {
         }
 
         fn expect_u64(&self, argument: &sui::types::Argument, expected: u64) {
-            let sui::types::Input::Pure { value } = self.input(argument) else {
+            let sui::types::Input::Pure(value) = self.input(argument) else {
                 panic!("expected pure input, got {:?}", self.input(argument));
             };
 
@@ -2691,21 +2625,16 @@ mod tests {
             expected: &sui::types::ObjectReference,
             expected_mutable: bool,
         ) {
-            let sui::types::Input::Shared {
-                object_id,
-                initial_shared_version,
-                mutable,
-            } = self.input(argument)
-            else {
+            let sui::types::Input::Shared(shared) = self.input(argument) else {
                 panic!("expected shared input, got {:?}", self.input(argument));
             };
-            assert_eq!(object_id, expected.object_id());
-            assert_eq!(*initial_shared_version, expected.version());
-            assert_eq!(*mutable, expected_mutable);
+            assert_eq!(shared.object_id(), *expected.object_id());
+            assert_eq!(shared.version(), expected.version());
+            assert_eq!(shared.mutability().is_mutable(), expected_mutable);
         }
 
         fn expect_string(&self, argument: &sui::types::Argument, expected: &str) {
-            let sui::types::Input::Pure { value } = self.input(argument) else {
+            let sui::types::Input::Pure(value) = self.input(argument) else {
                 panic!("expected pure input, got {:?}", self.input(argument));
             };
 
@@ -2899,9 +2828,8 @@ mod tests {
     #[test]
     fn test_publish() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
-
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         publish(&mut tx, &objects, dag);
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -2931,7 +2859,6 @@ mod tests {
     #[test]
     fn test_create_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let vertex = Vertex {
             name: "vertex1".to_string(),
             kind: VertexKind::OffChain {
@@ -2944,6 +2871,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_vertex(&mut tx, &objects, dag, &vertex).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -2965,7 +2893,6 @@ mod tests {
     #[test]
     fn test_create_default_value() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let default_value = DefaultValue {
             vertex: "vertex1".to_string(),
             input_port: "port1".to_string(),
@@ -2976,6 +2903,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_default_value(&mut tx, &objects, dag, &default_value).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -2997,9 +2925,8 @@ mod tests {
     #[test]
     fn test_create_post_failure_action() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
-
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_post_failure_action(
             &mut tx,
             &objects,
@@ -3027,9 +2954,8 @@ mod tests {
     #[test]
     fn test_create_vertex_post_failure_action() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
-
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_vertex_post_failure_action(
             &mut tx,
             &objects,
@@ -3131,28 +3057,40 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_v1_with_registered_key_proof() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
+        let __ph_10 = tx.pure(&10u64);
+        let __ph_11 = tx.pure(&11u64);
 
         submit_off_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             Some(&mock_offchain_none_auxiliary()),
             &mock_offchain_registered_key_proof(),
-            sui::types::Argument::Result(6),
-            sui::types::Argument::Result(7),
-            sui::types::Argument::Result(8),
-            sui::types::Argument::Result(9),
-            sui::types::Argument::Result(10),
+            __ph_6,
+            __ph_7,
+            __ph_8,
+            __ph_9,
+            __ph_10,
             0,
-            sui::types::Argument::Result(11),
+            __ph_11,
         )
         .unwrap();
 
@@ -3188,22 +3126,29 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_plain_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             None,
             0,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3226,22 +3171,29 @@ mod tests {
     fn test_submit_off_chain_tool_result_for_walk_without_verifier_v1_routes_failure_submit() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_failure_result(),
             Some(&mock_offchain_failure_auxiliary()),
             0,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3274,22 +3226,29 @@ mod tests {
 
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &result,
             None,
             0,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3314,7 +3273,7 @@ mod tests {
             )
         }));
         assert!(inspector.inputs().iter().all(|input| match input {
-            sui::types::Input::Pure { value } => value.len() <= MAX_PURE_INPUT_BYTES,
+            sui::types::Input::Pure(value) => value.len() <= MAX_PURE_INPUT_BYTES,
             _ => true,
         }));
     }
@@ -3325,29 +3284,41 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let runtime_call = mock_external_verifier_runtime_call();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
+        let __ph_10 = tx.pure(&10u64);
+        let __ph_11 = tx.pure(&11u64);
 
         submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_offchain_success_result(),
             &mock_authenticated_offchain_verifier_evidence(),
             &[21, 22, 23],
             &runtime_call,
-            sui::types::Argument::Result(6),
-            sui::types::Argument::Result(7),
-            sui::types::Argument::Result(8),
-            sui::types::Argument::Result(9),
-            sui::types::Argument::Result(10),
+            __ph_6,
+            __ph_7,
+            __ph_8,
+            __ph_9,
+            __ph_10,
             0,
-            sui::types::Argument::Result(11),
+            __ph_11,
         )
         .unwrap();
 
@@ -3479,16 +3450,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             9,
             &mock_runtime_vertex(),
             &mock_prepared_tool_output(),
@@ -3496,7 +3474,7 @@ mod tests {
             None,
             witness,
             0,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3516,25 +3494,20 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
+        let __ph_7 = tx.pure(&7u64);
+        let __ph_8 = tx.pure(&8u64);
+        let __ph_9 = tx.pure(&9u64);
 
         submit_on_chain_tool_result_for_walk_v1_with_args(
-            &mut tx,
-            &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
-            9,
-            sui::types::Argument::Result(6),
-            sui::types::Argument::Result(7),
-            sui::types::Argument::Result(8),
-            None,
-            None,
-            witness,
-            0,
-            sui::types::Argument::Result(9),
+            &mut tx, &objects, __ph_0, __ph_1, __ph_2, __ph_3, __ph_4, __ph_5, 9, __ph_6, __ph_7,
+            __ph_8, None, None, witness, 0, __ph_9,
         )
         .unwrap();
 
@@ -3553,9 +3526,9 @@ mod tests {
     fn test_mint_vertex_authorization_check_cap_for_onchain_walk_uses_active_walk_args() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let dag = sui::types::Argument::Result(0);
-        let execution = sui::types::Argument::Result(1);
-        let leader_cap = sui::types::Argument::Result(2);
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let leader_cap = tx.pure(&2u64);
 
         mint_vertex_authorization_check_cap_for_onchain_walk(
             &mut tx, &objects, dag, execution, leader_cap, 17,
@@ -3575,11 +3548,11 @@ mod tests {
             workflow::Dag::MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK.name
         );
         assert_eq!(call.arguments.len(), 4);
-        assert_eq!(call.arguments[0], dag);
-        assert_eq!(call.arguments[1], execution);
-        assert_eq!(call.arguments[2], leader_cap);
+        assert_eq!(call.arguments[0], sui::types::Argument::Input(0));
+        assert_eq!(call.arguments[1], sui::types::Argument::Input(1));
+        assert_eq!(call.arguments[2], sui::types::Argument::Input(2));
         inspector.expect_u64(&call.arguments[3], 17);
-        assert_eq!(inspector.inputs().len(), 1);
+        assert_eq!(inspector.inputs().len(), 4);
     }
 
     fn assert_on_chain_submit_call_uses_sdk_move_values(
@@ -3641,23 +3614,36 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
 
         let submission = prepare_on_chain_tool_result_submission_v1_bytes(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
+            __ph_0,
+            __ph_1,
             None,
             &None,
             tool_witness_id,
         )
         .expect("submission bytes helper should build");
 
+        let _ = submission;
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let submission_call = match submission {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected submission to be a command result, got {other:?}"),
-        };
+        let submission_call = inspector
+            .commands()
+            .iter()
+            .find_map(|command| match command {
+                sui::types::Command::MoveCall(call)
+                    if call.package == objects.workflow_pkg_id
+                        && call.function
+                            == workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .expect("expected submission move call");
 
         assert_eq!(submission_call.package, objects.workflow_pkg_id);
         assert_eq!(
@@ -3697,16 +3683,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_on_chain_tool_result_for_walk_v1(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             11,
             &mock_runtime_vertex(),
             &mock_prepared_tool_output(),
@@ -3714,7 +3707,7 @@ mod tests {
             Some(b"tool failed".to_vec()),
             tool_witness_id,
             0,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3747,16 +3740,23 @@ mod tests {
     fn test_submit_on_chain_terminal_err_eval_for_walk_defaults_zero_tool_witness_id() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             13,
             &mock_runtime_vertex(),
             DataStorage::try_from(serde_json::json!({
@@ -3766,7 +3766,7 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             None,
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3801,16 +3801,23 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let tool_witness_id = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
+        let __ph_0 = tx.pure(&0u64);
+        let __ph_1 = tx.pure(&1u64);
+        let __ph_2 = tx.pure(&2u64);
+        let __ph_3 = tx.pure(&3u64);
+        let __ph_4 = tx.pure(&4u64);
+        let __ph_5 = tx.pure(&5u64);
+        let __ph_6 = tx.pure(&6u64);
 
         submit_on_chain_terminal_err_eval_for_walk(
             &mut tx,
             &objects,
-            sui::types::Argument::Result(0),
-            sui::types::Argument::Result(1),
-            sui::types::Argument::Result(2),
-            sui::types::Argument::Result(3),
-            sui::types::Argument::Result(4),
-            sui::types::Argument::Result(5),
+            __ph_0,
+            __ph_1,
+            __ph_2,
+            __ph_3,
+            __ph_4,
+            __ph_5,
             13,
             &mock_runtime_vertex(),
             DataStorage::try_from(serde_json::json!({
@@ -3820,7 +3827,7 @@ mod tests {
             .expect("inline reason"),
             &FailureEvidenceKind::LeaderEvidence,
             Some(tool_witness_id),
-            sui::types::Argument::Result(6),
+            __ph_6,
         )
         .unwrap();
 
@@ -3884,7 +3891,6 @@ mod tests {
     #[test]
     fn test_create_edge() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let edge = Edge {
             from: FromPort {
                 vertex: "vertex1".to_string(),
@@ -3899,6 +3905,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_edge(&mut tx, &objects, dag, &edge).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -3920,11 +3927,11 @@ mod tests {
     #[test]
     fn test_mark_entry_vertex() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let vertex = "vertex1";
         let entry_group = "group1";
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         mark_entry_vertex(&mut tx, &objects, dag, vertex, entry_group).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -3946,7 +3953,6 @@ mod tests {
     #[test]
     fn test_mark_entry_input_port() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let vertex = "vertex1";
         let entry_port = &EntryPort {
             name: "test".to_string(),
@@ -3954,6 +3960,7 @@ mod tests {
         let entry_group = "group1";
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         mark_entry_input_port(
             &mut tx,
             &nexus_objects,
@@ -4095,7 +4102,7 @@ mod tests {
             &begin_call.arguments[5],
             sui::types::Argument::NestedResult(_, 0)
         );
-        let sui::types::Input::Pure { value } = inspector.input(&begin_call.arguments[6]) else {
+        let sui::types::Input::Pure(value) = inspector.input(&begin_call.arguments[6]) else {
             panic!("expected payment source input");
         };
         let payment_source: Vec<u8> = bcs::from_bytes(value).expect("payment source BCS");
@@ -4281,9 +4288,9 @@ mod tests {
             .inputs()
             .iter()
             .filter_map(|input| match input {
-                sui::types::Input::Shared {
-                    object_id, mutable, ..
-                } => Some((*object_id, *mutable)),
+                sui::types::Input::Shared(shared) => {
+                    Some((shared.object_id(), shared.mutability().is_mutable()))
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -4366,7 +4373,6 @@ mod tests {
     #[test]
     fn test_create_output() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag = sui::types::Argument::Result(0);
         let output = FromPort {
             vertex: "vertex1".to_string(),
             output_variant: "variant1".to_string(),
@@ -4374,6 +4380,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
         create_output(&mut tx, &objects, dag, &output).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -4395,7 +4402,6 @@ mod tests {
     #[test]
     fn test_create_wires_post_failure_actions() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag_arg = sui::types::Argument::Result(0);
         let dag = Dag {
             vertices: vec![Vertex {
                 kind: VertexKind::OffChain {
@@ -4417,6 +4423,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag_arg = tx.pure(&0u64);
         create(&mut tx, &objects, dag_arg, dag).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(
@@ -4451,7 +4458,6 @@ mod tests {
     #[test]
     fn test_create_wires_verifier_config() {
         let objects = mock_objects_with_verifier_registry();
-        let dag_arg = sui::types::Argument::Result(0);
         let dag = Dag {
             vertices: vec![Vertex {
                 kind: VertexKind::OffChain {
@@ -4485,6 +4491,7 @@ mod tests {
         };
 
         let mut tx = sui::tx::TransactionBuilder::new();
+        let dag_arg = tx.pure(&0u64);
         create(&mut tx, &objects, dag_arg, dag).unwrap();
         let tx = sui_mocks::mock_finish_transaction(tx);
         let sui::types::TransactionKind::ProgrammableTransaction(

@@ -5,7 +5,6 @@ use {
         events::RequestWalkExecutionEvent,
         idents::{
             primitives,
-            pure_arg,
             registry::{AgentRegistry, AGENT_REGISTRY_MODULE},
             sui_framework,
             tap::TapStandard,
@@ -136,13 +135,13 @@ fn finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::types::Transa
     tx.set_sender(addr("0xf2"));
     tx.set_gas_budget(1000);
     tx.set_gas_price(1000);
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
+    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
         *gas.object_id(),
         gas.version(),
         *gas.digest(),
     )]);
 
-    tx.finish().expect("transaction builds")
+    tx.try_build().expect("transaction builds")
 }
 
 fn move_call(tx: &sui::types::Transaction, index: usize) -> &sui::types::MoveCall {
@@ -599,7 +598,7 @@ fn transaction_builders_select_tap_functions() {
 
     let registry =
         tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, true));
+    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
     let requirements = requirements();
     tap_tx::register_skill(
         &mut tx,
@@ -616,7 +615,7 @@ fn transaction_builders_select_tap_functions() {
 
     let registry =
         tap_tx::agent_registry_arg(&mut tx, &objects, false).expect("configured registry");
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, false));
+    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, false));
     tap_tx::worksheet(&mut tx, &objects, registry, agent, 177, addr("0x41"))
         .expect("worksheet builder");
 
@@ -641,13 +640,13 @@ fn update_skill_compatibility_builds_dag_and_policy_calls() {
 
     let registry =
         tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, true));
+    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
     tap_tx::update_dag(&mut tx, &objects, registry, agent, 177, addr("0xd2"))
         .expect("update dag builder");
 
     let registry =
         tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.input(sui::tx::Input::shared(addr("0xa1"), 1, true));
+    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
     tap_tx::update_skill_policies(
         &mut tx,
         &objects,
@@ -701,7 +700,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     tap_tx::create_agent(&mut tx, &objects, registry).expect("create agent");
 
     let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
-    let agent_object = tx.input(sui::tx::Input::shared(agent_id, 1, true));
+    let agent_object = tx.object(sui::tx::ObjectInput::shared(agent_id, 1, true));
     tap_tx::register_skill(
         &mut tx,
         &objects,
@@ -745,8 +744,8 @@ fn agent_payment_vault_builders_target_tap_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
     let registry = tap_tx::agent_registry_arg(&mut tx, &objects, false).expect("registry");
-    let agent = tx.input(pure_arg(&1_u64).unwrap());
-    let coin = tx.input(pure_arg(&2_u64).unwrap());
+    let agent = tx.pure(&1_u64);
+    let coin = tx.pure(&2_u64);
 
     tap_tx::deposit_agent_payment_vault(&mut tx, &objects, agent, coin);
     tap_tx::withdraw_agent_payment_vault(&mut tx, &objects, registry, agent, 25)
@@ -765,7 +764,13 @@ fn agent_payment_vault_builders_target_tap_functions() {
 
     assert_eq!(deposit.package, objects.interface_pkg_id);
     assert_eq!(withdraw.package, objects.registry_pkg_id);
-    assert_eq!(deposit.arguments, vec![agent, coin]);
+    assert_eq!(
+        deposit.arguments,
+        vec![
+            sui::types::Argument::Input(1),
+            sui::types::Argument::Input(2)
+        ]
+    );
     assert_eq!(withdraw.arguments.len(), 3);
 }
 
@@ -851,10 +856,10 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
 fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
-    let leader_registry = tx.input(pure_arg(&1_u64).unwrap());
-    let execution = tx.input(pure_arg(&2_u64).unwrap());
-    let worksheet = tx.input(pure_arg(&3_u64).unwrap());
-    let leader_cap = tx.input(pure_arg(&4_u64).unwrap());
+    let leader_registry = tx.pure(&1_u64);
+    let execution = tx.pure(&2_u64);
+    let worksheet = tx.pure(&3_u64);
+    let leader_cap = tx.pure(&4_u64);
 
     nexus_sdk::transactions::dag::leader_stamp_tap_worksheet(
         &mut tx,
@@ -865,9 +870,9 @@ fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
         leader_cap,
     );
 
-    let execution = tx.input(pure_arg(&5_u64).unwrap());
-    let worksheet = tx.input(pure_arg(&6_u64).unwrap());
-    let leader_cap = tx.input(pure_arg(&7_u64).unwrap());
+    let execution = tx.pure(&5_u64);
+    let worksheet = tx.pure(&6_u64);
+    let leader_cap = tx.pure(&7_u64);
     nexus_sdk::transactions::dag::pre_stamp_tap_execution(
         &mut tx,
         &objects,

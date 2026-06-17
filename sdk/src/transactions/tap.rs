@@ -1,5 +1,5 @@
 use crate::{
-    idents::{move_std, pure_arg, registry::AgentRegistry, sui_framework, tap::TapStandard},
+    idents::{move_std, registry::AgentRegistry, sui_framework, tap::TapStandard},
     sui,
     types::{
         AgentId,
@@ -19,8 +19,8 @@ fn agent_registry_call(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     ident: crate::idents::ModuleAndNameIdent,
-    args: Vec<sui::types::Argument>,
-) -> sui::types::Argument {
+    args: Vec<sui::tx::Argument>,
+) -> sui::tx::Argument {
     tap_call_with_package(tx, objects.registry_pkg_id, ident, args)
 }
 
@@ -28,8 +28,8 @@ fn tap_interface_call(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     ident: crate::idents::ModuleAndNameIdent,
-    args: Vec<sui::types::Argument>,
-) -> sui::types::Argument {
+    args: Vec<sui::tx::Argument>,
+) -> sui::tx::Argument {
     tap_call_with_package(tx, objects.interface_pkg_id, ident, args)
 }
 
@@ -37,10 +37,10 @@ fn tap_call_with_package(
     tx: &mut sui::tx::TransactionBuilder,
     package: sui::types::Address,
     ident: crate::idents::ModuleAndNameIdent,
-    args: Vec<sui::types::Argument>,
-) -> sui::types::Argument {
+    args: Vec<sui::tx::Argument>,
+) -> sui::tx::Argument {
     tx.move_call(
-        sui::tx::Function::new(package, ident.module, ident.name, vec![]),
+        sui::tx::Function::new(package, ident.module, ident.name),
         args,
     )
 }
@@ -49,10 +49,10 @@ pub fn agent_registry_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     mutability: bool,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let registry = &objects.agent_registry;
 
-    Ok(tx.input(sui::tx::Input::shared(
+    Ok(tx.object(sui::tx::ObjectInput::shared(
         *registry.object_id(),
         registry.version(),
         mutability,
@@ -61,8 +61,8 @@ pub fn agent_registry_arg(
 pub fn create_agent(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    registry: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(agent_registry_call(
         tx,
         objects,
@@ -75,7 +75,7 @@ pub fn agent_id_from_address(
     tx: &mut sui::tx::TransactionBuilder,
     _objects: &NexusObjects,
     agent_id: AgentId,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     sui_framework::Object::id_from_object_id(tx, agent_id)
 }
 
@@ -83,8 +83,8 @@ pub fn interface_revision(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     interface_revision: InterfaceRevision,
-) -> anyhow::Result<sui::types::Argument> {
-    let interface_revision = tx.input(pure_arg(&interface_revision.0)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let interface_revision = tx.pure(&interface_revision.0);
 
     Ok(tap_interface_call(
         tx,
@@ -98,8 +98,8 @@ pub fn interface_revision(
 pub fn bootstrap_default_runtime_dag_skill_for_deployment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    registry: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     let result = agent_registry_call(
         tx,
         objects,
@@ -113,26 +113,26 @@ pub fn bootstrap_default_runtime_dag_skill_for_deployment(
 pub fn create_skill(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     dag_id: sui::types::Address,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
     active: bool,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&dag_id)?),
-        tx.input(pure_arg(&description)?),
-        tx.input(pure_arg(&input_commitment)?),
+        tx.pure(&dag_id),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
         payment_policy,
         schedule_policy,
-        tx.input(pure_arg(&active)?),
+        tx.pure(&active),
     ];
 
     Ok(agent_registry_call(
@@ -147,22 +147,22 @@ pub fn create_skill(
 pub fn register_skill(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     dag_id: sui::types::Address,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&dag_id)?),
-        tx.input(pure_arg(&description)?),
-        tx.input(pure_arg(&input_commitment)?),
+        tx.pure(&dag_id),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
         payment_policy,
         schedule_policy,
     ];
@@ -179,24 +179,24 @@ pub fn register_skill(
 pub fn register_skill_with_fixed_tools(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     dag_id: sui::types::Address,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
     fixed_tools: Vec<TapFixedTool>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let fixed_tools = fixed_tools_arg(tx, objects, &fixed_tools)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&dag_id)?),
-        tx.input(pure_arg(&description)?),
-        tx.input(pure_arg(&input_commitment)?),
+        tx.pure(&dag_id),
+        tx.pure(&description),
+        tx.pure(&input_commitment),
         payment_policy,
         schedule_policy,
         fixed_tools,
@@ -213,11 +213,11 @@ pub fn register_skill_with_fixed_tools(
 pub fn get_skill_requirements(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
 
     Ok(agent_registry_call(
         tx,
@@ -230,17 +230,12 @@ pub fn get_skill_requirements(
 pub fn set_skill_active(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     active: bool,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        agent,
-        tx.input(pure_arg(&skill_id)?),
-        tx.input(pure_arg(&active)?),
-    ];
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&active)];
 
     Ok(agent_registry_call(
         tx,
@@ -253,11 +248,11 @@ pub fn set_skill_active(
 pub fn set_agent_active(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     active: bool,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![registry, agent, tx.input(pure_arg(&active)?)];
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&active)];
 
     Ok(agent_registry_call(
         tx,
@@ -270,17 +265,12 @@ pub fn set_agent_active(
 pub fn update_skill_description(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     description: Vec<u8>,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        agent,
-        tx.input(pure_arg(&skill_id)?),
-        tx.input(pure_arg(&description)?),
-    ];
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&description)];
 
     Ok(agent_registry_call(
         tx,
@@ -293,17 +283,12 @@ pub fn update_skill_description(
 pub fn update_dag(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     dag_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        agent,
-        tx.input(pure_arg(&skill_id)?),
-        tx.input(pure_arg(&dag_id)?),
-    ];
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&dag_id)];
 
     Ok(agent_registry_call(
         tx,
@@ -316,18 +301,18 @@ pub fn update_dag(
 pub fn update_skill_policies(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     payment_policy: TapPaymentPolicy,
     schedule_policy: TapSchedulePolicy,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&skill_id)?),
+        tx.pure(&skill_id),
         payment_policy,
         schedule_policy,
     ];
@@ -343,17 +328,12 @@ pub fn update_skill_policies(
 pub fn worksheet(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     execution_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![
-        registry,
-        agent,
-        tx.input(pure_arg(&skill_id)?),
-        tx.input(pure_arg(&execution_id)?),
-    ];
+) -> anyhow::Result<sui::tx::Argument> {
+    let args = vec![registry, agent, tx.pure(&skill_id), tx.pure(&execution_id)];
 
     Ok(agent_registry_call(
         tx,
@@ -366,12 +346,12 @@ pub fn worksheet(
 pub fn workflow_worksheet_for_ids(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
+    registry: sui::tx::Argument,
     agent_id: AgentId,
     skill_id: SkillId,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let agent_id = agent_id_from_address(tx, objects, agent_id)?;
-    let args = vec![registry, agent_id, tx.input(pure_arg(&skill_id)?)];
+    let args = vec![registry, agent_id, tx.pure(&skill_id)];
 
     Ok(agent_registry_call(
         tx,
@@ -384,8 +364,8 @@ pub fn workflow_worksheet_for_ids(
 pub fn default_dag_executor_workflow_worksheet(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
+    registry: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(agent_registry_call(
         tx,
         objects,
@@ -397,9 +377,9 @@ pub fn default_dag_executor_workflow_worksheet(
 pub fn confirm_tool_eval_for_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    worksheet: sui::types::Argument,
-) -> sui::types::Argument {
+    registry: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+) -> sui::tx::Argument {
     agent_registry_call(
         tx,
         objects,
@@ -451,9 +431,9 @@ impl AgentSkillPaymentInput {
 pub fn deposit_agent_payment_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    agent: sui::types::Argument,
-    coin: sui::types::Argument,
-) -> sui::types::Argument {
+    agent: sui::tx::Argument,
+    coin: sui::tx::Argument,
+) -> sui::tx::Argument {
     // The Move interface accepts any depositor; authorization is enforced only
     // on withdrawal.
     tap_interface_call(
@@ -467,12 +447,12 @@ pub fn deposit_agent_payment_vault(
 pub fn withdraw_agent_payment_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     amount: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // The TAP Move module checks mutable agent custody through the registry.
-    let amount = tx.input(pure_arg(&amount)?);
+    let amount = tx.pure(&amount);
 
     Ok(agent_registry_call(
         tx,
@@ -486,26 +466,26 @@ pub fn withdraw_agent_payment_vault(
 pub fn schedule_skill_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     skill_id: SkillId,
     long_term_gas_coin_id: sui::types::Address,
     refill_policy_commitment: Vec<u8>,
     schedule_policy: TapSchedulePolicy,
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
         skill_id,
-        tx.input(pure_arg(&long_term_gas_coin_id)?),
-        tx.input(pure_arg(&refill_policy_commitment)?),
+        tx.pure(&long_term_gas_coin_id),
+        tx.pure(&refill_policy_commitment),
         schedule_policy,
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
     ];
 
     Ok(agent_registry_call(
@@ -520,11 +500,11 @@ pub fn schedule_skill_execution(
 pub fn schedule_skill_execution_address_funded(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
-    prepayment_coin: sui::types::Argument,
+    prepayment_coin: sui::tx::Argument,
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
@@ -532,22 +512,22 @@ pub fn schedule_skill_execution_address_funded(
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&scheduler_task_id)?),
+        tx.pure(&scheduler_task_id),
         skill_id,
         prepayment_coin,
-        tx.input(pure_arg(&refund_recipient)?),
-        tx.input(pure_arg(&payment_source)?),
-        tx.input(pure_arg(&occurrence_budget)?),
+        tx.pure(&refund_recipient),
+        tx.pure(&payment_source),
+        tx.pure(&occurrence_budget),
         schedule_policy,
-        tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&refill_policy_commitment),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
     ];
 
     Ok(agent_registry_call(
@@ -562,11 +542,11 @@ pub fn schedule_skill_execution_address_funded(
 pub fn schedule_skill_execution_address_funded_with_grants(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
-    prepayment_coin: sui::types::Argument,
+    prepayment_coin: sui::tx::Argument,
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
@@ -575,24 +555,24 @@ pub fn schedule_skill_execution_address_funded_with_grants(
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
     grant_templates: Vec<TapScheduledAuthorizationGrantTemplate>,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let grant_templates =
         scheduled_authorization_grant_templates_arg(tx, objects, &grant_templates)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&scheduler_task_id)?),
+        tx.pure(&scheduler_task_id),
         skill_id,
         prepayment_coin,
-        tx.input(pure_arg(&refund_recipient)?),
-        tx.input(pure_arg(&payment_source)?),
-        tx.input(pure_arg(&occurrence_budget)?),
+        tx.pure(&refund_recipient),
+        tx.pure(&payment_source),
+        tx.pure(&occurrence_budget),
         schedule_policy,
-        tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&refill_policy_commitment),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
         grant_templates,
     ];
 
@@ -608,9 +588,9 @@ pub fn schedule_skill_execution_address_funded_with_grants(
 pub fn schedule_default_dag_executor_skill_execution_address_funded(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
+    registry: sui::tx::Argument,
     scheduler_task_id: sui::types::Address,
-    prepayment_coin: sui::types::Argument,
+    prepayment_coin: sui::tx::Argument,
     refund_recipient: sui::types::Address,
     payment_source: Vec<u8>,
     occurrence_budget: u64,
@@ -618,19 +598,19 @@ pub fn schedule_default_dag_executor_skill_execution_address_funded(
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
-        tx.input(pure_arg(&scheduler_task_id)?),
+        tx.pure(&scheduler_task_id),
         prepayment_coin,
-        tx.input(pure_arg(&refund_recipient)?),
-        tx.input(pure_arg(&payment_source)?),
-        tx.input(pure_arg(&occurrence_budget)?),
+        tx.pure(&refund_recipient),
+        tx.pure(&payment_source),
+        tx.pure(&occurrence_budget),
         schedule_policy,
-        tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&refill_policy_commitment),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
     ];
 
     Ok(agent_registry_call(
@@ -645,8 +625,8 @@ pub fn schedule_default_dag_executor_skill_execution_address_funded(
 pub fn schedule_skill_execution_from_agent_vault(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
     prepay_amount: u64,
@@ -655,20 +635,20 @@ pub fn schedule_skill_execution_from_agent_vault(
     refill_policy_commitment: Vec<u8>,
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&scheduler_task_id)?),
+        tx.pure(&scheduler_task_id),
         skill_id,
-        tx.input(pure_arg(&prepay_amount)?),
-        tx.input(pure_arg(&occurrence_budget)?),
+        tx.pure(&prepay_amount),
+        tx.pure(&occurrence_budget),
         schedule_policy,
-        tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&refill_policy_commitment),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
     ];
 
     Ok(agent_registry_call(
@@ -683,8 +663,8 @@ pub fn schedule_skill_execution_from_agent_vault(
 pub fn schedule_skill_execution_from_agent_vault_with_grants(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
+    registry: sui::tx::Argument,
+    agent: sui::tx::Argument,
     scheduler_task_id: sui::types::Address,
     skill_id: SkillId,
     prepay_amount: u64,
@@ -694,22 +674,22 @@ pub fn schedule_skill_execution_from_agent_vault_with_grants(
     schedule_entries_commitment: Vec<u8>,
     first_after_ms: u64,
     grant_templates: Vec<TapScheduledAuthorizationGrantTemplate>,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.input(pure_arg(&skill_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let skill_id = tx.pure(&skill_id);
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let grant_templates =
         scheduled_authorization_grant_templates_arg(tx, objects, &grant_templates)?;
     let args = vec![
         registry,
         agent,
-        tx.input(pure_arg(&scheduler_task_id)?),
+        tx.pure(&scheduler_task_id),
         skill_id,
-        tx.input(pure_arg(&prepay_amount)?),
-        tx.input(pure_arg(&occurrence_budget)?),
+        tx.pure(&prepay_amount),
+        tx.pure(&occurrence_budget),
         schedule_policy,
-        tx.input(pure_arg(&refill_policy_commitment)?),
-        tx.input(pure_arg(&schedule_entries_commitment)?),
-        tx.input(pure_arg(&first_after_ms)?),
+        tx.pure(&refill_policy_commitment),
+        tx.pure(&schedule_entries_commitment),
+        tx.pure(&first_after_ms),
         grant_templates,
     ];
 
@@ -725,7 +705,7 @@ fn schedule_policy_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     schedule_policy: &TapSchedulePolicy,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let recurrence = match &schedule_policy.recurrence {
         TapRecurrenceKind::Once => {
             tap_interface_call(tx, objects, TapStandard::RECURRENCE_ONCE, vec![])
@@ -734,7 +714,7 @@ fn schedule_policy_arg(
             min_interval_ms,
             max_occurrences,
         } => {
-            let min_interval_ms = tx.input(pure_arg(min_interval_ms)?);
+            let min_interval_ms = tx.pure(min_interval_ms);
             let max_occurrences = option_u64_arg(tx, max_occurrences.as_ref())?;
             tap_interface_call(
                 tx,
@@ -744,7 +724,7 @@ fn schedule_policy_arg(
             )
         }
     };
-    let allow_recursive = tx.input(pure_arg(&schedule_policy.allow_recursive)?);
+    let allow_recursive = tx.pure(&schedule_policy.allow_recursive);
 
     Ok(tap_interface_call(
         tx,
@@ -757,10 +737,10 @@ fn schedule_policy_arg(
 fn option_u64_arg(
     tx: &mut sui::tx::TransactionBuilder,
     value: Option<&u64>,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     match value {
         Some(value) => {
-            let value = tx.input(pure_arg(value)?);
+            let value = tx.pure(value);
             Ok(move_std::Option::some(tx, sui::types::TypeTag::U64, value))
         }
         None => Ok(move_std::Option::none(tx, sui::types::TypeTag::U64)),
@@ -771,13 +751,13 @@ fn payment_policy_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     payment_policy: &TapPaymentPolicy,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(match payment_policy {
         TapPaymentPolicy::UserFunded => {
             tap_interface_call(tx, objects, TapStandard::PAYMENT_POLICY_USER_FUNDED, vec![])
         }
         TapPaymentPolicy::AgentFunded { max_budget } => {
-            let max_budget = tx.input(pure_arg(max_budget)?);
+            let max_budget = tx.pure(max_budget);
             tap_interface_call(
                 tx,
                 objects,
@@ -792,7 +772,7 @@ fn fixed_tool_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     fixed_tool: &TapFixedTool,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let tool_registry_id =
         sui_framework::Object::id_from_object_id(tx, fixed_tool.tool_registry_id)?;
     let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &fixed_tool.tool_fqn)?;
@@ -809,7 +789,7 @@ fn fixed_tools_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     fixed_tools: &[TapFixedTool],
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let fixed_tool_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         objects.interface_pkg_id,
         crate::idents::tap::STANDARD_TAP_MODULE,
@@ -821,8 +801,8 @@ fn fixed_tools_arg(
             move_std::PACKAGE_ID,
             move_std::Vector::EMPTY.module,
             move_std::Vector::EMPTY.name,
-            vec![fixed_tool_type.clone()],
-        ),
+        )
+        .with_type_args(vec![fixed_tool_type.clone()]),
         vec![],
     );
 
@@ -833,8 +813,8 @@ fn fixed_tools_arg(
                 move_std::PACKAGE_ID,
                 move_std::Vector::PUSH_BACK.module,
                 move_std::Vector::PUSH_BACK.name,
-                vec![fixed_tool_type.clone()],
-            ),
+            )
+            .with_type_args(vec![fixed_tool_type.clone()]),
             vec![vector, item],
         );
     }
@@ -846,14 +826,14 @@ fn scheduled_authorization_grant_template_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     template: &TapScheduledAuthorizationGrantTemplate,
-) -> anyhow::Result<sui::types::Argument> {
-    let dag_id = tx.input(pure_arg(&template.dag_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let dag_id = tx.pure(&template.dag_id);
     let vertex = move_std::Ascii::ascii_string_from_str(tx, &template.vertex)?;
-    let tool_package = tx.input(pure_arg(&template.tool_package)?);
+    let tool_package = tx.pure(&template.tool_package);
     let tool_module = move_std::Ascii::ascii_string_from_str(tx, &template.tool_module)?;
     let tool_function = move_std::Ascii::ascii_string_from_str(tx, &template.tool_function)?;
-    let operation_commitment = tx.input(pure_arg(&template.operation_commitment)?);
-    let constraints_commitment = tx.input(pure_arg(&template.constraints_commitment)?);
+    let operation_commitment = tx.pure(&template.operation_commitment);
+    let constraints_commitment = tx.pure(&template.constraints_commitment);
     Ok(tap_interface_call(
         tx,
         objects,
@@ -874,7 +854,7 @@ fn scheduled_authorization_grant_templates_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     grant_templates: &[TapScheduledAuthorizationGrantTemplate],
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let template_type =
         crate::idents::tap::scheduled_authorization_grant_template_type(objects.interface_pkg_id);
     let vector = tx.move_call(
@@ -882,8 +862,8 @@ fn scheduled_authorization_grant_templates_arg(
             move_std::PACKAGE_ID,
             move_std::Vector::EMPTY.module,
             move_std::Vector::EMPTY.name,
-            vec![template_type.clone()],
-        ),
+        )
+        .with_type_args(vec![template_type.clone()]),
         vec![],
     );
 
@@ -894,8 +874,8 @@ fn scheduled_authorization_grant_templates_arg(
                 move_std::PACKAGE_ID,
                 move_std::Vector::PUSH_BACK.module,
                 move_std::Vector::PUSH_BACK.name,
-                vec![template_type.clone()],
-            ),
+            )
+            .with_type_args(vec![template_type.clone()]),
             vec![vector, item],
         );
     }
@@ -906,11 +886,11 @@ fn scheduled_authorization_grant_templates_arg(
 pub fn trigger_scheduled_skill_execution(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    registry: sui::types::Argument,
-    scheduled_task: sui::types::Argument,
+    registry: sui::tx::Argument,
+    scheduled_task: sui::tx::Argument,
     execution_id: sui::types::Address,
-) -> anyhow::Result<sui::types::Argument> {
-    let execution_id = tx.input(pure_arg(&execution_id)?);
+) -> anyhow::Result<sui::tx::Argument> {
+    let execution_id = tx.pure(&execution_id);
     Ok(agent_registry_call(
         tx,
         objects,
@@ -923,18 +903,18 @@ pub fn trigger_scheduled_skill_execution(
 pub fn complete_scheduled_skill_occurrence(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    scheduled_task: sui::types::Argument,
+    scheduled_task: sui::tx::Argument,
     execution_id: sui::types::Address,
     payment_id: sui::types::Address,
     final_state: TapScheduledOccurrenceFinalState,
     continue_recurring: bool,
     next_after_ms: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     let final_state = scheduled_occurrence_final_state_arg(tx, objects, final_state);
-    let execution_id = tx.input(pure_arg(&execution_id)?);
-    let payment_id = tx.input(pure_arg(&payment_id)?);
-    let continue_recurring = tx.input(pure_arg(&continue_recurring)?);
-    let next_after_ms = tx.input(pure_arg(&next_after_ms)?);
+    let execution_id = tx.pure(&execution_id);
+    let payment_id = tx.pure(&payment_id);
+    let continue_recurring = tx.pure(&continue_recurring);
+    let next_after_ms = tx.pure(&next_after_ms);
     Ok(tap_interface_call(
         tx,
         objects,
@@ -954,7 +934,7 @@ fn scheduled_occurrence_final_state_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     final_state: TapScheduledOccurrenceFinalState,
-) -> sui::types::Argument {
+) -> sui::tx::Argument {
     let ident = match final_state {
         TapScheduledOccurrenceFinalState::InFlight => {
             TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT
@@ -1015,7 +995,7 @@ mod tests {
         }
 
         fn expect_u64(&self, argument: &sui::types::Argument, expected: u64) {
-            let sui::types::Input::Pure { value } = self.input(argument) else {
+            let sui::types::Input::Pure(value) = self.input(argument) else {
                 panic!("expected pure u64 input");
             };
             let actual: u64 = bcs::from_bytes(value).expect("u64 BCS decodes");
@@ -1028,17 +1008,12 @@ mod tests {
             expected: &sui::types::ObjectReference,
             expected_mutable: bool,
         ) {
-            let sui::types::Input::Shared {
-                object_id,
-                initial_shared_version,
-                mutable,
-            } = self.input(argument)
-            else {
+            let sui::types::Input::Shared(shared) = self.input(argument) else {
                 panic!("expected shared object input");
             };
-            assert_eq!(object_id, expected.object_id());
-            assert_eq!(*initial_shared_version, expected.version());
-            assert_eq!(*mutable, expected_mutable);
+            assert_eq!(shared.object_id(), *expected.object_id());
+            assert_eq!(shared.version(), expected.version());
+            assert_eq!(shared.mutability().is_mutable(), expected_mutable);
         }
 
         fn move_call(&self, index: usize) -> &sui::types::MoveCall {
@@ -1054,7 +1029,7 @@ mod tests {
     fn worksheet_builder_uses_standard_tap_ident() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&1_u64).unwrap());
+        let registry = tx.pure(&1_u64);
 
         workflow_worksheet_for_ids(
             &mut tx,
@@ -1088,29 +1063,31 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
 
         let mut immutable_tx = sui::tx::TransactionBuilder::new();
-        let immutable_registry =
-            agent_registry_arg(&mut immutable_tx, &objects, false).expect("immutable registry");
+        agent_registry_arg(&mut immutable_tx, &objects, false).expect("immutable registry");
         let immutable_inspector =
             TxInspector::new(sui_mocks::mock_finish_transaction(immutable_tx));
         immutable_inspector.expect_shared_object(
-            &immutable_registry,
+            &sui::types::Argument::Input(0),
             &objects.agent_registry,
             false,
         );
 
         let mut mutable_tx = sui::tx::TransactionBuilder::new();
-        let mutable_registry =
-            agent_registry_arg(&mut mutable_tx, &objects, true).expect("mutable registry");
+        agent_registry_arg(&mut mutable_tx, &objects, true).expect("mutable registry");
         let mutable_inspector = TxInspector::new(sui_mocks::mock_finish_transaction(mutable_tx));
-        mutable_inspector.expect_shared_object(&mutable_registry, &objects.agent_registry, true);
+        mutable_inspector.expect_shared_object(
+            &sui::types::Argument::Input(0),
+            &objects.agent_registry,
+            true,
+        );
     }
 
     #[test]
     fn execute_and_schedule_use_peer_standard_tap_idents() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&3_u64).unwrap());
-        let schedule_agent = tx.input(sui::tx::Input::shared(
+        let registry = tx.pure(&3_u64);
+        let schedule_agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             false,
@@ -1156,8 +1133,8 @@ mod tests {
     fn execute_and_schedule_prepare_tap_identity_handles_before_peer_calls() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&3_u64).unwrap());
-        let schedule_agent = tx.input(sui::tx::Input::shared(
+        let registry = tx.pure(&3_u64);
+        let schedule_agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             false,
@@ -1198,8 +1175,8 @@ mod tests {
     fn register_skill_builder_carries_artifact_identity_and_config() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&1_u64).unwrap());
-        let agent = tx.input(sui::tx::Input::shared(
+        let registry = tx.pure(&1_u64);
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             true,
@@ -1244,12 +1221,12 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry");
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             true,
         ));
-        let vault_coin = tx.input(pure_arg(&10_u64).unwrap());
+        let vault_coin = tx.pure(&10_u64);
 
         let invoker_input = AgentSkillPaymentInput::invoker_source(
             sui::types::Address::from_static("0xa"),
@@ -1300,7 +1277,7 @@ mod tests {
     fn endpoint_and_schedule_builders_cover_variants() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let immutable_registry = tx.input(sui::tx::Input::shared(
+        let immutable_registry = tx.object(sui::tx::ObjectInput::shared(
             *objects.agent_registry.object_id(),
             objects.agent_registry.version(),
             false,
@@ -1308,19 +1285,19 @@ mod tests {
         let registry_arg =
             |tx: &mut sui::tx::TransactionBuilder| agent_registry_arg(tx, &objects, true).unwrap();
         let agent_arg = |tx: &mut sui::tx::TransactionBuilder| {
-            tx.input(sui::tx::Input::shared(
+            tx.object(sui::tx::ObjectInput::shared(
                 sui::types::Address::from_static("0xa"),
                 1,
                 true,
             ))
         };
-        let scheduled_task = tx.input(sui::tx::Input::shared(
+        let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0x50"),
             3,
             true,
         ));
-        let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
-        let default_prepayment_coin = tx.input(pure_arg(&8_u64).unwrap());
+        let prepayment_coin = tx.pure(&7_u64);
+        let default_prepayment_coin = tx.pure(&8_u64);
 
         agent_id_from_address(&mut tx, &objects, sui::types::Address::from_static("0xa"))
             .expect("agent id");
@@ -1464,12 +1441,12 @@ mod tests {
     fn default_address_funded_schedule_accepts_immutable_registry() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(sui::tx::Input::shared(
+        let registry = tx.object(sui::tx::ObjectInput::shared(
             *objects.agent_registry.object_id(),
             objects.agent_registry.version(),
             false,
         ));
-        let prepayment_coin = tx.input(pure_arg(&8_u64).unwrap());
+        let prepayment_coin = tx.pure(&8_u64);
 
         schedule_default_dag_executor_skill_execution_address_funded(
             &mut tx,
@@ -1510,12 +1487,12 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = agent_registry_arg(&mut tx, &objects, false).expect("registry");
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             false,
         ));
-        let prepayment_coin = tx.input(pure_arg(&7_u64).unwrap());
+        let prepayment_coin = tx.pure(&7_u64);
 
         schedule_skill_execution_address_funded_with_grants(
             &mut tx,
@@ -1584,7 +1561,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let registry = agent_registry_arg(&mut tx, &objects, false).expect("registry");
-        let agent = tx.input(sui::tx::Input::shared(
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             true,
@@ -1646,8 +1623,8 @@ mod tests {
     fn register_skill_builder_supports_agent_funded_payment_mode() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let registry = tx.input(pure_arg(&1_u64).unwrap());
-        let agent = tx.input(sui::tx::Input::shared(
+        let registry = tx.pure(&1_u64);
+        let agent = tx.object(sui::tx::ObjectInput::shared(
             sui::types::Address::from_static("0xa"),
             1,
             true,
