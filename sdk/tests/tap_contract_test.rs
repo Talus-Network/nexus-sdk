@@ -628,11 +628,10 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     .expect("register skill");
 
     let dag = tx.object(sui::tx::ObjectInput::shared(dag_id, 1, false));
-    let registry = tap_tx::agent_registry_arg(&mut tx, &objects, false).expect("registry");
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
     nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
-        &mut tx, &objects, dag, registry, execution, leader_cap, 0,
+        &mut tx, &objects, dag, execution, leader_cap, 0,
     )
     .expect("workflow worksheet");
 
@@ -743,12 +742,11 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let objects = nexus_objects();
     let mut tx = sui::tx::TransactionBuilder::new();
     let dag = tx.object(sui::tx::ObjectInput::shared(addr("0xd1"), 1, false));
-    let registry = tap_tx::agent_registry_arg(&mut tx, &objects, false).expect("registry");
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
 
     nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
-        &mut tx, &objects, dag, registry, execution, leader_cap, 7,
+        &mut tx, &objects, dag, execution, leader_cap, 7,
     )
     .expect("workflow worksheet builder");
 

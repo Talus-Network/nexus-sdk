@@ -1469,19 +1469,36 @@ pub fn worksheet_for_tool_result_submission(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag: sui::tx::Argument,
-    agent_registry: sui::tx::Argument,
     execution: sui::tx::Argument,
     leader_cap: sui::tx::Argument,
     walk_index: u64,
 ) -> anyhow::Result<sui::tx::Argument> {
     let walk_index = tx.pure(&walk_index);
+
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        false,
+    ));
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
             workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.module,
             workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name,
         ),
-        vec![dag, agent_registry, execution, leader_cap, walk_index],
+        vec![
+            dag,
+            agent_registry,
+            leader_registry,
+            execution,
+            leader_cap,
+            walk_index,
+        ],
     ))
 }
 
