@@ -1465,24 +1465,6 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     Ok(())
 }
 
-pub fn leader_stamp_worksheet(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    leader_registry: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    worksheet: sui::tx::Argument,
-    leader_cap: sui::tx::Argument,
-) -> sui::tx::Argument {
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::LEADER_STAMP_WORKSHEET.module,
-            workflow::Dag::LEADER_STAMP_WORKSHEET.name,
-        ),
-        vec![leader_registry, execution, worksheet, leader_cap],
-    )
-}
-
 pub fn worksheet_for_tool_result_submission(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -4311,14 +4293,6 @@ mod tests {
                     && call.function == workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
             }),
             "agent DAG execution must use the explicit agent entrypoint"
-        );
-        assert!(
-            !calls.iter().any(|call| {
-                call.package == nexus_objects.workflow_pkg_id
-                    && call.module == workflow::Dag::LEADER_STAMP_WORKSHEET.module
-                    && call.function == workflow::Dag::LEADER_STAMP_WORKSHEET.name
-            }),
-            "agent DAG builders must not call legacy witness worksheet stamp helpers"
         );
     }
 

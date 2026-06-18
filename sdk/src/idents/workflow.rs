@@ -189,13 +189,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
-    /// Stamp a worksheet as the leader before tool execution.
-    ///
-    /// `nexus_workflow::dag::leader_stamp_worksheet`
-    pub const LEADER_STAMP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
-    };
     /// Create a new DAG object.
     ///
     /// `nexus_workflow::dag::new`

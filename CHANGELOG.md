@@ -73,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - stale SDK identifiers, structures, and PTB helpers for endpoint revisions, vertex authorization schemas, payment-source hashes, registry worksheet confirmation, TAP-specific leader stamps, dry-run-only workflow stamps, and attach-style scheduled occurrence entrypoints.
 - Stale attach-style and registry scheduled payment APIs, including `ScheduleSkillExecutionResult`, `ScheduleReserveFund`, `ScheduleSkillExecutionFromAgentVaultParams`, `TapActions::schedule_skill_execution`, `TapActions::schedule_skill_execution_from_agent_vault`, `TapActions::schedule_skill_execution_address_funded`, `TapActions::schedule_default_dag_executor_skill_execution_address_funded`, `transactions::tap::schedule_skill_execution`, registry `SCHEDULE_SKILL_EXECUTION*` idents, and raw registry/scheduler attachment PTB builders; use scheduled task creation with `CreateTaskTapPayment` plus occurrence and periodic APIs.
 - Per-occurrence scheduled settlement-to-agent-vault SDK builders and idents; use task+execution settlement for occurrence completion and whole-reserve collection or cancellation for agent-vault reserve exits.
+- `LEADER_STAMP_WORKSHEET` and its method, as this should be internal during submission result.
 
 #### Fixed
 

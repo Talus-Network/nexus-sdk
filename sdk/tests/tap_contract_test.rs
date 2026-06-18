@@ -758,28 +758,3 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
         nexus_sdk::idents::workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
     );
 }
-
-#[test]
-fn dag_transaction_helpers_select_standard_runtime_stamp_functions() {
-    let objects = nexus_objects();
-    let mut tx = sui::tx::TransactionBuilder::new();
-    let leader_registry = tx.pure(&1_u64);
-    let execution = tx.pure(&2_u64);
-    let worksheet = tx.pure(&3_u64);
-    let leader_cap = tx.pure(&4_u64);
-
-    nexus_sdk::transactions::dag::leader_stamp_worksheet(
-        &mut tx,
-        &objects,
-        leader_registry,
-        execution,
-        worksheet,
-        leader_cap,
-    );
-
-    let tx = finish_transaction(tx);
-    assert_eq!(
-        move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::Dag::LEADER_STAMP_WORKSHEET.name
-    );
-}
