@@ -78,6 +78,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - `DagExecution` JSON decoding now accepts the on-chain `dag` field for abort-expired execution recovery paths.
+- `transactions::tap::register_skill_with_fixed_tools` now passes the required immutable `ToolRegistry` shared object to the registry entry so fixed-tool validation matches the current Move signature.
 - SDK and CLI PTB helpers now use the current `sui-transaction-builder` object, pure input, function type-argument, and opaque argument APIs consistently, restoring `just sdk test` and `just cli test` under the `0.3.1` builder stack.
 
 ### `docs`

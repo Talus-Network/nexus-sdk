@@ -67,6 +67,21 @@ pub fn agent_registry_arg(
         mutability,
     )))
 }
+
+fn tool_registry_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    mutability: bool,
+) -> anyhow::Result<sui::tx::Argument> {
+    let registry = &objects.tool_registry;
+
+    Ok(tx.object(sui::tx::ObjectInput::shared(
+        *registry.object_id(),
+        registry.version(),
+        mutability,
+    )))
+}
+
 pub fn create_agent(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -197,12 +212,14 @@ pub fn register_skill_with_fixed_tools(
     schedule_policy: SkillSchedulePolicy,
     fixed_tools: Vec<FixedTool>,
 ) -> anyhow::Result<sui::tx::Argument> {
+    let tool_registry = tool_registry_arg(tx, objects, false)?;
     let payment_policy = payment_policy_arg(tx, objects, &payment_policy)?;
     let schedule_policy = schedule_policy_arg(tx, objects, &schedule_policy)?;
     let fixed_tools = fixed_tools_arg(tx, objects, &fixed_tools)?;
     let args = vec![
         registry,
         agent,
+        tool_registry,
         tx.pure(&dag_id),
         tx.pure(&description),
         tx.pure(&input_commitment),
@@ -842,6 +859,49 @@ mod tests {
             &objects.agent_registry,
             true,
         );
+    }
+
+    #[test]
+    fn register_skill_with_fixed_tools_passes_tool_registry_reference() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let registry = agent_registry_arg(&mut tx, &objects, true).expect("registry arg");
+        let agent = tx.pure(&2_u64);
+
+        register_skill_with_fixed_tools(
+            &mut tx,
+            &objects,
+            registry,
+            agent,
+            sui::types::Address::from_static("0xd"),
+            b"demo skill".to_vec(),
+            b"input commitment".to_vec(),
+            SkillPaymentPolicy::UserFunded,
+            SkillSchedulePolicy::default(),
+            vec![FixedTool {
+                tool_registry_id: *objects.tool_registry.object_id(),
+                tool_fqn: "demo.tool@1".to_string(),
+            }],
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .find(|call| {
+                call.package == objects.registry_pkg_id
+                    && call.function == AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS.name
+            })
+            .expect("register_skill_with_fixed_tools call");
+
+        assert_eq!(call.module, AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS.module);
+        assert_eq!(call.arguments.len(), 9);
+        inspector.expect_shared_object(&call.arguments[2], &objects.tool_registry, false);
     }
 
     #[test]
