@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, pure_arg, sui_framework, workflow},
+        idents::{move_std, sui_framework, workflow},
         sui,
         types::{NexusObjects, ToolMeta},
         ToolFqn,
@@ -18,7 +18,7 @@ pub fn register_off_chain_for_self(
     invocation_cost: u64,
 ) -> anyhow::Result<()> {
     // `self: &mut ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
+    let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         true,
@@ -28,29 +28,29 @@ pub fn register_off_chain_for_self(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
-    let url = tx.input(pure_arg(&meta.url.to_string())?);
+    let url = tx.pure(&meta.url.to_string());
 
     // `description: vector<u8>`
-    let description = tx.input(pure_arg(&meta.description.as_bytes())?);
+    let description = tx.pure(&meta.description.as_bytes());
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(pure_arg(&serde_json::to_vec(&meta.input_schema)?)?);
+    let input_schema = tx.pure(&serde_json::to_vec(&meta.input_schema)?);
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(pure_arg(&serde_json::to_vec(&meta.output_schema)?)?);
+    let output_schema = tx.pure(&serde_json::to_vec(&meta.output_schema)?);
 
     // `timeout_ms: u64`
-    let timeout_ms = tx.input(pure_arg(&(meta.timeout.as_millis() as u64))?);
+    let timeout_ms = tx.pure(&(meta.timeout.as_millis() as u64));
 
     // `pay_with: Coin<SUI>`
-    let pay_with = tx.input(sui::tx::Input::owned(
+    let pay_with = tx.object(sui::tx::ObjectInput::owned(
         *collateral_coin.object_id(),
         collateral_coin.version(),
         *collateral_coin.digest(),
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -62,7 +62,6 @@ pub fn register_off_chain_for_self(
             objects.registry_pkg_id,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
             workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
-            vec![],
         ),
         vec![
             tool_registry,
@@ -77,17 +76,10 @@ pub fn register_off_chain_for_self(
         ],
     );
 
-    // `tool: Tool`
-    let Some(tool) = result.nested(0) else {
+    // `tool: Tool`, `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
+    let [tool, owner_cap_over_tool] = result.to_nested(2)[..] else {
         return Err(anyhow::anyhow!(
-            "Failed to extract Tool from register_off_chain_tool result"
-        ));
-    };
-
-    // `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
-    let Some(owner_cap_over_tool) = result.nested(1) else {
-        return Err(anyhow::anyhow!(
-            "Failed to extract OwnerCap<OverTool> from register_off_chain_tool result"
+            "Failed to extract Tool and OwnerCap<OverTool> from register_off_chain_tool result"
         ));
     };
 
@@ -97,20 +89,19 @@ pub fn register_off_chain_for_self(
             objects.workflow_pkg_id,
             workflow::Gas::DEESCALATE.module,
             workflow::Gas::DEESCALATE.name,
-            vec![],
         ),
         vec![tool, owner_cap_over_tool],
     );
 
     // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         true,
     ));
 
     // `single_invocation_cost_mist: u64`
-    let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
+    let single_invocation_cost_mist = tx.pure(&invocation_cost);
 
     // `nexus_workflow::gas::create_tool_gas`
     tx.move_call(
@@ -118,7 +109,6 @@ pub fn register_off_chain_for_self(
             objects.workflow_pkg_id,
             workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
             workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
-            vec![],
         ),
         vec![
             gas_service,
@@ -137,8 +127,8 @@ pub fn register_off_chain_for_self(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![tool_type],
-        ),
+        )
+        .with_type_args(vec![tool_type]),
         vec![tool],
     );
 
@@ -203,7 +193,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     workflow_authorization_cap_first: bool,
 ) -> anyhow::Result<()> {
     // `self: &mut ToolRegistry`
-    let tool_registry = tx.input(sui::tx::Input::shared(
+    let tool_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         true,
@@ -219,29 +209,29 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
 
     // `description: vector<u8>`
-    let description = tx.input(pure_arg(&description.as_bytes().to_vec())?);
+    let description = tx.pure(&description.as_bytes().to_vec());
 
     // `input_schema: vector<u8>`
-    let input_schema = tx.input(pure_arg(&input_schema.as_bytes().to_vec())?);
+    let input_schema = tx.pure(&input_schema.as_bytes().to_vec());
 
     // `output_schema: vector<u8>`
-    let output_schema = tx.input(pure_arg(&output_schema.as_bytes().to_vec())?);
+    let output_schema = tx.pure(&output_schema.as_bytes().to_vec());
 
     // `timeout_ms: u64`
-    let timeout_ms = tx.input(pure_arg(&(timeout.as_millis() as u64))?);
+    let timeout_ms = tx.pure(&(timeout.as_millis() as u64));
 
     // `tool_witness_id: ID`
     let tool_witness_id = sui_framework::Address::address_from_type(tx, tool_witness_id)?;
 
     // `pay_with: Coin<SUI>`
-    let pay_with = tx.input(sui::tx::Input::owned(
+    let pay_with = tx.object(sui::tx::ObjectInput::owned(
         *collateral_coin.object_id(),
         collateral_coin.version(),
         *collateral_coin.digest(),
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -258,7 +248,6 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
             objects.registry_pkg_id,
             register_ident.module,
             register_ident.name,
-            vec![],
         ),
         vec![
             tool_registry,
@@ -275,17 +264,10 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
         ],
     );
 
-    // `tool: Tool`
-    let Some(tool) = result.nested(0) else {
+    // `tool: Tool`, `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
+    let [tool, owner_cap_over_tool] = result.to_nested(2)[..] else {
         return Err(anyhow::anyhow!(
-            "Failed to extract Tool from register_off_chain_tool result"
-        ));
-    };
-
-    // `owner_cap_over_tool: CloneableOwnerCap<OverTool>`
-    let Some(owner_cap_over_tool) = result.nested(1) else {
-        return Err(anyhow::anyhow!(
-            "Failed to extract OwnerCap<OverTool> from register_off_chain_tool result"
+            "Failed to extract Tool and OwnerCap<OverTool> from register_off_chain_tool result"
         ));
     };
 
@@ -295,20 +277,19 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
             objects.workflow_pkg_id,
             workflow::Gas::DEESCALATE.module,
             workflow::Gas::DEESCALATE.name,
-            vec![],
         ),
         vec![tool, owner_cap_over_tool],
     );
 
     // `gas_service: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         true,
     ));
 
     // `single_invocation_cost_mist: u64`
-    let single_invocation_cost_mist = tx.input(pure_arg(&0u64)?);
+    let single_invocation_cost_mist = tx.pure(&0u64);
 
     // `nexus_workflow::gas::create_tool_gas_and_share`
     tx.move_call(
@@ -316,7 +297,6 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
             objects.workflow_pkg_id,
             workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.module,
             workflow::Gas::CREATE_TOOL_GAS_AND_SHARE.name,
-            vec![],
         ),
         vec![
             gas_service,
@@ -335,8 +315,8 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![tool_type],
-        ),
+        )
+        .with_type_args(vec![tool_type]),
         vec![tool],
     );
 
@@ -356,30 +336,30 @@ pub fn set_invocation_cost(
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     invocation_cost: u64,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `self: &mut GasService`
-    let gas_service = tx.input(sui::tx::Input::shared(
+    let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
         objects.gas_service.version(),
         true,
     ));
 
     // `tool: &Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         false,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverGas>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap.object_id(),
         owner_cap.version(),
         *owner_cap.digest(),
     ));
 
     // `single_invocation_cost_mist: u64`
-    let single_invocation_cost_mist = tx.input(pure_arg(&invocation_cost)?);
+    let single_invocation_cost_mist = tx.pure(&invocation_cost);
 
     // `nexus_workflow::gas::set_single_invocation_cost_mist`
     Ok(tx.move_call(
@@ -387,7 +367,6 @@ pub fn set_invocation_cost(
             objects.workflow_pkg_id,
             workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.module,
             workflow::Gas::SET_SINGLE_INVOCATION_COST_MIST.name,
-            vec![],
         ),
         vec![gas_service, tool, owner_cap, single_invocation_cost_mist],
     ))
@@ -399,23 +378,23 @@ pub fn unregister(
     objects: &NexusObjects,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `self: &mut Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         true,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap.object_id(),
         owner_cap.version(),
         *owner_cap.digest(),
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -427,7 +406,6 @@ pub fn unregister(
             objects.workflow_pkg_id,
             workflow::ToolRegistry::UNREGISTER.module,
             workflow::ToolRegistry::UNREGISTER.name,
-            vec![],
         ),
         vec![tool, owner_cap, clock],
     ))
@@ -440,23 +418,23 @@ pub fn claim_collateral_for_self(
     objects: &NexusObjects,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `self: &mut Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         true,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap.object_id(),
         owner_cap.version(),
         *owner_cap.digest(),
     ));
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -468,7 +446,6 @@ pub fn claim_collateral_for_self(
             objects.workflow_pkg_id,
             workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module,
             workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name,
-            vec![],
         ),
         vec![tool, owner_cap, clock],
     ))
@@ -481,30 +458,30 @@ pub fn update_tool_timeout(
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
     new_timeout: Duration,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<sui::tx::Argument> {
     // `self: &Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         false,
     ));
 
     // `registry: &mut ToolRegistry`
-    let registry = tx.input(sui::tx::Input::shared(
+    let registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.tool_registry.object_id(),
         objects.tool_registry.version(),
         true,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap.object_id(),
         owner_cap.version(),
         *owner_cap.digest(),
     ));
 
     // `timeout_ms: u64`
-    let timeout_ms = tx.input(pure_arg(&(new_timeout.as_millis() as u64))?);
+    let timeout_ms = tx.pure(&(new_timeout.as_millis() as u64));
 
     // `nexus::tool_registry::update_tool_timeout()`
     Ok(tx.move_call(
@@ -512,7 +489,6 @@ pub fn update_tool_timeout(
             objects.workflow_pkg_id,
             workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.module,
             workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.name,
-            vec![],
         ),
         vec![tool, registry, owner_cap, timeout_ms],
     ))

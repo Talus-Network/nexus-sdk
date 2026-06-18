@@ -140,10 +140,9 @@ events! {
     AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
     AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
     SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
+    SkillContractRevisionedEvent => SkillContractRevisioned, "SkillContractRevisionedEvent",
     DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
-    EndpointRevisionAnnouncedEvent => EndpointRevisionAnnounced, "EndpointRevisionAnnouncedEvent",
     SkillActiveRevisionUpdatedEvent => SkillActiveRevisionUpdated, "SkillActiveRevisionUpdatedEvent",
-    WorksheetResolvedEvent => WorksheetResolved, "WorksheetResolvedEvent",
     AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
     VertexAuthorizationGrantCreatedEvent => VertexAuthorizationGrantCreated, "VertexAuthorizationGrantCreatedEvent",
     VertexAuthorizationGrantRequiredEvent => VertexAuthorizationGrantRequired, "VertexAuthorizationGrantRequiredEvent",
@@ -179,6 +178,7 @@ events! {
     PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
+    LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
     PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
     PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
     PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
@@ -242,7 +242,7 @@ pub struct RequestWalkExecutionEvent {
         skip_serializing_if = "Option::is_none"
     )]
     pub tap_skill_id: Option<SkillId>,
-    /// Standard TAP endpoint revision pinned for this execution.
+    /// Standard TAP skill interface revision pinned for this execution.
     #[serde(
         default,
         deserialize_with = "deserialize_move_option",
@@ -303,8 +303,8 @@ pub struct RequestWalkStandardTapContext {
 }
 
 impl RequestWalkStandardTapContext {
-    pub fn endpoint_key(&self) -> TapEndpointKey {
-        TapEndpointKey {
+    pub fn skill_revision_key(&self) -> TapSkillRevisionKey {
+        TapSkillRevisionKey {
             agent_id: self.agent_id,
             skill_id: self.skill_id,
             interface_revision: self.interface_revision,
@@ -313,8 +313,8 @@ impl RequestWalkStandardTapContext {
 }
 
 impl RequestWalkExecutionEvent {
-    pub fn endpoint_key(&self) -> Option<TapEndpointKey> {
-        Some(TapEndpointKey {
+    pub fn skill_revision_key(&self) -> Option<TapSkillRevisionKey> {
+        Some(TapSkillRevisionKey {
             agent_id: self.tap_agent_id?,
             skill_id: self.tap_skill_id?,
             interface_revision: self.tap_interface_revision?,
@@ -386,8 +386,6 @@ pub struct AnnounceInterfacePackageEvent {
 pub struct AgentCreatedEvent {
     pub agent_id: AgentId,
     pub vault_id: sui::types::Address,
-    pub owner: sui::types::Address,
-    pub operator: sui::types::Address,
 }
 
 /// Fired when a published DAG/TAP package is registered as a skill.
@@ -397,9 +395,16 @@ pub struct SkillRegisteredEvent {
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub dag_binding: TapDagBinding,
-    pub workflow_commitment: Vec<u8>,
-    pub requirements_commitment: Vec<u8>,
-    pub capability_schema_commitment: Vec<u8>,
+}
+
+/// Fired when a skill's current execution contract is revisioned.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SkillContractRevisionedEvent {
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub current_interface_revision: InterfaceRevision,
+    pub dag_binding: TapDagBinding,
+    pub requirements: TapSkillRequirements,
 }
 
 /// Fired when the network default standard TAP DAG executor changes.
@@ -409,33 +414,13 @@ pub struct DefaultDagExecutorUpdatedEvent {
     pub skill_id: SkillId,
 }
 
-/// Fired when an endpoint revision is announced for a registered skill.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct EndpointRevisionAnnouncedEvent {
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-    pub shared_objects: Vec<TapSharedObjectRef>,
-    pub requirements: TapSkillRequirements,
-    pub config_digest: Vec<u8>,
-}
-
 /// Fired when active revision state changes for a skill.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SkillActiveRevisionUpdatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub previous_revision: InterfaceRevision,
-    pub active_interface_revision: InterfaceRevision,
-}
-
-/// Fired when worksheet routing resolves a pinned endpoint.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct WorksheetResolvedEvent {
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
-    pub execution_id: sui::types::Address,
+    pub current_interface_revision: InterfaceRevision,
 }
 
 /// Fired when immediate execution is requested for an agent skill.
@@ -559,7 +544,6 @@ pub struct ScheduledSkillExecutionCreatedEvent {
     pub source_identity: sui::types::Address,
     pub prepaid_amount: u64,
     pub occurrence_budget: u64,
-    pub refund_mode: u8,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -881,6 +865,17 @@ pub struct LeaderCapIssuedEvent {
     pub leader: sui::types::Address,
 }
 
+/// Fired by `nexus_registry::leader::activate_and_claim` when a leader instance
+/// claims (or re-claims) ownership of its `Active` record. `claim_token` is the
+/// activating transaction's own digest. Each leader instance indexes this event
+/// to learn which activation currently owns the record (ADR-3 task gate).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaderClaimedEvent {
+    pub registry: sui::types::Address,
+    pub leader_cap_id: sui::types::Address,
+    pub claim_token: Vec<u8>,
+}
+
 /// Fired by the Gas service when a tool payment lock is updated. This event is
 /// used to determine whether a tool invocation is paid for by the execution.
 /// Combination of `execution` and `vertex` uniquely identifies the tool
@@ -1177,9 +1172,6 @@ mod tests {
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xc"),
                 dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xc")),
-                workflow_commitment: vec![1],
-                requirements_commitment: vec![2],
-                capability_schema_commitment: vec![5],
             },
         };
         let bytes = bcs::to_bytes(&skill_event).unwrap();
@@ -1218,31 +1210,27 @@ mod tests {
         }
 
         let event = Wrapper {
-            event: EndpointRevisionAnnouncedEvent {
+            event: SkillContractRevisionedEvent {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(3),
-                shared_objects: vec![TapSharedObjectRef::mutable(
-                    sui::types::Address::from_static("0xe"),
-                )],
+                current_interface_revision: InterfaceRevision(3),
+                dag_binding: TapDagBinding::pinned(sui::types::Address::from_static("0xd")),
                 requirements: TapSkillRequirements::default(),
-                config_digest: vec![1, 2, 3],
             },
         };
 
         let bytes = bcs::to_bytes(&event).unwrap();
         let (parsed, distribution) =
-            super::parse_bcs("EndpointRevisionAnnouncedEvent", &bytes).unwrap();
+            super::parse_bcs("SkillContractRevisionedEvent", &bytes).unwrap();
 
         assert!(distribution.is_none());
         match parsed {
-            crate::events::NexusEventKind::EndpointRevisionAnnounced(parsed) => {
+            crate::events::NexusEventKind::SkillContractRevisioned(parsed) => {
                 assert_eq!(parsed.agent_id, event.event.agent_id);
                 assert_eq!(parsed.skill_id, event.event.skill_id);
-                assert_eq!(parsed.interface_revision, InterfaceRevision(3));
-                assert!(parsed.shared_objects[0].mutable);
+                assert_eq!(parsed.current_interface_revision, InterfaceRevision(3));
             }
-            _ => panic!("Expected EndpointRevisionAnnounced variant"),
+            _ => panic!("Expected SkillContractRevisioned variant"),
         }
     }
 }

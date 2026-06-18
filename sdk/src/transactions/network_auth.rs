@@ -1,7 +1,7 @@
 //! Programmable transaction builders for `nexus_registry::network_auth`.
 
 use crate::{
-    idents::{pure_arg, registry, sui_framework},
+    idents::{registry, sui_framework},
     sui,
     types::NexusObjects,
 };
@@ -22,14 +22,14 @@ pub fn create_tool_binding_and_register_key(
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<()> {
     // `tool: &Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         false,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap_over_tool.object_id(),
         owner_cap_over_tool.version(),
         *owner_cap_over_tool.digest(),
@@ -41,20 +41,19 @@ pub fn create_tool_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-            vec![],
         ),
         vec![tool, owner_cap],
     );
 
     // `registry: &mut NetworkAuth`
-    let network_auth = tx.input(sui::tx::Input::shared(
+    let network_auth = tx.object(sui::tx::ObjectInput::shared(
         *objects.network_auth.object_id(),
         objects.network_auth.version(),
         true,
     ));
 
     // `description: Option<vector<u8>>`
-    let description = tx.input(pure_arg(&description)?);
+    let description = tx.pure(&description);
 
     // `binding: KeyBinding`
     let binding = tx.move_call(
@@ -62,7 +61,6 @@ pub fn create_tool_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::CREATE_BINDING.module,
             registry::NetworkAuth::CREATE_BINDING.name,
-            vec![],
         ),
         vec![network_auth, proof_for_binding, description],
     );
@@ -73,16 +71,15 @@ pub fn create_tool_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-            vec![],
         ),
         vec![tool, owner_cap],
     );
 
     // `public_key: vector<u8>`
-    let public_key = tx.input(pure_arg(&public_key.to_vec())?);
+    let public_key = tx.pure(&public_key.to_vec());
 
     // `signature: vector<u8>`
-    let signature = tx.input(pure_arg(&pop_signature.to_vec())?);
+    let signature = tx.pure(&pop_signature.to_vec());
 
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
@@ -90,13 +87,12 @@ pub fn create_tool_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-            vec![],
         ),
         vec![binding, proof_for_key, public_key, signature],
     );
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -108,7 +104,6 @@ pub fn create_tool_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
-            vec![],
         ),
         vec![binding, proof_for_key, proof_of_key, clock],
     );
@@ -120,8 +115,8 @@ pub fn create_tool_binding_and_register_key(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![key_binding_type],
-        ),
+        )
+        .with_type_args(vec![key_binding_type]),
         vec![binding],
     );
 
@@ -142,21 +137,21 @@ pub fn register_tool_key_on_existing_binding(
     pop_signature: [u8; 64],
 ) -> anyhow::Result<()> {
     // `binding: &mut KeyBinding` (shared object)
-    let binding = tx.input(sui::tx::Input::shared(
+    let binding = tx.object(sui::tx::ObjectInput::shared(
         *binding.object_id(),
         binding.version(),
         true,
     ));
 
     // `tool: &Tool`
-    let tool = tx.input(sui::tx::Input::shared(
+    let tool = tx.object(sui::tx::ObjectInput::shared(
         *tool.object_id(),
         tool.version(),
         false,
     ));
 
     // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.input(sui::tx::Input::owned(
+    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
         *owner_cap_over_tool.object_id(),
         owner_cap_over_tool.version(),
         *owner_cap_over_tool.digest(),
@@ -168,25 +163,23 @@ pub fn register_tool_key_on_existing_binding(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
             registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-            vec![],
         ),
         vec![tool, owner_cap],
     );
 
-    let public_key = tx.input(pure_arg(&public_key.to_vec())?);
-    let signature = tx.input(pure_arg(&pop_signature.to_vec())?);
+    let public_key = tx.pure(&public_key.to_vec());
+    let signature = tx.pure(&pop_signature.to_vec());
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
             objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-            vec![],
         ),
         vec![binding, proof, public_key, signature],
     );
 
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -197,7 +190,6 @@ pub fn register_tool_key_on_existing_binding(
             objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
-            vec![],
         ),
         vec![binding, proof, proof_of_key, clock],
     );
@@ -220,7 +212,7 @@ pub fn create_leader_binding_and_register_key(
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<()> {
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.input(sui::tx::Input::shared(
+    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap_over_network.object_id(),
         leader_cap_over_network.version(),
         false,
@@ -232,20 +224,19 @@ pub fn create_leader_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
-            vec![],
         ),
         vec![leader_cap],
     );
 
     // `registry: &mut NetworkAuth`
-    let network_auth = tx.input(sui::tx::Input::shared(
+    let network_auth = tx.object(sui::tx::ObjectInput::shared(
         *objects.network_auth.object_id(),
         objects.network_auth.version(),
         true,
     ));
 
     // `description: Option<vector<u8>>`
-    let description = tx.input(pure_arg(&description)?);
+    let description = tx.pure(&description);
 
     // `binding: KeyBinding`
     let binding = tx.move_call(
@@ -253,7 +244,6 @@ pub fn create_leader_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::CREATE_BINDING.module,
             registry::NetworkAuth::CREATE_BINDING.name,
-            vec![],
         ),
         vec![network_auth, proof_for_binding, description],
     );
@@ -264,15 +254,14 @@ pub fn create_leader_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
-            vec![],
         ),
         vec![leader_cap],
     );
 
     // `public_key: vector<u8>`
-    let public_key = tx.input(pure_arg(&public_key.to_vec())?);
+    let public_key = tx.pure(&public_key.to_vec());
     // `signature: vector<u8>`
-    let signature = tx.input(pure_arg(&pop_signature.to_vec())?);
+    let signature = tx.pure(&pop_signature.to_vec());
 
     // `proof_of_key: ProofOfKey`
     let proof_of_key = tx.move_call(
@@ -280,13 +269,12 @@ pub fn create_leader_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-            vec![],
         ),
         vec![binding, proof_for_key, public_key, signature],
     );
 
     // `clock: &Clock`
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -298,7 +286,6 @@ pub fn create_leader_binding_and_register_key(
             objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
-            vec![],
         ),
         vec![binding, proof_for_key, proof_of_key, clock],
     );
@@ -310,8 +297,8 @@ pub fn create_leader_binding_and_register_key(
             sui_framework::PACKAGE_ID,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
             sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            vec![key_binding_type],
-        ),
+        )
+        .with_type_args(vec![key_binding_type]),
         vec![binding],
     );
 
@@ -331,14 +318,14 @@ pub fn register_leader_key_on_existing_binding(
     pop_signature: [u8; 64],
 ) -> anyhow::Result<()> {
     // `binding: &mut KeyBinding` (shared object)
-    let binding = tx.input(sui::tx::Input::shared(
+    let binding = tx.object(sui::tx::ObjectInput::shared(
         *binding.object_id(),
         binding.version(),
         true,
     ));
 
     // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.input(sui::tx::Input::shared(
+    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap_over_network.object_id(),
         leader_cap_over_network.version(),
         false,
@@ -350,25 +337,23 @@ pub fn register_leader_key_on_existing_binding(
             objects.registry_pkg_id,
             registry::NetworkAuth::PROVE_LEADER.module,
             registry::NetworkAuth::PROVE_LEADER.name,
-            vec![],
         ),
         vec![leader_cap],
     );
 
-    let public_key = tx.input(pure_arg(&public_key.to_vec())?);
-    let signature = tx.input(pure_arg(&pop_signature.to_vec())?);
+    let public_key = tx.pure(&public_key.to_vec());
+    let signature = tx.pure(&pop_signature.to_vec());
 
     let proof_of_key = tx.move_call(
         sui::tx::Function::new(
             objects.registry_pkg_id,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
             registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-            vec![],
         ),
         vec![binding, proof, public_key, signature],
     );
 
-    let clock = tx.input(sui::tx::Input::shared(
+    let clock = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
         false,
@@ -379,7 +364,6 @@ pub fn register_leader_key_on_existing_binding(
             objects.registry_pkg_id,
             registry::NetworkAuth::REGISTER_KEY.module,
             registry::NetworkAuth::REGISTER_KEY.name,
-            vec![],
         ),
         vec![binding, proof, proof_of_key, clock],
     );

@@ -12,7 +12,7 @@
 //! let workflow_pkg_id = sui::types::Address::generate(&mut rand::thread_rng());
 //! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
 //!
-//! assert!(matches!(vertex, Ok(sui::types::Argument::Result(_))));
+//! assert!(vertex.is_ok());
 //! ```
 
 pub mod move_std;
@@ -23,7 +23,7 @@ pub mod sui_framework;
 pub mod tap;
 pub mod workflow;
 
-use {crate::sui, serde::Serialize, sui::traits::ToBcs};
+use crate::sui;
 
 /// This struct is used to define Nexus Move resources as `const`s.
 pub struct ModuleAndNameIdent {
@@ -36,13 +36,4 @@ impl ModuleAndNameIdent {
     pub fn qualified_name(&self, package: sui::types::Address) -> String {
         format!("{package}::{}::{}", self.module, self.name)
     }
-}
-
-/// Helper to create a pure [`sui::tx::Input`].
-pub fn pure_arg<T: Serialize>(value: &T) -> anyhow::Result<sui::tx::Input> {
-    Ok(sui::tx::Input {
-        value: Some(sui::tx::Value::String(value.to_bcs_base64()?)),
-        kind: Some(sui::tx::InputKind::Pure),
-        ..Default::default()
-    })
 }

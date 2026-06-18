@@ -1,7 +1,9 @@
+//! Handler for inspecting the configured standard TAP default agent.
+
 use {super::*, nexus_sdk::nexus::tap::fetch_configured_default_tap_dag_executor};
 
-pub(crate) async fn show_default_target() -> AnyResult<(), NexusCliError> {
-    command_title!("Reading standard TAP default DAG executor");
+pub(crate) async fn show_default_agent() -> AnyResult<(), NexusCliError> {
+    command_title!("Reading standard TAP default agent");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let nexus_objects = &*nexus_client.get_nexus_objects();
@@ -11,10 +13,10 @@ pub(crate) async fn show_default_target() -> AnyResult<(), NexusCliError> {
         .data;
 
     notify_success!(
-        "Default executor agent={agent} skill={skill}",
+        "Default agent={agent} skill={skill}",
         agent = record.target.agent_id.to_string().truecolor(100, 100, 100),
         skill = record.target.skill_id.to_string().truecolor(100, 100, 100),
     );
 
-    json_output(&default_target_result_json(&record))
+    json_output(&default_agent_result_json(&record))
 }

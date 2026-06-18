@@ -160,7 +160,7 @@ Vertex-level `post_failure_action` values override the DAG-level setting.
 
 ### Leader Verifier
 
-Configures how to verify requests from leaders:
+Configures how the workflow verifies the leader/tool communication proof for off-chain result submission. Use registered-key verification when the signed HTTP session is the proof material:
 
 ```json
 {
@@ -173,7 +173,7 @@ Configures how to verify requests from leaders:
 
 ### Tool Verifier
 
-Configures how to verify responses from tools:
+Configures a custom on-chain verifier package for tool output policy:
 
 ```json
 {
@@ -185,6 +185,8 @@ Configures how to verify responses from tools:
 ```
 
 Verifier configuration can also be specified at the vertex level to override DAG-level settings.
+
+`leader_registered_key` with `signed_http_v1` requires the Tool's signed HTTP response key to be registered in Network Auth. See [Tool Communication (HTTPS + Signed HTTP)](tool-communication.md). `tool_verifier_contract` is a separate path for registered verifier packages.
 
 ## 8. Outputs (Optional)
 

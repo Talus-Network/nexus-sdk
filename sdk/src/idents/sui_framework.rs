@@ -1,7 +1,4 @@
-use crate::{
-    idents::{pure_arg, ModuleAndNameIdent},
-    sui,
-};
+use crate::{idents::ModuleAndNameIdent, sui};
 
 pub const PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x2");
 pub const CLOCK_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x6");
@@ -19,12 +16,12 @@ impl Address {
         name: sui::types::Identifier::from_static("from_ascii_bytes"),
     };
 
-    /// Covert [`sui::types::Address`] into a [`sui::types::Argument`].
+    /// Covert [`sui::types::Address`] into a [`sui::tx::Argument`].
     pub fn address_from_type(
         tx: &mut sui::tx::TransactionBuilder,
         address: sui::types::Address,
-    ) -> anyhow::Result<sui::types::Argument> {
-        Ok(tx.input(pure_arg(&address)?))
+    ) -> anyhow::Result<sui::tx::Argument> {
+        Ok(tx.pure(&address))
     }
 }
 
@@ -50,7 +47,7 @@ impl Object {
     pub fn id_from_object_id(
         tx: &mut sui::tx::TransactionBuilder,
         object_id: sui::types::Address,
-    ) -> anyhow::Result<sui::types::Argument> {
+    ) -> anyhow::Result<sui::tx::Argument> {
         let address = Address::address_from_type(tx, object_id)?;
 
         Ok(tx.move_call(
@@ -58,7 +55,6 @@ impl Object {
                 PACKAGE_ID,
                 Self::ID_FROM_ADDRESS.module,
                 Self::ID_FROM_ADDRESS.name,
-                vec![],
             ),
             vec![address],
         ))
@@ -162,6 +158,11 @@ impl Coin {
     pub const COIN: ModuleAndNameIdent = ModuleAndNameIdent {
         module: COIN_MODULE,
         name: sui::types::Identifier::from_static("Coin"),
+    };
+    /// `sui::coin::destroy_zero`
+    pub const DESTROY_ZERO: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: COIN_MODULE,
+        name: sui::types::Identifier::from_static("destroy_zero"),
     };
     /// `sui::coin::from_balance`
     pub const FROM_BALANCE: ModuleAndNameIdent = ModuleAndNameIdent {

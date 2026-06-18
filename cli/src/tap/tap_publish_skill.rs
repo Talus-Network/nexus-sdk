@@ -83,7 +83,7 @@ pub(crate) async fn publish_skill(
                     config.tap_package_name.clone(),
                     sui::types::Address::ZERO,
                 )],
-                environment,
+                environment: environment.map(|environment| environment.name().clone()),
             },
         )
         .await

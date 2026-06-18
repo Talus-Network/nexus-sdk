@@ -78,14 +78,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -138,14 +138,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -206,14 +206,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -278,14 +278,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -340,14 +340,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -409,14 +409,14 @@ impl GasActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;

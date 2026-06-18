@@ -52,10 +52,10 @@ use {
             SkillId,
             StorageConf,
             TapDagBinding,
-            TapEndpointKey,
             TapExecutionPayment,
             TapExecutionPaymentVertexLock,
             TapRegistry,
+            TapSkillRevisionKey,
             TapVertexAuthorizationPlan,
             TapVertexAuthorizationPlanEntry,
             VerifierConfig,
@@ -93,9 +93,8 @@ pub struct TapExecutionSubmitMetadata {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
-    pub endpoint_key: TapEndpointKey,
+    pub skill_revision_key: TapSkillRevisionKey,
     pub payment_max_budget: u64,
-    pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: TapVertexAuthorizationPlan,
 }
@@ -135,7 +134,6 @@ pub struct AgentDagExecuteOptions {
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
     pub payment_max_budget: u64,
-    pub payment_refund_mode: u8,
     pub authorization_plan_commitment: Option<Vec<u8>>,
     pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
 }
@@ -144,7 +142,7 @@ fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &TapRegistry,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
-    let configured = objects.default_tap_executor;
+    let configured = objects.default_dag_executor;
     if let Ok(target) = resolve_active_tap_skill_execution_target(
         registry,
         configured.agent_id,
@@ -154,7 +152,7 @@ fn resolve_default_agent_dag_executor(
             return Ok(DefaultDagExecutorRecord {
                 target: configured,
                 skill: target.skill,
-                endpoint: target.endpoint,
+                skill_revision: target.skill_revision,
             });
         }
     }
@@ -529,14 +527,14 @@ impl WorkflowActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
 
         let signature = self.client.signer.sign_tx(&tx).await?;
@@ -579,7 +577,7 @@ impl WorkflowActions {
         })
     }
 
-    /// Execute a published DAG through the configured standard default TAP DAG executor.
+    /// Execute a published DAG through the configured standard default agent.
     ///
     /// The `entry_data` [`HashMap`] already holds information about the storage
     /// kind for each port.
@@ -612,7 +610,6 @@ impl WorkflowActions {
                 payment_coin: None,
                 payment_coin_balance: None,
                 payment_max_budget: self.client.gas.get_budget(),
-                payment_refund_mode: 0,
                 authorization_plan_commitment: None,
                 authorization_plan: Vec::new(),
             },
@@ -620,7 +617,7 @@ impl WorkflowActions {
         .await
     }
 
-    /// Execute a published DAG through the configured standard default TAP DAG executor
+    /// Execute a published DAG through the configured standard default agent
     /// with explicit standard payment options.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_default_agent_dag(
@@ -666,10 +663,9 @@ impl WorkflowActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         validate_standard_tap_payment_options(
             default_executor.target.agent_id,
-            &default_executor.endpoint.requirements.payment_policy,
+            &default_executor.skill_revision.requirements.payment_policy,
             &options.payment_source,
             options.payment_max_budget,
-            options.payment_refund_mode,
             address,
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -684,7 +680,7 @@ impl WorkflowActions {
         let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
         if !authorization_plan.is_empty() || options.authorization_plan_commitment.is_some() {
             validate_authorization_plan(
-                &default_executor.endpoint.requirements,
+                &default_executor.skill_revision.requirements,
                 &authorization_plan,
                 options.authorization_plan_commitment.as_deref(),
             )
@@ -706,7 +702,6 @@ impl WorkflowActions {
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
-            payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
         };
@@ -730,14 +725,14 @@ impl WorkflowActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
         let owned_payment_coin = agent_execution
             .payment_coin
@@ -801,9 +796,8 @@ impl WorkflowActions {
                 agent_id: default_executor.target.agent_id,
                 skill_id: default_executor.target.skill_id,
                 dag_id: dag.object_id,
-                endpoint_key: default_executor.endpoint.key,
+                skill_revision_key: default_executor.skill_revision.key,
                 payment_max_budget: options.payment_max_budget,
-                payment_refund_mode: options.payment_refund_mode,
                 authorization_plan_commitment,
                 authorization_plan,
             }),
@@ -813,7 +807,7 @@ impl WorkflowActions {
     /// Execute the active agent skill for `(agent_id, skill_id)`.
     ///
     /// This resolves the registered DAG from the configured TAP registry, then
-    /// calls the explicit agent workflow entry instead of the legacy default TAP entry.
+    /// calls the explicit agent workflow entry instead of the legacy default-agent entry.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_agent_dag(
         &self,
@@ -874,7 +868,7 @@ impl WorkflowActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let authorization_plan = TapVertexAuthorizationPlan(options.authorization_plan.clone());
         validate_authorization_plan(
-            &target.endpoint.requirements,
+            &target.skill_revision.requirements,
             &authorization_plan,
             options.authorization_plan_commitment.as_deref(),
         )
@@ -890,10 +884,9 @@ impl WorkflowActions {
         };
         validate_standard_tap_payment_options(
             agent_id,
-            &target.endpoint.requirements.payment_policy,
+            &target.skill_revision.requirements.payment_policy,
             &options.payment_source,
             options.payment_max_budget,
-            options.payment_refund_mode,
             address,
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -912,7 +905,6 @@ impl WorkflowActions {
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
             payment_max_budget: options.payment_max_budget,
-            payment_refund_mode: options.payment_refund_mode,
             authorization_plan_commitment: authorization_plan_commitment.clone(),
             authorization_plan: authorization_plan.0.clone(),
         };
@@ -937,14 +929,14 @@ impl WorkflowActions {
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
 
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
         let owned_payment_coin = agent_execution
             .payment_coin
@@ -1006,9 +998,8 @@ impl WorkflowActions {
                 agent_id,
                 skill_id,
                 dag_id,
-                endpoint_key: target.endpoint.key,
+                skill_revision_key: target.skill_revision.key,
                 payment_max_budget: options.payment_max_budget,
-                payment_refund_mode: options.payment_refund_mode,
                 authorization_plan_commitment,
                 authorization_plan,
             }),
@@ -1270,14 +1261,14 @@ impl WorkflowActions {
         tx.set_sender(address);
         tx.set_gas_budget(self.client.gas.get_budget());
         tx.set_gas_price(self.client.reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::Input::owned(
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
             *gas_coin.object_id(),
             gas_coin.version(),
             *gas_coin.digest(),
         )]);
 
         let tx = tx
-            .finish()
+            .try_build()
             .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
         let signature = self.client.signer.sign_tx(&tx).await?;
         let response = self
@@ -1441,17 +1432,12 @@ mod tests {
                 Storable,
                 TapAgentRecord,
                 TapDagBinding,
-                TapEndpointRevision,
-                TapEndpointRevisionKey,
-                TapExecutionPaymentVertexLock,
                 TapPaymentPolicy,
                 TapRegistry,
                 TapRegistryObject,
                 TapSchedulePolicy,
-                TapSharedObjectRef,
                 TapSkillRecord,
                 TapSkillRequirements,
-                TapVertexAuthorizationSchema,
                 TapVertexExecutionPaymentSettlementKind,
                 TypeName,
                 VerifierConfig,
@@ -1468,37 +1454,17 @@ mod tests {
         registry_object: TapRegistryObject,
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
-        endpoint_field_ref: sui::types::ObjectReference,
         default_executor_field_ref: Option<sui::types::ObjectReference>,
         default_executor_value: Option<DefaultDagExecutorValue>,
         agent_record: TapAgentRecord,
         skill_record: TapSkillRecord,
-        endpoint_record: TapEndpointRevision,
     }
 
     fn registry_object_mock(registry: &TapRegistry) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
-        assert!(
-            !registry.endpoints.is_empty(),
-            "test registry has at least one endpoint"
-        );
-
         let agent = registry.agents[0].clone();
         let skill_record = registry.skills[0].clone();
-        let endpoint_record = registry
-            .active_endpoint_record(skill_record.agent_id, skill_record.skill_id)
-            .ok()
-            .and_then(|active| {
-                registry.endpoints.iter().find(|endpoint| {
-                    endpoint.agent_id == active.key.agent_id
-                        && endpoint.skill_id == active.key.skill_id
-                        && endpoint.interface_revision == active.key.interface_revision
-                })
-            })
-            .or_else(|| registry.endpoints.first())
-            .expect("endpoint selected")
-            .clone();
         let default_executor_field_ref = registry
             .default_executor
             .map(|_| sui_mocks::mock_sui_object_ref());
@@ -1508,8 +1474,7 @@ mod tests {
                 .map(|default_executor| DefaultDagExecutorValue {
                     agent: crate::types::TapAgentObject {
                         id: default_executor.agent_id,
-                        next_skill_index: agent.next_skill_index,
-                        owner: agent.owner,
+                        next_skill_id: 1,
                         registry_id: Some(registry.id).into(),
                     },
                     skill_id: default_executor.skill_id,
@@ -1522,12 +1487,10 @@ mod tests {
             },
             agent_field_ref: sui_mocks::mock_sui_object_ref(),
             skill_field_ref: sui_mocks::mock_sui_object_ref(),
-            endpoint_field_ref: sui_mocks::mock_sui_object_ref(),
             default_executor_field_ref,
             default_executor_value,
             agent_record: agent,
             skill_record,
-            endpoint_record,
         }
     }
 
@@ -1553,7 +1516,7 @@ mod tests {
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.agent_record.agent_id,
+                mock.skill_record.agent_id.expect("skill has agent id"),
                 mock.agent_field_ref.object_id().to_owned(),
             )],
         );
@@ -1562,14 +1525,14 @@ mod tests {
             vec![(
                 mock.agent_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.agent_record.agent_id,
+                mock.skill_record.agent_id.expect("skill has agent id"),
                 mock.agent_record,
             )],
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
             vec![(
-                mock.skill_record.skill_id,
+                mock.skill_record.skill_id.expect("skill has skill id"),
                 mock.skill_field_ref.object_id().to_owned(),
             )],
         );
@@ -1578,30 +1541,8 @@ mod tests {
             vec![(
                 mock.skill_field_ref,
                 sui::types::Owner::Shared(1),
-                mock.skill_record.skill_id,
+                mock.skill_record.skill_id.expect("skill has skill id"),
                 mock.skill_record,
-            )],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            state_service_mock,
-            vec![(
-                TapEndpointRevisionKey::new(
-                    mock.endpoint_record.skill_id,
-                    mock.endpoint_record.interface_revision,
-                ),
-                mock.endpoint_field_ref.object_id().to_owned(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            ledger_service_mock,
-            vec![(
-                mock.endpoint_field_ref,
-                sui::types::Owner::Shared(1),
-                TapEndpointRevisionKey::new(
-                    mock.endpoint_record.skill_id,
-                    mock.endpoint_record.interface_revision,
-                ),
-                mock.endpoint_record,
             )],
         );
         if let (Some(field_ref), Some(value)) =
@@ -1804,53 +1745,32 @@ mod tests {
             1,
             sui::types::Digest::generate(&mut rng),
         );
-        nexus_objects.default_tap_executor = DefaultDagExecutor {
+        nexus_objects.default_dag_executor = DefaultDagExecutor {
             agent_id: default_agent,
             skill_id: default_skill_id,
         };
 
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![1],
-            workflow_commitment: vec![2],
-            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            fixed_tools: Vec::new(),
         };
         let agent_registry = TapRegistry {
             id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
-                agent_id: default_agent,
-                owner: sui::types::Address::generate(&mut rng),
-                operator: sui::types::Address::generate(&mut rng),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id: default_agent,
-                skill_id: default_skill_id,
-                dag_id: *dag_ref.object_id(),
-                dag_binding: TapDagBinding::runtime_selected(),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![],
-                active_interface_revision: InterfaceRevision(1),
+                agent_id: Some(default_agent),
+                skill_id: Some(default_skill_id),
+                description: vec![3],
                 active: true,
-            }],
-            endpoints: vec![TapEndpointRevision {
-                agent_id: default_agent,
-                skill_id: default_skill_id,
-                interface_revision: InterfaceRevision(1),
-                shared_objects: vec![TapSharedObjectRef::immutable(
-                    sui::types::Address::generate(&mut rng),
-                )],
+                dag_binding: TapDagBinding::runtime_selected(),
                 requirements: requirements.clone(),
-                config_digest: vec![9],
+                current_interface_revision: InterfaceRevision(1),
+                scheduled_task_count: 0,
             }],
             default_executor: Some(DefaultDagExecutor {
                 agent_id: default_agent,
@@ -2021,46 +1941,25 @@ mod tests {
             sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
         let requirements = TapSkillRequirements {
             input_schema_commitment: vec![1],
-            workflow_commitment: vec![2],
-            metadata_commitment: vec![3],
             payment_policy: TapPaymentPolicy::default(),
             schedule_policy: TapSchedulePolicy::default(),
-            vertex_authorization_schema: TapVertexAuthorizationSchema::default(),
+            fixed_tools: Vec::new(),
         };
         let agent_registry = TapRegistry {
             id: *nexus_objects.agent_registry.object_id(),
             agents: vec![TapAgentRecord {
-                agent_id,
-                owner: sui::types::Address::generate(&mut rng),
-                operator: sui::types::Address::generate(&mut rng),
                 active: true,
-                next_skill_index: 1,
                 skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-                endpoints: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
             }],
             skills: vec![TapSkillRecord {
-                agent_id,
-                skill_id,
-                dag_id: *dag_ref.object_id(),
-                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
-                workflow_commitment: requirements.workflow_commitment.clone(),
-                requirements_commitment: requirements.input_schema_commitment.clone(),
-                metadata_commitment: requirements.metadata_commitment.clone(),
-                payment_policy: requirements.payment_policy.clone(),
-                schedule_policy: requirements.schedule_policy.clone(),
-                capability_schema_commitment: vec![],
-                active_interface_revision: InterfaceRevision(1),
+                agent_id: Some(agent_id),
+                skill_id: Some(skill_id),
+                description: vec![3],
                 active: true,
-            }],
-            endpoints: vec![TapEndpointRevision {
-                agent_id,
-                skill_id,
-                interface_revision: InterfaceRevision(1),
-                shared_objects: vec![TapSharedObjectRef::immutable(
-                    sui::types::Address::generate(&mut rng),
-                )],
+                dag_binding: TapDagBinding::pinned(*dag_ref.object_id()),
                 requirements: requirements.clone(),
-                config_digest: vec![9],
+                current_interface_revision: InterfaceRevision(1),
+                scheduled_task_count: 0,
             }],
             default_executor: None,
         };
@@ -2701,7 +2600,6 @@ mod tests {
                 "max_budget": "100000",
                 "locked_budget": "100000",
                 "consumed": "42000",
-                "refund_mode": 0,
                 "payment_source_hash": [],
                 "accomplished": true,
                 "refunded": false,
