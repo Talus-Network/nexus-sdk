@@ -1,11 +1,7 @@
 use {
     crate::{sui, types::*, ToolFqn},
     anyhow::{bail, Result},
-    serde::{
-        de::{DeserializeOwned, Error as _},
-        Deserialize,
-        Serialize,
-    },
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
 
 mod parsing;
@@ -193,50 +189,6 @@ where
     MoveOption::<T>::deserialize(deserializer).map(|value| value.0)
 }
 
-fn deserialize_move_option_skill_id<'de, D>(
-    deserializer: D,
-) -> std::result::Result<Option<SkillId>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return deserialize_move_option(deserializer);
-    }
-
-    MoveOption::<serde_json::Value>::deserialize(deserializer).and_then(|value| {
-        value
-            .0
-            .map(|value| {
-                parse_u64_value(&value)
-                    .map_err(D::Error::custom)?
-                    .ok_or_else(|| D::Error::custom("missing TAP skill id"))
-            })
-            .transpose()
-    })
-}
-
-fn deserialize_move_option_u64<'de, D>(
-    deserializer: D,
-) -> std::result::Result<Option<u64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        return deserialize_move_option(deserializer);
-    }
-
-    MoveOption::<serde_json::Value>::deserialize(deserializer).and_then(|value| {
-        value
-            .0
-            .map(|value| {
-                parse_u64_value(&value)
-                    .map_err(D::Error::custom)?
-                    .ok_or_else(|| D::Error::custom("missing TAP u64"))
-            })
-            .transpose()
-    })
-}
-
 // == Event definitions ==
 
 /// Fired by the on-chain part of Nexus when a DAG vertex execution is
@@ -266,7 +218,7 @@ pub struct RequestWalkExecutionEvent {
     /// TAP scheduled occurrence index, absent for immediate runs.
     #[serde(
         default,
-        deserialize_with = "deserialize_move_option_u64",
+        deserialize_with = "deserialize_move_option_sui_u64_field",
         skip_serializing_if = "Option::is_none"
     )]
     pub scheduled_occurrence_index: Option<u64>,
@@ -386,7 +338,7 @@ pub struct AgentVertexAuthorizationRequiredEvent {
     pub agent_id: Option<AgentId>,
     #[serde(
         default,
-        deserialize_with = "deserialize_move_option_skill_id",
+        deserialize_with = "deserialize_move_option",
         skip_serializing_if = "Option::is_none"
     )]
     pub skill_id: Option<SkillId>,

@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        idents::{move_std, sui_framework},
+        idents::{move_std, primitives, sui_framework, tap},
         sui,
     },
     anyhow::{anyhow, bail, Result as AnyResult},
@@ -193,16 +193,16 @@ pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSign
 }
 
 fn is_agent_vertex_authorization_proof_struct(struct_tag: &sui::types::StructTag) -> bool {
-    if struct_tag.module().as_str() != "authorization"
-        || struct_tag.name().as_str() != "ProvenValue"
+    if *struct_tag.module() != primitives::Authorization::PROVEN_VALUE.module
+        || *struct_tag.name() != primitives::Authorization::PROVEN_VALUE.name
     {
         return false;
     }
     let Some(sui::types::TypeTag::Struct(inner)) = struct_tag.type_params().first() else {
         return false;
     };
-    inner.module().as_str() == "authorization"
-        && inner.name().as_str() == "AgentVertexAuthorization"
+    *inner.module() == tap::TapStandard::AGENT_VERTEX_AUTHORIZATION.module
+        && *inner.name() == tap::TapStandard::AGENT_VERTEX_AUTHORIZATION.name
 }
 
 pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {

@@ -2967,11 +2967,6 @@ mod tests {
         let __ph_5 = tx.pure(&5u64);
         let __ph_6 = tx.pure(&6u64);
         let __ph_7 = tx.pure(&7u64);
-        let __ph_7 = tx.pure(&7u64);
-        let __ph_7 = tx.pure(&7u64);
-        let __ph_7 = tx.pure(&7u64);
-        let __ph_7 = tx.pure(&7u64);
-        let __ph_7 = tx.pure(&7u64);
         let __ph_8 = tx.pure(&8u64);
         let __ph_9 = tx.pure(&9u64);
         let __ph_10 = tx.pure(&10u64);
@@ -3040,7 +3035,6 @@ mod tests {
         let __ph_4 = tx.pure(&4u64);
         let __ph_5 = tx.pure(&5u64);
         let __ph_6 = tx.pure(&6u64);
-        let __ph_7 = tx.pure(&7u64);
         let __ph_7 = tx.pure(&7u64);
 
         submit_off_chain_tool_result_for_walk_without_verifier_v1(

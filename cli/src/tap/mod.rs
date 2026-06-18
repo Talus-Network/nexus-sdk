@@ -45,6 +45,7 @@ use {
             tap::{
                 fetch_agent_payment_vault_for_agent,
                 fetch_execution_payment_history,
+                AgentTaskStateAction,
                 CreateAgentResult,
                 GetSkillRequirementsResult,
                 PublishSkillResult,
@@ -111,7 +112,7 @@ use {
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
     tap_schedule_task::{schedule_tap_task, TapTaskPaymentSourceArg},
-    tap_scheduled_task::{set_scheduled_task_state, ScheduledTaskStateRequest},
+    tap_scheduled_task::set_agent_task_state,
     tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
@@ -738,26 +739,17 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 task_id,
                 agent_id,
                 gas,
-            } => {
-                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Pause)
-                    .await
-            }
+            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Pause).await,
             ScheduledTaskCommand::Resume {
                 task_id,
                 agent_id,
                 gas,
-            } => {
-                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Resume)
-                    .await
-            }
+            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Resume).await,
             ScheduledTaskCommand::Cancel {
                 task_id,
                 agent_id,
                 gas,
-            } => {
-                set_scheduled_task_state(task_id, agent_id, gas, ScheduledTaskStateRequest::Cancel)
-                    .await
-            }
+            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Cancel).await,
         },
     }
 }

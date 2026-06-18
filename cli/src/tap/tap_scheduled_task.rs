@@ -10,75 +10,55 @@ use {
     serde_json::json,
 };
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum ScheduledTaskStateRequest {
-    Pause,
-    Resume,
-    Cancel,
-}
-
-impl ScheduledTaskStateRequest {
-    fn action(self) -> AgentTaskStateAction {
-        match self {
-            Self::Pause => AgentTaskStateAction::Pause,
-            Self::Resume => AgentTaskStateAction::Resume,
-            Self::Cancel => AgentTaskStateAction::Cancel,
-        }
-    }
-
-    fn state(self) -> &'static str {
-        match self {
-            Self::Pause => "paused",
-            Self::Resume => "resumed",
-            Self::Cancel => "canceled",
-        }
-    }
-}
-
-impl std::fmt::Display for ScheduledTaskStateRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let verb = match self {
-            Self::Pause => "Pausing",
-            Self::Resume => "Resuming",
-            Self::Cancel => "Canceling",
-        };
-        write!(f, "{verb}")
-    }
-}
-
-pub(crate) async fn set_scheduled_task_state(
+pub(crate) async fn set_agent_task_state(
     task_id: sui::types::Address,
     agent_id: sui::types::Address,
     gas: GasArgs,
-    request: ScheduledTaskStateRequest,
+    action: AgentTaskStateAction,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("{request} TAP scheduled task '{task_id}'");
+    command_title!(
+        "{verb} TAP scheduled task '{task_id}'",
+        verb = agent_task_state_action_verb(action)
+    );
 
     let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let result = nexus_client
         .tap()
-        .set_agent_task_state(task_id, agent_id, request.action())
+        .set_agent_task_state(task_id, agent_id, action)
         .await
         .map_err(NexusCliError::Nexus)?;
 
     notify_success!("TAP scheduled task state updated");
 
-    json_output(&scheduled_task_state_result_json(&result, request))?;
+    json_output(&scheduled_task_state_result_json(&result))?;
 
     Ok(())
 }
 
-fn scheduled_task_state_result_json(
-    result: &SetAgentTaskStateResult,
-    request: ScheduledTaskStateRequest,
-) -> serde_json::Value {
+fn scheduled_task_state_result_json(result: &SetAgentTaskStateResult) -> serde_json::Value {
     json!({
         "digest": result.tx_digest,
         "checkpoint": result.tx_checkpoint,
         "scheduled_task_id": result.task_id,
         "agent_id": result.agent_id,
-        "state": request.state(),
+        "state": agent_task_state_action_state(result.state),
     })
+}
+
+fn agent_task_state_action_verb(action: AgentTaskStateAction) -> &'static str {
+    match action {
+        AgentTaskStateAction::Pause => "Pausing",
+        AgentTaskStateAction::Resume => "Resuming",
+        AgentTaskStateAction::Cancel => "Canceling",
+    }
+}
+
+fn agent_task_state_action_state(action: AgentTaskStateAction) -> &'static str {
+    match action {
+        AgentTaskStateAction::Pause => "paused",
+        AgentTaskStateAction::Resume => "resumed",
+        AgentTaskStateAction::Cancel => "canceled",
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +77,7 @@ mod tests {
             state: AgentTaskStateAction::Pause,
         };
 
-        let json = scheduled_task_state_result_json(&result, ScheduledTaskStateRequest::Pause);
+        let json = scheduled_task_state_result_json(&result);
 
         assert_eq!(json["digest"], result.tx_digest.to_string());
         assert_eq!(json["checkpoint"], 42);

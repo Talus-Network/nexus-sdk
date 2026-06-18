@@ -1,0 +1,23 @@
+[package]
+name = "{{ package_name }}"
+version = "1.0.0"
+edition = "2024"
+
+# Stage these four packages under `deps/<name>/` before running
+# `tap publish-skill`. The default vertex-tool stub only imports
+# `nexus_primitives`, but the full standard-TAP surface (cap-gated
+# authorization, scheduled tasks, registry interactions) needs the other
+# three. Drop unused entries if you want a leaner build.
+[dependencies]
+nexus_primitives = { local = "deps/primitives" }
+nexus_interface  = { local = "deps/interface" }
+nexus_registry   = { local = "deps/registry" }
+nexus_workflow   = { local = "deps/workflow" }
+
+# Map env alias -> chain id for every Sui network you plan to publish to. The
+# alias must match the `sui client envs` name and the value is what
+# `sui client chain-identifier` prints while that env is active. The default
+# entry below targets public testnet; if you target a different network add
+# or replace the row, e.g. `mainnet = "35834a8a"`.
+[environments]
+testnet = "4c78adac"

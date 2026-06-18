@@ -1,4 +1,7 @@
-use super::*;
+use {
+    super::*,
+    minijinja::{context, Environment},
+};
 
 pub(crate) async fn scaffold_tap_skill(
     name: String,
@@ -14,7 +17,7 @@ pub(crate) async fn scaffold_tap_skill(
     let module_name = package_name.clone();
 
     let handle = loading!("Writing TAP template files...");
-    let files = scaffold_files(&name, &package_name, &module_name);
+    let files = scaffold_files(&name, &package_name, &module_name).map_err(NexusCliError::Any)?;
 
     create_dir_all(&root).await.map_err(NexusCliError::Io)?;
 
@@ -43,97 +46,40 @@ pub(crate) fn scaffold_files(
     name: &str,
     package_name: &str,
     module_name: &str,
-) -> Vec<(PathBuf, String)> {
-    vec![
+) -> AnyResult<Vec<(PathBuf, String)>> {
+    let mut env = Environment::new();
+    env.add_template("move_toml", include_str!("templates/tap/Move.toml.jinja"))?;
+    env.add_template(
+        "module_move",
+        include_str!("templates/tap/module.move.jinja"),
+    )?;
+    env.add_template("dag_json", include_str!("templates/tap/dag.json.jinja"))?;
+    env.add_template(
+        "skill_tap_json",
+        include_str!("templates/tap/skill.tap.json.jinja"),
+    )?;
+
+    let move_toml = env.get_template("move_toml")?;
+    let module_move = env.get_template("module_move")?;
+    let dag_json = env.get_template("dag_json")?;
+    let skill_tap_json = env.get_template("skill_tap_json")?;
+    let witness = name.to_case(Case::Pascal);
+
+    Ok(vec![
         (
             PathBuf::from("tap/Move.toml"),
-            format!(
-                r#"[package]
-name = "{package_name}"
-version = "1.0.0"
-edition = "2024"
-
-# Stage these four packages under `deps/<name>/` before running
-# `tap publish-skill`. The default vertex-tool stub only imports
-# `nexus_primitives`, but the full standard-TAP surface (cap-gated
-# authorization, scheduled tasks, registry interactions) needs the other
-# three. Drop unused entries if you want a leaner build.
-[dependencies]
-nexus_primitives = {{ local = "deps/primitives" }}
-nexus_interface  = {{ local = "deps/interface" }}
-nexus_registry   = {{ local = "deps/registry" }}
-nexus_workflow   = {{ local = "deps/workflow" }}
-
-# Map env alias → chain id for every Sui network you plan to publish to. The
-# alias must match the `sui client envs` name and the value is what
-# `sui client chain-identifier` prints while that env is active. The default
-# entry below targets public testnet; if you target a different network add
-# or replace the row, e.g. `mainnet = "35834a8a"`.
-[environments]
-testnet = "4c78adac"
-"#
-            ),
+            move_toml.render(context! { package_name })?,
         ),
         (
             PathBuf::from(format!("tap/sources/{module_name}.move")),
-            format!(
-                r#"module {package_name}::{module_name};
-
-/// Minimal third-party TAP package scaffold.
-/// Fill this package with business logic, endpoint state, and standard TAP exports.
-public struct {witness} has drop {{}}
-
-public fun init_for_test(): {witness} {{
-    {witness} {{}}
-}}
-"#,
-                witness = name.to_case(Case::Pascal)
-            ),
+            module_move.render(context! { package_name, module_name, witness })?,
         ),
-        (
-            PathBuf::from("dag.json"),
-            r#"{
-  "vertices": [
-    {
-      "kind": {
-        "variant": "off_chain",
-        "tool_fqn": "xyz.taluslabs.weather_skill@1"
-      },
-      "name": "entry",
-      "entry_ports": [
-        {
-          "name": "input"
-        }
-      ]
-    }
-  ],
-  "edges": []
-}
-"#
-            .to_string(),
-        ),
+        (PathBuf::from("dag.json"), dag_json.render(context! {})?),
         (
             PathBuf::from("skill.tap.json"),
-            format!(
-                r#"{{
-  "name": "{name}",
-  "dag_path": "dag.json",
-  "requirements": {{
-    "input_schema_commitment": [1],
-    "payment_policy": "UserFunded",
-    "schedule_policy": {{
-      "recurrence": "Once",
-      "allow_recursive": false
-    }},
-    "fixed_tools": []
-  }},
-  "shared_objects": [],
-  "interface_revision": 1
-}}
-"#
-            ),
+            skill_tap_json.render(context! { name })?,
         ),
-    ]
+    ])
 }
 
 #[cfg(test)]
@@ -142,7 +88,7 @@ mod tests {
 
     #[test]
     fn scaffold_files_use_kebab_snake_and_expected_package_layout() {
-        let files = scaffold_files("Weather Skill", "weather_skill", "weather_skill");
+        let files = scaffold_files("Weather Skill", "weather_skill", "weather_skill").unwrap();
         let paths = files.iter().map(|(path, _)| path).collect::<Vec<_>>();
 
         assert!(paths.contains(&&PathBuf::from("tap/Move.toml")));
@@ -166,7 +112,8 @@ mod tests {
             "tutorial transfer",
             "tutorial_transfer",
             "tutorial_transfer",
-        );
+        )
+        .unwrap();
         let move_toml = files
             .iter()
             .find_map(|(path, contents)| {
@@ -195,7 +142,8 @@ mod tests {
             "tutorial transfer",
             "tutorial_transfer",
             "tutorial_transfer",
-        );
+        )
+        .unwrap();
         let move_toml = files
             .iter()
             .find_map(|(path, contents)| {
@@ -220,7 +168,8 @@ mod tests {
             "tutorial transfer",
             "tutorial_transfer",
             "tutorial_transfer",
-        );
+        )
+        .unwrap();
         let move_toml = files
             .iter()
             .find_map(|(path, contents)| {

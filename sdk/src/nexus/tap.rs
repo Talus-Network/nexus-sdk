@@ -34,6 +34,7 @@ use {
             CurrentExecutionPaymentFinalState,
             CurrentPaymentSourceKind,
             CurrentVertexExecutionPaymentSettlementKind,
+            DagExecutionPaymentFieldKey,
             DataStorage,
             DefaultDagExecutor,
             DefaultDagExecutorFieldKey,
@@ -1308,7 +1309,10 @@ pub async fn fetch_execution_payment_for_execution(
 ) -> anyhow::Result<Response<ExecutionPayment>> {
     let mut candidates = Vec::new();
     let mut decode_errors = Vec::new();
-    for field in crawler.get_dynamic_object_field_refs(execution_id).await? {
+    for field in crawler
+        .get_dynamic_object_field_refs_matching_key::<DagExecutionPaymentFieldKey>(execution_id)
+        .await?
+    {
         match crawler
             .get_object_contents_bcs::<CurrentExecutionPayment>(field.child_id)
             .await
@@ -2761,7 +2765,7 @@ mod tests {
             source_kind: CurrentPaymentSourceKind::AgentFunded { agent_id },
             max_budget: 100,
             locked_budget: 0,
-            funds: sui::types::SuiBalance { value: 100 },
+            funds: crate::types::SuiBalance { value: 100 },
             consumed: 0,
             accomplished: false,
             refunded: false,

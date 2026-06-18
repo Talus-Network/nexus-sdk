@@ -1,8 +1,8 @@
 //! Types for `nexus_interface::payment`.
 
 use {
-    super::{InterfaceVersion, SkillPaymentPolicy},
-    crate::sui::{self, types::SuiBalance},
+    super::{InterfaceVersion, SkillPaymentPolicy, SuiBalance},
+    crate::sui,
     serde::{Deserialize, Serialize},
 };
 

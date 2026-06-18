@@ -6,7 +6,8 @@ use {
         nexus::crawler::{DynamicMap, Map, Set},
         sui,
         types::{
-            deserialize_move_option_sui_u64,
+            deserialize_move_option_field,
+            deserialize_move_option_sui_u64_field,
             deserialize_sui_u64,
             parse_runtime_vertex_value,
             parse_string_value,
@@ -26,25 +27,10 @@ use {
         ToolFqn,
     },
     anyhow::anyhow,
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
+    serde::{Deserialize, Serialize},
     serde_json::Value,
     std::collections::{HashMap, HashSet},
 };
-
-fn deserialize_move_option_field<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: DeserializeOwned,
-{
-    MoveOption::<T>::deserialize(deserializer).map(|value| value.0)
-}
-
-fn deserialize_move_option_u64_field<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    deserialize_move_option_sui_u64(deserializer).map(|value| value.0)
-}
 
 /// Struct holding the DAG definition from our Move code.
 ///
@@ -77,7 +63,7 @@ pub struct DagExecution {
     pub interface_version: InterfaceRevision,
     #[serde(default, deserialize_with = "deserialize_move_option_field")]
     pub scheduled_task_id: Option<sui::types::Address>,
-    #[serde(default, deserialize_with = "deserialize_move_option_u64_field")]
+    #[serde(default, deserialize_with = "deserialize_move_option_sui_u64_field")]
     pub scheduled_occurrence_index: Option<u64>,
     #[serde(default)]
     pub walks: Vec<DagExecutionWalk>,

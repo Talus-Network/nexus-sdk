@@ -33,6 +33,10 @@ impl TapStandard {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("agent_id_from_address"),
     };
+    pub const AGENT_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_AUTHORIZATION_MODULE,
+        name: sui::types::Identifier::from_static("AgentVertexAuthorization"),
+    };
     pub const AGENT_VERTEX_AUTHORIZATION_TEMPLATE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_AUTHORIZATION_MODULE,
         name: sui::types::Identifier::from_static("agent_vertex_authorization_template"),
@@ -225,6 +229,10 @@ mod tests {
         assert_eq!(
             TapStandard::AGENT_VERTEX_AUTHORIZATION_TEMPLATE.name,
             sui::types::Identifier::from_static("agent_vertex_authorization_template")
+        );
+        assert_eq!(
+            TapStandard::AGENT_VERTEX_AUTHORIZATION.name,
+            sui::types::Identifier::from_static("AgentVertexAuthorization")
         );
         assert_eq!(
             TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,

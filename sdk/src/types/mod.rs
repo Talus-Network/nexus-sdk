@@ -19,6 +19,7 @@ mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
+mod sui_balance;
 mod tap;
 mod tool;
 mod tool_meta;
@@ -46,6 +47,7 @@ pub use {
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
+    sui_balance::SuiBalance,
     tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,

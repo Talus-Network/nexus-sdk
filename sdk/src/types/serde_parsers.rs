@@ -1,10 +1,13 @@
 use {
-    super::{
-        move_json::{parse_string_value, strip_fields_owned},
-        MoveOption,
-    },
+    super::{move_json::parse_string_value, MoveOption},
+    crate::types::strip_fields_owned,
     base64::{prelude::BASE64_STANDARD, Engine},
-    serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize},
+    serde::{
+        de::{DeserializeOwned, Deserializer},
+        ser::Serializer,
+        Deserialize,
+        Serialize,
+    },
     serde_json::Value,
 };
 
@@ -141,6 +144,15 @@ where
     }
 }
 
+/// Deserialize a Move `Option<T>` field into a Rust `Option<T>`.
+pub fn deserialize_move_option_field<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    MoveOption::<T>::deserialize(deserializer).map(|value| value.0)
+}
+
 /// Deserialize a Move `Option<u64>` whose human-readable Sui JSON may encode `u64` as a string.
 pub fn deserialize_move_option_sui_u64<'de, D>(deserializer: D) -> Result<MoveOption<u64>, D::Error>
 where
@@ -187,6 +199,16 @@ where
     parse_value(Deserialize::deserialize(deserializer)?)
         .map(MoveOption)
         .map_err(serde::de::Error::custom)
+}
+
+/// Deserialize a Move `Option<u64>` field into a Rust `Option<u64>`.
+pub fn deserialize_move_option_sui_u64_field<'de, D>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_move_option_sui_u64(deserializer).map(|value| value.0)
 }
 
 /// Serialize an optional Sui `u64` value.
