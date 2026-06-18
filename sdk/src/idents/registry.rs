@@ -145,34 +145,107 @@ impl NetworkAuth {
     };
 }
 
+// == `nexus_registry::leader_cap` ==
+
+pub struct LeaderCap;
+
+pub const LEADER_CAP_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("leader_cap");
+
+impl LeaderCap {
+    /// Create N leader caps for self and the provided addresses.
+    ///
+    /// `nexus_registry::leader_cap::create_for_self_and_addresses`
+    pub const CREATE_FOR_SELF_AND_ADDRESSES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_CAP_MODULE,
+        name: sui::types::Identifier::from_static("create_for_self_and_addresses"),
+    };
+    /// This is used as a generic argument for
+    /// [crate::idents::primitives::OwnerCap::CLONEABLE_OWNER_CAP].
+    ///
+    /// `nexus_registry::leader_cap::OverNetwork`
+    pub const OVER_NETWORK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_CAP_MODULE,
+        name: sui::types::Identifier::from_static("OverNetwork"),
+    };
+}
+
 // == `nexus_registry::leader` ==
 
-/// Registry-side leader identifiers are separate from `workflow::Leader`; the existing workflow identifier struct only models the old workflow package target and does not include registry-only mutators such as `set_status`.
 pub struct Leader;
 
 pub const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
 
 impl Leader {
-    /// Set a leader's status through the on-record leader capability.
+    /// Activate a leader and claim ownership of its `Active` state with a fresh token.
     ///
-    /// `nexus_registry::leader::set_status`
-    pub const SET_STATUS: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_registry::leader::activate_and_claim`
+    pub const ACTIVATE_AND_CLAIM: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("set_status"),
+        name: sui::types::Identifier::from_static("activate_and_claim"),
     };
-    /// Create `LeaderStatus::Active`.
+    /// Allow an address to request leader capabilities.
     ///
-    /// `nexus_registry::leader::status_active`
-    pub const STATUS_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_registry::leader::allow_address`
+    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_active"),
+        name: sui::types::Identifier::from_static("allow_address"),
     };
-    /// Create `LeaderStatus::Suspended`.
+    /// Disallow an address from requesting leader capabilities.
     ///
-    /// `nexus_registry::leader::status_suspended`
-    pub const STATUS_SUSPENDED: ModuleAndNameIdent = ModuleAndNameIdent {
+    /// `nexus_registry::leader::disallow_address`
+    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_suspended"),
+        name: sui::types::Identifier::from_static("disallow_address"),
+    };
+    /// Create empty metadata for a leader.
+    ///
+    /// `nexus_registry::leader::empty_metadata`
+    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("empty_metadata"),
+    };
+    /// Admin capability type for modifying leader allowlist.
+    ///
+    /// `nexus_registry::leader::LeaderCapabilitiesAdminCap`
+    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
+    };
+    /// LeaderRegistry type for lookups.
+    ///
+    /// `nexus_registry::leader::LeaderRegistry`
+    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderRegistry"),
+    };
+    /// Create metadata with the provided map.
+    ///
+    /// `nexus_registry::leader::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("new_metadata"),
+    };
+    /// Register the caller as a leader and stake.
+    ///
+    /// `nexus_registry::leader::register`
+    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("register"),
+    };
+    /// Stake SUI into a leader's pool.
+    ///
+    /// `nexus_registry::leader::stake`
+    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("stake"),
+    };
+    /// Suspend a leader only if the caller still holds the on-record claim token.
+    ///
+    /// `nexus_registry::leader::suspend_if_token`
+    pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("suspend_if_token"),
     };
 }
 

@@ -101,16 +101,6 @@ mod tests {
 
             inputs
         }
-
-        fn input(&self, argument: &sui::types::Argument) -> &sui::types::Input {
-            let sui::types::Argument::Input(index) = argument else {
-                panic!("expected Argument::Input, got {argument:?}");
-            };
-
-            self.inputs()
-                .get(*index as usize)
-                .unwrap_or_else(|| panic!("missing input for index {index}"))
-        }
     }
 
     #[test]

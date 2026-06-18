@@ -908,30 +908,6 @@ impl ToolRegistry {
     };
 }
 
-// == `nexus_workflow::leader_cap` ==
-
-pub struct LeaderCap;
-
-const LEADER_CAP_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader_cap");
-
-impl LeaderCap {
-    /// Create N leader caps for self and the provided addresses.
-    ///
-    /// `nexus_workflow::leader_cap::create_for_self_and_addresses`
-    pub const CREATE_FOR_SELF_AND_ADDRESSES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_CAP_MODULE,
-        name: sui::types::Identifier::from_static("create_for_self_and_addresses"),
-    };
-    /// This is used as a generic argument for
-    /// [crate::idents::primitives::OwnerCap::CLONEABLE_OWNER_CAP].
-    ///
-    /// `nexus_workflow::leader_cap::OverNetwork`
-    pub const OVER_NETWORK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_CAP_MODULE,
-        name: sui::types::Identifier::from_static("OverNetwork"),
-    };
-}
-
 // == `nexus_workflow::gas` ==
 
 pub struct Gas;
@@ -1102,106 +1078,6 @@ impl GasExtension {
     pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_EXTENSION_MODULE,
         name: sui::types::Identifier::from_static("enable_limited_invocations"),
-    };
-}
-
-// == `nexus_workflow::leader` ==
-
-pub struct Leader;
-
-const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
-
-impl Leader {
-    /// Activate a leader and claim ownership of its `Active` state with a fresh token.
-    ///
-    /// `nexus_workflow::leader::activate_and_claim`
-    pub const ACTIVATE_AND_CLAIM: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("activate_and_claim"),
-    };
-    /// Allow an address to request leader capabilities.
-    ///
-    /// `nexus_workflow::leader::allow_address`
-    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("allow_address"),
-    };
-    /// Disallow an address from requesting leader capabilities.
-    ///
-    /// `nexus_workflow::leader::disallow_address`
-    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("disallow_address"),
-    };
-    /// Create empty metadata for a leader.
-    ///
-    /// `nexus_workflow::leader::empty_metadata`
-    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("empty_metadata"),
-    };
-    /// Admin capability type for modifying leader allowlist.
-    ///
-    /// `nexus_workflow::leader::LeaderCapabilitiesAdminCap`
-    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
-    };
-    /// LeaderRegistry type for lookups.
-    ///
-    /// `nexus_workflow::leader::LeaderRegistry`
-    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("LeaderRegistry"),
-    };
-    /// Create metadata with the provided map.
-    ///
-    /// `nexus_workflow::leader::new_metadata`
-    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("new_metadata"),
-    };
-    /// Register the caller as a leader and stake.
-    ///
-    /// `nexus_workflow::leader::register`
-    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("register"),
-    };
-    /// Stake SUI into a leader's pool.
-    ///
-    /// `nexus_workflow::leader::stake`
-    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("stake"),
-    };
-    /// Create `LeaderStatus::ACTIVE`.
-    ///
-    /// `nexus_workflow::leader::status_active`
-    pub const STATUS_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_active"),
-    };
-    /// Create `LeaderStatus::SLASHED`.
-    ///
-    /// `nexus_workflow::leader::status_slashed`
-    pub const STATUS_SLASHED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_slashed"),
-    };
-    /// Create `LeaderStatus::SUSPENDED`.
-    ///
-    /// `nexus_workflow::leader::status_suspended`
-    pub const STATUS_SUSPENDED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_suspended"),
-    };
-    /// Suspend a leader only if the caller still holds the on-record claim token.
-    ///
-    /// `nexus_workflow::leader::suspend_if_token`
-    pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("suspend_if_token"),
     };
 }
 
