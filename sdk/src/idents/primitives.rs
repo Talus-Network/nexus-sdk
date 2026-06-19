@@ -1,67 +1,18 @@
+//! Identifiers for the `nexus_primitives` Move package.
+//!
+//! The per-module unit structs (`Authorization`, `Data`, `Event`, …) and their
+//! `ModuleAndNameIdent` constants are generated at build time from
+//! `generated/ir/primitives.json`. This module keeps the hand-written
+//! `NexusData` construction helpers and the `TypeTag` helper on top of them.
+
 use crate::{
     idents::{move_std, ModuleAndNameIdent},
     sui,
 };
 
-// == `nexus_primitives::authorization` ==
-
-pub struct Authorization;
-
-const AUTHORIZATION_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("authorization");
-
-impl Authorization {
-    /// `nexus_primitives::authorization::ProvenValue`
-    pub const PROVEN_VALUE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AUTHORIZATION_MODULE,
-        name: sui::types::Identifier::from_static("ProvenValue"),
-    };
-}
-
-// == `nexus_primitives::data` ==
-
-pub struct Data;
-
-const DATA_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("data");
+include!(concat!(env!("OUT_DIR"), "/idents_primitives.rs"));
 
 impl Data {
-    /// Create NexusData from a vector of vectors of bytes.
-    ///
-    /// `nexus_primitives::data::inline_many`
-    pub const INLINE_MANY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("inline_many"),
-    };
-    /// Create NexusData from a vector of bytes.
-    ///
-    /// `nexus_primitives::data::inline_one`
-    pub const INLINE_ONE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("inline_one"),
-    };
-    /// NexusData struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_primitives::data::NexusData`
-    pub const NEXUS_DATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("NexusData"),
-    };
-    /// Create NexusData from a vector of vectors of bytes that are stored on
-    /// Walrus.
-    ///
-    /// `nexus_primitives::data::walrus_many`
-    pub const WALRUS_MANY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("walrus_many"),
-    };
-    /// Create NexusData from a vector of bytes that are stored on Walrus.
-    ///
-    /// `nexus_primitives::data::walrus_one`
-    pub const WALRUS_ONE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DATA_MODULE,
-        name: sui::types::Identifier::from_static("walrus_one"),
-    };
-
     /// Create NexusData with inline storage from a [serde_json::Value].
     pub fn nexus_data_inline_from_json<T: serde::Serialize>(
         tx: &mut sui::tx::TransactionBuilder,
@@ -146,86 +97,14 @@ impl Data {
     }
 }
 
-// == `nexus_primitives::event` ==
-
-pub struct Event;
-
-const EVENT_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("event");
-
-impl Event {
-    /// All events fired by the on-chain part of Nexus are wrapped in the
-    /// generic argument of this struct.
-    ///
-    /// `nexus_primitives::event::EventWrapper`
-    pub const EVENT_WRAPPER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: EVENT_MODULE,
-        name: sui::types::Identifier::from_static("EventWrapper"),
-    };
-}
-
-// == `nexus_primitives::distributed_event` ==
-
-pub struct DistributedEvent;
-
-const DISTRIBUTED_EVENT_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("distributed_event");
-
-impl DistributedEvent {
-    /// All distributed events fired by the on-chain part of Nexus are wrapped
-    /// in the generic argument of this struct.
-    ///
-    /// `nexus_primitives::distributed_event::DistributedEventWrapper`
-    pub const DISTRIBUTED_EVENT_WRAPPER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DISTRIBUTED_EVENT_MODULE,
-        name: sui::types::Identifier::from_static("DistributedEventWrapper"),
-    };
-}
-
-// == `nexus_primitives::owner_cap` ==
-
-pub struct OwnerCap;
-
-const OWNER_CAP_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("owner_cap");
-
-impl OwnerCap {
-    /// This is used to fetch owner caps for the configured addresses. Each
-    /// owner cap can authorize transactions that notify the chain about DAG
-    /// execution results. N owner caps allow for N parallel requests.
-    ///
-    /// `nexus_primitives::owner_cap::CloneableOwnerCap`
-    pub const CLONEABLE_OWNER_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OWNER_CAP_MODULE,
-        name: sui::types::Identifier::from_static("CloneableOwnerCap"),
-    };
-}
-
-// == `nexus_primitives::policy` ==
-
-pub struct Policy;
-
-const POLICY_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("policy");
-
-impl Policy {
-    /// `nexus_primitives::policy::Symbol`
-    pub const SYMBOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: POLICY_MODULE,
-        name: sui::types::Identifier::from_static("Symbol"),
-    };
-    /// `nexus_primitives::policy::witness_symbol`
-    pub const WITNESS_SYMBOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: POLICY_MODULE,
-        name: sui::types::Identifier::from_static("witness_symbol"),
-    };
-}
-
 /// Helper to turn a `ModuleAndNameIdent` into a `sui::types::TypeTag`. Useful for
 /// creating generic types.
 pub fn into_type_tag(
-    workflow_pkg_id: sui::types::Address,
+    primitives_pkg_id: sui::types::Address,
     ident: ModuleAndNameIdent,
 ) -> sui::types::TypeTag {
     sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        workflow_pkg_id,
+        primitives_pkg_id,
         ident.module,
         ident.name,
         vec![],
@@ -259,7 +138,10 @@ mod tests {
 
     #[test]
     fn authorization_idents_use_authorization_module() {
-        assert_eq!(Authorization::PROVEN_VALUE.module, AUTHORIZATION_MODULE);
+        assert_eq!(
+            Authorization::PROVEN_VALUE.module,
+            sui::types::Identifier::from_static("authorization")
+        );
         assert_eq!(
             Authorization::PROVEN_VALUE.name,
             sui::types::Identifier::from_static("ProvenValue")

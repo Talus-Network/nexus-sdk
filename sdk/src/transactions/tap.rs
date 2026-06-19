@@ -5,7 +5,6 @@ use crate::{
         AgentId,
         AgentVertexAuthorizationTemplate,
         FixedTool,
-        InterfaceRevision,
         NexusObjects,
         RecurrenceKind,
         ScheduledOccurrenceFinalState,
@@ -101,21 +100,6 @@ pub fn agent_id_from_address(
     agent_id: AgentId,
 ) -> anyhow::Result<sui::tx::Argument> {
     sui_framework::Object::id_from_object_id(tx, agent_id)
-}
-
-pub fn interface_revision(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    interface_revision: InterfaceRevision,
-) -> anyhow::Result<sui::tx::Argument> {
-    let interface_revision = tx.pure(&interface_revision.0);
-
-    Ok(tap_interface_call(
-        tx,
-        objects,
-        TapStandard::INTERFACE_REVISION,
-        vec![interface_revision],
-    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -714,22 +698,6 @@ fn scheduled_vertex_authorization_templates_arg(
     Ok(vector)
 }
 
-pub fn trigger_scheduled_skill_execution(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::tx::Argument,
-    scheduled_task: sui::tx::Argument,
-    execution_id: sui::types::Address,
-) -> anyhow::Result<sui::tx::Argument> {
-    let execution_id = tx.pure(&execution_id);
-    Ok(agent_registry_call(
-        tx,
-        objects,
-        AgentRegistry::TRIGGER_SCHEDULED_SKILL_EXECUTION,
-        vec![registry, scheduled_task, execution_id],
-    ))
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn complete_scheduled_payment_reserve_occurrence(
     tx: &mut sui::tx::TransactionBuilder,
@@ -1128,7 +1096,6 @@ mod tests {
 
         agent_id_from_address(&mut tx, &objects, sui::types::Address::from_static("0xa"))
             .expect("agent id");
-        interface_revision(&mut tx, &objects, InterfaceRevision(3)).expect("interface revision");
         let registry = registry_arg(&mut tx);
         let agent = agent_arg(&mut tx);
         get_skill_requirements(&mut tx, &objects, registry, agent, 11).expect("requirements");
@@ -1155,15 +1122,6 @@ mod tests {
             SkillSchedulePolicy::default(),
         )
         .expect("update policies");
-        let registry = registry_arg(&mut tx);
-        trigger_scheduled_skill_execution(
-            &mut tx,
-            &objects,
-            registry,
-            scheduled_task,
-            sui::types::Address::from_static("0x90"),
-        )
-        .expect("trigger schedule");
         for state in [
             ScheduledOccurrenceFinalState::InFlight,
             ScheduledOccurrenceFinalState::Accomplished,
@@ -1191,11 +1149,9 @@ mod tests {
             .collect::<Vec<_>>();
         for expected in [
             sui_framework::Object::ID_FROM_ADDRESS.name,
-            TapStandard::INTERFACE_REVISION.name,
             AgentRegistry::GET_SKILL_REQUIREMENTS.name,
             AgentRegistry::UPDATE_DAG.name,
             AgentRegistry::UPDATE_SKILL_POLICIES.name,
-            AgentRegistry::TRIGGER_SCHEDULED_SKILL_EXECUTION.name,
             TapStandard::COMPLETE_SCHEDULED_PAYMENT_RESERVE_OCCURRENCE.name,
             TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT.name,
             TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED.name,

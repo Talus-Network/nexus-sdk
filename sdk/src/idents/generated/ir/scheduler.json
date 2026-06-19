@@ -1,6 +1,6 @@
 {
-  "storage_id": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-  "original_id": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+  "storage_id": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+  "original_id": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
   "version": 1,
   "modules": {
     "scheduler": {
@@ -8,7 +8,33 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "AgentSkillAuthorizationFieldKey"
+          },
+          "module": "scheduler",
+          "name": "AgentSkillAuthorizationFieldKey",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "Constraints"
           },
@@ -34,7 +60,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "Execution"
           },
@@ -60,7 +86,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "Metadata"
           },
@@ -116,7 +142,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "MissedOccurrenceEvent"
           },
@@ -181,7 +207,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -195,7 +221,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "Occurrence"
           },
@@ -242,7 +268,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -256,7 +282,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "OccurrenceConsumedEvent"
           },
@@ -316,7 +342,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -335,7 +361,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "OccurrenceScheduledEvent"
           },
@@ -369,7 +395,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -383,7 +409,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "PeriodicGeneratorState"
           },
@@ -410,7 +436,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Occurrence"
                             },
@@ -506,7 +532,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "PeriodicGeneratorWitness"
           },
@@ -532,7 +558,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "PeriodicScheduleConfiguredEvent"
           },
@@ -651,7 +677,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "QueueEntry"
           },
@@ -671,7 +697,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -695,7 +721,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "QueueGeneratorState"
           },
@@ -722,7 +748,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -757,7 +783,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -774,7 +800,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "QueueGeneratorWitness"
           },
@@ -800,7 +826,174 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "ScheduledPaymentReserveFieldKey"
+          },
+          "module": "scheduler",
+          "name": "ScheduledPaymentReserveFieldKey",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "ScheduledSkillExecutionCanceledEvent"
+          },
+          "module": "scheduler",
+          "name": "ScheduledSkillExecutionCanceledEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "ScheduledSkillExecutionCreatedEvent"
+          },
+          "module": "scheduler",
+          "name": "ScheduledSkillExecutionCreatedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "owner",
+                  "position": 1,
+                  "ty": "Address"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "ScheduledSkillExecutionPausedEvent"
+          },
+          "module": "scheduler",
+          "name": "ScheduledSkillExecutionPausedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+            "module": "scheduler",
+            "name": "ScheduledSkillExecutionResumedEvent"
+          },
+          "module": "scheduler",
+          "name": "ScheduledSkillExecutionResumedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "State"
           },
@@ -829,91 +1022,16 @@
                   "name": "Canceled",
                   "position": 2,
                   "fields": []
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TapScheduledTaskLink"
-          },
-          "module": "scheduler",
-          "name": "TapScheduledTaskLink",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "scheduled_task_id",
-                  "position": 0,
-                  "ty": "Address"
                 },
                 {
-                  "name": "agent_id",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "skill_id",
-                  "position": 2,
-                  "ty": "U64"
-                },
-                {
-                  "name": "source_kind",
+                  "name": "Completed",
                   "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
-                        "module": "tap",
-                        "name": "PaymentSourceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TapScheduledTaskLinkKey"
-          },
-          "module": "scheduler",
-          "name": "TapScheduledTaskLinkKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                  "fields": []
+                },
                 {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
+                  "name": "Failed",
+                  "position": 4,
+                  "fields": []
                 }
               ]
             }
@@ -921,7 +1039,7 @@
         },
         {
           "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
             "module": "scheduler",
             "name": "Task"
           },
@@ -955,12 +1073,45 @@
                   "ty": "Address"
                 },
                 {
-                  "name": "metadata",
+                  "name": "agent_id",
                   "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "skill_id",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "interface_version",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "version",
+                        "name": "InterfaceVersion"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "metadata",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Metadata"
                       },
@@ -970,11 +1121,11 @@
                 },
                 {
                   "name": "constraints",
-                  "position": 3,
+                  "position": 6,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -982,7 +1133,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -995,11 +1146,11 @@
                 },
                 {
                   "name": "execution",
-                  "position": 4,
+                  "position": 7,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1007,7 +1158,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -1020,11 +1171,11 @@
                 },
                 {
                   "name": "state",
-                  "position": 5,
+                  "position": 8,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "State"
                       },
@@ -1034,7 +1185,7 @@
                 },
                 {
                   "name": "data",
-                  "position": 6,
+                  "position": 9,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -1048,154 +1199,13 @@
                 },
                 {
                   "name": "objects",
-                  "position": 7,
+                  "position": 10,
                   "ty": {
                     "Datatype": {
                       "type_name": {
                         "address": "0x2",
                         "module": "object_bag",
                         "name": "ObjectBag"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TaskCanceledEvent"
-          },
-          "module": "scheduler",
-          "name": "TaskCanceledEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "task",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TaskCreatedEvent"
-          },
-          "module": "scheduler",
-          "name": "TaskCreatedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "task",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "owner",
-                  "position": 1,
-                  "ty": "Address"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TaskPausedEvent"
-          },
-          "module": "scheduler",
-          "name": "TaskPausedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "task",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-            "module": "scheduler",
-            "name": "TaskResumedEvent"
-          },
-          "module": "scheduler",
-          "name": "TaskResumedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "task",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
                       },
                       "type_arguments": []
                     }
@@ -1221,7 +1231,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1262,7 +1272,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1325,7 +1335,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1366,7 +1376,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1436,7 +1446,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1476,7 +1486,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1509,7 +1519,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -1522,6 +1532,89 @@
             {
               "name": "arg1",
               "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "agent_execution_dag_id",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert_default_task_agent",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": []
@@ -1540,7 +1633,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1548,7 +1641,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -1565,8 +1658,8 @@
           "return_types": []
         },
         {
-          "name": "attach_tap_scheduled_task_link",
-          "visibility": "Public",
+          "name": "assert_task_agent",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -1574,11 +1667,11 @@
               "name": "arg0",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1596,9 +1689,191 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
-                        "module": "tap",
-                        "name": "ScheduledSkillTask"
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "borrow_constraint",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                      "module": "policy",
+                      "name": "Policy"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                            "module": "scheduler",
+                            "name": "Constraints"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "borrow_execution",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                      "module": "policy",
+                      "name": "Policy"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                            "module": "scheduler",
+                            "name": "Execution"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "can_collect_scheduled_payment_reserve",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "cancel",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
                       },
                       "type_arguments": []
                     }
@@ -1628,115 +1903,7 @@
           "return_types": []
         },
         {
-          "name": "borrow_constraint",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                      "module": "policy",
-                      "name": "Policy"
-                    },
-                    "type_arguments": [
-                      {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                            "module": "scheduler",
-                            "name": "Constraints"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "borrow_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                      "module": "policy",
-                      "name": "Policy"
-                    },
-                    "type_arguments": [
-                      {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                            "module": "scheduler",
-                            "name": "Execution"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "cancel",
+          "name": "cancel_agent_funded_task",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -1749,7 +1916,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1761,6 +1928,132 @@
             },
             {
               "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "cancel_task",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "cancel_with_agent",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1794,7 +2087,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1812,7 +2105,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1863,7 +2156,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -1886,7 +2179,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1904,7 +2197,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1955,7 +2248,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -1963,6 +2256,69 @@
               }
             }
           ]
+        },
+        {
+          "name": "collect_idle_agent_funded_scheduled_payment_reserve_to_vault",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "configure_periodic_state",
@@ -1978,7 +2334,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2034,6 +2390,95 @@
           "return_types": []
         },
         {
+          "name": "copy_scheduled_authorization_grants",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "authorization",
+                        "name": "AgentSkillAuthorization"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "Grant"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                          "module": "authorization",
+                          "name": "AgentVertexAuthorization"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "default_execution_config_dag_id",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "disable_periodic_for_task",
           "visibility": "Public",
           "is_entry": false,
@@ -2047,7 +2492,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2092,7 +2537,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2137,7 +2582,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2186,7 +2631,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2235,7 +2680,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2257,7 +2702,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2320,7 +2765,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2459,7 +2904,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2508,7 +2953,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2553,7 +2998,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2584,7 +3029,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2611,7 +3056,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2626,7 +3071,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -2649,7 +3094,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2684,7 +3129,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2699,7 +3144,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -2724,7 +3169,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2742,8 +3187,8 @@
           "return_types": []
         },
         {
-          "name": "is_task_canceled_internal",
-          "visibility": "Private",
+          "name": "is_active",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -2755,7 +3200,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2771,7 +3216,36 @@
           ]
         },
         {
-          "name": "is_task_paused_internal",
+          "name": "is_paused",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_task_canceled_internal",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -2784,7 +3258,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2813,7 +3287,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2829,7 +3303,7 @@
           ]
         },
         {
-          "name": "is_time_paused",
+          "name": "is_time_completed",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2842,7 +3316,36 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_time_failed",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2891,7 +3394,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -2904,7 +3407,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -2927,7 +3430,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2954,7 +3457,61 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "mark_task_completed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "mark_task_failed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2981,7 +3538,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3037,7 +3594,7 @@
         },
         {
           "name": "new",
-          "visibility": "Public",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -3046,7 +3603,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3059,7 +3616,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3067,7 +3624,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3083,7 +3640,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3091,7 +3648,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -3104,6 +3661,40 @@
             },
             {
               "name": "arg3",
+              "ty": "Address"
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "U64"
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "version",
+                    "name": "InterfaceVersion"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg7",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3125,7 +3716,163 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_agent_funded_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": "U64"
+            },
+            {
+              "name": "arg7",
+              "ty": "U64"
+            },
+            {
+              "name": "arg8",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -3156,7 +3903,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -3192,7 +3939,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -3200,7 +3947,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Constraints"
                       },
@@ -3208,6 +3955,123 @@
                     }
                   }
                 ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_default_agent_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "Task"
+                },
+                "type_arguments": []
               }
             }
           ]
@@ -3234,7 +4098,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -3270,7 +4134,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -3278,7 +4142,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Execution"
                       },
@@ -3286,6 +4150,331 @@
                     }
                   }
                 ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_invoker_funded_agent_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": "Address"
+            },
+            {
+              "name": "arg8",
+              "ty": "U64"
+            },
+            {
+              "name": "arg9",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_invoker_funded_default_agent_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "U64"
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "Task"
+                },
+                "type_arguments": []
               }
             }
           ]
@@ -3335,7 +4524,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "Metadata"
                 },
@@ -3358,7 +4547,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3418,7 +4607,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -3477,7 +4666,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "PeriodicGeneratorState"
                 },
@@ -3496,9 +4685,165 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "QueueGeneratorState"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_registered_agent_task_for_skill",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "Address"
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": "U64"
+            },
+            {
+              "name": "arg8",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "Task"
                 },
                 "type_arguments": []
               }
@@ -3519,7 +4864,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -3552,7 +4897,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3564,6 +4909,114 @@
             },
             {
               "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "pause_task_if_active",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "pause_with_agent",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3615,7 +5068,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -3637,7 +5090,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -3682,7 +5135,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -3690,7 +5143,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -3718,13 +5171,42 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Symbol"
                 },
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "periodic_has_scheduled_work",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         },
         {
@@ -3741,7 +5223,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -3756,7 +5238,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -3779,7 +5261,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                         "module": "dag",
                         "name": "DAG"
                       },
@@ -3797,7 +5279,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -3811,13 +5293,13 @@
               "name": "arg2",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
-                        "module": "tap",
-                        "name": "ScheduledSkillTask"
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
                       },
                       "type_arguments": []
                     }
@@ -3829,13 +5311,13 @@
               "name": "arg3",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
                       },
                       "type_arguments": []
                     }
@@ -3847,29 +5329,11 @@
               "name": "arg4",
               "ty": {
                 "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg5",
-              "ty": {
-                "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -3877,7 +5341,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                               "module": "leader_cap",
                               "name": "OverNetwork"
                             },
@@ -3891,7 +5355,7 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "arg5",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3909,7 +5373,7 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "arg6",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3931,7 +5395,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "DAGExecution"
                 },
@@ -3941,7 +5405,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "RequestWalkExecution"
                 },
@@ -3964,7 +5428,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                         "module": "dag",
                         "name": "DAG"
                       },
@@ -3982,7 +5446,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -3996,13 +5460,13 @@
               "name": "arg2",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
-                        "module": "tap",
-                        "name": "ScheduledSkillTask"
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
                       },
                       "type_arguments": []
                     }
@@ -4014,13 +5478,13 @@
               "name": "arg3",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
                       },
                       "type_arguments": []
                     }
@@ -4032,29 +5496,11 @@
               "name": "arg4",
               "ty": {
                 "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg5",
-              "ty": {
-                "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -4062,7 +5508,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                               "module": "leader_cap",
                               "name": "OverNetwork"
                             },
@@ -4076,7 +5522,7 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "arg5",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4094,7 +5540,7 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "arg6",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4116,7 +5562,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "DAGExecution"
                 },
@@ -4126,7 +5572,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "RequestWalkExecution"
                 },
@@ -4149,7 +5595,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                         "module": "dag",
                         "name": "DAG"
                       },
@@ -4167,7 +5613,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4185,7 +5631,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
                       },
@@ -4203,7 +5649,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4221,7 +5667,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -4229,7 +5675,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                               "module": "leader_cap",
                               "name": "OverNetwork"
                             },
@@ -4268,16 +5714,10 @@
             },
             {
               "name": "arg6",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "arg7",
               "ty": "U64"
             },
             {
-              "name": "arg8",
+              "name": "arg7",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4295,7 +5735,7 @@
               }
             },
             {
-              "name": "arg9",
+              "name": "arg8",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4317,7 +5757,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "DAGExecution"
                 },
@@ -4327,7 +5767,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                   "module": "dag",
                   "name": "RequestWalkExecution"
                 },
@@ -4368,7 +5808,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -4419,7 +5859,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -4441,7 +5881,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4504,7 +5944,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -4526,7 +5966,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4589,7 +6029,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -4604,7 +6044,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -4620,7 +6060,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4665,7 +6105,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -4683,7 +6123,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -4712,7 +6152,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -4745,7 +6185,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -4753,7 +6193,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -4781,13 +6221,42 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Symbol"
                 },
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "queue_has_scheduled_work",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         },
         {
@@ -4804,7 +6273,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -4819,7 +6288,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "Occurrence"
                   },
@@ -4836,7 +6305,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -4877,7 +6346,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -4892,7 +6361,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -4908,7 +6377,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4953,7 +6422,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -4968,7 +6437,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -5024,7 +6493,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5046,7 +6515,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5091,7 +6560,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5110,7 +6579,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -5135,7 +6604,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -5153,7 +6622,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -5182,7 +6651,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5197,7 +6666,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -5220,7 +6689,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5228,7 +6697,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -5246,9 +6715,9 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                    "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                     "module": "dag",
-                    "name": "AgentExecutionConfig"
+                    "name": "DagExecutionConfig"
                   },
                   "type_arguments": []
                 }
@@ -5271,7 +6740,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5279,7 +6748,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -5297,7 +6766,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                    "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
                     "module": "dag",
                     "name": "DagExecutionConfig"
                   },
@@ -5322,7 +6791,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5330,7 +6799,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -5348,7 +6817,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "PeriodicGeneratorState"
                   },
@@ -5373,7 +6842,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5381,7 +6850,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -5399,7 +6868,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "QueueGeneratorState"
                   },
@@ -5409,6 +6878,160 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "remove_scheduled_payment_reserve",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                  "module": "payment",
+                  "name": "ScheduledPaymentReserve"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "remove_scheduled_skill_authorization",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                  "module": "authorization",
+                  "name": "AgentSkillAuthorization"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "resolve_agent_execution_config",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64",
+            "Bool",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Vector": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "authorization",
+                    "name": "AgentVertexAuthorizationTemplate"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
         },
         {
           "name": "resume",
@@ -5424,7 +7047,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5436,6 +7059,24 @@
             },
             {
               "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xbfed1196276ada39d78360cf8cbe3cb31c191f4477fe6c0a4ff8750b8851613e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -5456,7 +7097,70 @@
           "return_types": []
         },
         {
-          "name": "tap_scheduled_task_link",
+          "name": "resume_with_agent",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "scheduled_payment_reserve",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5469,7 +7173,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5482,19 +7186,67 @@
           ],
           "return_types": [
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                  "module": "scheduler",
-                  "name": "TapScheduledTaskLink"
-                },
-                "type_arguments": []
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                      "module": "payment",
+                      "name": "ScheduledPaymentReserve"
+                    },
+                    "type_arguments": []
+                  }
+                }
               }
             }
           ]
         },
         {
-          "name": "tap_scheduled_task_link_agent_id",
+          "name": "scheduled_payment_reserve_mut",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                      "module": "payment",
+                      "name": "ScheduledPaymentReserve"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "scheduled_skill_authorization",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5502,13 +7254,159 @@
             {
               "name": "arg0",
               "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                      "module": "authorization",
+                      "name": "AgentSkillAuthorization"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "settle_finished_scheduled_execution_payment_if_ready",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x4a9d5c7af7fd024d82d70b69573833bb9581c0becf54e751166f2b70866938e1",
+                        "module": "dag",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "store_scheduled_skill_components",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                    "module": "scheduler",
-                    "name": "TapScheduledTaskLink"
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "authorization",
+                    "name": "AgentSkillAuthorization"
                   },
                   "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                    "module": "payment",
+                    "name": "ScheduledPaymentReserve"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "task_agent_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -5527,7 +7425,36 @@
           ]
         },
         {
-          "name": "tap_scheduled_task_link_scheduled_task_id",
+          "name": "task_has_scheduled_work",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "task_interface_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5535,13 +7462,56 @@
             {
               "name": "arg0",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                    "module": "scheduler",
-                    "name": "TapScheduledTaskLink"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x88e717cc57f952d3942e32115c7bf7c9a4e781ae596ab40736f47f3bea67a71d",
+                  "module": "version",
+                  "name": "InterfaceVersion"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_owner",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -5551,7 +7521,7 @@
           ]
         },
         {
-          "name": "tap_scheduled_task_link_skill_id",
+          "name": "task_skill_id",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5559,13 +7529,18 @@
             {
               "name": "arg0",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                    "module": "scheduler",
-                    "name": "TapScheduledTaskLink"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -5575,7 +7550,7 @@
           ]
         },
         {
-          "name": "tap_scheduled_task_link_source_kind",
+          "name": "task_state",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5583,13 +7558,18 @@
             {
               "name": "arg0",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
-                    "module": "scheduler",
-                    "name": "TapScheduledTaskLink"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -5598,9 +7578,9 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
-                  "module": "tap",
-                  "name": "PaymentSourceKind"
+                  "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
+                  "module": "scheduler",
+                  "name": "State"
                 },
                 "type_arguments": []
               }
@@ -5621,7 +7601,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5636,7 +7616,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "address": "0xf7f26005b64ad53079e693513d5fea0f59cd3f53b617df9d23ae8be653485765",
                     "module": "scheduler",
                     "name": "Metadata"
                   },

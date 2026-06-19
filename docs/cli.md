@@ -693,7 +693,7 @@ Executes a Talus agent skill through its current registry skill revision and DAG
 
 JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active skill revision key, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
 
-Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific. Build a single PTB with `sui client ptb` (or the `nexus_sdk::transactions::dag::create_vertex_authorization_grant` builder) that calls `nexus_workflow::dag::create_vertex_authorization_grant`, hands the result to your tap package's bind hook, and only then invokes the workflow's begin / request-walk entrypoints. See the [TAP development guide](guides/1-tap-development.md) for a worked example.
+Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

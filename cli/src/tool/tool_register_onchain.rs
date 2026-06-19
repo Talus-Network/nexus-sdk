@@ -9,7 +9,7 @@ use {
         sui::*,
     },
     nexus_sdk::{
-        idents::{primitives, workflow as workflow_idents},
+        idents::{primitives, registry as registry_idents, workflow as workflow_idents},
         nexus::error::NexusError,
         sui,
         transactions::tool,
@@ -270,8 +270,8 @@ fn extract_owner_caps(
         };
 
         if *inner.address() == nexus_objects.registry_pkg_id
-            && *inner.module() == workflow_idents::ToolRegistry::OVER_TOOL.module
-            && *inner.name() == workflow_idents::ToolRegistry::OVER_TOOL.name
+            && *inner.module() == registry_idents::ToolRegistry::OVER_TOOL.module
+            && *inner.name() == registry_idents::ToolRegistry::OVER_TOOL.name
         {
             over_tool = Some(obj.object_id());
         } else if *inner.address() == nexus_objects.workflow_pkg_id
@@ -1260,8 +1260,8 @@ mod tests {
             &mut rng,
             &nexus_objects,
             nexus_objects.registry_pkg_id,
-            workflow_idents::ToolRegistry::OVER_TOOL.module,
-            workflow_idents::ToolRegistry::OVER_TOOL.name,
+            registry_idents::ToolRegistry::OVER_TOOL.module,
+            registry_idents::ToolRegistry::OVER_TOOL.name,
             owner_cap_id,
         )];
 
@@ -1318,8 +1318,8 @@ mod tests {
                 &mut rng,
                 &nexus_objects,
                 nexus_objects.registry_pkg_id,
-                workflow_idents::ToolRegistry::OVER_TOOL.module,
-                workflow_idents::ToolRegistry::OVER_TOOL.name,
+                registry_idents::ToolRegistry::OVER_TOOL.module,
+                registry_idents::ToolRegistry::OVER_TOOL.name,
                 over_tool_id,
             ),
         ];

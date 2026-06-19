@@ -16,6 +16,14 @@ pub const STANDARD_PAYMENT_MODULE: sui::types::Identifier =
 pub const INTERFACE_VERSION_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("version");
 
+// Generated per-module structs for the `nexus_interface` package (`Agent`,
+// `Authorization`, `Payment`, `Verifier`, `Version`, …). These are the
+// single-source-of-truth identifiers for the interface package; the
+// hand-written `TapStandard` facade below is retained because it is a curated,
+// runtime-resolved view whose groupings deliberately span the interface and
+// registry packages and so do not map onto a single generated struct.
+include!(concat!(env!("OUT_DIR"), "/idents_interface.rs"));
+
 // == Standard agent interface ==
 
 pub struct TapStandard;
@@ -28,10 +36,6 @@ impl TapStandard {
     pub const AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("AgentExecutionConfig"),
-    };
-    pub const AGENT_ID_FROM_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_AGENT_MODULE,
-        name: sui::types::Identifier::from_static("agent_id_from_address"),
     };
     pub const AGENT_VERTEX_AUTHORIZATION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_AUTHORIZATION_MODULE,
@@ -127,25 +131,13 @@ impl TapStandard {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("schedule_policy"),
     };
-    pub const SETTLE_EXECUTION_PAYMENT_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_AGENT_MODULE,
-        name: sui::types::Identifier::from_static("settle_execution_payment_vertex"),
-    };
     pub const SHARED_OBJECT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("shared_object_ref"),
     };
-    pub const SKILL_ACTIVE_REVISION_UPDATED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("SkillActiveRevisionUpdatedEvent"),
-    };
     pub const SKILL_REGISTERED_EVENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("SkillRegisteredEvent"),
-    };
-    pub const SNAPSHOT_EXECUTION_PAYMENT_TOOL_COST: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STANDARD_AGENT_MODULE,
-        name: sui::types::Identifier::from_static("snapshot_execution_payment_tool_cost"),
     };
     /// Withdraw unlocked SUI from a standard TAP `AgentPaymentVault`.
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {

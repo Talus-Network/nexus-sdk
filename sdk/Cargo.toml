@@ -12,6 +12,11 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "generate_binding"
+path = "src/bin/generate_binding.rs"
+required-features = ["binding_codegen"]
+
 [features]
 default = ["tool_fqn"]
 
@@ -43,6 +48,11 @@ move_publish = [
 # Sui idents feature enables the use of the `idents` module and adds sui-sdk
 # and move-core-types as dependencies.
 sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
+
+# Binding codegen feature gates the `generate_binding` binary, the network half
+# of the Move-binding identifier pipeline. It needs a full Tokio runtime to drive
+# the gRPC fetch; the offline render in `build.rs` requires none of this.
+binding_codegen = ["sui_types", "tokio/full"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.

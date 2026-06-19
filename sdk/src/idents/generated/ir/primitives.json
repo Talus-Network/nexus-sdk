@@ -1,14 +1,1250 @@
 {
-  "storage_id": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-  "original_id": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+  "storage_id": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+  "original_id": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
   "version": 1,
   "modules": {
+    "authorization": {
+      "name": "authorization",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+            "module": "authorization",
+            "name": "CloneableProvenValue"
+          },
+          "module": "authorization",
+          "name": "CloneableProvenValue",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "value",
+                  "position": 0,
+                  "ty": {
+                    "TypeParameter": 0
+                  }
+                },
+                {
+                  "name": "by",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "recipient",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+            "module": "authorization",
+            "name": "Grant"
+          },
+          "module": "authorization",
+          "name": "Grant",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "proof",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "CloneableProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+            "module": "authorization",
+            "name": "ProvenValue"
+          },
+          "module": "authorization",
+          "name": "ProvenValue",
+          "abilities": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "value",
+                  "position": 0,
+                  "ty": {
+                    "TypeParameter": 0
+                  }
+                },
+                {
+                  "name": "by",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "recipient",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "by",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "ProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "cloneable_by",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "CloneableProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "cloneable_into_proven_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "CloneableProvenValue"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "ProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cloneable_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "CloneableProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cloneable_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "CloneableProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 0
+            }
+          ]
+        },
+        {
+          "name": "drop",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "ProvenValue"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "grant",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "Grant"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "grant_by",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "Grant"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "grant_for_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "Grant"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "grant_into_proven_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "Grant"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "ProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "grant_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "Grant"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "grant_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "Grant"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 0
+            }
+          ]
+        },
+        {
+          "name": "recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "authorization",
+                        "name": "ProvenValue"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "unwrap",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "ProvenValue"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 0
+            }
+          ]
+        },
+        {
+          "name": "unwrap_as_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "ProvenValue"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 0
+            }
+          ]
+        },
+        {
+          "name": "unwrap_cloneable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                    "module": "authorization",
+                    "name": "CloneableProvenValue"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 0
+            }
+          ]
+        },
+        {
+          "name": "wrap",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "ProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "wrap_cloneable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "CloneableProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "wrap_cloneable_for_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "CloneableProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "wrap_for_recipient",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "authorization",
+                  "name": "ProvenValue"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
     "automaton": {
       "name": "automaton",
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "automaton",
             "name": "ConfiguredAutomaton"
           },
@@ -59,7 +1295,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -80,7 +1316,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "automaton",
             "name": "DeterministicAutomaton"
           },
@@ -200,7 +1436,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "automaton",
             "name": "TransitionConfigKey"
           },
@@ -238,7 +1474,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "TransitionKey"
                       },
@@ -273,7 +1509,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "automaton",
             "name": "TransitionKey"
           },
@@ -460,7 +1696,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -535,7 +1771,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -638,7 +1874,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -719,7 +1955,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -790,7 +2026,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -815,7 +2051,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -864,7 +2100,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -889,7 +2125,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -944,7 +2180,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -1016,7 +2252,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -1094,7 +2330,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -1166,7 +2402,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -1383,7 +2619,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1460,7 +2696,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1566,7 +2802,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1668,7 +2904,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1770,7 +3006,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1887,7 +3123,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2004,7 +3240,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2089,7 +3325,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2212,7 +3448,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2376,7 +3612,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "automaton",
                   "name": "DeterministicAutomaton"
                 },
@@ -2420,7 +3656,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -2458,7 +3694,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "automaton",
                   "name": "ConfiguredAutomaton"
                 },
@@ -2511,7 +3747,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2580,7 +3816,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2649,7 +3885,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2726,7 +3962,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2814,7 +4050,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2880,7 +4116,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2959,7 +4195,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3031,7 +4267,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -3078,7 +4314,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3131,7 +4367,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3186,7 +4422,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3245,7 +4481,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3304,7 +4540,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3375,7 +4611,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3451,7 +4687,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "automaton",
                     "name": "TransitionKey"
                   },
@@ -3471,7 +4707,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "automaton",
                   "name": "TransitionConfigKey"
                 },
@@ -3521,7 +4757,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -3544,7 +4780,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "data",
             "name": "DataTypeHint"
           },
@@ -3590,7 +4826,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "data",
             "name": "NexusData"
           },
@@ -3634,7 +4870,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "data",
             "name": "TypedNexusData"
           },
@@ -3655,7 +4891,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -3669,7 +4905,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -3694,7 +4930,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -3707,7 +4943,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -3727,7 +4963,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -3740,7 +4976,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -3760,7 +4996,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -3773,7 +5009,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -3793,7 +5029,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -3806,7 +5042,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -3826,7 +5062,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -3839,7 +5075,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -3860,7 +5096,7 @@
                 "Vector": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "data",
                       "name": "NexusData"
                     },
@@ -3874,7 +5110,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -3945,7 +5181,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -3960,7 +5196,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -3994,7 +5230,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -4030,7 +5266,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -4056,7 +5292,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -4076,7 +5312,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -4090,7 +5326,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -4114,7 +5350,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -4152,7 +5388,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -4171,7 +5407,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -4190,7 +5426,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -4209,7 +5445,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -4228,7 +5464,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -4256,7 +5492,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -4282,7 +5518,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -4302,7 +5538,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -4315,7 +5551,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "DataTypeHint"
                   },
@@ -4328,7 +5564,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -4344,7 +5580,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "distributed_event",
             "name": "DistributedEventWrapper"
           },
@@ -4441,7 +5677,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -4541,7 +5777,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -4589,7 +5825,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -4646,7 +5882,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -4687,7 +5923,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -4722,7 +5958,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "event",
             "name": "EventWrapper"
           },
@@ -4799,7 +6035,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "event",
                         "name": "EventWrapper"
                       },
@@ -4832,7 +6068,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "owner_cap",
             "name": "CloneableOwnerCap"
           },
@@ -4885,7 +6121,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -4903,7 +6139,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "owner_cap",
             "name": "OwnerCap"
           },
@@ -4961,7 +6197,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -4983,7 +6219,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "owner_cap",
                       "name": "OwnerCap"
                     },
@@ -5017,7 +6253,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5054,7 +6290,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -5086,7 +6322,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5144,7 +6380,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5186,7 +6422,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -5216,7 +6452,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -5250,7 +6486,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -5303,7 +6539,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5352,7 +6588,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5444,7 +6680,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -5522,7 +6758,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -5580,7 +6816,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "owner_cap",
                   "name": "OwnerCap"
                 },
@@ -5612,7 +6848,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5647,7 +6883,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "policy",
             "name": "Policy"
           },
@@ -5688,7 +6924,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -5697,7 +6933,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -5726,7 +6962,7 @@
         },
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "policy",
             "name": "Symbol"
           },
@@ -5808,7 +7044,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5894,7 +7130,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5913,7 +7149,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -5967,7 +7203,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6051,7 +7287,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6111,7 +7347,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6130,7 +7366,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -6162,7 +7398,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6224,7 +7460,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6280,7 +7516,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6333,7 +7569,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6404,7 +7640,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6423,7 +7659,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -6470,7 +7706,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6489,7 +7725,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -6542,7 +7778,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6595,7 +7831,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6672,7 +7908,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6729,7 +7965,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6810,7 +8046,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6867,7 +8103,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6942,7 +8178,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6965,7 +8201,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7012,7 +8248,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7035,7 +8271,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7076,7 +8312,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7098,7 +8334,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "ConfiguredAutomaton"
                     },
@@ -7107,7 +8343,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -7143,7 +8379,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -7164,7 +8400,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -7200,7 +8436,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7222,7 +8458,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -7231,7 +8467,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -7266,7 +8502,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7288,7 +8524,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -7297,7 +8533,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -7332,7 +8568,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7379,7 +8615,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7426,7 +8662,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7448,7 +8684,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -7457,7 +8693,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -7492,7 +8728,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7539,7 +8775,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7558,7 +8794,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7590,7 +8826,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7612,7 +8848,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -7654,7 +8890,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7724,7 +8960,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7770,7 +9006,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7810,7 +9046,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7864,7 +9100,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7949,7 +9185,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -7978,7 +9214,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -8054,7 +9290,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -8063,7 +9299,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                          "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                           "module": "policy",
                           "name": "Symbol"
                         },
@@ -8103,7 +9339,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -8145,7 +9381,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -8187,7 +9423,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -8233,7 +9469,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8289,7 +9525,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8343,7 +9579,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8362,7 +9598,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8406,7 +9642,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8429,7 +9665,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8473,7 +9709,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8541,7 +9777,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8607,7 +9843,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8645,7 +9881,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8691,7 +9927,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8714,7 +9950,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8750,7 +9986,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8790,7 +10026,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8838,7 +10074,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -8869,7 +10105,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -8913,7 +10149,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -8942,7 +10178,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -8975,7 +10211,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -8991,7 +10227,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "proof_of_uid",
             "name": "ProofOfUID"
           },
@@ -9086,7 +10322,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -9154,7 +10390,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9192,7 +10428,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9234,7 +10470,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9302,7 +10538,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -9358,11 +10594,66 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
                 "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_stamp_data_of_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "proof_of_uid",
+                        "name": "ProofOfUID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": "U8"
+                  }
+                ]
               }
             }
           ]
@@ -9381,7 +10672,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9426,7 +10717,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9477,7 +10768,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9534,7 +10825,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9563,7 +10854,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9612,7 +10903,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -9645,37 +10936,29 @@
         }
       ]
     },
-    "proven_value": {
-      "name": "proven_value",
+    "shared_object": {
+      "name": "shared_object",
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "proven_value",
-            "name": "ProvenValue"
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+            "module": "shared_object",
+            "name": "SharedObjectRef"
           },
-          "module": "proven_value",
-          "name": "ProvenValue",
-          "abilities": [],
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
+          "module": "shared_object",
+          "name": "SharedObjectRef",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
           ],
+          "type_parameters": [],
           "kind": {
             "Struct": {
               "fields": [
                 {
-                  "name": "value",
+                  "name": "id",
                   "position": 0,
-                  "ty": {
-                    "TypeParameter": 0
-                  }
-                },
-                {
-                  "name": "by",
-                  "position": 1,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -9688,29 +10971,9 @@
                   }
                 },
                 {
-                  "name": "recipient",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
+                  "name": "ref_mut",
+                  "position": 1,
+                  "ty": "Bool"
                 }
               ]
             }
@@ -9719,15 +10982,10 @@
       ],
       "functions": [
         {
-          "name": "by",
+          "name": "shared_object_id",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
+          "type_parameters": [],
           "parameters": [
             {
               "name": "arg0",
@@ -9737,15 +10995,11 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "proven_value",
-                        "name": "ProvenValue"
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "shared_object",
+                        "name": "SharedObjectRef"
                       },
-                      "type_arguments": [
-                        {
-                          "TypeParameter": 0
-                        }
-                      ]
+                      "type_arguments": []
                     }
                   }
                 }
@@ -9766,274 +11020,13 @@
           ]
         },
         {
-          "name": "drop",
+          "name": "shared_object_ref_imm",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
+          "type_parameters": [],
           "parameters": [
             {
               "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                    "module": "proven_value",
-                    "name": "ProvenValue"
-                  },
-                  "type_arguments": [
-                    {
-                      "TypeParameter": 0
-                    }
-                  ]
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "recipient",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "proven_value",
-                        "name": "ProvenValue"
-                      },
-                      "type_arguments": [
-                        {
-                          "TypeParameter": 0
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "unwrap",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                    "module": "proven_value",
-                    "name": "ProvenValue"
-                  },
-                  "type_arguments": [
-                    {
-                      "TypeParameter": 0
-                    }
-                  ]
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "TypeParameter": 0
-            }
-          ]
-        },
-        {
-          "name": "unwrap_as_recipient",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                    "module": "proven_value",
-                    "name": "ProvenValue"
-                  },
-                  "type_arguments": [
-                    {
-                      "TypeParameter": 0
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "TypeParameter": 0
-            }
-          ]
-        },
-        {
-          "name": "wrap",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "TypeParameter": 0
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "proven_value",
-                  "name": "ProvenValue"
-                },
-                "type_arguments": [
-                  {
-                    "TypeParameter": 0
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "wrap_for_recipient",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "TypeParameter": 0
-              }
-            },
-            {
-              "name": "arg2",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -10050,133 +11043,75 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "proven_value",
-                  "name": "ProvenValue"
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "shared_object",
+                  "name": "SharedObjectRef"
                 },
-                "type_arguments": [
-                  {
-                    "TypeParameter": 0
-                  }
-                ]
+                "type_arguments": []
               }
             }
           ]
-        }
-      ]
-    },
-    "scheduled_request": {
-      "name": "scheduled_request",
-      "datatypes": [
+        },
         {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "scheduled_request",
-            "name": "RequestScheduledExecution"
-          },
-          "module": "scheduled_request",
-          "name": "RequestScheduledExecution",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [
-            {
-              "constraints": [
-                "Copy",
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "request",
-                  "position": 0,
-                  "ty": {
-                    "TypeParameter": 0
-                  }
-                },
-                {
-                  "name": "priority",
-                  "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "request_ms",
-                  "position": 2,
-                  "ty": "U64"
-                },
-                {
-                  "name": "start_ms",
-                  "position": 3,
-                  "ty": "U64"
-                },
-                {
-                  "name": "deadline_ms",
-                  "position": 4,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        }
-      ],
-      "functions": [
-        {
-          "name": "new",
+          "name": "shared_object_ref_mut",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Copy",
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
+          "type_parameters": [],
           "parameters": [
             {
               "name": "arg0",
               "ty": {
-                "TypeParameter": 0
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
               }
-            },
-            {
-              "name": "arg1",
-              "ty": "U64"
-            },
-            {
-              "name": "arg2",
-              "ty": "U64"
-            },
-            {
-              "name": "arg3",
-              "ty": "U64"
-            },
-            {
-              "name": "arg4",
-              "ty": "U64"
             }
           ],
           "return_types": [
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "scheduled_request",
-                  "name": "RequestScheduledExecution"
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                  "module": "shared_object",
+                  "name": "SharedObjectRef"
                 },
-                "type_arguments": [
-                  {
-                    "TypeParameter": 0
-                  }
-                ]
+                "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "shared_object_ref_mutable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
+                        "module": "shared_object",
+                        "name": "SharedObjectRef"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         }
       ]
@@ -10186,7 +11121,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+            "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
             "module": "tagged_output",
             "name": "TaggedOutput"
           },
@@ -10223,7 +11158,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                               "module": "data",
                               "name": "TypedNexusData"
                             },
@@ -10251,7 +11186,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -10278,7 +11213,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -10307,7 +11242,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
                 },
@@ -10327,7 +11262,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -10346,7 +11281,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                     "module": "data",
                     "name": "TypedNexusData"
                   },
@@ -10359,831 +11294,9 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "address": "0x3ba8afcacd34cb3db77fd317cbbb1cd74565df0e73db15ea75a67cc3b3f7b2cf",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        }
-      ]
-    },
-    "verifier": {
-      "name": "verifier",
-      "datatypes": [
-        {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "verifier",
-            "name": "LeaderVerifiabilityMode"
-          },
-          "module": "verifier",
-          "name": "LeaderVerifiabilityMode",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "None",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "RegisteredKey",
-                  "position": 1,
-                  "fields": []
-                },
-                {
-                  "name": "NautilusEnclave",
-                  "position": 2,
-                  "fields": []
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "verifier",
-            "name": "ToolVerifiabilityMode"
-          },
-          "module": "verifier",
-          "name": "ToolVerifiabilityMode",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "None",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "VerifierContract",
-                  "position": 1,
-                  "fields": []
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "verifier",
-            "name": "VerifierCallShapeV1"
-          },
-          "module": "verifier",
-          "name": "VerifierCallShapeV1",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "module_name",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "function_name",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "verifier",
-            "name": "VerifierCredentialIdentity"
-          },
-          "module": "verifier",
-          "name": "VerifierCredentialIdentity",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "kind",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "version",
-                  "position": 1,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-            "module": "verifier",
-            "name": "VerifierMethodCapabilities"
-          },
-          "module": "verifier",
-          "name": "VerifierMethodCapabilities",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "supports_success",
-                  "position": 0,
-                  "ty": "Bool"
-                },
-                {
-                  "name": "supports_err_eval",
-                  "position": 1,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        }
-      ],
-      "functions": [
-        {
-          "name": "call_shape_function_name",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierCallShapeV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "call_shape_module_name",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierCallShapeV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "credential_identity_kind",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierCredentialIdentity"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "credential_identity_version",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierCredentialIdentity"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "default_verifier_v1_call_shape",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierCallShapeV1"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "leader_mode_is_nautilus_enclave",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "LeaderVerifiabilityMode"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "leader_mode_is_none",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "LeaderVerifiabilityMode"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "leader_mode_is_registered_key",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "LeaderVerifiabilityMode"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "leader_verifiability_nautilus_enclave",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "LeaderVerifiabilityMode"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "leader_verifiability_none",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "LeaderVerifiabilityMode"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "leader_verifiability_registered_key",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "LeaderVerifiabilityMode"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_capabilities",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": "Bool"
-            },
-            {
-              "name": "arg1",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierMethodCapabilities"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "registered_key_transcript_v1_credential_identity",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierCredentialIdentity"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "signed_http_v1_method",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "supports_err_eval",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierMethodCapabilities"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "supports_success",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "VerifierMethodCapabilities"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "tool_mode_is_none",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "ToolVerifiabilityMode"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "tool_mode_is_verifier_contract",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                        "module": "verifier",
-                        "name": "ToolVerifiabilityMode"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "tool_verifiability_none",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "ToolVerifiabilityMode"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "tool_verifiability_verifier_contract",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "ToolVerifiabilityMode"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "verifier_contract_result_v1_credential_identity",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierCredentialIdentity"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "verifier_credential_identity",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierCredentialIdentity"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "verifier_v1_call_shape",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
-                  "module": "verifier",
-                  "name": "VerifierCallShapeV1"
                 },
                 "type_arguments": []
               }

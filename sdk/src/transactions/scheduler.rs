@@ -57,7 +57,7 @@ where
     K: AsRef<str>,
     V: AsRef<str>,
 {
-    let string_type = move_std::StdString::type_tag();
+    let string_type = move_std::String::type_tag();
 
     let metadata = tx.move_call(
         sui::tx::Function::new(

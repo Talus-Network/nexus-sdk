@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, sui_framework, workflow},
+        idents::{move_std, registry, sui_framework, workflow},
         sui,
         types::{NexusObjects, ToolMeta},
         ToolFqn,
@@ -60,8 +60,8 @@ pub fn register_off_chain_for_self(
     let result = tx.move_call(
         sui::tx::Function::new(
             objects.registry_pkg_id,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
+            registry::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
+            registry::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
         ),
         vec![
             tool_registry,
@@ -119,7 +119,7 @@ pub fn register_off_chain_for_self(
     );
 
     // `Tool`
-    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, workflow::ToolRegistry::TOOL);
+    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, registry::ToolRegistry::TOOL);
 
     // `sui::transfer::public_share_object`
     tx.move_call(
@@ -239,9 +239,9 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
 
     // `nexus_workflow::tool_registry::register_on_chain_tool*()`
     let register_ident = if workflow_authorization_cap_first {
-        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP
+        registry::ToolRegistry::REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP
     } else {
-        workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL
+        registry::ToolRegistry::REGISTER_ON_CHAIN_TOOL
     };
     let result = tx.move_call(
         sui::tx::Function::new(
@@ -307,7 +307,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     );
 
     // `Tool`
-    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, workflow::ToolRegistry::TOOL);
+    let tool_type = workflow::into_type_tag(objects.registry_pkg_id, registry::ToolRegistry::TOOL);
 
     // `sui::transfer::public_share_object`
     tx.move_call(
@@ -404,8 +404,8 @@ pub fn unregister(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ToolRegistry::UNREGISTER.module,
-            workflow::ToolRegistry::UNREGISTER.name,
+            registry::ToolRegistry::UNREGISTER.module,
+            registry::ToolRegistry::UNREGISTER.name,
         ),
         vec![tool, owner_cap, clock],
     ))
@@ -444,8 +444,8 @@ pub fn claim_collateral_for_self(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name,
+            registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module,
+            registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name,
         ),
         vec![tool, owner_cap, clock],
     ))
@@ -487,8 +487,8 @@ pub fn update_tool_timeout(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.module,
-            workflow::ToolRegistry::UPDATE_TOOL_TIMEOUT.name,
+            registry::ToolRegistry::UPDATE_TOOL_TIMEOUT.module,
+            registry::ToolRegistry::UPDATE_TOOL_TIMEOUT.name,
         ),
         vec![tool, registry, owner_cap, timeout_ms],
     ))
@@ -544,11 +544,11 @@ mod tests {
         assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
+            registry::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.module,
         );
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
+            registry::ToolRegistry::REGISTER_OFF_CHAIN_TOOL.name,
         );
         assert_eq!(call.arguments.len(), 9);
     }
@@ -598,11 +598,11 @@ mod tests {
         assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module
+            registry::ToolRegistry::REGISTER_ON_CHAIN_TOOL.module
         );
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name
+            registry::ToolRegistry::REGISTER_ON_CHAIN_TOOL.name
         );
         assert_eq!(call.arguments.len(), 11);
 
@@ -650,8 +650,8 @@ mod tests {
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::ToolRegistry::UNREGISTER.module);
-        assert_eq!(call.function, workflow::ToolRegistry::UNREGISTER.name);
+        assert_eq!(call.module, registry::ToolRegistry::UNREGISTER.module);
+        assert_eq!(call.function, registry::ToolRegistry::UNREGISTER.name);
         assert_eq!(call.arguments.len(), 3);
     }
 
@@ -679,11 +679,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module
+            registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module
         );
         assert_eq!(
             call.function,
-            workflow::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name
+            registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name
         );
         assert_eq!(call.arguments.len(), 3);
     }

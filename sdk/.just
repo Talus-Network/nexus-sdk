@@ -39,13 +39,15 @@ regenerate-idents nexus_next_sui='../nexus-next/sui' grpc='http://127.0.0.1:9000
     ( cd "{{ nexus_next_sui }}" && NEXUS_PUBLISH_OVERWRITE=1 ./bin/publish.sh publish )
 
     echo "==> Collecting package ids from $objects"
-    pkgs="$(grep -E '_pkg_id = ' "$objects" | sed -E 's/_pkg_id = "/=/; s/"//' | tr -d ' ' | paste -sd,)"
+    nexus="$(grep -E '_pkg_id = ' "$objects" | sed -E 's/_pkg_id = "/=/; s/"//' | tr -d ' ' | paste -sd,)"
+    # The 0x1/0x2 framework packages are present on every node.
+    pkgs="$nexus,move_std=0x1,sui_framework=0x2"
     echo "    $pkgs"
 
     echo "==> Fetching IR over gRPC ({{ grpc }})"
     NEXUS_BINDING_GRPC_URL='{{ grpc }}' NEXUS_BINDING_PACKAGES="$pkgs" \
-        cargo +stable test --package {{ package }} --features sui_types \
-        --test generate_binding -- --ignored --nocapture
+        cargo +stable run --package {{ package }} --features binding_codegen \
+        --bin generate_binding
 
     echo "==> Done. Review the diff under sdk/src/idents/generated/ir/."
 

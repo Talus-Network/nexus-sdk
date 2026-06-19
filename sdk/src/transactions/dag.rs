@@ -771,7 +771,7 @@ fn prepare_move_option_failure_evidence_kind(
                 )
                 .with_type_args(vec![workflow::into_type_tag(
                     objects.interface_pkg_id,
-                    workflow::Dag::FAILURE_EVIDENCE_KIND,
+                    crate::idents::tap::Verifier::FAILURE_EVIDENCE_KIND,
                 )]),
                 vec![kind],
             )
@@ -784,7 +784,7 @@ fn prepare_move_option_failure_evidence_kind(
             )
             .with_type_args(vec![workflow::into_type_tag(
                 objects.interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND,
+                crate::idents::tap::Verifier::FAILURE_EVIDENCE_KIND,
             )]),
             vec![],
         ),
@@ -837,62 +837,6 @@ fn prepare_verifier_decision(
         sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function),
         vec![],
     )
-}
-
-fn prepare_failure_evidence_kind_option(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    value: Option<&FailureEvidenceKind>,
-) -> sui::tx::Argument {
-    let element = workflow::into_type_tag(
-        objects.interface_pkg_id,
-        workflow::Dag::FAILURE_EVIDENCE_KIND,
-    );
-
-    match value {
-        Some(kind) => {
-            let kind = create_failure_evidence_kind(tx, objects, kind);
-            move_std::Option::some(tx, element, kind)
-        }
-        None => move_std::Option::none(tx, element),
-    }
-}
-
-fn prepare_object_id(
-    tx: &mut sui::tx::TransactionBuilder,
-    object_id: sui::types::Address,
-) -> anyhow::Result<sui::tx::Argument> {
-    sui_framework::Object::id_from_object_id(tx, object_id)
-}
-
-pub fn prepare_on_chain_tool_result_submission_v1_bytes(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    output_variant: sui::tx::Argument,
-    output_ports_data: sui::tx::Argument,
-    failure_evidence_kind: Option<&FailureEvidenceKind>,
-    submitted_failure_reason: &Option<Vec<u8>>,
-    tool_witness_id: sui::types::Address,
-) -> anyhow::Result<sui::tx::Argument> {
-    let failure_evidence_kind =
-        prepare_failure_evidence_kind_option(tx, objects, failure_evidence_kind);
-    let submitted_failure_reason = prepare_move_option_vec_u8(tx, submitted_failure_reason);
-    let tool_witness_id = prepare_object_id(tx, tool_witness_id)?;
-
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.module,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name,
-        ),
-        vec![
-            output_variant,
-            output_ports_data,
-            failure_evidence_kind,
-            submitted_failure_reason,
-            tool_witness_id,
-        ],
-    ))
 }
 
 fn prepare_verifier_contract_result(
@@ -1500,29 +1444,6 @@ pub fn worksheet_for_tool_result_submission(
             leader_cap,
             walk_index,
         ],
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn create_vertex_authorization_grant(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    dag: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    tool_registry: sui::tx::Argument,
-    agent: sui::tx::Argument,
-    skill_id: SkillId,
-    vertex: &RuntimeVertex,
-) -> anyhow::Result<sui::tx::Argument> {
-    let skill_id = tx.pure(&skill_id);
-    let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.module,
-            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.name,
-        ),
-        vec![dag, execution, tool_registry, agent, skill_id, vertex],
     ))
 }
 
@@ -2937,11 +2858,11 @@ mod tests {
         assert_eq!(call.package, objects.interface_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
+            crate::idents::tap::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
+            crate::idents::tap::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
         );
     }
 
@@ -3520,7 +3441,7 @@ mod tests {
             failure_option.type_arguments,
             vec![workflow::into_type_tag(
                 interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND
+                crate::idents::tap::Verifier::FAILURE_EVIDENCE_KIND
             )]
         );
 
@@ -3534,75 +3455,6 @@ mod tests {
             sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&tool_witness_id.arguments[0], expected_tool_witness_id);
-    }
-
-    #[test]
-    fn test_prepare_on_chain_tool_result_submission_v1_bytes_constructs_move_values() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let tool_witness_id = sui_mocks::mock_sui_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-
-        let submission = prepare_on_chain_tool_result_submission_v1_bytes(
-            &mut tx,
-            &objects,
-            __ph_0,
-            __ph_1,
-            None,
-            &None,
-            tool_witness_id,
-        )
-        .expect("submission bytes helper should build");
-
-        let _ = submission;
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let submission_call = inspector
-            .commands()
-            .iter()
-            .find_map(|command| match command {
-                sui::types::Command::MoveCall(call)
-                    if call.package == objects.workflow_pkg_id
-                        && call.function
-                            == workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name =>
-                {
-                    Some(call)
-                }
-                _ => None,
-            })
-            .expect("expected submission move call");
-
-        assert_eq!(submission_call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            submission_call.function,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name
-        );
-
-        let failure_option = match submission_call.arguments[2] {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected failure option to be a command result, got {other:?}"),
-        };
-        assert_eq!(failure_option.package, move_std::PACKAGE_ID);
-        assert_eq!(failure_option.module, move_std::Option::NONE.module);
-        assert_eq!(failure_option.function, move_std::Option::NONE.name);
-        assert_eq!(
-            failure_option.type_arguments,
-            vec![workflow::into_type_tag(
-                objects.interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND
-            )]
-        );
-
-        let tool_witness_id_call = match submission_call.arguments[4] {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected tool witness ID to be a command result, got {other:?}"),
-        };
-        assert_eq!(tool_witness_id_call.package, sui_framework::PACKAGE_ID);
-        assert_eq!(
-            tool_witness_id_call.function,
-            sui_framework::Object::ID_FROM_ADDRESS.name
-        );
-        inspector.expect_address(&tool_witness_id_call.arguments[0], tool_witness_id);
     }
 
     #[test]
@@ -4468,8 +4320,8 @@ mod tests {
                 .iter()
                 .filter(|call| {
                     call.package == objects.interface_pkg_id
-                        && call.module == workflow::Dag::VERIFIER_CONFIG.module
-                        && call.function == workflow::Dag::VERIFIER_CONFIG.name
+                        && call.module == crate::idents::tap::Verifier::VERIFIER_CONFIG.module
+                        && call.function == crate::idents::tap::Verifier::VERIFIER_CONFIG.name
                 })
                 .count(),
             4
