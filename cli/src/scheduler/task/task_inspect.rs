@@ -12,9 +12,9 @@ use {
     serde_json::json,
 };
 
-/// Inspect a scheduler task and display metadata plus raw JSON output.
+/// Inspect a scheduled task and display metadata plus raw JSON output.
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
-    command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
+    command_title!("Inspecting scheduled task '{task_id}'", task_id = task_id);
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();

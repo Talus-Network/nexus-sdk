@@ -3,6 +3,21 @@ use crate::{
     sui,
 };
 
+// == `nexus_primitives::authorization` ==
+
+pub struct Authorization;
+
+const AUTHORIZATION_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("authorization");
+
+impl Authorization {
+    /// `nexus_primitives::authorization::ProvenValue`
+    pub const PROVEN_VALUE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: AUTHORIZATION_MODULE,
+        name: sui::types::Identifier::from_static("ProvenValue"),
+    };
+}
+
 // == `nexus_primitives::data` ==
 
 pub struct Data;
@@ -239,6 +254,15 @@ mod tests {
                 sui::types::Identifier::from_static("bar"),
                 vec![],
             )))
+        );
+    }
+
+    #[test]
+    fn authorization_idents_use_authorization_module() {
+        assert_eq!(Authorization::PROVEN_VALUE.module, AUTHORIZATION_MODULE);
+        assert_eq!(
+            Authorization::PROVEN_VALUE.name,
+            sui::types::Identifier::from_static("ProvenValue")
         );
     }
 }

@@ -25,6 +25,7 @@ pub async fn request_tokens(url: &str, addr: sui::types::Address) -> anyhow::Res
         .take(5);
 
     // Retry a couple times in case the faucet is slow to load.
+    #[allow(deprecated)]
     let response = Retry::spawn(retry_strategy, || async {
         let resp = Client::new()
             .post(url)

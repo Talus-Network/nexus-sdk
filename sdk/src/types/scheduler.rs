@@ -3,7 +3,8 @@
 use {
     super::{
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
-        tap::{AgentId, SkillId, TapVertexAuthorizationPlanEntry},
+        tap::{AgentId, InterfaceVersion, SkillId},
+        AgentVertexAuthorizationTemplate,
         MoveOption,
         TypeName,
     },
@@ -33,50 +34,16 @@ pub struct DagExecutionConfig {
     pub priority_fee_per_gas_unit: u64,
 }
 
-/// Representation of `nexus_workflow::dag::AgentExecutionConfig`.
+/// Representation of `nexus_interface::agent::AgentExecutionConfig`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct AgentExecutionConfig {
-    pub dag: sui::types::Address,
-    pub network: sui::types::Address,
-    pub entry_group: SchedulerEntryGroup,
-    pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
-    pub invoker: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub priority_fee_per_gas_unit: u64,
-    pub agent_id: AgentId,
     #[serde(
         deserialize_with = "deserialize_sui_u64",
         serialize_with = "serialize_sui_u64"
     )]
     pub skill_id: SkillId,
-    pub selected_dag_id: sui::types::Address,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_move_option_bytes",
-        serialize_with = "serialize_option_bytes_as_move_option"
-    )]
-    pub authorization_plan_commitment: Option<Vec<u8>>,
-    pub authorization_plan: Vec<TapVertexAuthorizationPlanEntry>,
-}
-
-fn deserialize_move_option_bytes<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    MoveOption::<Vec<u8>>::deserialize(deserializer).map(|value| value.0)
-}
-
-fn serialize_option_bytes_as_move_option<S>(
-    value: &Option<Vec<u8>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    MoveOption::from(value.clone()).serialize(serializer)
+    pub selected_dag: MoveOption<sui::types::Address>,
+    pub authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 }
 
 /// Representation of `nexus_scheduler::scheduler::Task`.
@@ -84,6 +51,13 @@ where
 pub struct Task {
     pub id: sui::types::Address,
     pub owner: sui::types::Address,
+    pub agent_id: AgentId,
+    #[serde(
+        deserialize_with = "deserialize_sui_u64",
+        serialize_with = "serialize_sui_u64"
+    )]
+    pub skill_id: SkillId,
+    pub interface_version: InterfaceVersion,
     pub metadata: Metadata,
     pub constraints: Policy<ConstraintsData>,
     pub execution: Policy<ExecutionData>,
@@ -273,12 +247,14 @@ impl PolicySymbol {
     }
 }
 
-/// Scheduler task state.
+/// Scheduled task state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TaskState {
     Active,
     Paused,
     Canceled,
+    Completed,
+    Failed,
 }
 
 impl<'de> Deserialize<'de> for TaskState {
@@ -291,6 +267,8 @@ impl<'de> Deserialize<'de> for TaskState {
             Active,
             Paused,
             Canceled,
+            Completed,
+            Failed,
         }
 
         if !deserializer.is_human_readable() {
@@ -298,6 +276,8 @@ impl<'de> Deserialize<'de> for TaskState {
                 Standard::Active => Ok(TaskState::Active),
                 Standard::Paused => Ok(TaskState::Paused),
                 Standard::Canceled => Ok(TaskState::Canceled),
+                Standard::Completed => Ok(TaskState::Completed),
+                Standard::Failed => Ok(TaskState::Failed),
             };
         }
 
@@ -322,9 +302,11 @@ impl<'de> Deserialize<'de> for TaskState {
             "Active" => Ok(TaskState::Active),
             "Paused" => Ok(TaskState::Paused),
             "Canceled" => Ok(TaskState::Canceled),
+            "Completed" => Ok(TaskState::Completed),
+            "Failed" => Ok(TaskState::Failed),
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Active", "Paused", "Canceled"],
+                &["Active", "Paused", "Canceled", "Completed", "Failed"],
             )),
         }
     }
@@ -340,6 +322,8 @@ impl Serialize for TaskState {
             Active,
             Paused,
             Canceled,
+            Completed,
+            Failed,
             #[allow(dead_code)]
             #[serde(skip)]
             _Marker(&'a ()),
@@ -350,6 +334,8 @@ impl Serialize for TaskState {
                 TaskState::Active => Standard::Active.serialize(serializer),
                 TaskState::Paused => Standard::Paused.serialize(serializer),
                 TaskState::Canceled => Standard::Canceled.serialize(serializer),
+                TaskState::Completed => Standard::Completed.serialize(serializer),
+                TaskState::Failed => Standard::Failed.serialize(serializer),
             };
         }
 
@@ -357,6 +343,8 @@ impl Serialize for TaskState {
             TaskState::Active => "Active".serialize(serializer),
             TaskState::Paused => "Paused".serialize(serializer),
             TaskState::Canceled => "Canceled".serialize(serializer),
+            TaskState::Completed => "Completed".serialize(serializer),
+            TaskState::Failed => "Failed".serialize(serializer),
         }
     }
 }
@@ -431,6 +419,28 @@ mod tests {
     }
 
     #[test]
+    fn task_state_deserializes_all_scheduler_states() {
+        for (name, expected) in [
+            ("Active", TaskState::Active),
+            ("Paused", TaskState::Paused),
+            ("Canceled", TaskState::Canceled),
+            ("Completed", TaskState::Completed),
+            ("Failed", TaskState::Failed),
+        ] {
+            let from_string: TaskState = serde_json::from_value(json!(name)).unwrap();
+            assert_eq!(from_string, expected);
+
+            let from_variant: TaskState = serde_json::from_value(json!({
+                "variant": name
+            }))
+            .unwrap();
+            assert_eq!(from_variant, expected);
+
+            assert_eq!(serde_json::to_value(&expected).unwrap(), json!(name));
+        }
+    }
+
+    #[test]
     fn dag_execution_config_deserializes_from_json() {
         let mut rng = rand::thread_rng();
         let dag_id = sui::types::Address::generate(&mut rng);
@@ -466,46 +476,27 @@ mod tests {
     fn agent_execution_config_deserializes_from_json() {
         let mut rng = rand::thread_rng();
         let dag_id = sui::types::Address::generate(&mut rng);
-        let network_id = sui::types::Address::generate(&mut rng);
-        let invoker = sui::types::Address::generate(&mut rng);
-        let agent_id = sui::types::Address::generate(&mut rng);
+        let recipient_id = sui::types::Address::generate(&mut rng);
 
         let expected = AgentExecutionConfig {
-            dag: dag_id,
-            network: network_id,
-            priority_fee_per_gas_unit: 1000,
-            entry_group: SchedulerEntryGroup {
-                name: "delayed".to_string(),
-            },
-            inputs: Map::default(),
-            invoker,
-            agent_id,
             skill_id: 2,
-            selected_dag_id: dag_id,
-            authorization_plan_commitment: Some(vec![1, 2, 3]),
-            authorization_plan: Vec::new(),
+            selected_dag: MoveOption(Some(dag_id)),
+            authorization_templates: vec![AgentVertexAuthorizationTemplate {
+                skill_id: 2,
+                vertex: "cap_first".to_string(),
+                recipient_id,
+            }],
         };
 
         let parsed: AgentExecutionConfig =
             serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
-        assert_eq!(parsed.dag, expected.dag);
-        assert_eq!(parsed.network, expected.network);
-        assert_eq!(
-            parsed.priority_fee_per_gas_unit,
-            expected.priority_fee_per_gas_unit
-        );
-        assert_eq!(parsed.entry_group, expected.entry_group);
-        assert_eq!(parsed.inputs, expected.inputs);
-        assert_eq!(parsed.invoker, expected.invoker);
-        assert_eq!(parsed.agent_id, expected.agent_id);
         assert_eq!(parsed.skill_id, expected.skill_id);
-        assert_eq!(parsed.selected_dag_id, expected.selected_dag_id);
+        assert_eq!(parsed.selected_dag, expected.selected_dag);
         assert_eq!(
-            parsed.authorization_plan_commitment,
-            expected.authorization_plan_commitment
+            parsed.authorization_templates,
+            expected.authorization_templates
         );
-        assert_eq!(parsed.authorization_plan, expected.authorization_plan);
     }
 
     #[test]

@@ -217,7 +217,13 @@ impl NexusObjects {
         }
 
         if *inner_tag.address() == self.interface_pkg_id
-            && inner_tag.module() == &tap::STANDARD_TAP_MODULE
+            && matches!(
+                inner_tag.module(),
+                module if module == &tap::STANDARD_AGENT_MODULE
+                    || module == &tap::STANDARD_AUTHORIZATION_MODULE
+                    || module == &tap::STANDARD_PAYMENT_MODULE
+                    || module == &tap::INTERFACE_VERSION_MODULE
+            )
         {
             return true;
         }
@@ -357,7 +363,7 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.interface_pkg_id,
-                tap::STANDARD_TAP_MODULE,
+                tap::STANDARD_AGENT_MODULE,
                 tap::TapStandard::AGENT_CREATED_EVENT.name,
                 vec![],
             ),

@@ -183,6 +183,6 @@ Re-running just means funding the treasury again and calling `tap execute` again
 The CLI surface for the rest of TAP package and Talus agent operation is the natural follow-up reading — start with [CLI reference: `nexus tap`](../cli.md) and look at:
 
 - **`nexus tap vault deposit`** to pre-fund a payment vault on the agent instead of paying per-call.
-- **`nexus tap schedule-from-vault`**, **`nexus tap schedule-address-funded`**, and **`nexus tap schedule-default-address-funded`** to drive scheduled executions tied to a scheduler task.
+- **`nexus tap schedule-task --payment-source agent-vault`** and **`nexus tap schedule-task --payment-source address-funded`** to create and fund scheduled TAP executions.
 - **`nexus tap update-skill`** for moving an existing skill to a new current revision.
 - **`nexus dag execution-cost`** and **`nexus tap payments list`** for observability on what executions cost the operator across an agent's lifetime.

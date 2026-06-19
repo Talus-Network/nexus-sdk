@@ -11,6 +11,7 @@ pub(crate) async fn update_skill_from_artifact(
     command_title!("Updating TAP skill {skill_id} for agent '{agent_id}' from publish artifact");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
     let result = nexus_client
         .tap()
         .update_skill_from_artifact(agent_id, skill_id, &artifact)

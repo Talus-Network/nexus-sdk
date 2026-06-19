@@ -10,6 +10,7 @@ pub(crate) async fn register_skill(
     command_title!("Registering TAP skill for agent '{}'", agent_id);
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
     let result = nexus_client
         .tap()
         .register_skill(agent_id, &artifact)
@@ -65,15 +66,13 @@ mod tests {
     }
 
     fn artifact_without_endpoint() -> TapPublishArtifact {
-        let config = TapSkillConfig {
+        let config = SkillConfig {
             name: "weather skill".to_string(),
-            tap_package_name: "weather_skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            tap_package_path: PathBuf::from("tap"),
-            requirements: nexus_sdk::types::TapSkillRequirements {
+            requirements: nexus_sdk::types::SkillRequirements {
                 input_schema_commitment: vec![1],
-                payment_policy: nexus_sdk::types::TapPaymentPolicy::default(),
-                schedule_policy: nexus_sdk::types::TapSchedulePolicy::default(),
+                payment_policy: nexus_sdk::types::SkillPaymentPolicy::default(),
+                schedule_policy: nexus_sdk::types::SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
             interface_revision: nexus_sdk::types::InterfaceRevision(1),

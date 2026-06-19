@@ -40,7 +40,7 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
     Dag(dag::DagCommand),
-    #[command(subcommand, about = "Manage scheduler tasks and occurrences")]
+    #[command(subcommand, about = "Manage scheduled tasks and occurrences")]
     Scheduler(scheduler::SchedulerCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),

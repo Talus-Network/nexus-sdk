@@ -231,8 +231,11 @@ mod tests {
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
         assert!(move_contents.contains("public fun execute("));
-        assert!(move_contents.contains("use nexus_workflow::dag::VertexAuthorizationCheckCap;"));
-        assert!(move_contents.contains("_cap: VertexAuthorizationCheckCap"));
+        assert!(
+            move_contents.contains("use nexus_interface::authorization::AgentVertexAuthorization;")
+        );
+        assert!(move_contents.contains("use nexus_primitives::authorization::ProvenValue;"));
+        assert!(move_contents.contains("_authorization: ProvenValue<AgentVertexAuthorization>"));
         assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
         assert!(move_contents.contains("worksheet.stamp_with_data(&state.witness().id"));
         assert!(move_contents.contains("): TaggedOutput"));

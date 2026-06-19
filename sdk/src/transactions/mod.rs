@@ -1,6 +1,9 @@
 /// Transactions concerning operations around Nexus Tools.
 pub mod tool;
 
+/// Agent object inputs shared by transaction builders.
+pub mod agent_input;
+
 /// Transactions concerning operations around Nexus DAGs.
 pub mod dag;
 

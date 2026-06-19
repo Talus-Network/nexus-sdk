@@ -6,7 +6,8 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
             let conf = CliConf::load().await.unwrap_or_default();
             let agent_id = agent_id_from_alias_or_arg(&conf, alias, agent_id)?;
             let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-            let vault = fetch_tap_agent_payment_vault_for_agent(nexus_client.crawler(), agent_id)
+            ensure_cli_agent_owner(&nexus_client, agent_id).await?;
+            let vault = fetch_agent_payment_vault_for_agent(nexus_client.crawler(), agent_id)
                 .await
                 .map_err(NexusCliError::Any)?;
             json_output(&vault_balance_result_json(agent_id, &vault))
