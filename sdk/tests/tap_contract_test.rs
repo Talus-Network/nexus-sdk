@@ -15,6 +15,8 @@ use {
             AgentRecord,
             AgentRegistry,
             DefaultDagExecutor,
+            ExecutionPaymentFinalState,
+            ExecutionPaymentSourceKind,
             FixedTool,
             InterfaceRevision,
             MoveTable,
@@ -361,14 +363,19 @@ fn tap_execution_payment_model_matches_live_object_shape() {
         "agent_id": "0xcc",
         "skill_id": "221",
         "interface_revision": { "value": "7" },
-        "payer": "0xff",
-        "payment_mode": "user_funded",
-        "source_kind": "agent_vault",
-        "source_identity": "0xcc",
+        "payment_policy": "UserFunded",
+        "source_kind": {
+            "AgentFunded": {
+                "agent_id": "0xcc"
+            }
+        },
         "max_budget": "42",
         "locked_budget": "40",
         "consumed": "5",
-        "payment_source_hash": [1, 2],
+        "funds": { "value": "100" },
+        "final_state": "Accomplished",
+        "tool_cost_snapshot": { "contents": [] },
+        "locked_vertices": [],
         "accomplished": true,
         "refunded": false
     }))
@@ -383,15 +390,22 @@ fn tap_execution_payment_model_matches_live_object_shape() {
         InterfaceRevision(7)
     );
     assert_eq!(
-        payment.payment_mode,
-        nexus_sdk::types::PaymentMode::UserFunded
+        payment.payment_policy,
+        nexus_sdk::types::SkillPaymentPolicy::UserFunded
     );
-    assert_eq!(payment.source_kind, Some(PaymentSourceKind::AgentVault));
-    assert_eq!(payment.source_identity, Some(addr("0xcc")));
+    assert_eq!(
+        payment.source_kind,
+        ExecutionPaymentSourceKind::AgentFunded {
+            agent_id: addr("0xcc")
+        }
+    );
+    assert_eq!(
+        payment.final_state,
+        ExecutionPaymentFinalState::Accomplished
+    );
     assert_eq!(payment.max_budget, 42);
     assert_eq!(payment.locked_budget, 40);
     assert_eq!(payment.consumed, 5);
-    assert_eq!(payment.payment_source_hash, vec![1, 2]);
     assert!(payment.accomplished);
     assert!(!payment.refunded);
 }

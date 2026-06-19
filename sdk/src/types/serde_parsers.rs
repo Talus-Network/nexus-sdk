@@ -1,6 +1,13 @@
 use {
-    super::{move_json::parse_string_value, MoveOption},
-    crate::types::strip_fields_owned,
+    super::{
+        move_json::{parse_byte_vector_value, parse_string_value, parse_u64_value},
+        parse_address_value,
+        ExecutionPaymentFinalState,
+        MoveOption,
+        ScheduledOccurrenceFinalState,
+        VertexExecutionPaymentSettlementKind,
+    },
+    crate::{sui, types::strip_fields_owned},
     base64::{prelude::BASE64_STANDARD, Engine},
     serde::{
         de::{DeserializeOwned, Deserializer},
@@ -276,6 +283,206 @@ where
     };
 
     Ok(parsed)
+}
+
+/// Deserialize a Move `address` field from either a string or a Move-JSON
+/// wrapper.
+pub fn deserialize_tap_address_value<'de, D>(
+    deserializer: D,
+) -> Result<sui::types::Address, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return sui::types::Address::deserialize(deserializer);
+    }
+
+    let value = serde_json::Value::deserialize(deserializer)?;
+    parse_address_value(&value)
+        .map_err(serde::de::Error::custom)?
+        .ok_or_else(|| serde::de::Error::custom("missing TAP address value"))
+}
+
+/// Deserialize a Move `u64` field from string or numeric JSON representations.
+pub fn deserialize_tap_u64_value<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return u64::deserialize(deserializer);
+    }
+
+    let value = serde_json::Value::deserialize(deserializer)?;
+    parse_u64_value(&value)
+        .map_err(serde::de::Error::custom)?
+        .ok_or_else(|| serde::de::Error::custom("missing TAP u64 value"))
+}
+
+/// Deserialize a `MoveOption`-encoded optional address.
+pub fn deserialize_move_option_tap_address<'de, D>(
+    deserializer: D,
+) -> Result<Option<sui::types::Address>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    MoveOption::<sui::types::Address>::deserialize(deserializer).map(|value| value.0)
+}
+
+/// Deserialize a Move byte vector as either a byte array or hex/base64/UTF-8
+/// string.
+pub fn deserialize_tap_byte_vector<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return Vec::<u8>::deserialize(deserializer);
+    }
+
+    let value = serde_json::Value::deserialize(deserializer)?;
+    parse_byte_vector_value(&value)
+        .map_err(serde::de::Error::custom)?
+        .ok_or_else(|| serde::de::Error::custom("missing TAP byte-vector value"))
+}
+
+pub fn deserialize_vertex_execution_payment_settlement_kind_value(
+    value: &serde_json::Value,
+) -> Option<VertexExecutionPaymentSettlementKind> {
+    fn from_text(text: &str) -> Option<VertexExecutionPaymentSettlementKind> {
+        match text {
+            "free" | "Free" => Some(VertexExecutionPaymentSettlementKind::Free),
+            "ticket" | "Ticket" => Some(VertexExecutionPaymentSettlementKind::Ticket),
+            "paid" | "Paid" => Some(VertexExecutionPaymentSettlementKind::Paid),
+            _ => None,
+        }
+    }
+
+    match value {
+        serde_json::Value::String(text) => from_text(text),
+        serde_json::Value::Object(object) => {
+            for key in ["@variant", "variant", "type"] {
+                if let Some(serde_json::Value::String(text)) = object.get(key) {
+                    if let Some(kind) = from_text(text) {
+                        return Some(kind);
+                    }
+                }
+            }
+
+            if let Some(fields) = object.get("fields") {
+                if let Some(kind) =
+                    deserialize_vertex_execution_payment_settlement_kind_value(fields)
+                {
+                    return Some(kind);
+                }
+            }
+
+            object.keys().find_map(|key| from_text(key))
+        }
+        _ => None,
+    }
+}
+
+pub fn deserialize_tap_execution_payment_final_state_value(
+    value: &serde_json::Value,
+) -> Option<ExecutionPaymentFinalState> {
+    fn from_text(text: &str) -> Option<ExecutionPaymentFinalState> {
+        match text {
+            "pending" | "Pending" => Some(ExecutionPaymentFinalState::Pending),
+            "accomplished" | "Accomplished" => Some(ExecutionPaymentFinalState::Accomplished),
+            "refunded" | "Refunded" => Some(ExecutionPaymentFinalState::Refunded),
+            _ => None,
+        }
+    }
+
+    match value {
+        serde_json::Value::String(text) => from_text(text),
+        serde_json::Value::Object(object) => {
+            for key in ["@variant", "variant", "type"] {
+                if let Some(serde_json::Value::String(text)) = object.get(key) {
+                    if let Some(state) = from_text(text) {
+                        return Some(state);
+                    }
+                }
+            }
+
+            if let Some(fields) = object.get("fields") {
+                if let Some(state) = deserialize_tap_execution_payment_final_state_value(fields) {
+                    return Some(state);
+                }
+            }
+
+            object.keys().find_map(|key| from_text(key))
+        }
+        _ => None,
+    }
+}
+
+pub fn deserialize_tap_scheduled_occurrence_final_state_value(
+    value: &serde_json::Value,
+) -> Option<ScheduledOccurrenceFinalState> {
+    fn from_text(text: &str) -> Option<ScheduledOccurrenceFinalState> {
+        match text {
+            "in_flight" | "inFlight" | "InFlight" => Some(ScheduledOccurrenceFinalState::InFlight),
+            "accomplished" | "Accomplished" => Some(ScheduledOccurrenceFinalState::Accomplished),
+            "refunded" | "Refunded" => Some(ScheduledOccurrenceFinalState::Refunded),
+            _ => None,
+        }
+    }
+
+    match value {
+        serde_json::Value::String(text) => from_text(text),
+        serde_json::Value::Object(object) => {
+            for key in ["@variant", "variant", "type"] {
+                if let Some(serde_json::Value::String(text)) = object.get(key) {
+                    if let Some(state) = from_text(text) {
+                        return Some(state);
+                    }
+                }
+            }
+
+            if let Some(fields) = object.get("fields") {
+                if let Some(state) = deserialize_tap_scheduled_occurrence_final_state_value(fields)
+                {
+                    return Some(state);
+                }
+            }
+
+            object.keys().find_map(|key| from_text(key))
+        }
+        _ => None,
+    }
+}
+
+/// Deserialize authorization vertex strings from either UTF-8 bytes, base16 bytes,
+/// raw UTF-8, or plain text.
+pub fn deserialize_vertex_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        let bytes = Vec::<u8>::deserialize(deserializer)?;
+        return String::from_utf8(bytes).map_err(serde::de::Error::custom);
+    }
+
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if let Some(bytes) = parse_byte_vector_value(&value).map_err(serde::de::Error::custom)? {
+        return String::from_utf8(bytes).map_err(serde::de::Error::custom);
+    }
+
+    let text = parse_string_value(&value)
+        .map_err(serde::de::Error::custom)?
+        .ok_or_else(|| serde::de::Error::custom("missing authorization vertex value"))?;
+
+    if let Some(hex) = text.strip_prefix("0x") {
+        if hex.len() % 2 == 0 && hex.as_bytes().iter().all(u8::is_ascii_hexdigit) {
+            if let Ok(bytes) = hex::decode(hex) {
+                if let Ok(decoded) = String::from_utf8(bytes) {
+                    return Ok(decoded);
+                }
+            }
+        }
+    }
+
+    Ok(text)
 }
 
 /// Serialize a Rust `String` into Move `std::ascii::String`.

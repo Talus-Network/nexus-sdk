@@ -2532,14 +2532,14 @@ mod tests {
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+            bcs::to_bytes(&crate::types::ExecutionPayment {
                 id: payment_id,
                 execution_id,
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: crate::types::InterfaceRevision(7),
                 payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),
                 },
                 max_budget: 100_000,
@@ -2548,7 +2548,7 @@ mod tests {
                 consumed: 42_000,
                 accomplished: true,
                 refunded: false,
-                final_state: crate::types::CurrentExecutionPaymentFinalState::Accomplished,
+                final_state: crate::types::ExecutionPaymentFinalState::Accomplished,
                 tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
                 locked_vertices: vec![],
             })
@@ -2651,14 +2651,14 @@ mod tests {
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+            bcs::to_bytes(&crate::types::ExecutionPayment {
                 id: *payment_ref.object_id(),
                 execution_id: *execution_ref.object_id(),
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),
                 },
                 max_budget: 100_000,
@@ -2667,7 +2667,7 @@ mod tests {
                 consumed: 0,
                 accomplished: false,
                 refunded: false,
-                final_state: crate::types::CurrentExecutionPaymentFinalState::Pending,
+                final_state: crate::types::ExecutionPaymentFinalState::Pending,
                 tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
                 locked_vertices: vec![],
             })
@@ -2737,11 +2737,11 @@ mod tests {
         });
         let payment_vertex_key =
             payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
-        let current_locked_vertices = vec![crate::types::CurrentExecutionPaymentVertexLock {
+        let current_locked_vertices = vec![crate::types::ExecutionPaymentVertexLock {
             vertex_key: payment_vertex_key.clone(),
             tool_fqn: tool_fqn.to_string().into_bytes(),
             amount: 10,
-            settlement_kind: crate::types::CurrentVertexExecutionPaymentSettlementKind::Paid,
+            settlement_kind: crate::types::VertexExecutionPaymentSettlementKind::Paid,
         }];
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -2815,14 +2815,14 @@ mod tests {
             &mut ledger_service_mock,
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
-            bcs::to_bytes(&crate::types::CurrentExecutionPayment {
+            bcs::to_bytes(&crate::types::ExecutionPayment {
                 id: *payment_ref.object_id(),
                 execution_id: *execution_ref.object_id(),
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceRevision(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::CurrentPaymentSourceKind::UserFunded {
+                source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),
                 },
                 max_budget: 100_000,
@@ -2831,7 +2831,7 @@ mod tests {
                 consumed: 0,
                 accomplished: false,
                 refunded: false,
-                final_state: crate::types::CurrentExecutionPaymentFinalState::Pending,
+                final_state: crate::types::ExecutionPaymentFinalState::Pending,
                 tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
                 locked_vertices: current_locked_vertices,
             })

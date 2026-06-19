@@ -1155,6 +1155,7 @@ fn external_verifier_call_results(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn call_external_verifier_v1_with_authenticated_request(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,

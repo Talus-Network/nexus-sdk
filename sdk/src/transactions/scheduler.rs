@@ -129,6 +129,7 @@ pub fn new_default_agent_task(
 }
 
 /// PTB template to create a default-agent scheduled task with address-funded reserve components.
+#[allow(clippy::too_many_arguments)]
 pub fn new_invoker_funded_default_agent_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,

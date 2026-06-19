@@ -30,27 +30,18 @@ use {
             AgentRegistryObject,
             AgentVaultFieldKey,
             AgentVertexAuthorizationTemplate,
-            CurrentExecutionPayment,
-            CurrentExecutionPaymentFinalState,
-            CurrentPaymentSourceKind,
-            CurrentVertexExecutionPaymentSettlementKind,
-            DagExecutionPaymentFieldKey,
             DataStorage,
             DefaultDagExecutor,
             DefaultDagExecutorFieldKey,
             DefaultDagExecutorRecord,
             DefaultDagExecutorValue,
             ExecutionPayment,
-            ExecutionPaymentFinalState,
             ExecutionPaymentHistoryFieldKey,
             ExecutionPaymentHistoryList,
             ExecutionPaymentReceipt,
             ExecutionPaymentReceiptFieldKey,
-            ExecutionPaymentVertexLock,
             InterfaceRevision,
             NexusObjects,
-            PaymentMode,
-            PaymentSourceKind,
             SkillId,
             SkillRecord,
             SkillRequirements,
@@ -58,7 +49,6 @@ use {
             SkillRevisionRecord,
             SkillRevisionResolutionError,
             TapPublishArtifact,
-            VertexExecutionPaymentSettlementKind,
         },
     },
     std::{
@@ -294,7 +284,8 @@ pub fn payment_is_terminal(payment: &ExecutionPayment) -> bool {
     }
     matches!(
         payment.final_state,
-        Some(ExecutionPaymentFinalState::Accomplished) | Some(ExecutionPaymentFinalState::Refunded)
+        crate::types::ExecutionPaymentFinalState::Accomplished
+            | crate::types::ExecutionPaymentFinalState::Refunded
     )
 }
 
@@ -1278,28 +1269,21 @@ pub async fn fetch_execution_payment(
     crawler: &Crawler,
     payment_id: sui::types::Address,
 ) -> anyhow::Result<Response<ExecutionPayment>> {
-    match crawler
-        .get_object_contents_bcs::<CurrentExecutionPayment>(payment_id)
+    let payment = crawler
+        .get_object_contents_bcs::<ExecutionPayment>(payment_id)
         .await
-    {
-        Ok(payment) => {
-            return Ok(Response {
-                object_id: payment.object_id,
-                owner: payment.owner,
-                version: payment.version,
-                data: tap_execution_payment_from_current(payment.data),
-                digest: payment.digest,
-                balance: payment.balance,
-            });
-        }
-        Err(current_error) => match crawler.get_object::<ExecutionPayment>(payment_id).await {
-            Ok(payment) => Ok(payment),
-            Err(legacy_error) => anyhow::bail!(
-                "payment '{}' did not decode as current CurrentExecutionPayment ({current_error}) or legacy ExecutionPayment ({legacy_error})",
-                payment_id
-            ),
-        },
-    }
+        .map_err(|error| {
+            anyhow::anyhow!("payment '{payment_id}' did not decode as ExecutionPayment: {error}")
+        })?;
+
+    Ok(Response {
+        object_id: payment.object_id,
+        owner: payment.owner,
+        version: payment.version,
+        data: payment.data,
+        digest: payment.digest,
+        balance: payment.balance,
+    })
 }
 
 /// Fetch the standard execution payment stored under a DAG execution object.
@@ -1309,12 +1293,12 @@ pub async fn fetch_execution_payment_for_execution(
 ) -> anyhow::Result<Response<ExecutionPayment>> {
     let mut candidates = Vec::new();
     let mut decode_errors = Vec::new();
-    for field in crawler
-        .get_dynamic_object_field_refs_matching_key::<DagExecutionPaymentFieldKey>(execution_id)
+    for field_id in crawler
+        .get_dynamic_object_field_child_ids(execution_id)
         .await?
     {
         match crawler
-            .get_object_contents_bcs::<CurrentExecutionPayment>(field.child_id)
+            .get_object_contents_bcs::<ExecutionPayment>(field_id)
             .await
         {
             Ok(payment) => {
@@ -1323,31 +1307,15 @@ pub async fn fetch_execution_payment_for_execution(
                         object_id: payment.object_id,
                         owner: payment.owner,
                         version: payment.version,
-                        data: tap_execution_payment_from_current(payment.data),
+                        data: payment.data,
                         digest: payment.digest,
                         balance: payment.balance,
                     });
                 }
-                continue;
-            }
-            Err(e) => decode_errors.push(format!(
-                "child '{}' did not decode as CurrentExecutionPayment: {e}",
-                field.child_id
-            )),
-        }
-
-        match crawler
-            .get_object_contents_bcs::<ExecutionPayment>(field.child_id)
-            .await
-        {
-            Ok(payment) => {
-                if payment.data.execution_id == execution_id {
-                    candidates.push(payment);
-                }
             }
             Err(e) => decode_errors.push(format!(
                 "child '{}' did not decode as ExecutionPayment: {e}",
-                field.child_id
+                field_id
             )),
         }
     }
@@ -1369,68 +1337,6 @@ pub async fn fetch_execution_payment_for_execution(
         _ => anyhow::bail!(
             "multiple execution payment dynamic fields found for execution '{execution_id}'"
         ),
-    }
-}
-
-fn tap_execution_payment_from_current(payment: CurrentExecutionPayment) -> ExecutionPayment {
-    let (payment_mode, source_kind, source_identity, payer) = match payment.source_kind {
-        CurrentPaymentSourceKind::UserFunded { user } => (
-            PaymentMode::UserFunded,
-            Some(PaymentSourceKind::Invoker),
-            Some(user),
-            user,
-        ),
-        CurrentPaymentSourceKind::AgentFunded { agent_id } => (
-            PaymentMode::AgentFunded,
-            Some(PaymentSourceKind::AgentVault),
-            Some(agent_id),
-            agent_id,
-        ),
-    };
-
-    ExecutionPayment {
-        id: payment.id,
-        execution_id: payment.execution_id,
-        agent_id: payment.agent_id,
-        skill_id: payment.skill_id,
-        interface_revision: payment.interface_revision,
-        payer,
-        payment_mode,
-        source_kind,
-        source_identity,
-        max_budget: payment.max_budget,
-        locked_budget: payment.locked_budget,
-        consumed: payment.consumed,
-        payment_source_hash: Vec::new(),
-        accomplished: payment.accomplished,
-        refunded: payment.refunded,
-        final_state: Some(match payment.final_state {
-            CurrentExecutionPaymentFinalState::Pending => ExecutionPaymentFinalState::Pending,
-            CurrentExecutionPaymentFinalState::Accomplished => {
-                ExecutionPaymentFinalState::Accomplished
-            }
-            CurrentExecutionPaymentFinalState::Refunded => ExecutionPaymentFinalState::Refunded,
-        }),
-        locked_vertices: payment
-            .locked_vertices
-            .into_iter()
-            .map(|lock| ExecutionPaymentVertexLock {
-                vertex_key: lock.vertex_key,
-                tool_fqn: lock.tool_fqn,
-                amount: lock.amount,
-                settlement_kind: match lock.settlement_kind {
-                    CurrentVertexExecutionPaymentSettlementKind::Free => {
-                        VertexExecutionPaymentSettlementKind::Free
-                    }
-                    CurrentVertexExecutionPaymentSettlementKind::Ticket => {
-                        VertexExecutionPaymentSettlementKind::Ticket
-                    }
-                    CurrentVertexExecutionPaymentSettlementKind::Paid => {
-                        VertexExecutionPaymentSettlementKind::Paid
-                    }
-                },
-            })
-            .collect(),
     }
 }
 
@@ -1591,6 +1497,8 @@ mod tests {
                 AgentRecord,
                 AgentRegistryObject,
                 DefaultDagExecutor,
+                ExecutionPaymentFinalState,
+                ExecutionPaymentSourceKind,
                 InterfaceRevision,
                 MoveTable,
                 NexusObjects,
@@ -2729,7 +2637,7 @@ mod tests {
     fn baseline_payment(
         accomplished: bool,
         refunded: bool,
-        final_state: Option<ExecutionPaymentFinalState>,
+        final_state: ExecutionPaymentFinalState,
     ) -> ExecutionPayment {
         ExecutionPayment {
             id: sui::types::Address::from_static("0x1"),
@@ -2737,14 +2645,15 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
             interface_revision: InterfaceRevision(1),
-            payer: sui::types::Address::from_static("0xc"),
-            payment_mode: crate::types::PaymentMode::UserFunded,
-            source_kind: None,
-            source_identity: None,
+            payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
+            source_kind: ExecutionPaymentSourceKind::UserFunded {
+                user: sui::types::Address::from_static("0x1"),
+            },
             max_budget: 1_000_000,
             locked_budget: 0,
+            funds: crate::types::SuiBalance { value: 1_000_000 },
             consumed: 0,
-            payment_source_hash: vec![],
+            tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
             accomplished,
             refunded,
             final_state,
@@ -2753,56 +2662,69 @@ mod tests {
     }
 
     #[test]
-    fn current_execution_payment_maps_to_payment_source_fields() {
+    fn canonical_execution_payment_keeps_policy_and_source() {
         let agent_id = sui::types::Address::from_static("0xa");
-        let payment = tap_execution_payment_from_current(CurrentExecutionPayment {
+        let payment = ExecutionPayment {
             id: sui::types::Address::from_static("0x1"),
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id,
             skill_id: 11,
             interface_revision: InterfaceRevision(1),
             payment_policy: crate::types::SkillPaymentPolicy::AgentFunded { max_budget: 100 },
-            source_kind: CurrentPaymentSourceKind::AgentFunded { agent_id },
+            source_kind: ExecutionPaymentSourceKind::AgentFunded { agent_id },
             max_budget: 100,
             locked_budget: 0,
             funds: crate::types::SuiBalance { value: 100 },
             consumed: 0,
             accomplished: false,
             refunded: false,
-            final_state: CurrentExecutionPaymentFinalState::Pending,
+            final_state: ExecutionPaymentFinalState::Pending,
             tool_cost_snapshot: crate::types::PaymentVecMap { contents: vec![] },
             locked_vertices: vec![],
-        });
+        };
 
-        assert_eq!(payment.payment_mode, PaymentMode::AgentFunded);
-        assert_eq!(payment.source_kind, Some(PaymentSourceKind::AgentVault));
-        assert_eq!(payment.source_identity, Some(agent_id));
-        assert_eq!(payment.payer, agent_id);
         assert_eq!(
-            payment.final_state,
-            Some(ExecutionPaymentFinalState::Pending)
+            payment.payment_policy,
+            crate::types::SkillPaymentPolicy::AgentFunded { max_budget: 100 }
         );
+        assert_eq!(
+            payment.source_kind,
+            ExecutionPaymentSourceKind::AgentFunded { agent_id }
+        );
+        assert_eq!(payment.final_state, ExecutionPaymentFinalState::Pending);
     }
 
     #[test]
     fn payment_is_terminal_recognizes_each_settled_form() {
-        assert!(!payment_is_terminal(&baseline_payment(false, false, None)));
-        assert!(payment_is_terminal(&baseline_payment(true, false, None)));
-        assert!(payment_is_terminal(&baseline_payment(false, true, None)));
+        assert!(!payment_is_terminal(&baseline_payment(
+            false,
+            false,
+            ExecutionPaymentFinalState::Pending
+        )));
+        assert!(payment_is_terminal(&baseline_payment(
+            true,
+            false,
+            ExecutionPaymentFinalState::Pending
+        )));
         assert!(payment_is_terminal(&baseline_payment(
             false,
-            false,
-            Some(ExecutionPaymentFinalState::Accomplished)
+            true,
+            ExecutionPaymentFinalState::Pending
         )));
         assert!(payment_is_terminal(&baseline_payment(
             false,
             false,
-            Some(ExecutionPaymentFinalState::Refunded)
+            ExecutionPaymentFinalState::Accomplished
+        )));
+        assert!(payment_is_terminal(&baseline_payment(
+            false,
+            false,
+            ExecutionPaymentFinalState::Refunded
         )));
         assert!(!payment_is_terminal(&baseline_payment(
             false,
             false,
-            Some(ExecutionPaymentFinalState::Pending)
+            ExecutionPaymentFinalState::Pending
         )));
     }
 

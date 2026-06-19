@@ -1,41 +1,10 @@
 //! Types for `nexus_interface::authorization`.
 
 use {
-    super::{InterfaceVersion, MoveOption},
+    super::{deserialize_vertex_string, InterfaceVersion, MoveOption},
     crate::sui,
-    serde::{de::Error as _, Deserialize, Serialize},
+    serde::{Deserialize, Serialize},
 };
-
-fn deserialize_vertex_string<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    if !deserializer.is_human_readable() {
-        let bytes = Vec::<u8>::deserialize(deserializer)?;
-        return String::from_utf8(bytes).map_err(D::Error::custom);
-    }
-
-    let value = serde_json::Value::deserialize(deserializer)?;
-    if let Some(bytes) = super::parse_byte_vector_value(&value).map_err(D::Error::custom)? {
-        return String::from_utf8(bytes).map_err(D::Error::custom);
-    }
-
-    let text = super::parse_string_value(&value)
-        .map_err(D::Error::custom)?
-        .ok_or_else(|| D::Error::custom("missing authorization vertex value"))?;
-
-    if let Some(hex) = text.strip_prefix("0x") {
-        if hex.len() % 2 == 0 && hex.as_bytes().iter().all(u8::is_ascii_hexdigit) {
-            if let Ok(bytes) = hex::decode(hex) {
-                if let Ok(decoded) = String::from_utf8(bytes) {
-                    return Ok(decoded);
-                }
-            }
-        }
-    }
-
-    Ok(text)
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvenValue<T> {

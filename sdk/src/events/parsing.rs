@@ -534,11 +534,11 @@ mod tests {
             test_utils::sui_mocks,
             types::{
                 AgentId,
-                CurrentPaymentSourceKind,
-                CurrentScheduledOccurrenceFinalState,
+                ExecutionPaymentSourceKind,
                 InterfaceRevision,
                 PostFailureAction,
                 RuntimeVertex,
+                ScheduledOccurrenceFinalState,
                 SharedObjectRef,
                 SkillDagBinding,
                 SkillId,
@@ -1433,7 +1433,7 @@ mod tests {
                 NexusEventKind::ScheduledOccurrencePaymentFinalized(event) => {
                     assert_eq!(
                         event.final_state,
-                        CurrentScheduledOccurrenceFinalState::Accomplished
+                        ScheduledOccurrenceFinalState::Accomplished
                     );
                     assert_eq!(event.remaining_funds, 900);
                 }
@@ -1613,7 +1613,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_version: InterfaceRevision(9),
-                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                        source_kind: ExecutionPaymentSourceKind::AgentFunded {
                             agent_id: sui::types::Address::from_static("0x1"),
                         },
                         refill_amount: 500,
@@ -1635,7 +1635,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_version: InterfaceRevision(9),
-                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                        source_kind: ExecutionPaymentSourceKind::AgentFunded {
                             agent_id: sui::types::Address::from_static("0x1"),
                         },
                         budget: 300,
@@ -1653,7 +1653,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_version: InterfaceRevision(9),
-                        source_kind: CurrentPaymentSourceKind::AgentFunded {
+                        source_kind: ExecutionPaymentSourceKind::AgentFunded {
                             agent_id: sui::types::Address::from_static("0x1"),
                         },
                         refunded_amount: 1200,
@@ -1674,7 +1674,7 @@ mod tests {
                         agent_id: sui::types::Address::from_static("0x1"),
                         skill_id: 2,
                         interface_version: InterfaceRevision(9),
-                        final_state: CurrentScheduledOccurrenceFinalState::Accomplished,
+                        final_state: ScheduledOccurrenceFinalState::Accomplished,
                         remaining_funds: 900,
                     },
                 })

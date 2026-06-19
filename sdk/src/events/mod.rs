@@ -365,7 +365,7 @@ pub struct ExecutionPaymentReceiptCreatedEvent {
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub source_kind: CurrentPaymentSourceKind,
+    pub source_kind: ExecutionPaymentSourceKind,
     pub stored_under_agent: bool,
 }
 
@@ -375,7 +375,7 @@ pub struct ExecutionPaymentReceiptResolvedEvent {
     pub execution_id: sui::types::Address,
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
-    pub final_state: CurrentExecutionPaymentFinalState,
+    pub final_state: ExecutionPaymentFinalState,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -386,7 +386,7 @@ pub struct ScheduledPaymentReserveReceiptCreatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_version: InterfaceRevision,
-    pub source_kind: CurrentPaymentSourceKind,
+    pub source_kind: ExecutionPaymentSourceKind,
     pub prepaid_amount: u64,
     pub occurrence_budget: u64,
     pub stored_under_agent: bool,
@@ -447,7 +447,7 @@ pub struct ScheduledSkillPaymentRefilledEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_version: InterfaceRevision,
-    pub source_kind: CurrentPaymentSourceKind,
+    pub source_kind: ExecutionPaymentSourceKind,
     pub refill_amount: u64,
     pub occurrence_budget: u64,
     pub remaining_funds: u64,
@@ -463,7 +463,7 @@ pub struct ScheduledOccurrencePaymentCreatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_version: InterfaceRevision,
-    pub source_kind: CurrentPaymentSourceKind,
+    pub source_kind: ExecutionPaymentSourceKind,
     pub budget: u64,
     pub remaining_funds: u64,
 }
@@ -475,7 +475,7 @@ pub struct ScheduledSkillPaymentCanceledEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_version: InterfaceRevision,
-    pub source_kind: CurrentPaymentSourceKind,
+    pub source_kind: ExecutionPaymentSourceKind,
     pub refunded_amount: u64,
     pub remaining_funds: u64,
 }
@@ -490,7 +490,7 @@ pub struct ScheduledOccurrencePaymentFinalizedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_version: InterfaceRevision,
-    pub final_state: CurrentScheduledOccurrenceFinalState,
+    pub final_state: ScheduledOccurrenceFinalState,
     pub remaining_funds: u64,
 }
 

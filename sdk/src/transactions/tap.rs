@@ -899,7 +899,10 @@ mod tests {
             })
             .expect("register_skill_with_fixed_tools call");
 
-        assert_eq!(call.module, AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS.module);
+        assert_eq!(
+            call.module,
+            AgentRegistry::REGISTER_SKILL_WITH_FIXED_TOOLS.module
+        );
         assert_eq!(call.arguments.len(), 9);
         inspector.expect_shared_object(&call.arguments[2], &objects.tool_registry, false);
     }
