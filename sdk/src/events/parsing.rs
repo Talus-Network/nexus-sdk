@@ -1442,6 +1442,7 @@ mod tests {
         }
     }
 
+    // TODO, reconsider how to improve the event denoting from the move code
     fn tap_event_samples() -> Vec<(&'static str, Vec<u8>)> {
         vec![
             (
