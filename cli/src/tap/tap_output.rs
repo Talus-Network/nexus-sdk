@@ -209,12 +209,11 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
         "agent_id": payment.agent_id,
         "skill_id": payment.skill_id,
         "interface_revision": payment.interface_revision,
-        "payer": payment.payer,
-        "payment_mode": payment.payment_mode,
+        "payment_policy": payment.payment_policy,
         "source_kind": payment.source_kind,
-        "source_identity": payment.source_identity,
         "max_budget": payment.max_budget,
         "locked_budget": payment.locked_budget,
+        "funds": payment.funds,
         "consumed": payment.consumed,
         "accomplished": payment.accomplished,
         "refunded": payment.refunded,
@@ -359,7 +358,6 @@ mod tests {
             types::{
                 DefaultDagExecutor,
                 InterfaceRevision,
-                PaymentMode,
                 SkillDagBinding,
                 SkillPaymentPolicy,
                 SkillRecord,
@@ -390,23 +388,32 @@ mod tests {
     }
 
     fn fixture_payment(accomplished: bool, refunded: bool) -> ExecutionPayment {
+        let final_state = if accomplished {
+            nexus_sdk::types::ExecutionPaymentFinalState::Accomplished
+        } else if refunded {
+            nexus_sdk::types::ExecutionPaymentFinalState::Refunded
+        } else {
+            nexus_sdk::types::ExecutionPaymentFinalState::Pending
+        };
+
         ExecutionPayment {
             id: sui::types::Address::from_static("0xaa"),
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: sui::types::Address::from_static("0xcc"),
             skill_id: 11,
             interface_revision: InterfaceRevision(2),
-            payer: sui::types::Address::from_static("0xee"),
-            payment_mode: PaymentMode::UserFunded,
-            source_kind: None,
-            source_identity: None,
+            payment_policy: nexus_sdk::types::SkillPaymentPolicy::UserFunded,
+            source_kind: nexus_sdk::types::ExecutionPaymentSourceKind::UserFunded {
+                user: sui::types::Address::from_static("0xee"),
+            },
             max_budget: 1_000,
             locked_budget: 0,
+            funds: nexus_sdk::types::SuiBalance { value: 1_000 },
             consumed: 0,
-            payment_source_hash: vec![],
+            tool_cost_snapshot: nexus_sdk::types::PaymentVecMap { contents: vec![] },
             accomplished,
             refunded,
-            final_state: None,
+            final_state,
             locked_vertices: vec![],
         }
     }
