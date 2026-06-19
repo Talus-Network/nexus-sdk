@@ -15,6 +15,7 @@
 //! assert!(vertex.is_ok());
 //! ```
 
+pub mod generated;
 pub mod move_std;
 pub mod primitives;
 pub mod registry;

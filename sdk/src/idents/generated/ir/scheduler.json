@@ -1,0 +1,5671 @@
+{
+  "storage_id": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+  "original_id": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+  "version": 1,
+  "modules": {
+    "scheduler": {
+      "name": "scheduler",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "Constraints"
+          },
+          "module": "scheduler",
+          "name": "Constraints",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "Execution"
+          },
+          "module": "scheduler",
+          "name": "Execution",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "Metadata"
+          },
+          "module": "scheduler",
+          "name": "Metadata",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "values",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "string",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "string",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "MissedOccurrenceEvent"
+          },
+          "module": "scheduler",
+          "name": "MissedOccurrenceEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "start_time_ms",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "deadline_ms",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "pruned_at",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_per_gas_unit",
+                  "position": 4,
+                  "ty": "U64"
+                },
+                {
+                  "name": "generator",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Symbol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "Occurrence"
+          },
+          "module": "scheduler",
+          "name": "Occurrence",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "start_time_ms",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "deadline_ms",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_per_gas_unit",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "generator",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Symbol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "OccurrenceConsumedEvent"
+          },
+          "module": "scheduler",
+          "name": "OccurrenceConsumedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "start_time_ms",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "deadline_ms",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_per_gas_unit",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "generator",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Symbol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "executed_at",
+                  "position": 5,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "OccurrenceScheduledEvent"
+          },
+          "module": "scheduler",
+          "name": "OccurrenceScheduledEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "generator",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Symbol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "PeriodicGeneratorState"
+          },
+          "module": "scheduler",
+          "name": "PeriodicGeneratorState",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "active",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Occurrence"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "next_start_ms",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "period_ms",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "deadline_offset_ms",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "max_iterations",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "generated",
+                  "position": 5,
+                  "ty": "U64"
+                },
+                {
+                  "name": "last_emitted_start_ms",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_per_gas_unit",
+                  "position": 7,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "PeriodicGeneratorWitness"
+          },
+          "module": "scheduler",
+          "name": "PeriodicGeneratorWitness",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "PeriodicScheduleConfiguredEvent"
+          },
+          "module": "scheduler",
+          "name": "PeriodicScheduleConfiguredEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "period_ms",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "deadline_offset_ms",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "max_iterations",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "generated",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_per_gas_unit",
+                  "position": 5,
+                  "ty": "U64"
+                },
+                {
+                  "name": "last_generated_start_ms",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "U64"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "QueueEntry"
+          },
+          "module": "scheduler",
+          "name": "QueueEntry",
+          "abilities": [
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "occurrence",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "sequence",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "request_ms",
+                  "position": 2,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "QueueGeneratorState"
+          },
+          "module": "scheduler",
+          "name": "QueueGeneratorState",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "pending",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "priority_queue",
+                        "name": "PriorityQueue"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "QueueEntry"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "len",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "next_sequence",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "active",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "QueueEntry"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "QueueGeneratorWitness"
+          },
+          "module": "scheduler",
+          "name": "QueueGeneratorWitness",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "State"
+          },
+          "module": "scheduler",
+          "name": "State",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "Active",
+                  "position": 0,
+                  "fields": []
+                },
+                {
+                  "name": "Paused",
+                  "position": 1,
+                  "fields": []
+                },
+                {
+                  "name": "Canceled",
+                  "position": 2,
+                  "fields": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TapScheduledTaskLink"
+          },
+          "module": "scheduler",
+          "name": "TapScheduledTaskLink",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "scheduled_task_id",
+                  "position": 0,
+                  "ty": "Address"
+                },
+                {
+                  "name": "agent_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "skill_id",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "source_kind",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
+                        "module": "tap",
+                        "name": "PaymentSourceKind"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TapScheduledTaskLinkKey"
+          },
+          "module": "scheduler",
+          "name": "TapScheduledTaskLinkKey",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "Task"
+          },
+          "module": "scheduler",
+          "name": "Task",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "owner",
+                  "position": 1,
+                  "ty": "Address"
+                },
+                {
+                  "name": "metadata",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Metadata"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "constraints",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "execution",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Execution"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "state",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "State"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "data",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "bag",
+                        "name": "Bag"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "objects",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object_bag",
+                        "name": "ObjectBag"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TaskCanceledEvent"
+          },
+          "module": "scheduler",
+          "name": "TaskCanceledEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TaskCreatedEvent"
+          },
+          "module": "scheduler",
+          "name": "TaskCreatedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "owner",
+                  "position": 1,
+                  "ty": "Address"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TaskPausedEvent"
+          },
+          "module": "scheduler",
+          "name": "TaskPausedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+            "module": "scheduler",
+            "name": "TaskResumedEvent"
+          },
+          "module": "scheduler",
+          "name": "TaskResumedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "task",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "add_occurrence_absolute_for_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": "U64"
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "add_occurrence_relative_for_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": "U64"
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "advance_constraints_with_witness",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "advance_execution_with_witness",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "advance_periodic_cursor",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_no_generator_registered",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "attach_tap_scheduled_task_link",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
+                        "module": "tap",
+                        "name": "ScheduledSkillTask"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "borrow_constraint",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "module": "policy",
+                      "name": "Policy"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                            "module": "scheduler",
+                            "name": "Constraints"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "borrow_execution",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                      "module": "policy",
+                      "name": "Policy"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                            "module": "scheduler",
+                            "name": "Execution"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "cancel",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "check_periodic_occurrence",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "proof_of_uid",
+                  "name": "ProofOfUID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "check_queue_occurrence",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "proof_of_uid",
+                  "name": "ProofOfUID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "configure_periodic_state",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "disable_periodic_for_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "disable_periodic_state",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_missed_occurrence_event",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_occurrence_consumed_event",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_occurrence_scheduled_event",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_periodic_schedule_for_task",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_task_canceled",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_task_created",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "Address"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_task_paused",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_task_resumed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "enqueue_occurrence_for_task",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": "U64"
+            },
+            {
+              "name": "arg4",
+              "ty": "U64"
+            },
+            {
+              "name": "arg5",
+              "ty": "Address"
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "ensure_deadline_not_reached_for",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "ensure_task_active",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "execute",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "proof_of_uid",
+                  "name": "ProofOfUID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "fast_forward_periodic_cursor",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "finish",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "module": "proof_of_uid",
+                    "name": "ProofOfUID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "for_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "Address"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "is_task_canceled_internal",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_task_paused_internal",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_time_canceled",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_time_paused",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "make_occurrence",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": "U64"
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "module": "policy",
+                    "name": "Symbol"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "Occurrence"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "mark_task_active",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "mark_task_canceled",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "mark_task_paused",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "match_deadline_from_offset",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": "U64"
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U64"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                          "module": "scheduler",
+                          "name": "Constraints"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                    "module": "policy",
+                    "name": "Policy"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                          "module": "scheduler",
+                          "name": "Execution"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_constraints_policy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table_vec",
+                        "name": "TableVec"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "module": "policy",
+                              "name": "Symbol"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "policy",
+                  "name": "Policy"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Constraints"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_execution_policy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table_vec",
+                        "name": "TableVec"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                              "module": "policy",
+                              "name": "Symbol"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "policy",
+                  "name": "Policy"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Execution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_metadata",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x1",
+                          "module": "string",
+                          "name": "String"
+                        },
+                        "type_arguments": []
+                      }
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x1",
+                          "module": "string",
+                          "name": "String"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "Metadata"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_or_modify_periodic_for_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "U64"
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg8",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "new_periodic_generator_state",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "PeriodicGeneratorState"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_queue_generator_state",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "QueueGeneratorState"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "occurrence_deadline_missed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Occurrence"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "pause",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "periodic_activate_next_occurrence",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "periodic_generator_registered",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "periodic_generator_symbol",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "policy",
+                  "name": "Symbol"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "periodic_take_active_occurrence",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "Occurrence"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "prepare_agent_execution_from_scheduled_payment",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
+                        "module": "tap",
+                        "name": "ScheduledSkillTask"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "RequestWalkExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "prepare_default_agent_execution_from_scheduled_payment",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
+                        "module": "tap",
+                        "name": "ScheduledSkillTask"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "RequestWalkExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "prepare_default_agent_execution_from_scheduler",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg6",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "arg7",
+              "ty": "U64"
+            },
+            {
+              "name": "arg8",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg9",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                  "module": "dag",
+                  "name": "RequestWalkExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "prune_periodic_cursor",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "prune_periodic_occurrences",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "PeriodicGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "prune_queued_occurrences",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "queue_activate_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "QueueEntry"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "queue_candidate_should_preempt",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueEntry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueEntry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "queue_entry_deadline_missed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueEntry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "queue_generator_registered",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "queue_generator_symbol",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                  "module": "policy",
+                  "name": "Symbol"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "queue_new_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "Occurrence"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "QueueEntry"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "queue_offer_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "QueueEntry"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "queue_pop_best_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "QueueEntry"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "queue_priority",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "queue_promote_next_active",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": "U64"
+            },
+            {
+              "name": "arg3",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2a76bc1448255cf4aaa127e6863749e9bbab9fdc87983a46802dbbdda3999139",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg4",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "queue_reinsert_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "QueueEntry"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "queue_should_replace",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueEntry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueEntry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "queue_take_active_entry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "QueueGeneratorState"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "QueueEntry"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "register_begin_agent_execution",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Execution"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                    "module": "dag",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "register_begin_default_agent_execution",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Execution"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x34a8b002e130b2b57c90da467cbc8176a46b80b34bf9dc4dd3d312db43b7c8cb",
+                    "module": "dag",
+                    "name": "DagExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "register_periodic_generator",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "PeriodicGeneratorState"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "register_queue_generator",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x57aa8630224db9821fed0dc10cbc24343f0e35b3d9303db1df2718743a40618f",
+                        "module": "policy",
+                        "name": "Policy"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                              "module": "scheduler",
+                              "name": "Constraints"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "QueueGeneratorState"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "resume",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "tap_scheduled_task_link",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                  "module": "scheduler",
+                  "name": "TapScheduledTaskLink"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "tap_scheduled_task_link_agent_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "TapScheduledTaskLink"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "tap_scheduled_task_link_scheduled_task_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "TapScheduledTaskLink"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Address"
+          ]
+        },
+        {
+          "name": "tap_scheduled_task_link_skill_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "TapScheduledTaskLink"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "tap_scheduled_task_link_source_kind",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "TapScheduledTaskLink"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x5afaf21375d52b89a899984b99ba03d8fee9fb87273ac487aed594d9f566d089",
+                  "module": "tap",
+                  "name": "PaymentSourceKind"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "update_metadata",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x56ff32b902af11858aa61b80fb8c62aabdd8a111c7d6ddf5373a8a3c40c56557",
+                    "module": "scheduler",
+                    "name": "Metadata"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    }
+  }
+}

@@ -328,6 +328,26 @@ branch = "feat/add-sui-support"
 features = ["sui", "redis", "postgres"]
 optional = true
 
+# === TEST ===
+[dependencies.sui-move-codegen]
+path = "../../move-binding/sui-move-codegen"
+
+[dependencies.sui-move]
+path = "../../move-binding/sui-move"
+features = ["derive"]
+
+[dependencies.sui-move-derive]
+path = "../../move-binding/sui-move-derive"
+
+[dependencies.sui-move-call]
+path = "../../move-binding/sui-move-call"
+
+[dependencies.sui-move-ptb]
+path = "../../move-binding/sui-move-ptb"
+
+[dependencies.sui-move-runtime]
+path = "../../move-binding/sui-move-runtime"
+
 # === Dev deps ===
 [dev-dependencies]
 assert_matches = "1.5.0"
@@ -342,6 +362,7 @@ tonic.workspace = true
 # === Build deps ===
 [build-dependencies]
 toml.workspace = true
+serde_json.workspace = true
 
 [dependencies.blake3]
 version = "1.3"

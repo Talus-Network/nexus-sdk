@@ -5822,7 +5822,13 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "sui-crypto 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-move",
  "sui-move-build",
+ "sui-move-call",
+ "sui-move-codegen",
+ "sui-move-derive",
+ "sui-move-ptb",
+ "sui-move-runtime",
  "sui-package-management",
  "sui-rpc 0.3.1",
  "sui-sdk-types 0.3.1",
@@ -9220,6 +9226,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sui-move"
+version = "0.1.0"
+dependencies = [
+ "bcs",
+ "serde",
+ "serde_json",
+ "sui-move-derive",
+ "sui-sdk-types 0.3.1",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "sui-move-build"
 version = "1.72.5"
 source = "git+https://github.com/MystenLabs/sui?tag=mainnet-v1.72.5#5445323ef25a8b4d66a8420230abcf8294db9665"
@@ -9243,6 +9261,41 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "sui-move-call"
+version = "0.1.0"
+dependencies = [
+ "bcs",
+ "serde",
+ "sui-move",
+ "sui-sdk-types 0.3.1",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-codegen"
+version = "0.1.0"
+dependencies = [
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sui-rpc 0.3.1",
+ "sui-sdk-types 0.3.1",
+ "syn 2.0.111",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.111",
 ]
 
 [[package]]
@@ -9350,6 +9403,29 @@ dependencies = [
  "sui-protocol-config",
  "sui-types",
  "tracing",
+]
+
+[[package]]
+name = "sui-move-ptb"
+version = "0.1.0"
+dependencies = [
+ "sui-move-call",
+ "sui-sdk-types 0.3.1",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sui-move-runtime"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sui-crypto 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-move",
+ "sui-move-call",
+ "sui-move-ptb",
+ "sui-rpc 0.3.1",
+ "sui-sdk-types 0.3.1",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
