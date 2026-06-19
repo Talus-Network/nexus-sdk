@@ -22,19 +22,19 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("add_occurrence_relative_for_task"),
     };
-    /// Attach a TAP scheduled task link to a scheduler task.
-    ///
-    /// `nexus_scheduler::scheduler::attach_tap_scheduled_task_link`
-    pub const ATTACH_TAP_SCHEDULED_TASK_LINK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("attach_tap_scheduled_task_link"),
-    };
     /// Cancel scheduling for a task.
     ///
     /// `nexus_scheduler::scheduler::cancel`
     pub const CANCEL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("cancel"),
+    };
+    /// Cancel scheduling for an explicit-agent task.
+    ///
+    /// `nexus_scheduler::scheduler::cancel_with_agent`
+    pub const CANCEL_WITH_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("cancel_with_agent"),
     };
     /// Run scheduler checks to consume the next periodic occurrence.
     ///
@@ -50,6 +50,16 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("check_queue_occurrence"),
     };
+    /// Collect an idle agent-funded scheduled payment reserve back to the agent vault.
+    ///
+    /// `nexus_scheduler::scheduler::collect_idle_agent_funded_scheduled_payment_reserve_to_vault`
+    pub const COLLECT_IDLE_AGENT_FUNDED_SCHEDULED_PAYMENT_RESERVE_TO_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: SCHEDULER_MODULE,
+            name: sui::types::Identifier::from_static(
+                "collect_idle_agent_funded_scheduled_payment_reserve_to_vault",
+            ),
+        };
     /// Disable periodic scheduling for a task.
     ///
     /// `nexus_scheduler::scheduler::disable_periodic_for_task`
@@ -78,6 +88,13 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("new"),
     };
+    /// Creates an agent-owned scheduled task with agent-funded payment reserve components.
+    ///
+    /// `nexus_scheduler::scheduler::new_agent_funded_task`
+    pub const NEW_AGENT_FUNDED_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("new_agent_funded_task"),
+    };
     /// Creates the default constraints policy.
     ///
     /// `nexus_scheduler::scheduler::new_constraints_policy`
@@ -85,12 +102,33 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("new_constraints_policy"),
     };
+    /// Creates a scheduled task for the registry-owned default agent.
+    ///
+    /// `nexus_scheduler::scheduler::new_default_agent_task`
+    pub const NEW_DEFAULT_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("new_default_agent_task"),
+    };
     /// Creates the default execution policy.
     ///
     /// `nexus_scheduler::scheduler::new_execution_policy`
     pub const NEW_EXECUTION_POLICY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("new_execution_policy"),
+    };
+    /// Creates a sender-owned invoker-funded scheduled task with payment reserve components.
+    ///
+    /// `nexus_scheduler::scheduler::new_invoker_funded_agent_task`
+    pub const NEW_INVOKER_FUNDED_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("new_invoker_funded_agent_task"),
+    };
+    /// Creates a sender-owned default-agent scheduled task with invoker-funded payment reserve components.
+    ///
+    /// `nexus_scheduler::scheduler::new_invoker_funded_default_agent_task`
+    pub const NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("new_invoker_funded_default_agent_task"),
     };
     /// Creates a metadata container from key/value pairs.
     ///
@@ -126,6 +164,13 @@ impl Scheduler {
     pub const PAUSE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("pause"),
+    };
+    /// Pause the scheduler for an explicit-agent task.
+    ///
+    /// `nexus_scheduler::scheduler::pause_with_agent`
+    pub const PAUSE_WITH_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("pause_with_agent"),
     };
     /// The PeriodicGeneratorState struct type.
     ///
@@ -220,6 +265,23 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("resume"),
     };
+    /// Resume the scheduler for an explicit-agent task.
+    ///
+    /// `nexus_scheduler::scheduler::resume_with_agent`
+    pub const RESUME_WITH_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("resume_with_agent"),
+    };
+    /// Settle an address-funded scheduled TAP execution payment if the execution is finished.
+    ///
+    /// `nexus_scheduler::scheduler::settle_finished_scheduled_tap_execution_payment_if_ready`
+    pub const SETTLE_FINISHED_SCHEDULED_EXECUTION_PAYMENT_IF_READY: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: SCHEDULER_MODULE,
+            name: sui::types::Identifier::from_static(
+                "settle_finished_scheduled_execution_payment_if_ready",
+            ),
+        };
     /// The Task struct type. Mostly used for creating generic types.
     ///
     /// `nexus_scheduler::scheduler::Task`

@@ -1,13 +1,13 @@
-mod helpers;
+pub(crate) mod helpers;
 mod occurrence;
 mod periodic;
-mod task;
+pub(crate) mod task;
 
 use crate::prelude::*;
 
 #[derive(Subcommand)]
 pub(crate) enum SchedulerCommand {
-    #[command(subcommand, about = "Manage scheduler tasks")]
+    #[command(subcommand, about = "Manage scheduled tasks")]
     Task(task::TaskCommand),
     #[command(subcommand, about = "Manage sporadic occurrences for a task")]
     Occurrence(occurrence::OccurrenceCommand),

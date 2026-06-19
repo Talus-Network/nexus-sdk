@@ -1,9 +1,10 @@
 module {{ name_snake_case }}::{{ name_snake_case }};
 
+use nexus_interface::authorization::AgentVertexAuthorization;
 use nexus_primitives::data;
+use nexus_primitives::authorization::ProvenValue;
 use nexus_primitives::proof_of_uid::ProofOfUID;
 use nexus_primitives::tagged_output::{Self, TaggedOutput};
-use nexus_workflow::dag::VertexAuthorizationCheckCap;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;
@@ -63,13 +64,13 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 /// Execute function with standardized Nexus signature.
 ///
 /// CRITICAL REQUIREMENTS:
-/// 1. Internal authorization parameter: _cap: VertexAuthorizationCheckCap
+/// 1. Internal authorization parameter: _authorization: ProvenValue<AgentVertexAuthorization>
 /// 2. Internal workflow proof parameter: worksheet: &mut ProofOfUID
 /// 3. Last parameter: ctx: &mut TxContext
 /// 4. Return type: TaggedOutput
 /// 5. Must stamp worksheet with tool witness ID
 public fun execute(
-    _cap: VertexAuthorizationCheckCap,
+    _authorization: ProvenValue<AgentVertexAuthorization>,
     worksheet: &mut ProofOfUID,
     state: &mut {{ name_pascal_case }}State,
     // Add your custom parameters here.

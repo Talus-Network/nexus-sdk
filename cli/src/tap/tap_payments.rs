@@ -1,6 +1,6 @@
 use {
     super::*,
-    nexus_sdk::nexus::tap::{fetch_tap_execution_payment, AccomplishExecutionPaymentParams},
+    nexus_sdk::nexus::tap::{fetch_execution_payment, AccomplishExecutionPaymentParams},
     std::time::Duration,
 };
 
@@ -43,7 +43,7 @@ async fn show_payment(payment_id: sui::types::Address) -> AnyResult<(), NexusCli
     command_title!("Reading standard TAP execution payment '{payment_id}'");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-    let payment = fetch_tap_execution_payment(nexus_client.crawler(), payment_id)
+    let payment = fetch_execution_payment(nexus_client.crawler(), payment_id)
         .await
         .map_err(NexusCliError::Any)?
         .data;
@@ -95,6 +95,9 @@ async fn list_payments(
         None
     };
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    if let Some(agent_id) = agent_id {
+        ensure_cli_agent_owner(&nexus_client, agent_id).await?;
+    }
     let owner = nexus_client.signer().get_active_address();
     let history = fetch_execution_payment_history(
         nexus_client.crawler(),
@@ -104,7 +107,7 @@ async fn list_payments(
     )
     .await
     .map_err(NexusCliError::Any)?;
-    let include = |receipt: &&TapExecutionPaymentReceipt| {
+    let include = |receipt: &&ExecutionPaymentReceipt| {
         (!completed && !pending)
             || (completed && receipt.resolved)
             || (pending && !receipt.resolved)
@@ -155,6 +158,9 @@ async fn resolve_payment(
     };
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    if let Some(agent_id) = resolved_agent_id {
+        ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
+    }
     let result = nexus_client
         .tap()
         .accomplish_execution_payment(AccomplishExecutionPaymentParams {

@@ -29,10 +29,10 @@ impl From<TaskGeneratorArg> for GeneratorKind {
 pub(crate) struct ScheduleStartOptions {
     /// Absolute start time in milliseconds since epoch for the first occurrence.
     #[arg(long = "schedule-start-ms", value_name = "MILLIS")]
-    schedule_start_ms: Option<u64>,
+    pub(crate) schedule_start_ms: Option<u64>,
     /// Start offset in milliseconds from now for the first occurrence.
     #[arg(long = "schedule-start-offset-ms", value_name = "MILLIS")]
-    schedule_start_offset_ms: Option<u64>,
+    pub(crate) schedule_start_offset_ms: Option<u64>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -40,12 +40,12 @@ pub(crate) struct ScheduleStartOptions {
 pub(crate) struct ScheduleDeadlineOptions {
     /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
     #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
-    schedule_deadline_offset_ms: Option<u64>,
+    pub(crate) schedule_deadline_offset_ms: Option<u64>,
 }
 
 #[derive(Subcommand)]
 pub(crate) enum TaskCommand {
-    #[command(about = "Create a new scheduler task")]
+    #[command(about = "Create a new scheduled task")]
     Create {
         /// DAG object ID providing the execution definition.
         #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
@@ -104,27 +104,16 @@ pub(crate) enum TaskCommand {
             value_name = "KIND"
         )]
         generator: TaskGeneratorArg,
-        /// Scope the task to a registered Talus agent skill. When set, the
-        /// task is built with the agent-bound execution policy
-        /// (`BeginAgentExecutionWitness`) so the workflow dispatches walks
-        /// against `(agent, skill)` instead of the default DAG-execution
-        /// policy. Must be paired with `--skill-id`.
-        #[arg(long = "agent-id", value_name = "OBJECT_ID")]
-        agent_id: Option<sui::types::Address>,
-        /// Agent-local skill index for the agent-bound execution policy.
-        /// Must be paired with `--agent-id`.
-        #[arg(long = "skill-id", value_name = "U64")]
-        skill_id: Option<u64>,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Inspect a scheduler task")]
+    #[command(about = "Inspect a scheduled task")]
     Inspect {
         /// Task object ID to inspect.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
         task_id: sui::types::Address,
     },
-    #[command(about = "Update scheduler task metadata")]
+    #[command(about = "Update scheduled task metadata")]
     Metadata {
         /// Task object ID to update.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
@@ -179,8 +168,6 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             schedule_deadline,
             schedule_priority_fee_per_gas_unit,
             generator,
-            agent_id,
-            skill_id,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -203,8 +190,6 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 schedule_deadline_offset_ms,
                 schedule_priority_fee_per_gas_unit,
                 generator.into(),
-                agent_id,
-                skill_id,
                 gas,
             )
             .await

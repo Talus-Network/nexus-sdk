@@ -5,10 +5,10 @@ use {
         types::{
             tap_input_commitment_from_dag_inputs,
             validate_requirements,
+            FixedTool,
             InterfaceRevision,
-            TapFixedTool,
-            TapPaymentPolicy,
-            TapSkillRequirements,
+            SkillPaymentPolicy,
+            SkillRequirements,
         },
     },
 };
@@ -92,7 +92,7 @@ fn build_artifact(
         .map(parse_fixed_tool)
         .collect::<AnyResult<Vec<_>, _>>()?;
 
-    let requirements = TapSkillRequirements {
+    let requirements = SkillRequirements {
         input_schema_commitment,
         payment_policy,
         schedule_policy,
@@ -138,7 +138,7 @@ async fn fetch_input_schema_commitment(
 fn payment_policy_from_cli(
     mode: ArtifactPaymentMode,
     agent_funded_max_budget: Option<u64>,
-) -> AnyResult<TapPaymentPolicy, NexusCliError> {
+) -> AnyResult<SkillPaymentPolicy, NexusCliError> {
     match mode {
         ArtifactPaymentMode::UserFunded => {
             if let Some(max_budget) = agent_funded_max_budget {
@@ -146,7 +146,7 @@ fn payment_policy_from_cli(
                     "--agent-funded-max-budget={max_budget} is only valid with --payment-mode agent-funded"
                 )));
             }
-            Ok(TapPaymentPolicy::user_funded())
+            Ok(SkillPaymentPolicy::user_funded())
         }
         ArtifactPaymentMode::AgentFunded => {
             let max_budget = agent_funded_max_budget.ok_or_else(|| {
@@ -159,12 +159,12 @@ fn payment_policy_from_cli(
                     "--agent-funded-max-budget must be greater than zero"
                 )));
             }
-            Ok(TapPaymentPolicy::agent_funded(max_budget))
+            Ok(SkillPaymentPolicy::agent_funded(max_budget))
         }
     }
 }
 
-fn parse_fixed_tool(value: String) -> AnyResult<TapFixedTool, NexusCliError> {
+fn parse_fixed_tool(value: String) -> AnyResult<FixedTool, NexusCliError> {
     let (registry, fqn) = value.split_once('=').ok_or_else(|| {
         NexusCliError::Any(anyhow!(
             "invalid fixed-tool '{value}': expected '<TOOL_REGISTRY_ID>=<TOOL_FQN>'"
@@ -180,7 +180,7 @@ fn parse_fixed_tool(value: String) -> AnyResult<TapFixedTool, NexusCliError> {
         NexusCliError::Any(anyhow!("invalid fixed-tool registry id '{registry}': {e}"))
     })?;
 
-    Ok(TapFixedTool {
+    Ok(FixedTool {
         tool_registry_id,
         tool_fqn: fqn.to_string(),
     })
@@ -219,7 +219,7 @@ mod tests {
         );
         assert_eq!(
             artifact.requirements.payment_policy,
-            TapPaymentPolicy::agent_funded(10_000)
+            SkillPaymentPolicy::agent_funded(10_000)
         );
         assert_eq!(artifact.requirements.fixed_tools.len(), 1);
     }

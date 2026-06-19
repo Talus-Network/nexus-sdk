@@ -19,32 +19,13 @@ impl AgentRegistry {
                 "bootstrap_default_runtime_dag_skill_for_deployment",
             ),
         };
-    pub const CANCEL_SCHEDULED_SKILL_EXECUTION_FROM_AGENT_VAULT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "cancel_scheduled_skill_execution_from_agent_vault",
-            ),
-        };
-    pub const CONFIRM_TOOL_EVAL_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("confirm_tool_eval_for_walk"),
-    };
     pub const CREATE_AGENT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("create_agent"),
     };
-    pub const CREATE_SCHEDULED_OCCURRENCE_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("create_scheduled_occurrence_payment"),
-    };
     pub const CREATE_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("create_skill"),
-    };
-    pub const DEFAULT_DAG_EXECUTOR_WORKFLOW_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("default_dag_executor_workflow_worksheet"),
     };
     pub const GET_SKILL_REQUIREMENTS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
@@ -64,13 +45,6 @@ impl AgentRegistry {
                 "new_scheduled_occurrence_payment_for_execution",
             ),
         };
-    pub const NEW_SCHEDULED_OCCURRENCE_PAYMENT_FOR_EXECUTION_FROM_TASK: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "new_scheduled_occurrence_payment_for_execution_from_task",
-            ),
-        };
     pub const REGISTER_SKILL: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_skill"),
@@ -79,39 +53,6 @@ impl AgentRegistry {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("register_skill_with_fixed_tools"),
     };
-    pub const SCHEDULE_DEFAULT_DAG_EXECUTOR_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "schedule_default_dag_executor_skill_execution_address_funded",
-            ),
-        };
-    pub const SCHEDULE_SKILL_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("schedule_skill_execution"),
-    };
-    pub const SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("schedule_skill_execution_address_funded"),
-    };
-    pub const SCHEDULE_SKILL_EXECUTION_ADDRESS_FUNDED_WITH_GRANTS: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "schedule_skill_execution_address_funded_with_grants",
-            ),
-        };
-    pub const SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("schedule_skill_execution_from_agent_vault"),
-    };
-    pub const SCHEDULE_SKILL_EXECUTION_FROM_AGENT_VAULT_WITH_GRANTS: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: AGENT_REGISTRY_MODULE,
-            name: sui::types::Identifier::from_static(
-                "schedule_skill_execution_from_agent_vault_with_grants",
-            ),
-        };
     pub const SET_AGENT_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("set_agent_active"),
@@ -139,14 +80,6 @@ impl AgentRegistry {
     pub const WITHDRAW_AGENT_PAYMENT_VAULT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: AGENT_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("withdraw_agent_payment_vault"),
-    };
-    pub const WORKFLOW_WORKSHEET_FOR_IDS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("workflow_worksheet_for_ids"),
-    };
-    pub const WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: AGENT_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("worksheet"),
     };
 }
 
@@ -209,6 +142,110 @@ impl NetworkAuth {
     pub const REGISTER_KEY: ModuleAndNameIdent = ModuleAndNameIdent {
         module: NETWORK_AUTH_MODULE,
         name: sui::types::Identifier::from_static("register_key"),
+    };
+}
+
+// == `nexus_registry::leader_cap` ==
+
+pub struct LeaderCap;
+
+pub const LEADER_CAP_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("leader_cap");
+
+impl LeaderCap {
+    /// Create N leader caps for self and the provided addresses.
+    ///
+    /// `nexus_registry::leader_cap::create_for_self_and_addresses`
+    pub const CREATE_FOR_SELF_AND_ADDRESSES: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_CAP_MODULE,
+        name: sui::types::Identifier::from_static("create_for_self_and_addresses"),
+    };
+    /// This is used as a generic argument for
+    /// [crate::idents::primitives::OwnerCap::CLONEABLE_OWNER_CAP].
+    ///
+    /// `nexus_registry::leader_cap::OverNetwork`
+    pub const OVER_NETWORK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_CAP_MODULE,
+        name: sui::types::Identifier::from_static("OverNetwork"),
+    };
+}
+
+// == `nexus_registry::leader` ==
+
+pub struct Leader;
+
+pub const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
+
+impl Leader {
+    /// Activate a leader and claim ownership of its `Active` state with a fresh token.
+    ///
+    /// `nexus_registry::leader::activate_and_claim`
+    pub const ACTIVATE_AND_CLAIM: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("activate_and_claim"),
+    };
+    /// Allow an address to request leader capabilities.
+    ///
+    /// `nexus_registry::leader::allow_address`
+    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("allow_address"),
+    };
+    /// Disallow an address from requesting leader capabilities.
+    ///
+    /// `nexus_registry::leader::disallow_address`
+    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("disallow_address"),
+    };
+    /// Create empty metadata for a leader.
+    ///
+    /// `nexus_registry::leader::empty_metadata`
+    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("empty_metadata"),
+    };
+    /// Admin capability type for modifying leader allowlist.
+    ///
+    /// `nexus_registry::leader::LeaderCapabilitiesAdminCap`
+    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
+    };
+    /// LeaderRegistry type for lookups.
+    ///
+    /// `nexus_registry::leader::LeaderRegistry`
+    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("LeaderRegistry"),
+    };
+    /// Create metadata with the provided map.
+    ///
+    /// `nexus_registry::leader::new_metadata`
+    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("new_metadata"),
+    };
+    /// Register the caller as a leader and stake.
+    ///
+    /// `nexus_registry::leader::register`
+    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("register"),
+    };
+    /// Stake SUI into a leader's pool.
+    ///
+    /// `nexus_registry::leader::stake`
+    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("stake"),
+    };
+    /// Suspend a leader only if the caller still holds the on-record claim token.
+    ///
+    /// `nexus_registry::leader::suspend_if_token`
+    pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("suspend_if_token"),
     };
 }
 

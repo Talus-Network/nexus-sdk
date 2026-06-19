@@ -10,7 +10,7 @@ use {
     serde_json::json,
 };
 
-/// Schedule a one-off occurrence for a scheduler task.
+/// Schedule a one-off occurrence for a scheduled task.
 pub(crate) async fn add_occurrence_to_task(
     task_id: sui::types::Address,
     start_ms: Option<u64>,
@@ -46,7 +46,7 @@ pub(crate) async fn add_occurrence_to_task(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "task_id": task_id,
+        "scheduled_task_id": task_id,
         "start_ms": start_ms,
         "start_offset_ms": start_offset_ms,
         "deadline_offset_ms": deadline_offset_ms,

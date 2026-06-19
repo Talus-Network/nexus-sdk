@@ -714,11 +714,30 @@ impl Crawler {
         parent_id: sui::types::Address,
     ) -> anyhow::Result<Vec<DynamicObjectFieldReference<K>>>
     where
-        K: DeserializeOwned,
+        K: Eq + Hash + DeserializeOwned,
     {
-        let mut results = Vec::new();
+        Ok(self
+            .fetch_dynamic_fields::<K>(parent_id, 0)
+            .await?
+            .into_iter()
+            .filter_map(|(name, child_id, field_id)| {
+                Some(DynamicObjectFieldReference {
+                    name,
+                    field_id: field_id?,
+                    child_id: child_id?,
+                })
+            })
+            .collect())
+    }
+
+    /// Fetch all dynamic object field child IDs for a parent object.
+    pub async fn get_dynamic_object_field_child_ids(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<sui::types::Address>> {
+        let mut child_ids = Vec::new();
         let mut page_token = None;
-        let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
+        let field_mask = sui::grpc::FieldMask::from_paths(["child_id"]);
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -745,34 +764,15 @@ impl Crawler {
             page_token = response.next_page_token;
 
             for field in response.dynamic_fields {
-                let Some(name_bcs) = field.name_opt() else {
-                    continue;
-                };
-                let Ok(name) = parse_dynamic_field_name::<K>(name_bcs.value()) else {
-                    continue;
-                };
-                let Some(field_id) = field
-                    .field_id_opt()
-                    .map(|id| id.parse())
-                    .transpose()
-                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?
-                else {
-                    continue;
-                };
-                let Some(child_id) = field
+                let child_id = field
                     .child_id_opt()
                     .map(|id| id.parse())
                     .transpose()
-                    .map_err(|_| anyhow!("Could not parse child ID for dynamic field"))?
-                else {
-                    continue;
-                };
+                    .map_err(|_| anyhow!("Could not parse child ID for dynamic field"))?;
 
-                results.push(DynamicObjectFieldReference {
-                    name,
-                    field_id,
-                    child_id,
-                });
+                if let Some(child_id) = child_id {
+                    child_ids.push(child_id);
+                }
             }
 
             if page_token.is_none() {
@@ -780,7 +780,7 @@ impl Crawler {
             }
         }
 
-        Ok(results)
+        Ok(child_ids)
     }
 
     /// Fetch all items in a `TableVec<T>` and return them as a `Vec<T>`.
@@ -2005,7 +2005,8 @@ mod tests {
     async fn get_dynamic_field_values_bcs_pages_and_decodes_values() {
         let parent_id = sui::types::Address::from_static("0x70");
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let responses: Vec<(Vec<(&'static str, TestValue)>, Option<Vec<u8>>)> = vec![
+        type DynamicFieldTestResponse = (Vec<(&'static str, TestValue)>, Option<Vec<u8>>);
+        let responses: Vec<DynamicFieldTestResponse> = vec![
             (
                 vec![("test::First", TestValue { value: 3 })],
                 Some(Vec::from(&b"page-2"[..])),

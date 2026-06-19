@@ -1,6 +1,6 @@
 use {super::*, std::path::Path};
 
-pub(crate) async fn read_skill_config(path: &PathBuf) -> AnyResult<TapSkillConfig, NexusCliError> {
+pub(crate) async fn read_skill_config(path: &PathBuf) -> AnyResult<SkillConfig, NexusCliError> {
     let text = tokio::fs::read_to_string(path)
         .await
         .map_err(NexusCliError::Io)?;
@@ -18,6 +18,10 @@ pub(crate) fn resolve_relative(base_file: &Path, path: PathBuf) -> PathBuf {
         .unwrap_or(path)
 }
 
+pub(crate) fn tap_package_path_for_config(config_path: &Path) -> PathBuf {
+    resolve_relative(config_path, PathBuf::from("tap"))
+}
+
 pub(crate) fn validate_dag_file(dag_path: &std::path::Path) -> AnyResult<()> {
     let dag_text = std::fs::read_to_string(dag_path)
         .map_err(|error| anyhow!("failed to read DAG file '{}': {error}", dag_path.display()))?;
@@ -32,10 +36,7 @@ pub(crate) fn validate_dag_file(dag_path: &std::path::Path) -> AnyResult<()> {
     })
 }
 
-pub(crate) fn validate_tap_package_manifest(
-    manifest_path: &std::path::Path,
-    config: &TapSkillConfig,
-) -> AnyResult<()> {
+pub(crate) fn validate_tap_package_manifest(manifest_path: &std::path::Path) -> AnyResult<String> {
     let manifest_text = std::fs::read_to_string(manifest_path).map_err(|error| {
         anyhow!(
             "failed to read TAP package manifest '{}': {error}",
@@ -59,14 +60,7 @@ pub(crate) fn validate_tap_package_manifest(
                 manifest_path.display()
             )
         })?;
-    if package_name != config.tap_package_name {
-        bail!(
-            "TAP package manifest '{}' has package.name='{}' but skill config expects '{}'",
-            manifest_path.display(),
-            package_name,
-            config.tap_package_name
-        );
-    }
+    let package_name = package_name.to_string();
 
     // Require the new-style 2024 layout. Old-style manifests cannot resolve
     // their dependency graph against new-style published Nexus packages.
@@ -127,7 +121,7 @@ pub(crate) fn validate_tap_package_manifest(
         );
     }
 
-    Ok(())
+    Ok(package_name)
 }
 
 pub(crate) fn collect_move_source_files(root: &std::path::Path) -> AnyResult<Vec<PathBuf>> {
@@ -167,8 +161,8 @@ pub(crate) fn collect_move_source_files(root: &std::path::Path) -> AnyResult<Vec
 }
 
 pub(crate) fn validate_tap_package_sources(
-    tap_package_path: &std::path::Path,
-    config: &TapSkillConfig,
+    tap_package_path: &Path,
+    package_name: &str,
 ) -> AnyResult<()> {
     let sources_dir = tap_package_path.join("sources");
     if !sources_dir.exists() {
@@ -182,14 +176,14 @@ pub(crate) fn validate_tap_package_sources(
     if source_files.is_empty() {
         bail!(
             "TAP package '{}' has no Move source files under '{}'",
-            config.tap_package_name,
+            package_name,
             sources_dir.display()
         );
     }
 
     let module_pattern = Regex::new(&format!(
         r"(?m)^\s*module\s+{}::[A-Za-z_][A-Za-z0-9_]*\s*;",
-        regex::escape(&config.tap_package_name)
+        regex::escape(package_name)
     ))?;
 
     for source_file in &source_files {
@@ -206,15 +200,13 @@ pub(crate) fn validate_tap_package_sources(
 
     bail!(
         "TAP package '{}' has no source file declaring `module {}::...;` under '{}'",
-        config.tap_package_name,
-        config.tap_package_name,
+        package_name,
+        package_name,
         sources_dir.display()
     );
 }
 
-pub(crate) async fn validate_skill(
-    config_path: PathBuf,
-) -> AnyResult<TapSkillConfig, NexusCliError> {
+pub(crate) async fn validate_skill(config_path: PathBuf) -> AnyResult<SkillConfig, NexusCliError> {
     command_title!("Validating TAP skill config '{}'", config_path.display());
 
     let handle = loading!("Validating TAP skill config...");
@@ -237,7 +229,7 @@ pub(crate) async fn validate_skill(
         return Err(NexusCliError::Any(error));
     }
 
-    let tap_package = resolve_relative(&config_path, config.tap_package_path.clone());
+    let tap_package = tap_package_path_for_config(&config_path);
     let move_toml = tap_package.join("Move.toml");
     if !move_toml.exists() {
         handle.error();
@@ -246,11 +238,14 @@ pub(crate) async fn validate_skill(
             move_toml.display()
         )));
     }
-    if let Err(error) = validate_tap_package_manifest(&move_toml, &config) {
-        handle.error();
-        return Err(NexusCliError::Any(error));
-    }
-    if let Err(error) = validate_tap_package_sources(&tap_package, &config) {
+    let package_name = match validate_tap_package_manifest(&move_toml) {
+        Ok(package_name) => package_name,
+        Err(error) => {
+            handle.error();
+            return Err(NexusCliError::Any(error));
+        }
+    };
+    if let Err(error) = validate_tap_package_sources(&tap_package, &package_name) {
         handle.error();
         return Err(NexusCliError::Any(error));
     }

@@ -17,6 +17,7 @@ use crate::{
 pub struct Dag;
 
 const DAG_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("dag");
+const VERIFIER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("verifier");
 
 impl Dag {
     /// Abort an expired DAG execution.
@@ -43,13 +44,6 @@ impl Dag {
                 "accomplish_tap_execution_payment_from_agent_vault",
             ),
         };
-    /// The AgentExecutionConfig struct type.
-    ///
-    /// `nexus_workflow::dag::AgentExecutionConfig`
-    pub const AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("AgentExecutionConfig"),
-    };
     /// Begin DAG execution through an explicit agent path using a prepared config.
     ///
     /// `nexus_workflow::dag::begin_agent_execution_with_config`
@@ -57,7 +51,7 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("begin_agent_execution_with_config"),
     };
-    /// Witness type used by scheduler tasks that execute a registered agent target.
+    /// Witness type used by scheduled tasks that execute a registered agent target.
     ///
     /// `nexus_workflow::dag::BeginAgentExecutionWitness`
     pub const BEGIN_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -69,7 +63,7 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("begin_dag_execution_with_config"),
     };
-    /// Witness type used by scheduler tasks that execute through the default agent target.
+    /// Witness type used by scheduled tasks that execute through the default agent target.
     ///
     /// `nexus_workflow::dag::BeginDefaultAgentExecutionWitness`
     pub const BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -160,25 +154,25 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("entry_group_from_string"),
     };
-    /// The FailureEvidenceKind enum. Mostly used for creating generic types.
+    /// The interface FailureEvidenceKind enum. Mostly used for creating generic types.
     ///
-    /// `nexus_workflow::dag::FailureEvidenceKind`
+    /// `nexus_interface::verifier::FailureEvidenceKind`
     pub const FAILURE_EVIDENCE_KIND: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("FailureEvidenceKind"),
     };
     /// Create a leader-evidence failure evidence kind.
     ///
-    /// `nexus_workflow::dag::failure_evidence_kind_leader_evidence`
+    /// `nexus_interface::verifier::failure_evidence_kind_leader_evidence`
     pub const FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("failure_evidence_kind_leader_evidence"),
     };
     /// Create a tool-evidence failure evidence kind.
     ///
-    /// `nexus_workflow::dag::failure_evidence_kind_tool_evidence`
+    /// `nexus_interface::verifier::failure_evidence_kind_tool_evidence`
     pub const FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("failure_evidence_kind_tool_evidence"),
     };
     /// The InputPort struct. Mostly used for creating generic types.
@@ -195,50 +189,12 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("input_port_from_string"),
     };
-    /// Stamp a TAP worksheet as the leader before tool execution.
-    ///
-    /// `nexus_workflow::dag::leader_stamp_tap_worksheet`
-    pub const LEADER_STAMP_TAP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("leader_stamp_tap_worksheet"),
-    };
-    /// Stamp a worksheet as the leader before tool execution.
-    ///
-    /// `nexus_workflow::dag::leader_stamp_worksheet`
-    pub const LEADER_STAMP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
-    };
-    /// Stamp a worksheet as the leader during a dry run.
-    ///
-    /// `nexus_workflow::dag::leader_stamp_worksheet_for_dry_run`
-    pub const LEADER_STAMP_WORKSHEET_FOR_DRY_RUN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("leader_stamp_worksheet_for_dry_run"),
-    };
-    /// Mint a workflow vertex authorization check cap for the current on-chain walk.
-    ///
-    /// `nexus_workflow::dag::mint_vertex_authorization_check_cap_for_onchain_walk`
-    pub const MINT_VERTEX_AUTHORIZATION_CHECK_CAP_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "mint_vertex_authorization_check_cap_for_onchain_walk",
-            ),
-        };
     /// Create a new DAG object.
     ///
     /// `nexus_workflow::dag::new`
     pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("new"),
-    };
-    /// Create a new explicit agent execution config value.
-    ///
-    /// `nexus_workflow::dag::new_agent_execution_config`
-    pub const NEW_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("new_agent_execution_config"),
     };
     /// Build authenticated verifier request evidence from workflow execution and leader cap.
     ///
@@ -337,30 +293,6 @@ impl Dag {
                 "prepare_default_agent_execution_from_scheduler",
             ),
         };
-    /// Stamp the worksheet with the execution ID before onchain tool execution.
-    ///
-    /// `nexus_workflow::dag::pre_stamp_execution`
-    pub const PRE_STAMP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("pre_stamp_execution"),
-    };
-    /// Stamp TAP execution context before tool execution.
-    ///
-    /// `nexus_workflow::dag::pre_stamp_tap_execution`
-    pub const PRE_STAMP_TAP_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("pre_stamp_tap_execution"),
-    };
-    /// Refund a scheduled agent-vault-funded TAP payment owned by DAGExecution.
-    ///
-    /// `nexus_workflow::dag::refund_scheduled_tap_execution_payment_from_agent_vault`
-    pub const REFUND_SCHEDULED_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "refund_scheduled_tap_execution_payment_from_agent_vault",
-            ),
-        };
     /// Refund an invoker-funded TAP payment owned by DAGExecution.
     ///
     /// `nexus_workflow::dag::refund_tap_execution_payment`
@@ -392,6 +324,16 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("register_begin_default_agent_execution"),
     };
+    /// Release an execution-owned vertex authorization grant for the current on-chain walk.
+    ///
+    /// `nexus_workflow::dag::release_vertex_authorization_for_onchain_walk`
+    pub const RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: DAG_MODULE,
+            name: sui::types::Identifier::from_static(
+                "release_vertex_authorization_for_onchain_walk",
+            ),
+        };
     /// Function to call to continue to the next vertex in the given walk.
     ///
     /// `nexus_workflow::dag::request_network_to_execute_walks`
@@ -451,20 +393,6 @@ impl Dag {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
     };
-    /// The TAP authorization grant reference struct type.
-    ///
-    /// `nexus_workflow::dag::TapAuthorizationGrantRef`
-    pub const TAP_AUTHORIZATION_GRANT_REF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("TapAuthorizationGrantRef"),
-    };
-    /// Create a TAP authorization grant reference value.
-    ///
-    /// `nexus_workflow::dag::tap_authorization_grant_ref`
-    pub const TAP_AUTHORIZATION_GRANT_REF_CONSTRUCTOR: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("tap_authorization_grant_ref"),
-    };
     /// Convert TaggedOutput to DAG types.
     ///
     /// `nexus_workflow::dag::tagged_output_to_dag_types`
@@ -474,30 +402,30 @@ impl Dag {
     };
     /// Create a verifier config.
     ///
-    /// `nexus_workflow::dag::verifier_config`
+    /// `nexus_interface::verifier::verifier_config`
     pub const VERIFIER_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_config"),
     };
     /// Create the authenticated communication verifier mode.
     ///
-    /// `nexus_workflow::dag::verifier_mode_authenticated_communication`
+    /// `nexus_interface::verifier::verifier_mode_authenticated_communication`
     pub const VERIFIER_MODE_AUTHENTICATED_COMMUNICATION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_authenticated_communication"),
     };
     /// Create the `VerifierMode::None` variant.
     ///
-    /// `nexus_workflow::dag::verifier_mode_none`
+    /// `nexus_interface::verifier::verifier_mode_none`
     pub const VERIFIER_MODE_NONE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_none"),
     };
     /// Create the `VerifierMode::ToolVerifierContract` variant.
     ///
-    /// `nexus_workflow::dag::verifier_mode_tool_verifier_contract`
+    /// `nexus_interface::verifier::verifier_mode_tool_verifier_contract`
     pub const VERIFIER_MODE_TOOL_VERIFIER_CONTRACT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
+        module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_tool_verifier_contract"),
     };
     /// The Vertex struct. Mostly used for creating generic types.
@@ -620,6 +548,13 @@ impl Dag {
     pub const WITH_VERTEX_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
         module: DAG_MODULE,
         name: sui::types::Identifier::from_static("with_vertex_tool_verifier"),
+    };
+    /// Create a DAG-authenticated worksheet for the active tool-result submission.
+    ///
+    /// `nexus_workflow::dag::worksheet_for_tool_result_submission`
+    pub const WORKSHEET_FOR_TOOL_RESULT_SUBMISSION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: DAG_MODULE,
+        name: sui::types::Identifier::from_static("worksheet_for_tool_result_submission"),
     };
 
     /// Create an EntryGroup from a string.
@@ -788,7 +723,7 @@ impl Dag {
     /// Create a failure evidence kind from an enum variant.
     pub fn failure_evidence_kind_from_enum(
         tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
+        interface_pkg_id: sui::types::Address,
         evidence_kind: &FailureEvidenceKind,
     ) -> sui::tx::Argument {
         let ident = match evidence_kind {
@@ -797,7 +732,7 @@ impl Dag {
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
+            sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -805,7 +740,7 @@ impl Dag {
     /// Create a verifier mode from an enum variant.
     pub fn verifier_mode_from_enum(
         tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
+        interface_pkg_id: sui::types::Address,
         mode: &VerifierMode,
     ) -> sui::tx::Argument {
         let ident = match mode {
@@ -817,7 +752,7 @@ impl Dag {
         };
 
         tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
+            sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
@@ -825,15 +760,15 @@ impl Dag {
     /// Create a verifier config value from the Rust mirror.
     pub fn verifier_config(
         tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
+        interface_pkg_id: sui::types::Address,
         config: &VerifierConfig,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let mode = Self::verifier_mode_from_enum(tx, workflow_pkg_id, &config.mode);
+        let mode = Self::verifier_mode_from_enum(tx, interface_pkg_id, &config.mode);
         let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
 
         Ok(tx.move_call(
             sui::tx::Function::new(
-                workflow_pkg_id,
+                interface_pkg_id,
                 Self::VERIFIER_CONFIG.module,
                 Self::VERIFIER_CONFIG.name,
             ),
@@ -970,30 +905,6 @@ impl ToolRegistry {
     pub const UPDATE_TOOL_TIMEOUT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: TOOL_REGISTRY_MODULE,
         name: sui::types::Identifier::from_static("update_tool_timeout"),
-    };
-}
-
-// == `nexus_workflow::leader_cap` ==
-
-pub struct LeaderCap;
-
-const LEADER_CAP_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader_cap");
-
-impl LeaderCap {
-    /// Create N leader caps for self and the provided addresses.
-    ///
-    /// `nexus_workflow::leader_cap::create_for_self_and_addresses`
-    pub const CREATE_FOR_SELF_AND_ADDRESSES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_CAP_MODULE,
-        name: sui::types::Identifier::from_static("create_for_self_and_addresses"),
-    };
-    /// This is used as a generic argument for
-    /// [crate::idents::primitives::OwnerCap::CLONEABLE_OWNER_CAP].
-    ///
-    /// `nexus_workflow::leader_cap::OverNetwork`
-    pub const OVER_NETWORK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_CAP_MODULE,
-        name: sui::types::Identifier::from_static("OverNetwork"),
     };
 }
 
@@ -1167,106 +1078,6 @@ impl GasExtension {
     pub const ENABLE_LIMITED_INVOCATIONS: ModuleAndNameIdent = ModuleAndNameIdent {
         module: GAS_EXTENSION_MODULE,
         name: sui::types::Identifier::from_static("enable_limited_invocations"),
-    };
-}
-
-// == `nexus_workflow::leader` ==
-
-pub struct Leader;
-
-const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
-
-impl Leader {
-    /// Activate a leader and claim ownership of its `Active` state with a fresh token.
-    ///
-    /// `nexus_workflow::leader::activate_and_claim`
-    pub const ACTIVATE_AND_CLAIM: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("activate_and_claim"),
-    };
-    /// Allow an address to request leader capabilities.
-    ///
-    /// `nexus_workflow::leader::allow_address`
-    pub const ALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("allow_address"),
-    };
-    /// Disallow an address from requesting leader capabilities.
-    ///
-    /// `nexus_workflow::leader::disallow_address`
-    pub const DISALLOW_ADDRESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("disallow_address"),
-    };
-    /// Create empty metadata for a leader.
-    ///
-    /// `nexus_workflow::leader::empty_metadata`
-    pub const EMPTY_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("empty_metadata"),
-    };
-    /// Admin capability type for modifying leader allowlist.
-    ///
-    /// `nexus_workflow::leader::LeaderCapabilitiesAdminCap`
-    pub const LEADER_CAPABILITIES_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("LeaderCapabilitiesAdminCap"),
-    };
-    /// LeaderRegistry type for lookups.
-    ///
-    /// `nexus_workflow::leader::LeaderRegistry`
-    pub const LEADER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("LeaderRegistry"),
-    };
-    /// Create metadata with the provided map.
-    ///
-    /// `nexus_workflow::leader::new_metadata`
-    pub const NEW_METADATA: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("new_metadata"),
-    };
-    /// Register the caller as a leader and stake.
-    ///
-    /// `nexus_workflow::leader::register`
-    pub const REGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("register"),
-    };
-    /// Stake SUI into a leader's pool.
-    ///
-    /// `nexus_workflow::leader::stake`
-    pub const STAKE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("stake"),
-    };
-    /// Create `LeaderStatus::ACTIVE`.
-    ///
-    /// `nexus_workflow::leader::status_active`
-    pub const STATUS_ACTIVE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_active"),
-    };
-    /// Create `LeaderStatus::SLASHED`.
-    ///
-    /// `nexus_workflow::leader::status_slashed`
-    pub const STATUS_SLASHED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_slashed"),
-    };
-    /// Create `LeaderStatus::SUSPENDED`.
-    ///
-    /// `nexus_workflow::leader::status_suspended`
-    pub const STATUS_SUSPENDED: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("status_suspended"),
-    };
-    /// Suspend a leader only if the caller still holds the on-record claim token.
-    ///
-    /// `nexus_workflow::leader::suspend_if_token`
-    pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: LEADER_MODULE,
-        name: sui::types::Identifier::from_static("suspend_if_token"),
     };
 }
 

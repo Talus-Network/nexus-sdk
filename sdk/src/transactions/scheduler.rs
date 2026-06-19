@@ -2,16 +2,8 @@ use {
     crate::{
         idents::{move_std, primitives, scheduler, sui_framework, workflow},
         sui,
-        transactions,
-        types::{
-            AgentId,
-            DataStorage,
-            NexusObjects,
-            SkillId,
-            Storable,
-            StorageKind,
-            TapVertexAuthorizationPlanEntry,
-        },
+        transactions::{self, agent_input::AgentInput},
+        types::{AgentId, DataStorage, NexusObjects, SkillId, Storable, StorageKind},
     },
     serde::{Deserialize, Serialize},
     std::collections::{HashMap, HashSet},
@@ -34,14 +26,21 @@ pub struct PeriodicScheduleInputs {
     pub priority_fee_per_gas_unit: u64,
 }
 
-// Shared helper for turning a scheduler task object ref into a mutable shared argument.
+// Shared helper for turning a scheduled task object ref into a mutable shared argument.
 fn shared_task_arg(
     tx: &mut sui::tx::TransactionBuilder,
     task: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::tx::Argument> {
+    shared_mutable_object_arg(tx, task)
+}
+
+fn shared_mutable_object_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    object: &sui::types::ObjectReference,
+) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.object(sui::tx::ObjectInput::shared(
-        *task.object_id(),
-        task.version(),
+        *object.object_id(),
+        object.version(),
         true,
     )))
 }
@@ -98,38 +97,64 @@ where
 
 // == Task lifecycle ==
 
-/// PTB template to create a new scheduler task.
+/// PTB template to create a new default-agent scheduled task.
 pub fn new_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    registry: sui::tx::Argument,
+    metadata: sui::tx::Argument,
+    constraints: sui::tx::Argument,
+    execution: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
+    new_default_agent_task(tx, objects, metadata, constraints, execution, registry)
+}
+
+/// PTB template to create a new scheduled task for the registry-owned default agent.
+pub fn new_default_agent_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     metadata: sui::tx::Argument,
     constraints: sui::tx::Argument,
     execution: sui::tx::Argument,
+    registry: sui::tx::Argument,
 ) -> anyhow::Result<sui::tx::Argument> {
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
-            scheduler::Scheduler::NEW.module,
-            scheduler::Scheduler::NEW.name,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name,
         ),
-        vec![metadata, constraints, execution],
+        vec![metadata, constraints, execution, registry],
     ))
 }
 
-/// PTB helper to attach a TAP scheduled-task link to a scheduler task data bag.
-pub fn attach_tap_scheduled_task_link(
+/// PTB template to create a default-agent scheduled task with address-funded reserve components.
+#[allow(clippy::too_many_arguments)]
+pub fn new_invoker_funded_default_agent_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    task: sui::tx::Argument,
-    scheduled_task: sui::tx::Argument,
+    metadata: sui::tx::Argument,
+    constraints: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    registry: sui::tx::Argument,
+    prepayment_coin: sui::tx::Argument,
+    occurrence_budget: u64,
 ) -> anyhow::Result<sui::tx::Argument> {
+    let occurrence_budget = tx.pure(&occurrence_budget);
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
-            scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.module,
-            scheduler::Scheduler::ATTACH_TAP_SCHEDULED_TASK_LINK.name,
+            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.module,
+            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.name,
         ),
-        vec![task, scheduled_task],
+        vec![
+            metadata,
+            constraints,
+            execution,
+            registry,
+            prepayment_coin,
+            occurrence_budget,
+        ],
     ))
 }
 
@@ -418,10 +443,8 @@ pub fn new_agent_execution_policy(
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-    agent_id: AgentId,
-    skill_id: SkillId,
-    authorization_plan_commitment: Option<Vec<u8>>,
-    authorization_plan: &[TapVertexAuthorizationPlanEntry],
+    _agent_id: AgentId,
+    _skill_id: SkillId,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -482,12 +505,6 @@ pub fn new_agent_execution_policy(
     let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
-    let agent_id_arg = transactions::tap::agent_id_from_address(tx, objects, agent_id)?;
-    let skill_id_arg = tx.pure(&skill_id);
-    let authorization_plan_commitment = tx.pure(&authorization_plan_commitment);
-    let authorization_plan =
-        transactions::dag::tap_authorization_plan(tx, objects, authorization_plan)?;
-
     let entry_group =
         workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
 
@@ -496,8 +513,8 @@ pub fn new_agent_execution_policy(
     let config = tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.module,
-            workflow::Dag::NEW_AGENT_EXECUTION_CONFIG.name,
+            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
+            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
         ),
         vec![
             dag_id_arg,
@@ -505,10 +522,6 @@ pub fn new_agent_execution_policy(
             entry_group,
             with_vertex_inputs,
             priority_fee_per_gas_unit,
-            agent_id_arg,
-            skill_id_arg,
-            authorization_plan_commitment,
-            authorization_plan,
         ],
     );
 
@@ -645,6 +658,61 @@ pub fn finish(
             scheduler::Scheduler::FINISH.name,
         ),
         vec![task, proof],
+    ))
+}
+
+/// PTB template to settle an address-funded scheduled execution payment after completion.
+pub fn settle_finished_scheduled_tap_execution_payment_if_ready(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    execution: &sui::types::ObjectReference,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let execution = shared_mutable_object_arg(tx, execution)?;
+
+    settle_finished_scheduled_tap_execution_payment_if_ready_with_args(tx, objects, task, execution)
+}
+
+fn settle_finished_scheduled_tap_execution_payment_if_ready_with_args(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: sui::tx::Argument,
+    execution: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::SETTLE_FINISHED_SCHEDULED_EXECUTION_PAYMENT_IF_READY.module,
+            scheduler::Scheduler::SETTLE_FINISHED_SCHEDULED_EXECUTION_PAYMENT_IF_READY.name,
+        ),
+        vec![task, execution],
+    ))
+}
+
+/// PTB template to collect idle agent-funded scheduled task reserve funds back to the agent vault.
+pub fn collect_idle_agent_funded_scheduled_payment_reserve_to_vault(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let agent = agent.mutable_argument(tx)?;
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        true,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::COLLECT_IDLE_AGENT_FUNDED_SCHEDULED_PAYMENT_RESERVE_TO_VAULT
+                .module,
+            scheduler::Scheduler::COLLECT_IDLE_AGENT_FUNDED_SCHEDULED_PAYMENT_RESERVE_TO_VAULT.name,
+        ),
+        vec![task, agent, agent_registry],
     ))
 }
 
@@ -850,6 +918,11 @@ pub fn pause_time_constraint_for_task(
     task: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        false,
+    ));
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -857,7 +930,27 @@ pub fn pause_time_constraint_for_task(
             scheduler::Scheduler::PAUSE.module,
             scheduler::Scheduler::PAUSE.name,
         ),
-        vec![task],
+        vec![task, agent_registry],
+    ))
+}
+
+/// PTB template to pause scheduling for an explicit-agent task.
+pub fn pause_time_constraint_for_agent_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let agent = agent.immutable_argument(tx)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::PAUSE_WITH_AGENT.module,
+            scheduler::Scheduler::PAUSE_WITH_AGENT.name,
+        ),
+        vec![task, agent],
     ))
 }
 
@@ -868,6 +961,11 @@ pub fn resume_time_constraint_for_task(
     task: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        false,
+    ));
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -875,7 +973,27 @@ pub fn resume_time_constraint_for_task(
             scheduler::Scheduler::RESUME.module,
             scheduler::Scheduler::RESUME.name,
         ),
-        vec![task],
+        vec![task, agent_registry],
+    ))
+}
+
+/// PTB template to resume scheduling for an explicit-agent task.
+pub fn resume_time_constraint_for_agent_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let agent = agent.immutable_argument(tx)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::RESUME_WITH_AGENT.module,
+            scheduler::Scheduler::RESUME_WITH_AGENT.name,
+        ),
+        vec![task, agent],
     ))
 }
 
@@ -886,6 +1004,11 @@ pub fn cancel_time_constraint_for_task(
     task: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::tx::Argument> {
     let task = shared_task_arg(tx, task)?;
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        true,
+    ));
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -893,7 +1016,32 @@ pub fn cancel_time_constraint_for_task(
             scheduler::Scheduler::CANCEL.module,
             scheduler::Scheduler::CANCEL.name,
         ),
-        vec![task],
+        vec![task, agent_registry],
+    ))
+}
+
+/// PTB template to cancel scheduling for an explicit-agent task.
+pub fn cancel_time_constraint_for_agent_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let agent = agent.immutable_argument(tx)?;
+    let agent_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.agent_registry.object_id(),
+        objects.agent_registry.version(),
+        true,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::CANCEL_WITH_AGENT.module,
+            scheduler::Scheduler::CANCEL_WITH_AGENT.name,
+        ),
+        vec![task, agent, agent_registry],
     ))
 }
 
@@ -990,11 +1138,9 @@ pub fn prepare_default_agent_execution_from_scheduler(
     dag: sui::tx::Argument,
     leader_cap: sui::tx::Argument,
     payment_coin: sui::tx::Argument,
-    payment_source: Vec<u8>,
     payment_max_budget: u64,
     clock: sui::tx::Argument,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let payment_source = tx.pure(&payment_source);
     let payment_max_budget = tx.pure(&payment_max_budget);
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -1009,7 +1155,6 @@ pub fn prepare_default_agent_execution_from_scheduler(
             task,
             leader_cap,
             payment_coin,
-            payment_source,
             payment_max_budget,
             clock,
         ],
@@ -1023,7 +1168,6 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
     objects: &NexusObjects,
     tool_registry: sui::tx::Argument,
     agent_registry: sui::tx::Argument,
-    scheduled_task: sui::tx::Argument,
     task: sui::tx::Argument,
     dag: sui::tx::Argument,
     leader_cap: sui::tx::Argument,
@@ -1035,15 +1179,7 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
         ),
-        vec![
-            dag,
-            agent_registry,
-            scheduled_task,
-            tool_registry,
-            task,
-            leader_cap,
-            clock,
-        ],
+        vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
     ))
 }
 
@@ -1054,7 +1190,6 @@ pub fn prepare_agent_execution_from_scheduled_payment(
     objects: &NexusObjects,
     tool_registry: sui::tx::Argument,
     agent_registry: sui::tx::Argument,
-    scheduled_task: sui::tx::Argument,
     task: sui::tx::Argument,
     dag: sui::tx::Argument,
     leader_cap: sui::tx::Argument,
@@ -1066,15 +1201,7 @@ pub fn prepare_agent_execution_from_scheduled_payment(
             scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
             scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
         ),
-        vec![
-            dag,
-            agent_registry,
-            scheduled_task,
-            tool_registry,
-            task,
-            leader_cap,
-            clock,
-        ],
+        vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
     ))
 }
 
@@ -1085,7 +1212,6 @@ pub fn execute_scheduled_occurrence(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
-    scheduled_task: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
     _amount_priority: u64,
     generator: OccurrenceGenerator,
@@ -1134,7 +1260,7 @@ pub fn execute_scheduled_occurrence(
         false,
     ));
 
-    // `agent_registry: &TapRegistry`
+    // `agent_registry: &AgentRegistry`
     let agent_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.agent_registry.object_id(),
         objects.agent_registry.version(),
@@ -1147,11 +1273,6 @@ pub fn execute_scheduled_occurrence(
         dag.version(),
         false,
     ));
-    let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
-        *scheduled_task.object_id(),
-        scheduled_task.version(),
-        true,
-    ));
     let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
@@ -1163,7 +1284,6 @@ pub fn execute_scheduled_occurrence(
         objects,
         tool_registry,
         agent_registry,
-        scheduled_task,
         task,
         dag,
         leader_cap,
@@ -1237,7 +1357,6 @@ pub fn execute_registered_scheduled_occurrence(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
-    scheduled_task: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
     _amount_priority: u64,
     generator: OccurrenceGenerator,
@@ -1286,7 +1405,7 @@ pub fn execute_registered_scheduled_occurrence(
         false,
     ));
 
-    // `agent_registry: &TapRegistry`
+    // `agent_registry: &AgentRegistry`
     let agent_registry = tx.object(sui::tx::ObjectInput::shared(
         *objects.agent_registry.object_id(),
         objects.agent_registry.version(),
@@ -1299,11 +1418,6 @@ pub fn execute_registered_scheduled_occurrence(
         dag.version(),
         false,
     ));
-    let scheduled_task = tx.object(sui::tx::ObjectInput::shared(
-        *scheduled_task.object_id(),
-        scheduled_task.version(),
-        true,
-    ));
     let leader_cap = tx.object(sui::tx::ObjectInput::shared(
         *leader_cap.object_id(),
         leader_cap.version(),
@@ -1315,7 +1429,6 @@ pub fn execute_registered_scheduled_occurrence(
         objects,
         tool_registry,
         agent_registry,
-        scheduled_task,
         task,
         dag,
         leader_cap,
@@ -1547,27 +1660,83 @@ mod tests {
     }
 
     #[test]
-    fn new_task_builds_call() {
+    fn new_default_agent_task_builds_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
         let metadata = tx.pure(&1_u64);
         let constraints = tx.pure(&2_u64);
         let execution = tx.pure(&3_u64);
+        let registry = tx.pure(&4_u64);
 
-        new_task(&mut tx, &objects, metadata, constraints, execution)
-            .expect("ptb construction succeeds");
+        let _result = new_default_agent_task(
+            &mut tx,
+            &objects,
+            metadata,
+            constraints,
+            execution,
+            registry,
+        )
+        .expect("ptb construction succeeds");
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 1);
 
         let call = inspector.move_call(0);
         assert_eq!(call.package, objects.scheduler_pkg_id);
-        assert_eq!(call.module, scheduler::Scheduler::NEW.module);
-        assert_eq!(call.function, scheduler::Scheduler::NEW.name);
-        assert_eq!(call.arguments.len(), 3);
+        assert_eq!(
+            call.module,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module
+        );
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name
+        );
+        assert_eq!(call.arguments.len(), 4);
         inspector.expect_u64(&call.arguments[0], 1);
         inspector.expect_u64(&call.arguments[1], 2);
         inspector.expect_u64(&call.arguments[2], 3);
+    }
+
+    #[test]
+    fn new_invoker_funded_default_agent_task_builds_call() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let metadata = tx.pure(&1_u64);
+        let constraints = tx.pure(&2_u64);
+        let execution = tx.pure(&3_u64);
+        let registry = tx.pure(&4_u64);
+        let coin = tx.pure(&5_u64);
+
+        let _result = new_invoker_funded_default_agent_task(
+            &mut tx,
+            &objects,
+            metadata,
+            constraints,
+            execution,
+            registry,
+            coin,
+            25,
+        )
+        .expect("ptb construction succeeds");
+
+        // Opaque builder argument; finished transaction assertions below prove the call shape.
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.module,
+            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.module
+        );
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.name
+        );
+        assert_eq!(call.arguments.len(), 6);
+        inspector.expect_u64(&call.arguments[0], 1);
+        inspector.expect_u64(&call.arguments[1], 2);
+        inspector.expect_u64(&call.arguments[2], 3);
+        inspector.expect_u64(&call.arguments[5], 25);
     }
 
     #[test]
@@ -1727,6 +1896,69 @@ mod tests {
     }
 
     #[test]
+    fn settle_finished_scheduled_tap_execution_payment_uses_scheduler_task_and_execution() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let execution = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        settle_finished_scheduled_tap_execution_payment_if_ready(
+            &mut tx, &objects, &task, &execution,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        assert_eq!(inspector.commands().len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.module,
+            scheduler::Scheduler::SETTLE_FINISHED_SCHEDULED_EXECUTION_PAYMENT_IF_READY.module
+        );
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::SETTLE_FINISHED_SCHEDULED_EXECUTION_PAYMENT_IF_READY.name
+        );
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &execution, true);
+    }
+
+    #[test]
+    fn collect_idle_agent_funded_scheduled_payment_reserve_uses_task_and_agent() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        collect_idle_agent_funded_scheduled_payment_reserve_to_vault(
+            &mut tx,
+            &objects,
+            &task,
+            AgentInput::Shared(agent.clone()),
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        assert_eq!(inspector.commands().len(), 1);
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(
+            call.module,
+            scheduler::Scheduler::COLLECT_IDLE_AGENT_FUNDED_SCHEDULED_PAYMENT_RESERVE_TO_VAULT
+                .module
+        );
+        assert_eq!(
+            call.function,
+            scheduler::Scheduler::COLLECT_IDLE_AGENT_FUNDED_SCHEDULED_PAYMENT_RESERVE_TO_VAULT.name
+        );
+        assert_eq!(call.arguments.len(), 3);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &agent, true);
+        inspector.expect_shared_object(&call.arguments[2], &objects.agent_registry, true);
+    }
+
+    #[test]
     fn add_occurrence_absolute_for_task_encodes_arguments() {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
@@ -1858,8 +2090,9 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.package, objects.scheduler_pkg_id);
-        assert_eq!(call.arguments.len(), 1);
+        assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &objects.agent_registry, false);
     }
 
     #[test]
@@ -1874,8 +2107,9 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.package, objects.scheduler_pkg_id);
-        assert_eq!(call.arguments.len(), 1);
+        assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &objects.agent_registry, false);
     }
 
     #[test]
@@ -1890,8 +2124,82 @@ mod tests {
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(0);
         assert_eq!(call.package, objects.scheduler_pkg_id);
-        assert_eq!(call.arguments.len(), 1);
+        assert_eq!(call.arguments.len(), 2);
         inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &objects.agent_registry, true);
+    }
+
+    #[test]
+    fn pause_time_constraint_for_agent_task_borrows_agent() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        pause_time_constraint_for_agent_task(
+            &mut tx,
+            &objects,
+            &task,
+            AgentInput::Shared(agent.clone()),
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.function, scheduler::Scheduler::PAUSE_WITH_AGENT.name);
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &agent, false);
+    }
+
+    #[test]
+    fn resume_time_constraint_for_agent_task_borrows_agent() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        resume_time_constraint_for_agent_task(
+            &mut tx,
+            &objects,
+            &task,
+            AgentInput::Shared(agent.clone()),
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.function, scheduler::Scheduler::RESUME_WITH_AGENT.name);
+        assert_eq!(call.arguments.len(), 2);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &agent, false);
+    }
+
+    #[test]
+    fn cancel_time_constraint_for_agent_task_borrows_agent_and_registry() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = sui_mocks::mock_sui_object_ref();
+        let agent = sui_mocks::mock_sui_object_ref();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        cancel_time_constraint_for_agent_task(
+            &mut tx,
+            &objects,
+            &task,
+            AgentInput::Shared(agent.clone()),
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(0);
+        assert_eq!(call.package, objects.scheduler_pkg_id);
+        assert_eq!(call.function, scheduler::Scheduler::CANCEL_WITH_AGENT.name);
+        assert_eq!(call.arguments.len(), 3);
+        inspector.expect_shared_object(&call.arguments[0], &task, true);
+        inspector.expect_shared_object(&call.arguments[1], &agent, false);
+        inspector.expect_shared_object(&call.arguments[2], &objects.agent_registry, true);
     }
 
     #[test]
@@ -1989,7 +2297,6 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -1999,7 +2306,6 @@ mod tests {
             &objects,
             &task,
             &dag,
-            &scheduled_task,
             &leader_cap,
             0,
             OccurrenceGenerator::Queue,
@@ -2063,7 +2369,7 @@ mod tests {
             tap_call.function,
             scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
-        assert_eq!(tap_call.arguments.len(), 7);
+        assert_eq!(tap_call.arguments.len(), 6);
         let sui::types::Input::Shared(shared) = inspector.input(&tap_call.arguments[0]) else {
             panic!(
                 "expected shared DAG object, got {:?}",
@@ -2074,11 +2380,10 @@ mod tests {
         assert_eq!(shared.version(), dag.version());
         assert!(!shared.mutability().is_mutable());
         inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
-        inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
-        inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
-        inspector.expect_shared_object(&tap_call.arguments[4], &task, true);
-        inspector.expect_shared_object(&tap_call.arguments[5], &leader_cap, false);
-        inspector.expect_clock(&tap_call.arguments[6]);
+        inspector.expect_shared_object(&tap_call.arguments[2], &objects.tool_registry, false);
+        inspector.expect_shared_object(&tap_call.arguments[3], &task, true);
+        inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
+        inspector.expect_clock(&tap_call.arguments[5]);
 
         let finish_call = calls
             .iter()
@@ -2100,7 +2405,6 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -2110,7 +2414,6 @@ mod tests {
             &objects,
             &task,
             &dag,
-            &scheduled_task,
             &leader_cap,
             0,
             OccurrenceGenerator::Queue,
@@ -2166,14 +2469,13 @@ mod tests {
             tap_call.function,
             scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
-        assert_eq!(tap_call.arguments.len(), 7);
+        assert_eq!(tap_call.arguments.len(), 6);
         inspector.expect_shared_object(&tap_call.arguments[0], &dag, false);
         inspector.expect_shared_object(&tap_call.arguments[1], &objects.agent_registry, false);
-        inspector.expect_shared_object(&tap_call.arguments[2], &scheduled_task, true);
-        inspector.expect_shared_object(&tap_call.arguments[3], &objects.tool_registry, false);
-        inspector.expect_shared_object(&tap_call.arguments[4], &task, true);
-        inspector.expect_shared_object(&tap_call.arguments[5], &leader_cap, false);
-        inspector.expect_clock(&tap_call.arguments[6]);
+        inspector.expect_shared_object(&tap_call.arguments[2], &objects.tool_registry, false);
+        inspector.expect_shared_object(&tap_call.arguments[3], &task, true);
+        inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
+        inspector.expect_clock(&tap_call.arguments[5]);
 
         let finish_call = calls
             .iter()
@@ -2193,7 +2495,6 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -2203,7 +2504,6 @@ mod tests {
             &objects,
             &task,
             &dag,
-            &scheduled_task,
             &leader_cap,
             0,
             OccurrenceGenerator::Queue,
@@ -2258,7 +2558,6 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let task = sui_mocks::mock_sui_object_ref();
         let dag = sui_mocks::mock_sui_object_ref();
-        let scheduled_task = sui_mocks::mock_sui_object_ref();
         let leader_cap = sui_mocks::mock_sui_object_ref();
         let tools_gas = HashSet::from([(sui_mocks::mock_sui_address(), 0)]);
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -2268,7 +2567,6 @@ mod tests {
             &objects,
             &task,
             &dag,
-            &scheduled_task,
             &leader_cap,
             0,
             OccurrenceGenerator::Periodic,
