@@ -13,8 +13,8 @@ use {
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 pub(crate) enum TapTaskPaymentSourceArg {
-    AddressFunded,
-    AgentVault,
+    UserFunded,
+    AgentFunded,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -38,9 +38,10 @@ pub(crate) async fn schedule_tap_task(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    if matches!(payment_source, TapTaskPaymentSourceArg::AgentVault) && refund_recipient.is_some() {
+    if matches!(payment_source, TapTaskPaymentSourceArg::AgentFunded) && refund_recipient.is_some()
+    {
         return Err(NexusCliError::Any(anyhow!(
-            "--refund-recipient is only valid with --payment-source address-funded"
+            "--refund-recipient is only valid with --payment-source user-funded"
         )));
     }
 
@@ -49,10 +50,10 @@ pub(crate) async fn schedule_tap_task(
     let conf = CliConf::load().await.unwrap_or_default();
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     match payment_source {
-        TapTaskPaymentSourceArg::AgentVault => {
+        TapTaskPaymentSourceArg::AgentFunded => {
             ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
         }
-        TapTaskPaymentSourceArg::AddressFunded => {
+        TapTaskPaymentSourceArg::UserFunded => {
             ensure_cli_agent_owner(&nexus_client, agent_id).await?;
         }
     }
@@ -120,14 +121,14 @@ pub(crate) async fn schedule_tap_task(
     }
 
     let tap_payment = match payment_source {
-        TapTaskPaymentSourceArg::AddressFunded => CreateTaskTapPayment::AddressFunded {
+        TapTaskPaymentSourceArg::UserFunded => CreateTaskTapPayment::UserFunded {
             prepay_amount,
             refund_recipient,
             occurrence_budget,
             selected_dag: Some(dag_id),
             authorization_templates: Vec::new(),
         },
-        TapTaskPaymentSourceArg::AgentVault => CreateTaskTapPayment::AgentVault {
+        TapTaskPaymentSourceArg::AgentFunded => CreateTaskTapPayment::AgentFunded {
             prepay_amount,
             occurrence_budget,
             selected_dag: Some(dag_id),
@@ -183,7 +184,7 @@ mod tests {
             None,
             0,
             GeneratorKind::Queue,
-            TapTaskPaymentSourceArg::AgentVault,
+            TapTaskPaymentSourceArg::AgentFunded,
             1,
             Some(sui::types::Address::from_static("0xb")),
             1,

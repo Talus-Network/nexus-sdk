@@ -6,15 +6,16 @@
 //!
 //! ```
 //! use nexus_sdk::sui;
-//! use nexus_sdk::idents::workflow;
+//! use nexus_sdk::idents::interface;
 //!
 //! let mut tx = sui::tx::TransactionBuilder::new();
-//! let workflow_pkg_id = sui::types::Address::generate(&mut rand::thread_rng());
-//! let vertex = workflow::Dag::vertex_from_str(&mut tx, workflow_pkg_id, "my_vertex");
+//! let interface_pkg_id = sui::types::Address::generate(&mut rand::thread_rng());
+//! let vertex = interface::Graph::vertex_from_str(&mut tx, interface_pkg_id, "my_vertex");
 //!
 //! assert!(vertex.is_ok());
 //! ```
 
+pub mod interface;
 pub mod move_std;
 pub mod primitives;
 pub mod registry;

@@ -660,14 +660,16 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
 
     let create_agent = find_call(&AgentRegistryIdent::CREATE_AGENT.name);
     let register_skill = find_call(&AgentRegistryIdent::REGISTER_SKILL.name);
-    let worksheet =
-        find_call(&nexus_sdk::idents::workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name);
+    let worksheet = find_call(
+        &nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION
+            .name,
+    );
 
     assert!(create_agent < register_skill);
     assert!(register_skill < worksheet);
     assert_eq!(
         move_call(&tx, worksheet).function,
-        nexus_sdk::idents::workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
     );
 }
 
@@ -767,6 +769,6 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
     );
 }

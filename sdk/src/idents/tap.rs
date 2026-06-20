@@ -88,6 +88,10 @@ impl TapStandard {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("new_agent_execution_config"),
     };
+    pub const NEW_DEFAULT_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_AGENT_MODULE,
+        name: sui::types::Identifier::from_static("new_default_agent_execution_config"),
+    };
     pub const PAYMENT_POLICY_AGENT_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_PAYMENT_MODULE,
         name: sui::types::Identifier::from_static("payment_policy_agent_funded"),

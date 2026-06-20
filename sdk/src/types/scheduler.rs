@@ -3,6 +3,7 @@
 use {
     super::{
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
+        strip_fields_owned,
         tap::{AgentId, InterfaceVersion, SkillId},
         AgentVertexAuthorizationTemplate,
         MoveOption,
@@ -19,10 +20,160 @@ use {
     serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
-/// Representation of `nexus_workflow::dag::DagExecutionConfig`.
+/// Representation of `nexus_interface::agent::ExecutionSelection`.
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(tag = "variant", content = "fields")]
+pub enum ExecutionSelection {
+    AgentSkill {
+        agent_id: AgentId,
+        #[serde(
+            deserialize_with = "deserialize_sui_u64",
+            serialize_with = "serialize_sui_u64"
+        )]
+        skill_id: SkillId,
+        selected_dag: MoveOption<sui::types::Address>,
+    },
+    DefaultAgent {
+        dag_id: sui::types::Address,
+    },
+}
+
+impl<'de> Deserialize<'de> for ExecutionSelection {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            enum Wire {
+                AgentSkill {
+                    agent_id: AgentId,
+                    skill_id: SkillId,
+                    selected_dag: MoveOption<sui::types::Address>,
+                },
+                DefaultAgent {
+                    dag_id: sui::types::Address,
+                },
+            }
+
+            return match Wire::deserialize(deserializer)? {
+                Wire::AgentSkill {
+                    agent_id,
+                    skill_id,
+                    selected_dag,
+                } => Ok(Self::AgentSkill {
+                    agent_id,
+                    skill_id,
+                    selected_dag,
+                }),
+                Wire::DefaultAgent { dag_id } => Ok(Self::DefaultAgent { dag_id }),
+            };
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        parse_execution_selection_value(value).map_err(serde::de::Error::custom)
+    }
+}
+
+fn parse_execution_selection_value(
+    value: serde_json::Value,
+) -> serde_json::Result<ExecutionSelection> {
+    #[derive(Deserialize)]
+    struct AgentSkillFields {
+        agent_id: AgentId,
+        #[serde(deserialize_with = "deserialize_sui_u64")]
+        skill_id: SkillId,
+        selected_dag: MoveOption<sui::types::Address>,
+    }
+
+    #[derive(Deserialize)]
+    struct DefaultAgentFields {
+        dag_id: sui::types::Address,
+    }
+
+    let value = strip_fields_owned(value);
+    let serde_json::Value::Object(mut object) = value else {
+        return Err(serde::de::Error::custom(
+            "ExecutionSelection must be a Move enum object",
+        ));
+    };
+
+    let fields = object
+        .remove("fields")
+        .or_else(|| object.remove("@fields"))
+        .map(strip_fields_owned);
+
+    let mut variant = object
+        .remove("_variant_name")
+        .or_else(|| object.remove("@variant"))
+        .or_else(|| object.remove("variant"))
+        .or_else(|| object.remove("type"))
+        .and_then(|value| value.as_str().map(ToOwned::to_owned));
+
+    let payload = if let Some(fields) = fields {
+        fields
+    } else if variant.is_none() && object.len() == 1 {
+        let (name, fields) = object.into_iter().next().expect("len checked");
+        if matches!(name.as_str(), "AgentSkill" | "DefaultAgent") {
+            variant = Some(name);
+            strip_fields_owned(fields)
+        } else {
+            serde_json::Value::Object(serde_json::Map::from_iter([(name, fields)]))
+        }
+    } else {
+        serde_json::Value::Object(object)
+    };
+
+    let variant = variant.or_else(|| {
+        let serde_json::Value::Object(object) = &payload else {
+            return None;
+        };
+        if object.contains_key("agent_id") || object.contains_key("skill_id") {
+            Some("AgentSkill".to_string())
+        } else if object.contains_key("dag_id") {
+            Some("DefaultAgent".to_string())
+        } else {
+            None
+        }
+    });
+
+    match variant.as_deref() {
+        Some("AgentSkill") => {
+            let fields: AgentSkillFields = serde_json::from_value(payload)?;
+            Ok(ExecutionSelection::AgentSkill {
+                agent_id: fields.agent_id,
+                skill_id: fields.skill_id,
+                selected_dag: fields.selected_dag,
+            })
+        }
+        Some("DefaultAgent") => {
+            let fields: DefaultAgentFields = serde_json::from_value(payload)?;
+            Ok(ExecutionSelection::DefaultAgent {
+                dag_id: fields.dag_id,
+            })
+        }
+        Some(other) => Err(serde::de::Error::custom(format!(
+            "unsupported ExecutionSelection variant {other}"
+        ))),
+        None => Err(serde::de::Error::custom(
+            "ExecutionSelection missing variant tag or recognizable fields",
+        )),
+    }
+}
+
+impl ExecutionSelection {
+    pub fn dag_id(&self) -> Option<sui::types::Address> {
+        match self {
+            Self::AgentSkill { selected_dag, .. } => selected_dag.0,
+            Self::DefaultAgent { dag_id } => Some(*dag_id),
+        }
+    }
+}
+
+/// Representation of `nexus_interface::agent::AgentExecutionConfig`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct DagExecutionConfig {
-    pub dag: sui::types::Address,
+pub struct AgentExecutionConfig {
+    pub selection: ExecutionSelection,
     pub network: sui::types::Address,
     pub entry_group: SchedulerEntryGroup,
     pub inputs: Map<TypeName, Map<DagInputPort, NexusData>>,
@@ -32,17 +183,6 @@ pub struct DagExecutionConfig {
         serialize_with = "serialize_sui_u64"
     )]
     pub priority_fee_per_gas_unit: u64,
-}
-
-/// Representation of `nexus_interface::agent::AgentExecutionConfig`.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct AgentExecutionConfig {
-    #[serde(
-        deserialize_with = "deserialize_sui_u64",
-        serialize_with = "serialize_sui_u64"
-    )]
-    pub skill_id: SkillId,
-    pub selected_dag: MoveOption<sui::types::Address>,
     pub authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 }
 
@@ -363,7 +503,7 @@ pub struct Metadata {
     pub values: Map<String, String>,
 }
 
-/// Representation of `nexus_workflow::dag::EntryGroup`.
+/// Representation of `nexus_interface::graph::EntryGroup`.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SchedulerEntryGroup {
     pub name: String,
@@ -441,27 +581,28 @@ mod tests {
     }
 
     #[test]
-    fn dag_execution_config_deserializes_from_json() {
+    fn default_agent_execution_config_deserializes_from_json() {
         let mut rng = rand::thread_rng();
         let dag_id = sui::types::Address::generate(&mut rng);
         let network_id = sui::types::Address::generate(&mut rng);
         let invoker = sui::types::Address::generate(&mut rng);
 
-        let expected = DagExecutionConfig {
-            dag: dag_id,
+        let expected = AgentExecutionConfig {
+            selection: ExecutionSelection::DefaultAgent { dag_id },
             network: network_id,
-            priority_fee_per_gas_unit: 1000,
             entry_group: SchedulerEntryGroup {
                 name: "default".to_string(),
             },
             inputs: Map::default(),
             invoker,
+            priority_fee_per_gas_unit: 1000,
+            authorization_templates: vec![],
         };
 
-        let parsed: DagExecutionConfig =
+        let parsed: AgentExecutionConfig =
             serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
-        assert_eq!(parsed.dag, expected.dag);
+        assert_eq!(parsed.selection.dag_id(), Some(dag_id));
         assert_eq!(parsed.network, expected.network);
         assert_eq!(
             parsed.priority_fee_per_gas_unit,
@@ -473,14 +614,68 @@ mod tests {
     }
 
     #[test]
-    fn agent_execution_config_deserializes_from_json() {
+    fn default_agent_execution_config_deserializes_from_move_json() {
         let mut rng = rand::thread_rng();
         let dag_id = sui::types::Address::generate(&mut rng);
+        let network_id = sui::types::Address::generate(&mut rng);
+        let invoker = sui::types::Address::generate(&mut rng);
+
+        let expected = AgentExecutionConfig {
+            selection: ExecutionSelection::DefaultAgent { dag_id },
+            network: network_id,
+            entry_group: SchedulerEntryGroup {
+                name: "default".to_string(),
+            },
+            inputs: Map::default(),
+            invoker,
+            priority_fee_per_gas_unit: 1000,
+            authorization_templates: vec![],
+        };
+        let mut value = serde_json::to_value(&expected).unwrap();
+        value["selection"] = json!({ "dag_id": dag_id });
+
+        let parsed: AgentExecutionConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn execution_selection_deserializes_from_variant_wrapper_json() {
+        let mut rng = rand::thread_rng();
+        let dag_id = sui::types::Address::generate(&mut rng);
+
+        let parsed: ExecutionSelection = serde_json::from_value(json!({
+            "DefaultAgent": {
+                "dag_id": dag_id
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(parsed, ExecutionSelection::DefaultAgent { dag_id });
+    }
+
+    #[test]
+    fn agent_execution_config_deserializes_from_json() {
+        let mut rng = rand::thread_rng();
+        let agent_id = sui::types::Address::generate(&mut rng);
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let network_id = sui::types::Address::generate(&mut rng);
+        let invoker = sui::types::Address::generate(&mut rng);
         let recipient_id = sui::types::Address::generate(&mut rng);
 
         let expected = AgentExecutionConfig {
-            skill_id: 2,
-            selected_dag: MoveOption(Some(dag_id)),
+            selection: ExecutionSelection::AgentSkill {
+                agent_id,
+                skill_id: 2,
+                selected_dag: MoveOption(Some(dag_id)),
+            },
+            network: network_id,
+            entry_group: SchedulerEntryGroup {
+                name: "agent".to_string(),
+            },
+            inputs: Map::default(),
+            invoker,
+            priority_fee_per_gas_unit: 1000,
             authorization_templates: vec![AgentVertexAuthorizationTemplate {
                 skill_id: 2,
                 vertex: "cap_first".to_string(),
@@ -491,12 +686,47 @@ mod tests {
         let parsed: AgentExecutionConfig =
             serde_json::from_value(serde_json::to_value(&expected).unwrap()).unwrap();
 
-        assert_eq!(parsed.skill_id, expected.skill_id);
-        assert_eq!(parsed.selected_dag, expected.selected_dag);
+        assert_eq!(parsed.selection, expected.selection);
+        assert_eq!(parsed.selection.dag_id(), Some(dag_id));
         assert_eq!(
             parsed.authorization_templates,
             expected.authorization_templates
         );
+    }
+
+    #[test]
+    fn agent_execution_config_deserializes_from_move_json() {
+        let mut rng = rand::thread_rng();
+        let agent_id = sui::types::Address::generate(&mut rng);
+        let dag_id = sui::types::Address::generate(&mut rng);
+        let network_id = sui::types::Address::generate(&mut rng);
+        let invoker = sui::types::Address::generate(&mut rng);
+
+        let expected = AgentExecutionConfig {
+            selection: ExecutionSelection::AgentSkill {
+                agent_id,
+                skill_id: 2,
+                selected_dag: MoveOption(Some(dag_id)),
+            },
+            network: network_id,
+            entry_group: SchedulerEntryGroup {
+                name: "agent".to_string(),
+            },
+            inputs: Map::default(),
+            invoker,
+            priority_fee_per_gas_unit: 1000,
+            authorization_templates: vec![],
+        };
+        let mut value = serde_json::to_value(&expected).unwrap();
+        value["selection"] = json!({
+            "agent_id": agent_id,
+            "skill_id": "2",
+            "selected_dag": serde_json::to_value(MoveOption(Some(dag_id))).unwrap(),
+        });
+
+        let parsed: AgentExecutionConfig = serde_json::from_value(value).unwrap();
+
+        assert_eq!(parsed, expected);
     }
 
     #[test]

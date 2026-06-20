@@ -11,16 +11,13 @@ use {
             models::Dag,
             scheduler::SchedulerActions,
             signer::Signer,
-            workflow::WorkflowActions,
+            workflow::{fetch_dag_vertices_bcs, WorkflowActions},
         },
         sui,
         types::{derive_tool_gas_id, derive_tool_id, NexusObjects},
         ToolFqn,
     },
-    std::{
-        collections::{HashMap, HashSet},
-        sync::Arc,
-    },
+    std::{collections::HashSet, sync::Arc},
     tokio::{
         sync::{Mutex, Notify},
         time::Duration,
@@ -284,18 +281,17 @@ impl NexusClient {
         let crawler = self.crawler();
         let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
 
-        let vertices = crawler
-            .get_dynamic_fields(&dag.vertices)
+        let vertices = fetch_dag_vertices_bcs(crawler, dag)
             .await
             .map_err(NexusError::Rpc)?
             .into_iter()
             .map(|(vertex, tool)| (vertex, tool.kind.tool_fqn().clone()))
-            .collect::<HashMap<_, _>>();
+            .collect::<Vec<_>>();
 
         // Derive `ToolGas` IDs and fetch them in bulk.
         let tool_gas_ids = vertices
-            .values()
-            .map(|fqn| derive_tool_gas_id(gas_service_object_id, fqn))
+            .iter()
+            .map(|(_, fqn)| derive_tool_gas_id(gas_service_object_id, fqn))
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(NexusError::Parsing)?;
 

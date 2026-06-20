@@ -10,7 +10,7 @@ use {
         tool::tool_validate::validate_off_chain_tool,
     },
     nexus_sdk::{
-        idents::{primitives, workflow},
+        idents::{primitives, registry, workflow},
         nexus::{client::NexusClient, error::NexusError},
         transactions::tool,
         types::ToolMeta,
@@ -190,8 +190,8 @@ async fn register_one_tool(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if *what_for.module() == workflow::ToolRegistry::OVER_TOOL.module
-                    && *what_for.name() == workflow::ToolRegistry::OVER_TOOL.name =>
+                if *what_for.module() == registry::ToolRegistry::OVER_TOOL.module
+                    && *what_for.name() == registry::ToolRegistry::OVER_TOOL.name =>
             {
                 Some(object_id)
             }

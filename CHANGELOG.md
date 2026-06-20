@@ -15,9 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
 - `tap scheduled-task pause|resume|cancel` commands for explicit-agent scheduled task state changes with required `--agent-id`.
+- `DagExecution` decoding now exposes execution walk summary counters: `active_walks`, `pending_abort_walks`, `successful_walks`, `failed_walks`, `aborted_walks`, `consumed_walks`, and `cancelled_walks`.
 
 #### Changed
 
+- SDK idents, PTB builders, CLI calls, event fixtures, schema helpers, and execution discovery now target the split Move module owners (`interface::Dag`/`interface::Graph`, `registry::ToolRegistry`/`registry::VerifierRegistry`, and `workflow::Execution*`) introduced by the workflow module split.
 - TAP CLI terminology now uses default agent or `DefaultDAGExecutor` for Agent Registry surfaces, including the `tap default-agent show` command replacing `tap default-target show`.
 - `tap create-agent` and `tap bind` now derive authorization from the shared agent object flow and no longer accept an explicit `--operator` argument.
 - `tap publish-skill`, `tap bind`, `tap register-skill`, `tap dry-run`, registry inspection, default-agent inspection, requirements output, execution output, payment output, and scheduling output now reflect the simplified current-skill model rather than endpoint-revision/config-digest records.
@@ -77,6 +79,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Signed HTTP invoke authentication now rejects replayed signatures paired with a different request body by comparing the signed `body_sha256` claim to the inbound body hash.
 - `DagExecution` JSON decoding now accepts the on-chain `dag` field for abort-expired execution recovery paths.
 - `transactions::tap::register_skill_with_fixed_tools` now passes the required immutable `ToolRegistry` shared object to the registry entry so fixed-tool validation matches the current Move signature.
 - SDK and CLI PTB helpers now use the current `sui-transaction-builder` object, pure input, function type-argument, and opaque argument APIs consistently, restoring `just sdk test` and `just cli test` under the `0.3.1` builder stack.

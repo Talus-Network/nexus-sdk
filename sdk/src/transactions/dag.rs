@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, primitives, sui_framework, workflow},
+        idents::{interface, move_std, primitives, registry, sui_framework, workflow},
         sui,
         transactions::{agent_input::AgentInput, tap},
         types::{
@@ -17,7 +17,7 @@ use {
             FailureEvidenceKind,
             FromPort,
             NexusObjects,
-            OffChainToolResultAuxiliaryV1,
+            OffChainToolResultAuxiliary,
             OffChainVerifierProofV1,
             OffchainRequestEvidenceV1,
             OffchainResponseEvidenceV1,
@@ -51,12 +51,12 @@ const NEW_PREPARED_TOOL_OUTPUT_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_prepared_tool_output_v1");
 const PREPARED_TOOL_OUTPUT_V1_INTO_BCS_BYTES: sui::types::Identifier =
     sui::types::Identifier::from_static("prepared_tool_output_v1_into_bcs_bytes");
-const NEW_OFFCHAIN_REQUEST_EVIDENCE_V1: sui::types::Identifier =
-    sui::types::Identifier::from_static("new_offchain_request_evidence_v1");
-const NEW_OFFCHAIN_RESPONSE_EVIDENCE_V1: sui::types::Identifier =
-    sui::types::Identifier::from_static("new_offchain_response_evidence_v1");
-const NEW_OFFCHAIN_VERIFIER_EVIDENCE_V1: sui::types::Identifier =
-    sui::types::Identifier::from_static("new_offchain_verifier_evidence_v1");
+const NEW_OFFCHAIN_REQUEST_EVIDENCE: sui::types::Identifier =
+    sui::types::Identifier::from_static("new_offchain_request_evidence");
+const NEW_OFFCHAIN_RESPONSE_EVIDENCE: sui::types::Identifier =
+    sui::types::Identifier::from_static("new_offchain_response_evidence");
+const NEW_OFFCHAIN_VERIFIER_EVIDENCE: sui::types::Identifier =
+    sui::types::Identifier::from_static("new_offchain_verifier_evidence");
 const NEW_EXTERNAL_VERIFIER_SUBMIT_EVIDENCE_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_external_verifier_submit_evidence_v1");
 const NEW_VERIFIER_CONTRACT_RESULT_V1: sui::types::Identifier =
@@ -112,9 +112,9 @@ pub struct AgentDagExecuteInput {
 pub fn empty(tx: &mut sui::tx::TransactionBuilder, objects: &NexusObjects) -> sui::tx::Argument {
     tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::NEW.module,
-            workflow::Dag::NEW.name,
+            objects.interface_pkg_id,
+            interface::Dag::NEW.module,
+            interface::Dag::NEW.name,
         ),
         vec![],
     )
@@ -126,7 +126,7 @@ pub fn publish(
     objects: &NexusObjects,
     dag: sui::tx::Argument,
 ) -> sui::tx::Argument {
-    let dag_type = workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG);
+    let dag_type = interface::into_type_tag(objects.interface_pkg_id, interface::Dag::DAG);
 
     tx.move_call(
         sui::tx::Function::new(
@@ -263,24 +263,26 @@ pub fn create_vertex(
     vertex: &Vertex,
 ) -> anyhow::Result<sui::tx::Argument> {
     // `name: Vertex`
-    let name = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &vertex.name)?;
+    let name = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, &vertex.name)?;
 
     // `kind: VertexKind`
     let kind = match &vertex.kind {
-        VertexKind::OffChain { tool_fqn } => {
-            workflow::Dag::off_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
-        }
+        VertexKind::OffChain { tool_fqn } => interface::Graph::off_chain_vertex_kind_from_fqn(
+            tx,
+            objects.interface_pkg_id,
+            tool_fqn,
+        )?,
         VertexKind::OnChain { tool_fqn } => {
-            workflow::Dag::on_chain_vertex_kind_from_fqn(tx, objects.workflow_pkg_id, tool_fqn)?
+            interface::Graph::on_chain_vertex_kind_from_fqn(tx, objects.interface_pkg_id, tool_fqn)?
         }
     };
 
     // `dag.with_vertex(name, kind)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_VERTEX.module,
-            workflow::Dag::WITH_VERTEX.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_VERTEX.module,
+            interface::Dag::WITH_VERTEX.name,
         ),
         vec![dag, name, kind],
     ))
@@ -293,13 +295,14 @@ pub fn create_post_failure_action(
     dag: sui::tx::Argument,
     action: &PostFailureAction,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let action = workflow::Dag::post_failure_action_from_enum(tx, objects.workflow_pkg_id, action);
+    let action =
+        interface::Graph::post_failure_action_from_enum(tx, objects.interface_pkg_id, action);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_POST_FAILURE_ACTION.module,
-            workflow::Dag::WITH_POST_FAILURE_ACTION.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_POST_FAILURE_ACTION.module,
+            interface::Dag::WITH_POST_FAILURE_ACTION.name,
         ),
         vec![dag, action],
     ))
@@ -313,14 +316,15 @@ pub fn create_vertex_post_failure_action(
     vertex: &str,
     action: &PostFailureAction,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
-    let action = workflow::Dag::post_failure_action_from_enum(tx, objects.workflow_pkg_id, action);
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
+    let action =
+        interface::Graph::post_failure_action_from_enum(tx, objects.interface_pkg_id, action);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module,
-            workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module,
+            interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name,
         ),
         vec![dag, vertex, action],
     ))
@@ -333,15 +337,15 @@ pub fn create_default_leader_verifier(
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Dag::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.module,
-            workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.name,
+            objects.registry_pkg_id,
+            registry::VerifierRegistry::WITH_DEFAULT_LEADER_VERIFIER.module,
+            registry::VerifierRegistry::WITH_DEFAULT_LEADER_VERIFIER.name,
         ),
-        vec![dag, verifier_registry, verifier],
+        vec![verifier_registry, dag, verifier],
     ))
 }
 
@@ -352,15 +356,15 @@ pub fn create_default_tool_verifier(
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Dag::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.module,
-            workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.name,
+            objects.registry_pkg_id,
+            registry::VerifierRegistry::WITH_DEFAULT_TOOL_VERIFIER.module,
+            registry::VerifierRegistry::WITH_DEFAULT_TOOL_VERIFIER.name,
         ),
-        vec![dag, verifier_registry, verifier],
+        vec![verifier_registry, dag, verifier],
     ))
 }
 
@@ -371,17 +375,17 @@ pub fn create_vertex_leader_verifier(
     vertex: &str,
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Dag::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.module,
-            workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.name,
+            objects.registry_pkg_id,
+            registry::VerifierRegistry::WITH_VERTEX_LEADER_VERIFIER.module,
+            registry::VerifierRegistry::WITH_VERTEX_LEADER_VERIFIER.name,
         ),
-        vec![dag, vertex, verifier_registry, verifier],
+        vec![verifier_registry, dag, vertex, verifier],
     ))
 }
 
@@ -392,17 +396,17 @@ pub fn create_vertex_tool_verifier(
     vertex: &str,
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Dag::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.module,
-            workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.name,
+            objects.registry_pkg_id,
+            registry::VerifierRegistry::WITH_VERTEX_TOOL_VERIFIER.module,
+            registry::VerifierRegistry::WITH_VERTEX_TOOL_VERIFIER.name,
         ),
-        vec![dag, vertex, verifier_registry, verifier],
+        vec![verifier_registry, dag, vertex, verifier],
     ))
 }
 
@@ -442,8 +446,8 @@ pub fn abort_expired_execution(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::ABORT_EXPIRED_EXECUTION.module,
-            workflow::Dag::ABORT_EXPIRED_EXECUTION.name,
+            workflow::ExecutionResolution::ABORT_EXPIRED_EXECUTION.module,
+            workflow::ExecutionResolution::ABORT_EXPIRED_EXECUTION.name,
         ),
         vec![
             dag_arg,
@@ -463,8 +467,8 @@ pub fn accomplish_tap_execution_payment(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name,
+            workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module,
+            workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name,
         ),
         vec![execution],
     )
@@ -479,8 +483,8 @@ pub fn accomplish_tap_execution_payment_from_agent_vault(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
-            workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
+            workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
+            workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
         ),
         vec![agent, execution],
     )
@@ -496,8 +500,8 @@ pub fn refund_tap_execution_payment(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT.module,
-            workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT.name,
+            workflow::ExecutionSettlement::REFUND_TAP_EXECUTION_PAYMENT.module,
+            workflow::ExecutionSettlement::REFUND_TAP_EXECUTION_PAYMENT.name,
         ),
         vec![execution, refund_reason],
     ))
@@ -514,8 +518,8 @@ pub fn refund_tap_execution_payment_from_agent_vault(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
-            workflow::Dag::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
+            workflow::ExecutionSettlement::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.module,
+            workflow::ExecutionSettlement::REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT.name,
         ),
         vec![agent, execution, refund_reason],
     ))
@@ -527,7 +531,7 @@ pub fn create_failure_evidence_kind(
     objects: &NexusObjects,
     evidence_kind: &FailureEvidenceKind,
 ) -> sui::tx::Argument {
-    workflow::Dag::failure_evidence_kind_from_enum(tx, objects.interface_pkg_id, evidence_kind)
+    workflow::Verifier::failure_evidence_kind_from_enum(tx, objects.interface_pkg_id, evidence_kind)
 }
 
 fn prepare_tool_output(
@@ -535,14 +539,14 @@ fn prepare_tool_output(
     objects: &NexusObjects,
     prepared: &PreparedToolOutput,
 ) -> anyhow::Result<(sui::tx::Argument, sui::tx::Argument)> {
-    let output_variant = workflow::Dag::output_variant_from_str(
+    let output_variant = interface::Graph::output_variant_from_str(
         tx,
-        objects.workflow_pkg_id,
+        objects.interface_pkg_id,
         &prepared.output_variant,
     )?;
 
     let map_generics = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::OUTPUT_PORT),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::OUTPUT_PORT),
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
@@ -558,7 +562,7 @@ fn prepare_tool_output(
 
     for (output_port, dag_data) in &prepared.output_ports_data {
         let output_port =
-            workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, output_port)?;
+            interface::Graph::output_port_from_str(tx, objects.interface_pkg_id, output_port)?;
 
         let value = match dag_data.storage_kind() {
             StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
@@ -771,7 +775,7 @@ fn prepare_move_option_failure_evidence_kind(
                 )
                 .with_type_args(vec![workflow::into_type_tag(
                     objects.interface_pkg_id,
-                    workflow::Dag::FAILURE_EVIDENCE_KIND,
+                    workflow::Verifier::FAILURE_EVIDENCE_KIND,
                 )]),
                 vec![kind],
             )
@@ -784,7 +788,7 @@ fn prepare_move_option_failure_evidence_kind(
             )
             .with_type_args(vec![workflow::into_type_tag(
                 objects.interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND,
+                workflow::Verifier::FAILURE_EVIDENCE_KIND,
             )]),
             vec![],
         ),
@@ -837,62 +841,6 @@ fn prepare_verifier_decision(
         sui::tx::Function::new(interface_pkg_id, VERIFIER_V1_MODULE, function),
         vec![],
     )
-}
-
-fn prepare_failure_evidence_kind_option(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    value: Option<&FailureEvidenceKind>,
-) -> sui::tx::Argument {
-    let element = workflow::into_type_tag(
-        objects.interface_pkg_id,
-        workflow::Dag::FAILURE_EVIDENCE_KIND,
-    );
-
-    match value {
-        Some(kind) => {
-            let kind = create_failure_evidence_kind(tx, objects, kind);
-            move_std::Option::some(tx, element, kind)
-        }
-        None => move_std::Option::none(tx, element),
-    }
-}
-
-fn prepare_object_id(
-    tx: &mut sui::tx::TransactionBuilder,
-    object_id: sui::types::Address,
-) -> anyhow::Result<sui::tx::Argument> {
-    sui_framework::Object::id_from_object_id(tx, object_id)
-}
-
-pub fn prepare_on_chain_tool_result_submission_v1_bytes(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    output_variant: sui::tx::Argument,
-    output_ports_data: sui::tx::Argument,
-    failure_evidence_kind: Option<&FailureEvidenceKind>,
-    submitted_failure_reason: &Option<Vec<u8>>,
-    tool_witness_id: sui::types::Address,
-) -> anyhow::Result<sui::tx::Argument> {
-    let failure_evidence_kind =
-        prepare_failure_evidence_kind_option(tx, objects, failure_evidence_kind);
-    let submitted_failure_reason = prepare_move_option_vec_u8(tx, submitted_failure_reason);
-    let tool_witness_id = prepare_object_id(tx, tool_witness_id)?;
-
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.module,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name,
-        ),
-        vec![
-            output_variant,
-            output_ports_data,
-            failure_evidence_kind,
-            submitted_failure_reason,
-            tool_witness_id,
-        ],
-    ))
 }
 
 fn prepare_verifier_contract_result(
@@ -997,8 +945,8 @@ fn prepare_authenticated_offchain_request_evidence(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module,
-            workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name,
+            workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module,
+            workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name,
         ),
         vec![
             execution,
@@ -1029,7 +977,7 @@ fn prepare_raw_offchain_request_evidence_for_preflight(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
-            NEW_OFFCHAIN_REQUEST_EVIDENCE_V1,
+            NEW_OFFCHAIN_REQUEST_EVIDENCE,
         ),
         vec![
             execution,
@@ -1058,7 +1006,7 @@ fn prepare_offchain_response_evidence(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
-            NEW_OFFCHAIN_RESPONSE_EVIDENCE_V1,
+            NEW_OFFCHAIN_RESPONSE_EVIDENCE,
         ),
         vec![
             status_code,
@@ -1095,7 +1043,7 @@ fn prepare_offchain_verifier_evidence(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
-            NEW_OFFCHAIN_VERIFIER_EVIDENCE_V1,
+            NEW_OFFCHAIN_VERIFIER_EVIDENCE,
         ),
         vec![
             submission_kind,
@@ -1124,7 +1072,7 @@ fn prepare_offchain_verifier_evidence_for_preflight(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
-            NEW_OFFCHAIN_VERIFIER_EVIDENCE_V1,
+            NEW_OFFCHAIN_VERIFIER_EVIDENCE,
         ),
         vec![
             submission_kind,
@@ -1266,7 +1214,7 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
-    auxiliary: Option<&OffChainToolResultAuxiliaryV1>,
+    auxiliary: Option<&OffChainToolResultAuxiliary>,
     proof: &OffChainVerifierProofV1,
     verifier_registry: sui::tx::Argument,
     leader_registry: sui::tx::Argument,
@@ -1278,11 +1226,11 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
 ) -> anyhow::Result<()> {
     let walk_index = tx.pure(&walk_index);
     let expected_vertex =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
     let auxiliary_bytes = tx.pure(
         &auxiliary
-            .map(OffChainToolResultAuxiliaryV1::to_bcs_bytes)
+            .map(OffChainToolResultAuxiliary::to_bcs_bytes)
             .transpose()?,
     );
     let proof = prepare_offchain_verifier_proof(tx, objects, proof)?;
@@ -1291,8 +1239,8 @@ pub fn submit_off_chain_tool_result_for_walk_v1(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
         ),
         vec![
             dag,
@@ -1332,18 +1280,18 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     result: &PreparedToolOutputV1,
-    auxiliary: Option<&OffChainToolResultAuxiliaryV1>,
+    auxiliary: Option<&OffChainToolResultAuxiliary>,
     leader_registry: sui::tx::Argument,
     gas_charge: u64,
     clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     let walk_index = tx.pure(&walk_index);
     let expected_vertex =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
     let auxiliary_bytes = tx.pure(
         &auxiliary
-            .map(OffChainToolResultAuxiliaryV1::to_bcs_bytes)
+            .map(OffChainToolResultAuxiliary::to_bcs_bytes)
             .transpose()?,
     );
     let gas_charge = tx.pure(&gas_charge);
@@ -1351,8 +1299,8 @@ pub fn submit_off_chain_tool_result_for_walk_without_verifier_v1(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name,
         ),
         vec![
             dag,
@@ -1399,7 +1347,7 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     let expected_vertex_arg =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
     let verifier_call = call_external_verifier_v1_with_authenticated_request(
         tx,
         objects,
@@ -1431,15 +1379,15 @@ pub fn submit_off_chain_tool_result_for_walk_with_external_verifier_proof_v1(
     let auxiliary = tx.pure(&Option::<Vec<u8>>::None);
     let walk_index = tx.pure(&walk_index);
     let expected_vertex =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
     let result_bytes = prepare_offchain_tool_result_bytes(tx, objects, result)?;
     let gas_charge = tx.pure(&gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
         ),
         vec![
             dag,
@@ -1481,48 +1429,13 @@ pub fn worksheet_for_tool_result_submission(
         objects.agent_registry.version(),
         false,
     ));
-    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
-        *objects.leader_registry.object_id(),
-        objects.leader_registry.version(),
-        false,
-    ));
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.module,
-            workflow::Dag::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name,
+            workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.module,
+            workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name,
         ),
-        vec![
-            dag,
-            agent_registry,
-            leader_registry,
-            execution,
-            leader_cap,
-            walk_index,
-        ],
-    ))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn create_vertex_authorization_grant(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    dag: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    tool_registry: sui::tx::Argument,
-    agent: sui::tx::Argument,
-    skill_id: SkillId,
-    vertex: &RuntimeVertex,
-) -> anyhow::Result<sui::tx::Argument> {
-    let skill_id = tx.pure(&skill_id);
-    let vertex = workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, vertex)?;
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.module,
-            workflow::Dag::CREATE_VERTEX_AUTHORIZATION_GRANT.name,
-        ),
-        vec![dag, execution, tool_registry, agent, skill_id, vertex],
+        vec![dag, agent_registry, execution, leader_cap, walk_index],
     ))
 }
 
@@ -1536,8 +1449,8 @@ pub fn request_walk_execution_for_walk(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.module,
-            workflow::Dag::REQUEST_WALK_EXECUTION_FOR_WALK.name,
+            workflow::ExecutionEntries::REQUEST_WALK_EXECUTION_FOR_WALK.module,
+            workflow::ExecutionEntries::REQUEST_WALK_EXECUTION_FOR_WALK.name,
         ),
         vec![execution, walk_index],
     ))
@@ -1557,11 +1470,29 @@ pub fn release_vertex_authorization_for_onchain_walk(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.module,
-            workflow::Dag::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.name,
+            workflow::ExecutionSubmission::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.module,
+            workflow::ExecutionSubmission::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.name,
         ),
         vec![dag, execution, worksheet, leader_cap, walk_index],
     ))
+}
+
+pub fn leader_stamp_worksheet(
+    tx: &mut sui::tx::TransactionBuilder,
+    workflow_pkg_id: sui::types::Address,
+    leader_registry: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    worksheet: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+) {
+    tx.move_call(
+        sui::tx::Function::new(
+            workflow_pkg_id,
+            workflow::ExecutionSubmission::LEADER_STAMP_WORKSHEET.module,
+            workflow::ExecutionSubmission::LEADER_STAMP_WORKSHEET.name,
+        ),
+        vec![leader_registry, execution, worksheet, leader_cap],
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1586,7 +1517,7 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
 ) -> anyhow::Result<()> {
     let walk_index = tx.pure(&walk_index);
     let expected_vertex =
-        workflow::Dag::runtime_vertex_from_enum(tx, objects.workflow_pkg_id, expected_vertex)?;
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
     let (output_variant, output_ports_data) = prepare_tool_output(tx, objects, prepared_output)?;
     let failure_evidence_kind =
         prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
@@ -1597,8 +1528,8 @@ pub fn submit_on_chain_tool_result_for_walk_v1(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
         ),
         vec![
             dag,
@@ -1654,8 +1585,8 @@ pub fn submit_on_chain_tool_result_for_walk_v1_with_args(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
         ),
         vec![
             dag,
@@ -1728,11 +1659,14 @@ pub fn create_default_value(
 ) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
     let vertex =
-        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &default_value.vertex)?;
+        interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, &default_value.vertex)?;
 
     // `port: InputPort`
-    let port =
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &default_value.input_port)?;
+    let port = interface::Graph::input_port_from_str(
+        tx,
+        objects.interface_pkg_id,
+        &default_value.input_port,
+    )?;
 
     // `value: NexusData`
     let value = match &default_value.value.storage {
@@ -1751,9 +1685,9 @@ pub fn create_default_value(
     // `dag.with_default_value(vertex, port, value)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_DEFAULT_VALUE.module,
-            workflow::Dag::WITH_DEFAULT_VALUE.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_DEFAULT_VALUE.module,
+            interface::Dag::WITH_DEFAULT_VALUE.name,
         ),
         vec![dag, vertex, port, value],
     ))
@@ -1768,35 +1702,39 @@ pub fn create_edge(
 ) -> anyhow::Result<sui::tx::Argument> {
     // `from_vertex: Vertex`
     let from_vertex =
-        workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.from.vertex)?;
+        interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, &edge.from.vertex)?;
 
     // `from_variant: OutputVariant`
-    let from_variant = workflow::Dag::output_variant_from_str(
+    let from_variant = interface::Graph::output_variant_from_str(
         tx,
-        objects.workflow_pkg_id,
+        objects.interface_pkg_id,
         &edge.from.output_variant,
     )?;
 
     // `from_port: OutputPort`
-    let from_port =
-        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &edge.from.output_port)?;
+    let from_port = interface::Graph::output_port_from_str(
+        tx,
+        objects.interface_pkg_id,
+        &edge.from.output_port,
+    )?;
 
     // `to_vertex: Vertex`
-    let to_vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &edge.to.vertex)?;
+    let to_vertex =
+        interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, &edge.to.vertex)?;
 
     // `to_port: InputPort`
     let to_port =
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &edge.to.input_port)?;
+        interface::Graph::input_port_from_str(tx, objects.interface_pkg_id, &edge.to.input_port)?;
 
     // `kind: EdgeKind`
-    let kind = workflow::Dag::edge_kind_from_enum(tx, objects.workflow_pkg_id, &edge.kind);
+    let kind = interface::Graph::edge_kind_from_enum(tx, objects.interface_pkg_id, &edge.kind);
 
     // `dag.with_edge(from_vertex, from_variant, from_port, to_vertex, to_port)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_EDGE.module,
-            workflow::Dag::WITH_EDGE.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_EDGE.module,
+            interface::Dag::WITH_EDGE.name,
         ),
         vec![
             dag,
@@ -1818,25 +1756,25 @@ pub fn create_output(
     output: &FromPort,
 ) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, &output.vertex)?;
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, &output.vertex)?;
 
     // `variant: OutputVariant`
-    let variant = workflow::Dag::output_variant_from_str(
+    let variant = interface::Graph::output_variant_from_str(
         tx,
-        objects.workflow_pkg_id,
+        objects.interface_pkg_id,
         &output.output_variant,
     )?;
 
     // `port: OutputPort`
     let port =
-        workflow::Dag::output_port_from_str(tx, objects.workflow_pkg_id, &output.output_port)?;
+        interface::Graph::output_port_from_str(tx, objects.interface_pkg_id, &output.output_port)?;
 
     // `dag.with_output(vertex, variant, port)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_OUTPUT.module,
-            workflow::Dag::WITH_OUTPUT.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_OUTPUT.module,
+            interface::Dag::WITH_OUTPUT.name,
         ),
         vec![dag, vertex, variant, port],
     ))
@@ -1851,18 +1789,18 @@ pub fn mark_entry_vertex(
     entry_group: &str,
 ) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     // `dag.with_entry_in_group(vertex, entry_group)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_ENTRY_IN_GROUP.module,
-            workflow::Dag::WITH_ENTRY_IN_GROUP.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_ENTRY_IN_GROUP.module,
+            interface::Dag::WITH_ENTRY_IN_GROUP.name,
         ),
         vec![dag, vertex, entry_group],
     ))
@@ -1878,22 +1816,22 @@ pub fn mark_entry_input_port(
     entry_group: &str,
 ) -> anyhow::Result<sui::tx::Argument> {
     // `vertex: Vertex`
-    let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex)?;
+    let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
 
     // `entry_port: InputPort`
     let entry_port =
-        workflow::Dag::input_port_from_str(tx, objects.workflow_pkg_id, &entry_port.name)?;
+        interface::Graph::input_port_from_str(tx, objects.interface_pkg_id, &entry_port.name)?;
 
     // `entry_group: EntryGroup`
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     // `dag.with_entry_port_in_group(vertex, entry_port, entry_group)`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module,
-            workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name,
+            objects.interface_pkg_id,
+            interface::Dag::WITH_ENTRY_PORT_IN_GROUP.module,
+            interface::Dag::WITH_ENTRY_PORT_IN_GROUP.name,
         ),
         vec![dag, vertex, entry_port, entry_group],
     ))
@@ -1907,7 +1845,7 @@ pub fn prepare_agent_execution(
     agent_registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     dag: sui::tx::Argument,
-    dag_id: sui::tx::Argument,
+    _dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
@@ -1920,16 +1858,16 @@ pub fn prepare_agent_execution(
 
     // `entry_group: EntryGroup`
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
     let inner_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::INPUT_PORT),
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
     let outer_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::VERTEX),
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::VEC_MAP.module,
@@ -1949,7 +1887,7 @@ pub fn prepare_agent_execution(
     );
 
     for (vertex_name, data) in input_data {
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+        let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex_name)?;
         let with_vertex_input = tx.move_call(
             sui::tx::Function::new(
                 sui_framework::PACKAGE_ID,
@@ -1961,9 +1899,9 @@ pub fn prepare_agent_execution(
         );
 
         for (port_name, value) in data {
-            let port = workflow::Dag::input_port_from_str(
+            let port = interface::Graph::input_port_from_str(
                 tx,
-                objects.workflow_pkg_id,
+                objects.interface_pkg_id,
                 port_name.as_str(),
             )?;
 
@@ -2004,23 +1942,15 @@ pub fn prepare_agent_execution(
 
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
-    let config = tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-        ),
-        vec![
-            dag_id,
-            network,
-            entry_group,
-            with_vertex_inputs,
-            priority_fee_per_gas_unit,
-        ],
-    );
+    let agent_id = sui_framework::Object::id_from_object_id(tx, agent_execution.agent_id)?;
     let agent_config = tap::agent_execution_config_arg(
         tx,
         objects,
+        agent_id,
+        network,
+        entry_group,
+        with_vertex_inputs,
+        priority_fee_per_gas_unit,
         agent_execution.skill_id,
         agent_execution.selected_dag,
         &agent_execution.authorization_templates,
@@ -2031,15 +1961,14 @@ pub fn prepare_agent_execution(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.module,
-            workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name,
+            workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.module,
+            workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.name,
         ),
         vec![
             dag,
             agent_registry,
             agent,
             tool_registry,
-            config,
             agent_config,
             payment_coin,
             payment_max_budget,
@@ -2068,16 +1997,16 @@ pub fn prepare_default_agent_execution(
 
     // `entry_group: EntryGroup`
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     // `with_vertex_inputs: VecMap<Vertex, VecMap<InputPort, NexusData>>`
     let inner_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::INPUT_PORT),
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
     let outer_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::VERTEX),
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::VEC_MAP.module,
@@ -2097,7 +2026,7 @@ pub fn prepare_default_agent_execution(
     );
 
     for (vertex_name, data) in input_data {
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+        let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex_name)?;
         let with_vertex_input = tx.move_call(
             sui::tx::Function::new(
                 sui_framework::PACKAGE_ID,
@@ -2109,9 +2038,9 @@ pub fn prepare_default_agent_execution(
         );
 
         for (port_name, value) in data {
-            let port = workflow::Dag::input_port_from_str(
+            let port = interface::Graph::input_port_from_str(
                 tx,
-                objects.workflow_pkg_id,
+                objects.interface_pkg_id,
                 port_name.as_str(),
             )?;
 
@@ -2151,28 +2080,23 @@ pub fn prepare_default_agent_execution(
     }
 
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
-    let config = tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-        ),
-        vec![
-            dag_id,
-            network,
-            entry_group,
-            with_vertex_inputs,
-            priority_fee_per_gas_unit,
-        ],
-    );
+    let config = tap::default_agent_execution_config_arg(
+        tx,
+        objects,
+        dag_id,
+        network,
+        entry_group,
+        with_vertex_inputs,
+        priority_fee_per_gas_unit,
+    )?;
 
     let payment_max_budget = tx.pure(&agent_execution.payment_max_budget);
 
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module,
-            workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name,
+            workflow::ExecutionEntries::BEGIN_DEFAULT_DAG_EXECUTION.module,
+            workflow::ExecutionEntries::BEGIN_DEFAULT_DAG_EXECUTION.name,
         ),
         vec![
             dag,
@@ -2390,14 +2314,14 @@ fn execute_agent_dag_internal(
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
 
     let execution_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Execution::DAG_EXECUTION);
     tx.move_call(
         sui::tx::Function::new(
             sui_framework::PACKAGE_ID,
@@ -2670,8 +2594,8 @@ mod tests {
         }
     }
 
-    fn mock_offchain_failure_auxiliary() -> crate::types::OffChainToolResultAuxiliaryV1 {
-        crate::types::OffChainToolResultAuxiliaryV1::err_eval(
+    fn mock_offchain_failure_auxiliary() -> crate::types::OffChainToolResultAuxiliary {
+        crate::types::OffChainToolResultAuxiliary::err_eval(
             crate::types::FailureEvidenceKind::LeaderEvidence,
         )
     }
@@ -2721,9 +2645,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to create an empty DAG");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::NEW.module);
-        assert_eq!(call.function, workflow::Dag::NEW.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::NEW.module);
+        assert_eq!(call.function, interface::Dag::NEW.name);
         assert_eq!(call.type_arguments.len(), 0);
         assert_eq!(call.arguments.len(), 0);
     }
@@ -2784,13 +2708,27 @@ mod tests {
             panic!("Expected a ProgrammableTransaction");
         };
 
+        let move_calls = commands
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert!(move_calls.iter().any(|call| {
+            call.package == objects.interface_pkg_id
+                && call.module == interface::Graph::VERTEX_OFF_CHAIN.module
+                && call.function == interface::Graph::VERTEX_OFF_CHAIN.name
+        }));
+
         let sui::types::Command::MoveCall(call) = &commands.last().unwrap() else {
             panic!("Expected last command to be a MoveCall to create a vertex");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_VERTEX.module);
-        assert_eq!(call.function, workflow::Dag::WITH_VERTEX.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_VERTEX.module);
+        assert_eq!(call.function, interface::Dag::WITH_VERTEX.name);
     }
 
     #[test]
@@ -2820,9 +2758,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to create a default value");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_DEFAULT_VALUE.module);
-        assert_eq!(call.function, workflow::Dag::WITH_DEFAULT_VALUE.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_DEFAULT_VALUE.module);
+        assert_eq!(call.function, interface::Dag::WITH_DEFAULT_VALUE.name);
     }
 
     #[test]
@@ -2849,9 +2787,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to set DAG post-failure action");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_POST_FAILURE_ACTION.module);
-        assert_eq!(call.function, workflow::Dag::WITH_POST_FAILURE_ACTION.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_POST_FAILURE_ACTION.module);
+        assert_eq!(call.function, interface::Dag::WITH_POST_FAILURE_ACTION.name);
     }
 
     #[test]
@@ -2879,14 +2817,14 @@ mod tests {
             panic!("Expected last command to be a MoveCall to set vertex post-failure action");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.package, objects.interface_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module
+            interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name
+            interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name
         );
     }
 
@@ -2911,8 +2849,14 @@ mod tests {
         };
 
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::ABORT_EXPIRED_EXECUTION.module);
-        assert_eq!(call.function, workflow::Dag::ABORT_EXPIRED_EXECUTION.name);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionResolution::ABORT_EXPIRED_EXECUTION.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionResolution::ABORT_EXPIRED_EXECUTION.name
+        );
         assert_eq!(call.arguments.len(), 5);
     }
 
@@ -2937,11 +2881,11 @@ mod tests {
         assert_eq!(call.package, objects.interface_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
+            workflow::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
+            workflow::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
         );
     }
 
@@ -2952,8 +2896,8 @@ mod tests {
         }
     }
 
-    fn mock_offchain_none_auxiliary() -> crate::types::OffChainToolResultAuxiliaryV1 {
-        crate::types::OffChainToolResultAuxiliaryV1::success()
+    fn mock_offchain_none_auxiliary() -> crate::types::OffChainToolResultAuxiliary {
+        crate::types::OffChainToolResultAuxiliary::success()
     }
 
     #[test]
@@ -3003,11 +2947,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(call.arguments.len(), 18);
         assert!(matches!(
@@ -3063,11 +3007,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
         );
         assert_eq!(call.arguments.len(), 13);
     }
@@ -3110,11 +3054,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1.name
         );
         assert_eq!(call.arguments.len(), 13);
         assert!(matches!(call.arguments[8], sui::types::Argument::Result(_)));
@@ -3268,9 +3212,9 @@ mod tests {
                 sui::types::Command::MoveCall(call)
                     if call.package == objects.workflow_pkg_id
                         && call.module
-                            == workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module
+                            == workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module
                         && call.function
-                            == workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name
+                            == workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name
             )
         }));
         assert!(!inspector.commands().iter().any(|command| {
@@ -3279,7 +3223,7 @@ mod tests {
                 sui::types::Command::MoveCall(call)
                     if call.package == objects.interface_pkg_id
                         && call.module == VERIFIER_V1_MODULE
-                        && call.function == NEW_OFFCHAIN_REQUEST_EVIDENCE_V1
+                        && call.function == NEW_OFFCHAIN_REQUEST_EVIDENCE
             )
         }));
         assert!(inspector.commands().iter().any(|command| {
@@ -3305,11 +3249,11 @@ mod tests {
         assert_eq!(submit_call.package, objects.workflow_pkg_id);
         assert_eq!(
             submit_call.module,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             submit_call.function,
-            workflow::Dag::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(submit_call.arguments.len(), 18);
         assert!(matches!(
@@ -3349,7 +3293,7 @@ mod tests {
                 sui::types::Command::MoveCall(call)
                     if call.package == objects.interface_pkg_id
                         && call.module == VERIFIER_V1_MODULE
-                        && call.function == NEW_OFFCHAIN_REQUEST_EVIDENCE_V1
+                        && call.function == NEW_OFFCHAIN_REQUEST_EVIDENCE
             )
         }));
         assert!(!inspector.commands().iter().any(|command| {
@@ -3358,9 +3302,9 @@ mod tests {
                 sui::types::Command::MoveCall(call)
                     if call.package == objects.workflow_pkg_id
                         && call.module
-                            == workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module
+                            == workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.module
                         && call.function
-                            == workflow::Dag::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name
+                            == workflow::ExecutionSubmission::NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1.name
             )
         }));
     }
@@ -3410,6 +3354,65 @@ mod tests {
             objects.interface_pkg_id,
             witness,
         );
+    }
+
+    #[test]
+    fn test_worksheet_for_tool_result_submission_matches_current_move_signature() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let leader_cap = tx.pure(&2u64);
+
+        worksheet_for_tool_result_submission(&mut tx, &objects, dag, execution, leader_cap, 3)
+            .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        );
+        assert_eq!(call.arguments.len(), 5);
+    }
+
+    #[test]
+    fn test_leader_stamp_worksheet_targets_current_execution_submission_entrypoint() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let leader_registry = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let worksheet = tx.pure(&2u64);
+        let leader_cap = tx.pure(&3u64);
+
+        leader_stamp_worksheet(
+            &mut tx,
+            objects.workflow_pkg_id,
+            leader_registry,
+            execution,
+            worksheet,
+            leader_cap,
+        );
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionSubmission::LEADER_STAMP_WORKSHEET.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionSubmission::LEADER_STAMP_WORKSHEET.name
+        );
+        assert_eq!(call.arguments.len(), 4);
     }
 
     #[test]
@@ -3467,11 +3470,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.module
+            workflow::ExecutionSubmission::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.name
+            workflow::ExecutionSubmission::RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK.name
         );
         assert_eq!(call.arguments.len(), 5);
         inspector.expect_u64(&call.arguments[0], 0);
@@ -3491,11 +3494,11 @@ mod tests {
         assert_eq!(call.package, workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(call.arguments.len(), 16);
         assert!(matches!(
@@ -3520,7 +3523,7 @@ mod tests {
             failure_option.type_arguments,
             vec![workflow::into_type_tag(
                 interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND
+                workflow::Verifier::FAILURE_EVIDENCE_KIND
             )]
         );
 
@@ -3534,75 +3537,6 @@ mod tests {
             sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&tool_witness_id.arguments[0], expected_tool_witness_id);
-    }
-
-    #[test]
-    fn test_prepare_on_chain_tool_result_submission_v1_bytes_constructs_move_values() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let tool_witness_id = sui_mocks::mock_sui_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-
-        let submission = prepare_on_chain_tool_result_submission_v1_bytes(
-            &mut tx,
-            &objects,
-            __ph_0,
-            __ph_1,
-            None,
-            &None,
-            tool_witness_id,
-        )
-        .expect("submission bytes helper should build");
-
-        let _ = submission;
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let submission_call = inspector
-            .commands()
-            .iter()
-            .find_map(|command| match command {
-                sui::types::Command::MoveCall(call)
-                    if call.package == objects.workflow_pkg_id
-                        && call.function
-                            == workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name =>
-                {
-                    Some(call)
-                }
-                _ => None,
-            })
-            .expect("expected submission move call");
-
-        assert_eq!(submission_call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            submission_call.function,
-            workflow::Dag::ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES.name
-        );
-
-        let failure_option = match submission_call.arguments[2] {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected failure option to be a command result, got {other:?}"),
-        };
-        assert_eq!(failure_option.package, move_std::PACKAGE_ID);
-        assert_eq!(failure_option.module, move_std::Option::NONE.module);
-        assert_eq!(failure_option.function, move_std::Option::NONE.name);
-        assert_eq!(
-            failure_option.type_arguments,
-            vec![workflow::into_type_tag(
-                objects.interface_pkg_id,
-                workflow::Dag::FAILURE_EVIDENCE_KIND
-            )]
-        );
-
-        let tool_witness_id_call = match submission_call.arguments[4] {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected tool witness ID to be a command result, got {other:?}"),
-        };
-        assert_eq!(tool_witness_id_call.package, sui_framework::PACKAGE_ID);
-        assert_eq!(
-            tool_witness_id_call.function,
-            sui_framework::Object::ID_FROM_ADDRESS.name
-        );
-        inspector.expect_address(&tool_witness_id_call.arguments[0], tool_witness_id);
     }
 
     #[test]
@@ -3646,11 +3580,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(call.arguments.len(), 16);
         assert!(matches!(
@@ -3707,11 +3641,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(call.arguments.len(), 16);
         assert!(matches!(
@@ -3770,11 +3704,11 @@ mod tests {
         assert_eq!(call.package, objects.workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
         );
         assert_eq!(
             call.function,
-            workflow::Dag::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
         );
         assert_eq!(call.arguments.len(), 16);
         assert!(matches!(call.arguments[12], sui::types::Argument::Input(_)));
@@ -3797,20 +3731,21 @@ mod tests {
             panic!("expected output variant result argument");
         };
         let output_variant_call = inspector.move_call(*output_variant_index as usize);
+        assert_eq!(output_variant_call.package, objects.interface_pkg_id);
         assert_eq!(
             output_variant_call.module,
-            workflow::Dag::OUTPUT_VARIANT_FROM_STRING.module
+            interface::Graph::OUTPUT_VARIANT_FROM_STRING.module
         );
         assert_eq!(
             output_variant_call.function,
-            workflow::Dag::OUTPUT_VARIANT_FROM_STRING.name
+            interface::Graph::OUTPUT_VARIANT_FROM_STRING.name
         );
         inspector.expect_ascii_string_result(&output_variant_call.arguments[0], "_err_eval");
 
         let output_port_indices = inspector.move_call_indices_to(
-            objects.workflow_pkg_id,
-            &workflow::Dag::OUTPUT_PORT_FROM_STRING.module,
-            &workflow::Dag::OUTPUT_PORT_FROM_STRING.name,
+            objects.interface_pkg_id,
+            &interface::Graph::OUTPUT_PORT_FROM_STRING.module,
+            &interface::Graph::OUTPUT_PORT_FROM_STRING.name,
         );
         assert_eq!(
             output_port_indices.len(),
@@ -3852,9 +3787,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to create an edge");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_EDGE.module);
-        assert_eq!(call.function, workflow::Dag::WITH_EDGE.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_EDGE.module);
+        assert_eq!(call.function, interface::Dag::WITH_EDGE.name);
     }
 
     #[test]
@@ -3878,9 +3813,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to mark an entry vertex");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_ENTRY_IN_GROUP.module);
-        assert_eq!(call.function, workflow::Dag::WITH_ENTRY_IN_GROUP.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_ENTRY_IN_GROUP.module);
+        assert_eq!(call.function, interface::Dag::WITH_ENTRY_IN_GROUP.name);
     }
 
     #[test]
@@ -3915,9 +3850,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to mark an entry input port");
         };
 
-        assert_eq!(call.package, nexus_objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.module);
-        assert_eq!(call.function, workflow::Dag::WITH_ENTRY_PORT_IN_GROUP.name);
+        assert_eq!(call.package, nexus_objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_ENTRY_PORT_IN_GROUP.module);
+        assert_eq!(call.function, interface::Dag::WITH_ENTRY_PORT_IN_GROUP.name);
     }
 
     #[test]
@@ -3970,20 +3905,12 @@ mod tests {
             .iter()
             .position(|command| match command {
                 sui::types::Command::MoveCall(call) => {
-                    call.function == workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
+                    call.function
+                        == workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.name
                 }
                 _ => false,
             })
             .expect("agent begin call");
-        let dag_config_index = inspector
-            .move_call_indices_to(
-                nexus_objects.workflow_pkg_id,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-            )
-            .into_iter()
-            .next()
-            .expect("DAG execution config call");
         let agent_config_index = inspector
             .move_call_indices_to(
                 nexus_objects.interface_pkg_id,
@@ -3998,59 +3925,37 @@ mod tests {
             .iter()
             .position(|command| match command {
                 sui::types::Command::MoveCall(call) => {
-                    call.function == workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+                    call.function
+                        == workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
                 }
                 _ => false,
             })
             .expect("request walk call");
-        let config_call = inspector.move_call(dag_config_index);
-        assert_eq!(
-            config_call.function,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name
-        );
-        assert_eq!(config_call.arguments.len(), 5);
-        let sui::types::Argument::Result(dag_id_index) = config_call.arguments[0] else {
-            panic!("expected dag ID to come from object::id_from_address");
-        };
-        let dag_id_call = inspector.move_call(dag_id_index as usize);
-        assert_eq!(dag_id_call.package, sui_framework::PACKAGE_ID);
-        assert_eq!(
-            dag_id_call.module,
-            sui_framework::Object::ID_FROM_ADDRESS.module
-        );
-        assert_eq!(
-            dag_id_call.function,
-            sui_framework::Object::ID_FROM_ADDRESS.name
-        );
-        inspector.expect_address(&dag_id_call.arguments[0], *dag.object_id());
-        inspector.expect_u64(&config_call.arguments[4], 13);
-
         let agent_config_call = inspector.move_call(agent_config_index);
         assert_eq!(
             agent_config_call.function,
             crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.name
         );
-        assert_eq!(agent_config_call.arguments.len(), 3);
-        inspector.expect_u64(&agent_config_call.arguments[0], agent_execution.skill_id);
+        assert_eq!(agent_config_call.arguments.len(), 8);
+        inspector.expect_u64(&agent_config_call.arguments[5], agent_execution.skill_id);
 
         let begin_call = inspector.move_call(begin_index);
         assert_eq!(
             begin_call.function,
-            workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
+            workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.name
         );
-        assert_eq!(begin_call.arguments.len(), 9);
+        assert_eq!(begin_call.arguments.len(), 8);
         inspector.expect_shared_object(&begin_call.arguments[2], &agent, true);
         assert_matches!(&begin_call.arguments[4], sui::types::Argument::Result(_));
-        assert_matches!(&begin_call.arguments[5], sui::types::Argument::Result(_));
         assert_matches!(
-            &begin_call.arguments[6],
+            &begin_call.arguments[5],
             sui::types::Argument::NestedResult(_, 0)
         );
 
         let request_call = inspector.move_call(request_index);
         assert_eq!(
             request_call.function,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name
         );
 
         assert!(!inspector.commands().iter().any(|command| {
@@ -4156,15 +4061,15 @@ mod tests {
         let begin_index = inspector
             .move_call_indices_to(
                 nexus_objects.workflow_pkg_id,
-                &workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.module,
-                &workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name,
+                &workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.module,
+                &workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.name,
             )
             .into_iter()
             .next()
             .expect("agent begin call");
         let begin_call = inspector.move_call(begin_index);
         assert_matches!(
-            begin_call.arguments[6],
+            begin_call.arguments[5],
             sui::types::Argument::NestedResult(_, 0)
         );
     }
@@ -4207,20 +4112,22 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(calls.iter().any(|call| {
-            call.package == nexus_objects.workflow_pkg_id
-                && call.module == workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module
-                && call.function == workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name
+            call.package == nexus_objects.interface_pkg_id
+                && call.module
+                    == crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module
+                && call.function
+                    == crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name
         }));
         assert!(calls.iter().any(|call| {
             call.package == nexus_objects.workflow_pkg_id
-                && call.module == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.module
-                && call.function == workflow::Dag::BEGIN_DAG_EXECUTION_WITH_CONFIG.name
+                && call.module == workflow::ExecutionEntries::BEGIN_DEFAULT_DAG_EXECUTION.module
+                && call.function == workflow::ExecutionEntries::BEGIN_DEFAULT_DAG_EXECUTION.name
         }));
         let config_index = inspector
             .move_call_indices_to(
-                nexus_objects.workflow_pkg_id,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-                &workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
+                nexus_objects.interface_pkg_id,
+                &crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module,
+                &crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name,
             )
             .into_iter()
             .next()
@@ -4301,8 +4208,10 @@ mod tests {
         assert!(
             calls.iter().any(|call| {
                 call.package == nexus_objects.workflow_pkg_id
-                    && call.module == workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.module
-                    && call.function == workflow::Dag::BEGIN_AGENT_EXECUTION_WITH_CONFIG.name
+                    && call.module
+                        == workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.module
+                    && call.function
+                        == workflow::ExecutionEntries::BEGIN_USER_FUNDED_AGENT_EXECUTION.name
             }),
             "agent DAG execution must use the explicit agent entrypoint"
         );
@@ -4332,9 +4241,9 @@ mod tests {
             panic!("Expected last command to be a MoveCall to create an output");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module, workflow::Dag::WITH_OUTPUT.module);
-        assert_eq!(call.function, workflow::Dag::WITH_OUTPUT.name);
+        assert_eq!(call.package, objects.interface_pkg_id);
+        assert_eq!(call.module, interface::Dag::WITH_OUTPUT.module);
+        assert_eq!(call.function, interface::Dag::WITH_OUTPUT.name);
     }
 
     #[test]
@@ -4380,16 +4289,19 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_VERTEX.module
-                && call.function == workflow::Dag::WITH_VERTEX.name
+            call.package == objects.interface_pkg_id
+                && call.module == interface::Dag::WITH_VERTEX.module
+                && call.function == interface::Dag::WITH_VERTEX.name
         }));
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module
-                && call.function == workflow::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name
+            call.package == objects.interface_pkg_id
+                && call.module == interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.module
+                && call.function == interface::Dag::WITH_VERTEX_POST_FAILURE_ACTION.name
         }));
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_POST_FAILURE_ACTION.module
-                && call.function == workflow::Dag::WITH_POST_FAILURE_ACTION.name
+            call.package == objects.interface_pkg_id
+                && call.module == interface::Dag::WITH_POST_FAILURE_ACTION.module
+                && call.function == interface::Dag::WITH_POST_FAILURE_ACTION.name
         }));
     }
 
@@ -4448,28 +4360,32 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.module
-                && call.function == workflow::Dag::WITH_DEFAULT_LEADER_VERIFIER.name
+            call.package == objects.registry_pkg_id
+                && call.module == registry::VerifierRegistry::WITH_DEFAULT_LEADER_VERIFIER.module
+                && call.function == registry::VerifierRegistry::WITH_DEFAULT_LEADER_VERIFIER.name
         }));
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.module
-                && call.function == workflow::Dag::WITH_DEFAULT_TOOL_VERIFIER.name
+            call.package == objects.registry_pkg_id
+                && call.module == registry::VerifierRegistry::WITH_DEFAULT_TOOL_VERIFIER.module
+                && call.function == registry::VerifierRegistry::WITH_DEFAULT_TOOL_VERIFIER.name
         }));
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.module
-                && call.function == workflow::Dag::WITH_VERTEX_LEADER_VERIFIER.name
+            call.package == objects.registry_pkg_id
+                && call.module == registry::VerifierRegistry::WITH_VERTEX_LEADER_VERIFIER.module
+                && call.function == registry::VerifierRegistry::WITH_VERTEX_LEADER_VERIFIER.name
         }));
         assert!(move_calls.iter().any(|call| {
-            call.module == workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.module
-                && call.function == workflow::Dag::WITH_VERTEX_TOOL_VERIFIER.name
+            call.package == objects.registry_pkg_id
+                && call.module == registry::VerifierRegistry::WITH_VERTEX_TOOL_VERIFIER.module
+                && call.function == registry::VerifierRegistry::WITH_VERTEX_TOOL_VERIFIER.name
         }));
         assert_eq!(
             move_calls
                 .iter()
                 .filter(|call| {
                     call.package == objects.interface_pkg_id
-                        && call.module == workflow::Dag::VERIFIER_CONFIG.module
-                        && call.function == workflow::Dag::VERIFIER_CONFIG.name
+                        && call.module == workflow::Verifier::VERIFIER_CONFIG.module
+                        && call.function == workflow::Verifier::VERIFIER_CONFIG.name
                 })
                 .count(),
             4

@@ -11,7 +11,7 @@ use crate::idents::registry;
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::workflow;
 #[cfg(feature = "sui_idents")]
-use crate::idents::{scheduler, tap, ModuleAndNameIdent};
+use crate::idents::{interface, scheduler, tap, ModuleAndNameIdent};
 use {
     crate::sui,
     serde::{Deserialize, Serialize},
@@ -223,6 +223,7 @@ impl NexusObjects {
                     || module == &tap::STANDARD_AUTHORIZATION_MODULE
                     || module == &tap::STANDARD_PAYMENT_MODULE
                     || module == &tap::INTERFACE_VERSION_MODULE
+                    || module == &interface::Dag::DAG.module
             )
         {
             return true;
@@ -351,13 +352,25 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.workflow_pkg_id,
-                workflow::Dag::DAG.module,
-                workflow::Dag::DAG.name,
+                workflow::Execution::DAG_EXECUTION.module,
+                workflow::Execution::DAG_EXECUTION.name,
                 vec![],
             ),
         );
 
         assert!(objects.is_event_from_nexus(&workflow_event));
+
+        let interface_dag_event = wrap_event(
+            &objects,
+            sui::types::StructTag::new(
+                objects.interface_pkg_id,
+                interface::Dag::DAG.module,
+                interface::Dag::DAG.name,
+                vec![],
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&interface_dag_event));
 
         let interface_tap_event = wrap_event(
             &objects,
@@ -555,8 +568,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 original,
-                workflow::Dag::DAG.module,
-                workflow::Dag::DAG.name,
+                workflow::Execution::DAG_EXECUTION.module,
+                workflow::Execution::DAG_EXECUTION.name,
                 vec![],
             ),
         );
@@ -567,8 +580,8 @@ mod tests {
             &objects,
             sui::types::StructTag::new(
                 objects.workflow_pkg_id,
-                workflow::Dag::DAG.module,
-                workflow::Dag::DAG.name,
+                workflow::Execution::DAG_EXECUTION.module,
+                workflow::Execution::DAG_EXECUTION.name,
                 vec![],
             ),
         );

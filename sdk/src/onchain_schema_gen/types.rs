@@ -214,7 +214,7 @@ pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody)
         return false;
     };
 
-    struct_tag.module().as_str() == "dag" && struct_tag.name().as_str() == "DAGExecution"
+    struct_tag.module().as_str() == "execution" && struct_tag.name().as_str() == "DAGExecution"
 }
 
 #[cfg(test)]
@@ -349,7 +349,7 @@ mod tests {
         )));
         assert!(is_workflow_dag_execution_param(&make_struct(
             "0x44",
-            "dag",
+            "execution",
             "DAGExecution"
         )));
     }

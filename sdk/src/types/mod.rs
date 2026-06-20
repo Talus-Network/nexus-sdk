@@ -59,7 +59,7 @@ pub use {
         ExternalVerifierRuntimeCallV1,
         ExternalVerifierSubmitEvidenceV1,
         FailureEvidenceKind,
-        OffChainToolResultAuxiliaryV1,
+        OffChainToolResultAuxiliary,
         OffChainVerifierProofV1,
         OffchainRequestEvidenceV1,
         OffchainResponseEvidenceV1,
