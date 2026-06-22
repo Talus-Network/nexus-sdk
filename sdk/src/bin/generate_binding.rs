@@ -18,6 +18,45 @@
 //! ```
 //!
 //! Each `name=0xid` pair becomes `sdk/src/idents/generated/ir/<name>.json`.
+//!
+//! # Step-by-step
+//!
+//! 1. Select a `sui` toolchain matching `nexus-next` (otherwise the Move build
+//!    fails, e.g. `Unbound function 'exists' in module 'sui::dynamic_field'`):
+//!
+//!    ```bash
+//!    suiup install sui@testnet-1.73.1 && suiup default set sui@testnet-1.73.1
+//!    ```
+//!
+//! 2. Start a localnet and fund the active address (leave it running):
+//!
+//!    ```bash
+//!    sui start --with-faucet --force-regenesis
+//!    sui client switch --env localnet && sui client faucet
+//!    ```
+//!
+//! 3. Publish the Nexus packages; this writes their ids to
+//!    `nexus-next/sui/bin/target/objects.localnet.toml`:
+//!
+//!    ```bash
+//!    (cd ../nexus-next/sui && NEXUS_PUBLISH_OVERWRITE=1 SUI_ENV=localnet ./bin/publish.sh publish)
+//!    ```
+//!
+//! 4. Fetch the IR (the `just` recipe reads the package ids from the objects
+//!    TOML and adds the `0x1`/`0x2` framework packages automatically):
+//!
+//!    ```bash
+//!    just sdk regenerate-idents
+//!    ```
+//!
+//! 5. Rebuild so `build.rs` re-renders the constants, then review the diff under
+//!    `sdk/src/idents/generated/ir/` and fix any call sites the compiler flags:
+//!
+//!    ```bash
+//!    cargo +stable check --all-features -p nexus-sdk
+//!    ```
+//!
+//! 6. Stop the localnet (Ctrl-C the `sui start` shell).
 
 use {
     nexus_sdk::sui::{grpc::Client, types::Address},
