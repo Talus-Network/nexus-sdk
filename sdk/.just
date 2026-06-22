@@ -29,7 +29,7 @@ test: _check-cargo
 #
 # The offline render (IR JSON -> address-free idents) then happens automatically
 # in build.rs on the next build; review the diff under src/idents/generated/ir/.
-regenerate-idents nexus_next_sui='../nexus-next/sui' grpc='http://127.0.0.1:9000': _check-cargo
+regenerate-idents nexus_next_sui='../../nexus-next/sui' grpc='http://127.0.0.1:9000': _check-cargo
     #!/usr/bin/env bash
     set -Eeuo pipefail
 

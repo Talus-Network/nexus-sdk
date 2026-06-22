@@ -353,7 +353,7 @@ pub fn new_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS,
+        workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS_TYPE,
     );
 
     let execution_symbol = tx.move_call(
@@ -450,7 +450,7 @@ pub fn new_agent_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS,
+        workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS_TYPE,
     );
 
     let execution_symbol = tx.move_call(

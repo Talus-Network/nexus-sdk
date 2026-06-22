@@ -893,7 +893,7 @@ fn extract_begin_default_agent_execution_config(
 ) -> anyhow::Result<DagExecutionConfig> {
     let expected_config =
         workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
-    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS
+    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS_TYPE
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
     let mut candidates = configs.into_iter().filter(|(key, _)| {
@@ -925,7 +925,7 @@ fn extract_scheduled_agent_execution_config(
 
     let expected_config =
         tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(objects.interface_pkg_id);
-    let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS
+    let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS_TYPE
         .qualified_name(objects.workflow_type_origin_pkg_id());
 
     let mut candidates = configs.into_iter().filter(|(key, _)| {
