@@ -566,7 +566,7 @@ fn option_id_arg(
     tx: &mut sui::tx::TransactionBuilder,
     value: Option<sui::types::Address>,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let id_type = sui_framework::into_type_tag(sui_framework::Object::ID);
+    let id_type = sui_framework::into_type_tag(sui_framework::Object::ID_TYPE);
     match value {
         Some(value) => {
             let value = sui_framework::Object::id_from_object_id(tx, value)?;
