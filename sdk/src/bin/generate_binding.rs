@@ -87,6 +87,7 @@ async fn run() -> Result<(), String> {
          (e.g. \"primitives=0x..,move_std=0x1,sui_framework=0x2\")"
             .to_string()
     })?;
+    let packages = parse_packages(&packages)?;
 
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
@@ -94,17 +95,10 @@ async fn run() -> Result<(), String> {
     let mut client =
         Client::new(&grpc_url).map_err(|e| format!("gRPC client for {grpc_url}: {e}"))?;
 
-    for entry in packages.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        let (name, id) = entry
-            .split_once('=')
-            .ok_or_else(|| format!("malformed package entry `{entry}`, expected `name=0xid`"))?;
-
-        let package_id =
-            Address::from_str(id.trim()).map_err(|e| format!("invalid package id `{id}`: {e}"))?;
-
+    for (name, package_id) in packages {
         let package = fetch_package(&mut client, package_id)
             .await
-            .map_err(|e| format!("fetch `{name}` ({id}): {e}"))?;
+            .map_err(|e| format!("fetch `{name}` ({package_id}): {e}"))?;
 
         let json = package
             .to_json_string()
@@ -122,4 +116,87 @@ async fn run() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Parses a `NEXUS_BINDING_PACKAGES` spec into `(name, package_id)` pairs.
+///
+/// The spec is a comma-separated list of `name=0xpackageid` entries. Surrounding
+/// whitespace around entries, names, and ids is ignored, and empty entries (e.g.
+/// a trailing comma) are skipped. Returns an error string on a missing `=` or an
+/// unparsable address.
+fn parse_packages(spec: &str) -> Result<Vec<(String, Address)>, String> {
+    spec.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            let (name, id) = entry.split_once('=').ok_or_else(|| {
+                format!("malformed package entry `{entry}`, expected `name=0xid`")
+            })?;
+
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(format!("empty package name in entry `{entry}`"));
+            }
+
+            let id = id.trim();
+            let address =
+                Address::from_str(id).map_err(|e| format!("invalid package id `{id}`: {e}"))?;
+
+            Ok((name.to_string(), address))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_named_pairs_and_trims_whitespace() {
+        let parsed = parse_packages(
+            "  primitives = 0x1 , sui_framework=0x2 ,workflow=0x00000000000000000000000000000000000000000000000000000000000000aa",
+        )
+        .expect("valid spec");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("primitives".to_string(), Address::from_str("0x1").unwrap()),
+                (
+                    "sui_framework".to_string(),
+                    Address::from_str("0x2").unwrap()
+                ),
+                ("workflow".to_string(), Address::from_str("0xaa").unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_empty_entries() {
+        let parsed = parse_packages("move_std=0x1,,sui_framework=0x2,").expect("valid spec");
+        assert_eq!(parsed.len(), 2);
+    }
+
+    #[test]
+    fn empty_spec_yields_no_packages() {
+        assert!(parse_packages("   ").expect("empty is ok").is_empty());
+    }
+
+    #[test]
+    fn rejects_entry_without_equals() {
+        let err = parse_packages("primitives=0x1,workflow").expect_err("missing `=`");
+        assert!(err.contains("malformed package entry `workflow`"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_name() {
+        let err = parse_packages("=0x1").expect_err("empty name");
+        assert!(err.contains("empty package name"), "{err}");
+    }
+
+    #[test]
+    fn rejects_invalid_package_id() {
+        let err = parse_packages("primitives=not-an-address").expect_err("bad id");
+        assert!(err.contains("invalid package id `not-an-address`"), "{err}");
+    }
 }
