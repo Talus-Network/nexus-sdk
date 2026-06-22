@@ -47,12 +47,12 @@ move_publish = [
 
 # Sui idents feature enables the use of the `idents` module and adds sui-sdk
 # and move-core-types as dependencies.
-sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
+sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64", "sui-move-codegen"]
 
 # Binding codegen feature gates the `generate_binding` binary, the network half
 # of the Move-binding identifier pipeline. It needs a full Tokio runtime to drive
 # the gRPC fetch; the offline render in `build.rs` requires none of this.
-binding_codegen = ["sui_types", "tokio/full"]
+binding_codegen = ["sui_types", "tokio/full", "sui-move-codegen"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
@@ -131,7 +131,6 @@ full = [
     "schema_gen",
     "nexus",
 ]
-
 
 [dependencies]
 anyhow.workspace = true
@@ -289,6 +288,13 @@ optional = true
 workspace = true
 optional = true
 
+# === Move binding ===
+
+[dependencies.sui-move-codegen]
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/integrating-to-sdk"
+optional = true
+
 # === Sui deps ===
 [dependencies.sui-rpc]
 version = "0.3.1"
@@ -337,26 +343,6 @@ git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
 branch = "feat/add-sui-support"
 features = ["sui", "redis", "postgres"]
 optional = true
-
-# === TEST ===
-[dependencies.sui-move-codegen]
-path = "../../move-binding/sui-move-codegen"
-
-[dependencies.sui-move]
-path = "../../move-binding/sui-move"
-features = ["derive"]
-
-[dependencies.sui-move-derive]
-path = "../../move-binding/sui-move-derive"
-
-[dependencies.sui-move-call]
-path = "../../move-binding/sui-move-call"
-
-[dependencies.sui-move-ptb]
-path = "../../move-binding/sui-move-ptb"
-
-[dependencies.sui-move-runtime]
-path = "../../move-binding/sui-move-runtime"
 
 # === Dev deps ===
 [dev-dependencies]
