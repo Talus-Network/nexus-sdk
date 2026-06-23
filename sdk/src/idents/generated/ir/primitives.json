@@ -1,6 +1,6 @@
 {
-  "storage_id": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
-  "original_id": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+  "storage_id": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+  "original_id": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
   "version": 1,
   "modules": {
     "authorization": {
@@ -8,7 +8,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "authorization",
             "name": "CloneableProvenValue"
           },
@@ -83,7 +83,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "authorization",
             "name": "Grant"
           },
@@ -112,7 +112,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -130,7 +130,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "authorization",
             "name": "ProvenValue"
           },
@@ -217,7 +217,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "ProvenValue"
                       },
@@ -267,7 +267,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -314,7 +314,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "CloneableProvenValue"
                   },
@@ -331,7 +331,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -366,7 +366,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -427,7 +427,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -466,7 +466,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -524,7 +524,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "Grant"
                 },
@@ -559,7 +559,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -643,7 +643,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "Grant"
                 },
@@ -675,7 +675,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "Grant"
                   },
@@ -692,7 +692,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -727,7 +727,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -788,7 +788,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -828,7 +828,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "authorization",
                         "name": "ProvenValue"
                       },
@@ -883,7 +883,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -918,7 +918,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -974,7 +974,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "CloneableProvenValue"
                   },
@@ -1033,7 +1033,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -1089,7 +1089,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "CloneableProvenValue"
                 },
@@ -1158,7 +1158,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "CloneableProvenValue"
                 },
@@ -1224,7 +1224,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -1244,7 +1244,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "automaton",
             "name": "ConfiguredAutomaton"
           },
@@ -1295,7 +1295,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1316,7 +1316,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "automaton",
             "name": "DeterministicAutomaton"
           },
@@ -1436,7 +1436,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "automaton",
             "name": "TransitionConfigKey"
           },
@@ -1474,7 +1474,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "TransitionKey"
                       },
@@ -1509,7 +1509,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "automaton",
             "name": "TransitionKey"
           },
@@ -1696,7 +1696,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1771,7 +1771,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1874,7 +1874,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1955,7 +1955,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2026,7 +2026,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2051,7 +2051,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -2100,7 +2100,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2125,7 +2125,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -2180,7 +2180,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2252,7 +2252,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2330,7 +2330,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2402,7 +2402,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2619,7 +2619,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2696,7 +2696,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2802,7 +2802,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2904,7 +2904,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3006,7 +3006,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3123,7 +3123,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3240,7 +3240,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3325,7 +3325,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3448,7 +3448,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3612,7 +3612,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "automaton",
                   "name": "DeterministicAutomaton"
                 },
@@ -3656,7 +3656,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -3694,7 +3694,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "automaton",
                   "name": "ConfiguredAutomaton"
                 },
@@ -3747,7 +3747,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3816,7 +3816,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3885,7 +3885,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3962,7 +3962,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4050,7 +4050,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4116,7 +4116,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4195,7 +4195,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4267,7 +4267,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -4314,7 +4314,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4367,7 +4367,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4422,7 +4422,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4481,7 +4481,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4540,7 +4540,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4611,7 +4611,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4687,7 +4687,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "automaton",
                     "name": "TransitionKey"
                   },
@@ -4707,7 +4707,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "automaton",
                   "name": "TransitionConfigKey"
                 },
@@ -4757,7 +4757,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -4775,12 +4775,307 @@
         }
       ]
     },
+    "bcs_reader": {
+      "name": "bcs_reader",
+      "datatypes": [],
+      "functions": [
+        {
+          "name": "is_finished",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "read_address",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "Address"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_ascii_string",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_u64",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U64"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_u8",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U8"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_uleb_u64",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U64"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_vec_u8",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": "U8"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
     "data": {
       "name": "data",
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "data",
             "name": "DataTypeHint"
           },
@@ -4826,7 +5121,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "data",
             "name": "NexusData"
           },
@@ -4870,7 +5165,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "data",
             "name": "TypedNexusData"
           },
@@ -4891,7 +5186,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -4905,7 +5200,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -4930,7 +5225,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -4943,7 +5238,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -4963,7 +5258,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -4976,7 +5271,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -4996,7 +5291,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5009,7 +5304,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5029,7 +5324,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5042,7 +5337,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5062,7 +5357,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5075,7 +5370,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5096,7 +5391,7 @@
                 "Vector": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "data",
                       "name": "NexusData"
                     },
@@ -5110,7 +5405,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5181,7 +5476,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -5196,7 +5491,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5230,7 +5525,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -5266,7 +5561,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5292,7 +5587,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5312,7 +5607,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5326,7 +5621,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5350,7 +5645,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -5379,6 +5674,48 @@
           ]
         },
         {
+          "name": "try_json_string_to_ascii_string",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "type_hint_address",
           "visibility": "Public",
           "is_entry": false,
@@ -5388,7 +5725,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5407,7 +5744,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5426,7 +5763,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5445,7 +5782,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5464,7 +5801,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5492,7 +5829,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5518,7 +5855,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5538,7 +5875,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5551,7 +5888,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "DataTypeHint"
                   },
@@ -5564,7 +5901,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5580,7 +5917,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "distributed_event",
             "name": "DistributedEventWrapper"
           },
@@ -5677,7 +6014,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -5777,7 +6114,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -5825,7 +6162,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -5882,7 +6219,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -5923,7 +6260,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -5958,7 +6295,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "event",
             "name": "EventWrapper"
           },
@@ -6035,7 +6372,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "event",
                         "name": "EventWrapper"
                       },
@@ -6068,7 +6405,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "owner_cap",
             "name": "CloneableOwnerCap"
           },
@@ -6121,7 +6458,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -6139,7 +6476,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "owner_cap",
             "name": "OwnerCap"
           },
@@ -6197,7 +6534,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6219,7 +6556,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "owner_cap",
                       "name": "OwnerCap"
                     },
@@ -6253,7 +6590,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6290,7 +6627,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -6322,7 +6659,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6380,7 +6717,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6422,7 +6759,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -6452,7 +6789,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -6486,7 +6823,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -6539,7 +6876,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6588,7 +6925,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6680,7 +7017,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -6758,7 +7095,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -6816,7 +7153,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "owner_cap",
                   "name": "OwnerCap"
                 },
@@ -6848,7 +7185,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6883,7 +7220,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "policy",
             "name": "Policy"
           },
@@ -6924,7 +7261,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -6933,7 +7270,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -6962,7 +7299,7 @@
         },
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "policy",
             "name": "Symbol"
           },
@@ -7044,7 +7381,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7130,7 +7467,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7149,7 +7486,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7203,7 +7540,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7287,7 +7624,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7347,7 +7684,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7366,7 +7703,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7398,7 +7735,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7460,7 +7797,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7516,7 +7853,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7569,7 +7906,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7640,7 +7977,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7659,7 +7996,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7706,7 +8043,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7725,7 +8062,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7778,7 +8115,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7831,7 +8168,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7908,7 +8245,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7965,7 +8302,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8046,7 +8383,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8103,7 +8440,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8178,7 +8515,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8201,7 +8538,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8248,7 +8585,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8271,7 +8608,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8312,7 +8649,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8334,7 +8671,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "ConfiguredAutomaton"
                     },
@@ -8343,7 +8680,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8379,7 +8716,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -8400,7 +8737,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -8436,7 +8773,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8458,7 +8795,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -8467,7 +8804,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8502,7 +8839,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8524,7 +8861,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -8533,7 +8870,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8568,7 +8905,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8615,7 +8952,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8662,7 +8999,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8684,7 +9021,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -8693,7 +9030,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8728,7 +9065,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8775,7 +9112,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8794,7 +9131,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8826,7 +9163,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8848,7 +9185,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -8890,7 +9227,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8960,7 +9297,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9006,7 +9343,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9046,7 +9383,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9100,7 +9437,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9185,7 +9522,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9214,7 +9551,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9290,7 +9627,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -9299,7 +9636,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                          "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                           "module": "policy",
                           "name": "Symbol"
                         },
@@ -9339,7 +9676,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -9381,7 +9718,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9423,7 +9760,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -9469,7 +9806,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9525,7 +9862,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9579,7 +9916,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9598,7 +9935,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -9642,7 +9979,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9665,7 +10002,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -9709,7 +10046,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9777,7 +10114,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9843,7 +10180,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9881,7 +10218,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9927,7 +10264,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9950,7 +10287,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -9986,7 +10323,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10026,7 +10363,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10074,7 +10411,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10105,7 +10442,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -10149,7 +10486,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -10178,7 +10515,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10211,7 +10548,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10227,7 +10564,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "proof_of_uid",
             "name": "ProofOfUID"
           },
@@ -10322,7 +10659,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -10390,7 +10727,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10428,7 +10765,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10470,7 +10807,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10538,7 +10875,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -10594,7 +10931,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -10617,7 +10954,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10672,7 +11009,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10717,7 +11054,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10768,7 +11105,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10825,7 +11162,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10854,7 +11191,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10903,7 +11240,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10941,7 +11278,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "shared_object",
             "name": "SharedObjectRef"
           },
@@ -10995,7 +11332,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "shared_object",
                         "name": "SharedObjectRef"
                       },
@@ -11043,7 +11380,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "shared_object",
                   "name": "SharedObjectRef"
                 },
@@ -11076,7 +11413,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "shared_object",
                   "name": "SharedObjectRef"
                 },
@@ -11099,7 +11436,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "shared_object",
                         "name": "SharedObjectRef"
                       },
@@ -11121,7 +11458,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
             "module": "tagged_output",
             "name": "TaggedOutput"
           },
@@ -11158,7 +11495,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "data",
                               "name": "TypedNexusData"
                             },
@@ -11186,7 +11523,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -11213,7 +11550,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -11242,7 +11579,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
                 },
@@ -11262,7 +11599,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -11281,7 +11618,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "data",
                     "name": "TypedNexusData"
                   },
@@ -11294,7 +11631,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
                 },

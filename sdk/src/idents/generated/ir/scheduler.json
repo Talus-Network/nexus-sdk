@@ -1,6 +1,6 @@
 {
-  "storage_id": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-  "original_id": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+  "storage_id": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+  "original_id": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
   "version": 1,
   "modules": {
     "scheduler": {
@@ -8,7 +8,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "AgentSkillAuthorizationFieldKey"
           },
@@ -34,7 +34,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "Constraints"
           },
@@ -60,7 +60,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "Execution"
           },
@@ -86,7 +86,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "Metadata"
           },
@@ -142,7 +142,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "MissedOccurrenceEvent"
           },
@@ -207,7 +207,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -221,7 +221,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "Occurrence"
           },
@@ -268,7 +268,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -282,7 +282,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "OccurrenceConsumedEvent"
           },
@@ -342,7 +342,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -361,7 +361,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "OccurrenceScheduledEvent"
           },
@@ -395,7 +395,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -409,7 +409,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "PeriodicGeneratorState"
           },
@@ -436,7 +436,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Occurrence"
                             },
@@ -532,7 +532,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "PeriodicGeneratorWitness"
           },
@@ -558,7 +558,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "PeriodicScheduleConfiguredEvent"
           },
@@ -677,7 +677,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "QueueEntry"
           },
@@ -697,7 +697,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -721,7 +721,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "QueueGeneratorState"
           },
@@ -748,7 +748,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -783,7 +783,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -800,7 +800,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "QueueGeneratorWitness"
           },
@@ -826,7 +826,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "ScheduledPaymentReserveFieldKey"
           },
@@ -852,7 +852,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionCanceledEvent"
           },
@@ -886,7 +886,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionCreatedEvent"
           },
@@ -925,7 +925,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionPausedEvent"
           },
@@ -959,7 +959,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionResumedEvent"
           },
@@ -993,7 +993,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "State"
           },
@@ -1039,7 +1039,7 @@
         },
         {
           "type_name": {
-            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
             "module": "scheduler",
             "name": "Task"
           },
@@ -1097,7 +1097,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "version",
                         "name": "InterfaceVersion"
                       },
@@ -1111,7 +1111,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Metadata"
                       },
@@ -1125,7 +1125,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1133,7 +1133,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -1150,7 +1150,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1158,7 +1158,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -1175,7 +1175,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "State"
                       },
@@ -1231,7 +1231,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1272,7 +1272,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1335,7 +1335,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1376,7 +1376,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1446,7 +1446,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1467,7 +1467,7 @@
         },
         {
           "name": "advance_execution_with_witness",
-          "visibility": "Public",
+          "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [
             {
@@ -1486,7 +1486,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1519,7 +1519,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -1550,9 +1550,27 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
                       },
                       "type_arguments": []
                     }
@@ -1588,7 +1606,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1606,7 +1624,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1633,7 +1651,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1641,7 +1659,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -1671,7 +1689,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1689,7 +1707,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -1716,7 +1734,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1734,7 +1752,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "policy",
                       "name": "Policy"
                     },
@@ -1742,7 +1760,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                             "module": "scheduler",
                             "name": "Constraints"
                           },
@@ -1770,7 +1788,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1788,7 +1806,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                       "module": "policy",
                       "name": "Policy"
                     },
@@ -1796,7 +1814,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                             "module": "scheduler",
                             "name": "Execution"
                           },
@@ -1824,7 +1842,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1853,7 +1871,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1871,7 +1889,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1916,7 +1934,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1934,7 +1952,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1952,7 +1970,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -1979,7 +1997,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2006,7 +2024,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2024,7 +2042,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -2042,7 +2060,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -2087,7 +2105,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2105,7 +2123,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2156,7 +2174,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -2179,7 +2197,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2197,7 +2215,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2248,7 +2266,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -2271,7 +2289,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2289,7 +2307,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -2307,7 +2325,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -2334,7 +2352,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2403,7 +2421,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "authorization",
                         "name": "AgentSkillAuthorization"
                       },
@@ -2419,7 +2437,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "authorization",
                     "name": "Grant"
                   },
@@ -2427,7 +2445,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                          "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                           "module": "authorization",
                           "name": "AgentVertexAuthorization"
                         },
@@ -2436,44 +2454,6 @@
                     }
                   ]
                 }
-              }
-            }
-          ]
-        },
-        {
-          "name": "default_execution_config_dag_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
               }
             }
           ]
@@ -2492,7 +2472,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2537,7 +2517,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2582,7 +2562,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2631,7 +2611,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2680,7 +2660,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2702,7 +2682,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2765,7 +2745,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2904,7 +2884,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2953,7 +2933,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2998,7 +2978,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -3029,7 +3009,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3056,7 +3036,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3071,7 +3051,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -3094,7 +3074,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -3129,7 +3109,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3144,7 +3124,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -3169,7 +3149,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3200,7 +3180,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3229,7 +3209,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3258,7 +3238,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3287,7 +3267,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3316,7 +3296,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3345,7 +3325,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3394,7 +3374,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -3407,7 +3387,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -3430,7 +3410,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3457,7 +3437,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3484,7 +3464,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3511,7 +3491,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3538,7 +3518,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3603,7 +3583,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3616,7 +3596,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3624,7 +3604,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3640,7 +3620,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3648,7 +3628,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -3685,7 +3665,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "version",
                     "name": "InterfaceVersion"
                   },
@@ -3716,7 +3696,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -3736,7 +3716,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3749,7 +3729,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3757,7 +3737,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3773,7 +3753,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3781,7 +3761,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -3800,7 +3780,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -3818,7 +3798,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -3833,7 +3813,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -3872,7 +3852,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -3903,7 +3883,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -3939,7 +3919,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -3947,7 +3927,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Constraints"
                       },
@@ -3970,7 +3950,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3983,7 +3963,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3991,7 +3971,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -4007,7 +3987,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4015,7 +3995,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4034,7 +4014,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4046,6 +4026,34 @@
             },
             {
               "name": "arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "arg5",
+              "ty": "U64"
+            },
+            {
+              "name": "arg6",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4067,7 +4075,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4098,7 +4106,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -4134,7 +4142,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -4142,7 +4150,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Execution"
                       },
@@ -4165,7 +4173,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -4178,7 +4186,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4186,7 +4194,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -4202,7 +4210,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4210,7 +4218,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4229,7 +4237,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4247,7 +4255,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -4262,7 +4270,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -4325,152 +4333,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                  "module": "scheduler",
-                  "name": "Task"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_invoker_funded_default_agent_task",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                    "module": "scheduler",
-                    "name": "Metadata"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
-                    "module": "policy",
-                    "name": "Policy"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                          "module": "scheduler",
-                          "name": "Constraints"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "arg2",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
-                    "module": "policy",
-                    "name": "Policy"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                          "module": "scheduler",
-                          "name": "Execution"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "arg3",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg4",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "arg5",
-              "ty": "U64"
-            },
-            {
-              "name": "arg6",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4524,7 +4387,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Metadata"
                 },
@@ -4547,7 +4410,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4607,7 +4470,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4666,7 +4529,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "PeriodicGeneratorState"
                 },
@@ -4685,7 +4548,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "QueueGeneratorState"
                 },
@@ -4705,7 +4568,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -4718,7 +4581,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4726,7 +4589,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -4742,7 +4605,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4750,7 +4613,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4769,7 +4632,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4787,7 +4650,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -4841,7 +4704,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4864,7 +4727,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -4897,7 +4760,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4915,7 +4778,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4960,7 +4823,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4987,7 +4850,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5005,7 +4868,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -5068,7 +4931,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5090,7 +4953,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5135,7 +4998,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5143,7 +5006,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -5171,7 +5034,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -5194,7 +5057,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5223,7 +5086,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5238,7 +5101,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -5248,7 +5111,7 @@
           ]
         },
         {
-          "name": "prepare_agent_execution_from_scheduled_payment",
+          "name": "prepare_execution_from_scheduled_payment",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5261,7 +5124,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "dag",
                         "name": "DAG"
                       },
@@ -5279,7 +5142,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -5297,7 +5160,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
                       },
@@ -5315,7 +5178,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5333,7 +5196,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5341,7 +5204,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                              "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                               "module": "leader_cap",
                               "name": "OverNetwork"
                             },
@@ -5395,8 +5258,8 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
+                  "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
+                  "module": "execution",
                   "name": "DAGExecution"
                 },
                 "type_arguments": []
@@ -5405,370 +5268,8 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
-                  "name": "RequestWalkExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "prepare_default_agent_execution_from_scheduled_payment",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg2",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg3",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg4",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                              "module": "leader_cap",
-                              "name": "OverNetwork"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg5",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg6",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
-                  "name": "RequestWalkExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "prepare_default_agent_execution_from_scheduler",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg1",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg2",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg3",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg4",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
-                              "module": "leader_cap",
-                              "name": "OverNetwork"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg5",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "arg6",
-              "ty": "U64"
-            },
-            {
-              "name": "arg7",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "arg8",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                  "module": "dag",
+                  "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
+                  "module": "execution",
                   "name": "RequestWalkExecution"
                 },
                 "type_arguments": []
@@ -5808,7 +5309,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5859,7 +5360,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5881,7 +5382,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5944,7 +5445,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5966,7 +5467,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -6029,7 +5530,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6044,7 +5545,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -6060,7 +5561,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -6105,7 +5606,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6123,7 +5624,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6152,7 +5653,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6185,7 +5686,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6193,7 +5694,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -6221,7 +5722,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -6244,7 +5745,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6273,7 +5774,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6288,7 +5789,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Occurrence"
                   },
@@ -6305,7 +5806,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -6346,7 +5847,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6361,7 +5862,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -6377,7 +5878,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -6422,7 +5923,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6437,7 +5938,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -6493,7 +5994,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6515,7 +6016,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -6560,7 +6061,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6579,7 +6080,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -6604,7 +6105,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6622,7 +6123,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6651,7 +6152,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6666,7 +6167,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -6689,7 +6190,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6697,7 +6198,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -6715,9 +6216,9 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                    "module": "dag",
-                    "name": "DagExecutionConfig"
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
                   },
                   "type_arguments": []
                 }
@@ -6740,7 +6241,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6748,7 +6249,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -6766,9 +6267,9 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                    "module": "dag",
-                    "name": "DagExecutionConfig"
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
                   },
                   "type_arguments": []
                 }
@@ -6791,7 +6292,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6799,7 +6300,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -6817,7 +6318,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "PeriodicGeneratorState"
                   },
@@ -6842,7 +6343,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x81e5bdeda4bf1fc911c966d57c7e5f452b8e9e018b84167bc7a3fd6aaceab5b0",
+                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6850,7 +6351,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -6868,7 +6369,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "QueueGeneratorState"
                   },
@@ -6878,6 +6379,55 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "remove_scheduled_components_for_next_occurrence",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "module": "authorization",
+                  "name": "AgentSkillAuthorization"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "module": "payment",
+                  "name": "ScheduledPaymentReserve"
+                },
+                "type_arguments": []
+              }
+            },
+            "U64"
+          ]
         },
         {
           "name": "remove_scheduled_payment_reserve",
@@ -6893,7 +6443,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6908,7 +6458,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                   "module": "payment",
                   "name": "ScheduledPaymentReserve"
                 },
@@ -6931,7 +6481,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6946,7 +6496,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                   "module": "authorization",
                   "name": "AgentSkillAuthorization"
                 },
@@ -6969,7 +6519,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -6997,7 +6547,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -7023,7 +6573,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "authorization",
                     "name": "AgentVertexAuthorizationTemplate"
                   },
@@ -7047,7 +6597,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7065,7 +6615,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1def201cd62f61b08d76e9cef18bc90d0ee7af31febc03da1babcc5597be780",
+                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -7110,7 +6660,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7128,7 +6678,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -7173,7 +6723,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7191,7 +6741,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                       "module": "payment",
                       "name": "ScheduledPaymentReserve"
                     },
@@ -7216,7 +6766,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7234,7 +6784,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                       "module": "payment",
                       "name": "ScheduledPaymentReserve"
                     },
@@ -7259,7 +6809,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7277,7 +6827,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                       "module": "authorization",
                       "name": "AgentSkillAuthorization"
                     },
@@ -7302,7 +6852,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7320,8 +6870,8 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x26fc6ff17b6fad95f1a30546635cc16a6b600f68424d33a1691041c7c5d48060",
-                        "module": "dag",
+                        "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
+                        "module": "execution",
                         "name": "DAGExecution"
                       },
                       "type_arguments": []
@@ -7347,7 +6897,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7362,7 +6912,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "authorization",
                     "name": "AgentSkillAuthorization"
                   },
@@ -7375,7 +6925,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                     "module": "payment",
                     "name": "ScheduledPaymentReserve"
                   },
@@ -7400,7 +6950,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7438,7 +6988,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7467,7 +7017,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7482,7 +7032,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xa758362d5302816a89aa8f902723319754289ad7e0bc54663feead2669b952ad",
+                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
                   "module": "version",
                   "name": "InterfaceVersion"
                 },
@@ -7505,7 +7055,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7534,7 +7084,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7563,7 +7113,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7578,7 +7128,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                   "module": "scheduler",
                   "name": "State"
                 },
@@ -7601,7 +7151,7 @@
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7616,7 +7166,7 @@
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x7dc0cf8655e643896107f09e7a67339ed83d1b145fc79180f7f65a81b585a038",
+                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
