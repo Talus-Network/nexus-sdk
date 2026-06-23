@@ -93,6 +93,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Bumped the MystenLabs sui-rust-sdk dependencies to `0.3.1` (`sui-rpc`, `sui-sdk-types`, `sui-transaction-builder`) and `0.3.0` (`sui-crypto`), adopting the redesigned `sui-transaction-builder` API. This is a breaking change for consumers that build PTBs through `nexus_sdk::sui::tx`: `tx.input(...)` is replaced by `tx.object(sui::tx::ObjectInput::…)` for objects and `tx.pure(&value)` for pure inputs (the `idents::pure_arg` helper is removed); `TransactionBuilder::finish()` becomes `try_build()`; `sui::tx::Function::new(pkg, module, name)` drops its type-args parameter in favour of `.with_type_args(vec![…])`; and transaction-builder arguments are now the opaque `sui::tx::Argument` type rather than the resolved `sui::types::Argument` enum.
 
+#### Fixed
+
+- `ToolFqn` now returns an error when tool version is `0`
+
 ## [`2.0.0-rc.2`] - 2026-06-10
 
 ### `nexus-cli`
