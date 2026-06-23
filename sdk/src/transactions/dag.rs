@@ -65,10 +65,10 @@ const NEW_OFF_CHAIN_VERIFIER_PROOF_REGISTERED_KEY_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_off_chain_verifier_proof_registered_key_v1");
 const NEW_OFF_CHAIN_VERIFIER_PROOF_EXTERNAL_VERIFIER_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_off_chain_verifier_proof_external_verifier_v1");
-const VERIFIER_SUBMISSION_KIND_SUCCESS: sui::types::Identifier =
-    sui::types::Identifier::from_static("verifier_submission_kind_success");
-const VERIFIER_SUBMISSION_KIND_ERR_EVAL: sui::types::Identifier =
-    sui::types::Identifier::from_static("verifier_submission_kind_err_eval");
+const VERIFICATION_SUBMISSION_KIND_SUCCESS: sui::types::Identifier =
+    sui::types::Identifier::from_static("verification_submission_kind_success");
+const VERIFICATION_SUBMISSION_KIND_ERR_EVAL: sui::types::Identifier =
+    sui::types::Identifier::from_static("verification_submission_kind_err_eval");
 const VERIFIER_EVIDENCE_KIND_TOOL_EVIDENCE: sui::types::Identifier =
     sui::types::Identifier::from_static("verifier_evidence_kind_tool_evidence");
 const VERIFIER_EVIDENCE_KIND_LEADER_EVIDENCE: sui::types::Identifier =
@@ -801,8 +801,8 @@ fn prepare_submission_kind(
     submission_kind: crate::types::VerificationSubmissionKind,
 ) -> sui::tx::Argument {
     let function = match submission_kind {
-        crate::types::VerificationSubmissionKind::Success => VERIFIER_SUBMISSION_KIND_SUCCESS,
-        crate::types::VerificationSubmissionKind::ErrEval => VERIFIER_SUBMISSION_KIND_ERR_EVAL,
+        crate::types::VerificationSubmissionKind::Success => VERIFICATION_SUBMISSION_KIND_SUCCESS,
+        crate::types::VerificationSubmissionKind::ErrEval => VERIFICATION_SUBMISSION_KIND_ERR_EVAL,
     };
 
     tx.move_call(
