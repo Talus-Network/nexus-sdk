@@ -377,7 +377,7 @@ mod tests {
             sui::types::StructTag::new(
                 objects.interface_pkg_id,
                 tap::STANDARD_AGENT_MODULE,
-                tap::TapStandard::AGENT_CREATED_EVENT.name,
+                crate::idents::interface::Agent::AGENT_CREATED_EVENT.name,
                 vec![],
             ),
         );
@@ -389,7 +389,7 @@ mod tests {
             sui::types::StructTag::new(
                 objects.registry_pkg_id,
                 registry::AGENT_REGISTRY_MODULE,
-                tap::TapStandard::SKILL_REGISTERED_EVENT.name,
+                crate::idents::registry::AgentRegistry::SKILL_REGISTERED_EVENT.name,
                 vec![],
             ),
         );

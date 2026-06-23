@@ -2370,7 +2370,7 @@ mod tests {
                     sui::types::Command::MoveCall(call)
                         if call.package == expected_interface_pkg_id
                             && call.function
-                                == crate::idents::tap::TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name
+                                == crate::idents::interface::Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name
                 )));
             },
         );

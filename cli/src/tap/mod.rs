@@ -39,7 +39,6 @@ use {
     convert_case::{Case, Casing},
     nexus_sdk::{
         dag::validator as dag_validator,
-        idents::tap::TapStandard,
         nexus::{
             error::NexusError,
             tap::{

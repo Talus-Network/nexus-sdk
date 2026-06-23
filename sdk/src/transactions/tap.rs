@@ -1,12 +1,5 @@
 use crate::{
-    idents::{
-        interface,
-        move_std,
-        registry::AgentRegistry,
-        scheduler,
-        sui_framework,
-        tap::TapStandard,
-    },
+    idents::{interface, move_std, registry::AgentRegistry, scheduler, sui_framework},
     sui,
     types::{
         AgentId,
@@ -393,7 +386,7 @@ pub fn deposit_agent_payment_vault(
     tap_interface_call(
         tx,
         objects,
-        TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT,
+        crate::idents::interface::Agent::DEPOSIT_AGENT_PAYMENT_VAULT,
         vec![agent, coin],
     )
 }
@@ -534,9 +527,12 @@ fn schedule_policy_arg(
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::tx::Argument> {
     let recurrence = match &schedule_policy.recurrence {
-        RecurrenceKind::Once => {
-            tap_interface_call(tx, objects, TapStandard::RECURRENCE_ONCE, vec![])
-        }
+        RecurrenceKind::Once => tap_interface_call(
+            tx,
+            objects,
+            crate::idents::interface::Agent::RECURRENCE_ONCE,
+            vec![],
+        ),
         RecurrenceKind::Recursive {
             min_interval_ms,
             max_occurrences,
@@ -546,7 +542,7 @@ fn schedule_policy_arg(
             tap_interface_call(
                 tx,
                 objects,
-                TapStandard::RECURRENCE_RECURSIVE,
+                crate::idents::interface::Agent::RECURRENCE_RECURSIVE,
                 vec![min_interval_ms, max_occurrences],
             )
         }
@@ -556,7 +552,7 @@ fn schedule_policy_arg(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::SCHEDULE_POLICY,
+        crate::idents::interface::Agent::SCHEDULE_POLICY,
         vec![recurrence, allow_recursive],
     ))
 }
@@ -580,15 +576,18 @@ fn payment_policy_arg(
     payment_policy: &SkillPaymentPolicy,
 ) -> anyhow::Result<sui::tx::Argument> {
     Ok(match payment_policy {
-        SkillPaymentPolicy::UserFunded => {
-            tap_interface_call(tx, objects, TapStandard::PAYMENT_POLICY_USER_FUNDED, vec![])
-        }
+        SkillPaymentPolicy::UserFunded => tap_interface_call(
+            tx,
+            objects,
+            crate::idents::interface::Payment::PAYMENT_POLICY_USER_FUNDED,
+            vec![],
+        ),
         SkillPaymentPolicy::AgentFunded { max_budget } => {
             let max_budget = tx.pure(max_budget);
             tap_interface_call(
                 tx,
                 objects,
-                TapStandard::PAYMENT_POLICY_AGENT_FUNDED,
+                crate::idents::interface::Payment::PAYMENT_POLICY_AGENT_FUNDED,
                 vec![max_budget],
             )
         }
@@ -621,7 +620,7 @@ pub(crate) fn default_agent_execution_config_arg(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG,
+        crate::idents::interface::Agent::NEW_DEFAULT_AGENT_EXECUTION_CONFIG,
         vec![
             dag_id,
             network,
@@ -651,7 +650,7 @@ pub(crate) fn agent_execution_config_arg(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::NEW_AGENT_EXECUTION_CONFIG,
+        crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG,
         vec![
             agent_id,
             network,
@@ -714,7 +713,7 @@ fn fixed_tool_arg(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::FIXED_TOOL,
+        crate::idents::interface::Agent::FIXED_TOOL,
         vec![tool_registry_id, tool_fqn],
     ))
 }
@@ -767,7 +766,7 @@ fn scheduled_vertex_authorization_template_arg(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::AGENT_VERTEX_AUTHORIZATION_TEMPLATE,
+        crate::idents::interface::Authorization::AGENT_VERTEX_AUTHORIZATION_TEMPLATE,
         vec![skill_id, vertex, recipient_id],
     ))
 }
@@ -820,7 +819,7 @@ pub fn complete_scheduled_payment_reserve_occurrence(
     Ok(tap_interface_call(
         tx,
         objects,
-        TapStandard::COMPLETE_SCHEDULED_PAYMENT_RESERVE_OCCURRENCE,
+        crate::idents::interface::Payment::COMPLETE_SCHEDULED_PAYMENT_RESERVE_OCCURRENCE,
         vec![reserve, execution_id, payment_id, final_state],
     ))
 }
@@ -832,13 +831,13 @@ fn scheduled_occurrence_final_state_arg(
 ) -> sui::tx::Argument {
     let ident = match final_state {
         ScheduledOccurrenceFinalState::InFlight => {
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT
         }
         ScheduledOccurrenceFinalState::Accomplished => {
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED
         }
         ScheduledOccurrenceFinalState::Refunded => {
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_REFUNDED
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_REFUNDED
         }
     };
     tap_interface_call(tx, objects, ident, vec![])
@@ -1182,7 +1181,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         for expected in [
-            TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name,
+            crate::idents::interface::Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name,
             AgentRegistry::WITHDRAW_AGENT_PAYMENT_VAULT.name,
         ] {
             assert!(
@@ -1269,10 +1268,10 @@ mod tests {
             AgentRegistry::GET_SKILL_REQUIREMENTS.name,
             AgentRegistry::UPDATE_DAG.name,
             AgentRegistry::UPDATE_SKILL_POLICIES.name,
-            TapStandard::COMPLETE_SCHEDULED_PAYMENT_RESERVE_OCCURRENCE.name,
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT.name,
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED.name,
-            TapStandard::SCHEDULED_OCCURRENCE_FINAL_STATE_REFUNDED.name,
+            crate::idents::interface::Payment::COMPLETE_SCHEDULED_PAYMENT_RESERVE_OCCURRENCE.name,
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_IN_FLIGHT.name,
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_ACCOMPLISHED.name,
+            crate::idents::interface::Payment::SCHEDULED_OCCURRENCE_FINAL_STATE_REFUNDED.name,
         ] {
             assert!(
                 function_names.contains(&expected),
@@ -1318,7 +1317,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(
-            function_names.contains(&TapStandard::PAYMENT_POLICY_AGENT_FUNDED.name),
+            function_names
+                .contains(&crate::idents::interface::Payment::PAYMENT_POLICY_AGENT_FUNDED.name),
             "missing agent-funded payment policy constructor"
         );
     }
