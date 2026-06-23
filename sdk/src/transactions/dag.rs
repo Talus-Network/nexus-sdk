@@ -59,8 +59,8 @@ const NEW_OFFCHAIN_VERIFIER_EVIDENCE: sui::types::Identifier =
     sui::types::Identifier::from_static("new_offchain_verifier_evidence");
 const NEW_EXTERNAL_VERIFIER_SUBMIT_EVIDENCE_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_external_verifier_submit_evidence_v1");
-const NEW_VERIFIER_CONTRACT_RESULT_V1: sui::types::Identifier =
-    sui::types::Identifier::from_static("new_verifier_contract_result_v1");
+const NEW_VERIFIER_CONTRACT_RESULT: sui::types::Identifier =
+    sui::types::Identifier::from_static("new_verifier_contract_result");
 const NEW_OFF_CHAIN_VERIFIER_PROOF_REGISTERED_KEY_V1: sui::types::Identifier =
     sui::types::Identifier::from_static("new_off_chain_verifier_proof_registered_key_v1");
 const NEW_OFF_CHAIN_VERIFIER_PROOF_EXTERNAL_VERIFIER_V1: sui::types::Identifier =
@@ -862,7 +862,7 @@ fn prepare_verifier_contract_result(
         sui::tx::Function::new(
             objects.interface_pkg_id,
             VERIFIER_V1_MODULE,
-            NEW_VERIFIER_CONTRACT_RESULT_V1,
+            NEW_VERIFIER_CONTRACT_RESULT,
         ),
         vec![
             method,
