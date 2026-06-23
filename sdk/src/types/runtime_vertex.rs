@@ -1,4 +1,4 @@
-//! Wrapper around `nexus_workflow::dag::RuntimeVertex` type. This struct
+//! Wrapper around `nexus_interface::graph::RuntimeVertex` type. This struct
 //! contains the vertex name as [`crate::types::TypeName`] and the type of
 //! the vertex.
 //!

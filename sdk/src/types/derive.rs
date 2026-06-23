@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        idents::{move_std, workflow},
+        idents::{interface, move_std},
         sui::{self, traits::ToBcs},
         types::RuntimeVertex,
         ToolFqn,
@@ -48,7 +48,7 @@ pub fn derive_tool_gas_id(
 /// [`RequestWalkExecutionEvent`]: crate::events::RequestWalkExecutionEvent
 /// [`RuntimeVertex`]: crate::types::RuntimeVertex
 pub fn derive_walk_execution_event_task_id(
-    workflow_pkg_id: sui::types::Address,
+    interface_pkg_id: sui::types::Address,
     execution: sui::types::Address,
     vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Address> {
@@ -59,7 +59,7 @@ pub fn derive_walk_execution_event_task_id(
         } => (vertex, iteration),
     };
 
-    let vertex_tag = workflow::into_type_tag(workflow_pkg_id, workflow::Dag::VERTEX);
+    let vertex_tag = interface::into_type_tag(interface_pkg_id, interface::Graph::VERTEX);
 
     derive_object_id(
         derive_object_id(execution, &vertex_tag, &name)?,
@@ -139,7 +139,7 @@ mod tests {
         );
         let vertex = RuntimeVertex::plain("dummy");
         let expected_id = sui::types::Address::from_static(
-            "0xe6e6b5f315493c79d7cdfcc8fb4a40cb7264434a83df8e509e0fc159ca85798f",
+            "0x01f8994c6f49b74a625da5fad442f350555752aefbdc9f4ce23d7c91b92f6b29",
         );
 
         let derived_id =

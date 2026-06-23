@@ -1,726 +1,54 @@
 use crate::{
     idents::ModuleAndNameIdent,
     sui,
-    types::{
-        EdgeKind,
-        FailureEvidenceKind,
-        PostFailureAction,
-        RuntimeVertex,
-        VerifierConfig,
-        VerifierMode,
-    },
-    ToolFqn,
+    types::{FailureEvidenceKind, VerifierConfig, VerifierMode},
 };
 
-// == `nexus_workflow::dag` ==
+// == `nexus_workflow::{execution, execution_entries, execution_resolution, execution_settlement, execution_submission}` and `nexus_interface::verifier` ==
 
-pub struct Dag;
-
-const DAG_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("dag");
+const EXECUTION_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("execution");
+const EXECUTION_ENTRIES_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("execution_entries");
+const EXECUTION_RESOLUTION_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("execution_resolution");
+const EXECUTION_SETTLEMENT_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("execution_settlement");
+const EXECUTION_SUBMISSION_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("execution_submission");
 const VERIFIER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("verifier");
 
-impl Dag {
-    /// Abort an expired DAG execution.
-    ///
-    /// `nexus_workflow::dag::abort_expired_execution`
-    pub const ABORT_EXPIRED_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("abort_expired_execution"),
-    };
-    /// Accomplish an invoker-funded TAP payment owned by DAGExecution.
-    ///
-    /// `nexus_workflow::dag::accomplish_tap_execution_payment`
-    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("accomplish_tap_execution_payment"),
-    };
-    /// Accomplish an agent-vault-funded TAP payment owned by DAGExecution.
-    ///
-    /// `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault`
-    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "accomplish_tap_execution_payment_from_agent_vault",
-            ),
-        };
-    /// Begin DAG execution through an explicit agent path using a prepared config.
-    ///
-    /// `nexus_workflow::dag::begin_agent_execution_with_config`
-    pub const BEGIN_AGENT_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("begin_agent_execution_with_config"),
-    };
-    /// Witness type used by scheduled tasks that execute a registered agent target.
-    ///
-    /// `nexus_workflow::dag::BeginAgentExecutionWitness`
-    pub const BEGIN_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("BeginAgentExecutionWitness"),
-    };
-    /// `nexus_workflow::dag::BEGIN_DAG_EXECUTION_WITH_CONFIG`
-    pub const BEGIN_DAG_EXECUTION_WITH_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("begin_dag_execution_with_config"),
-    };
-    /// Witness type used by scheduled tasks that execute through the default agent target.
-    ///
-    /// `nexus_workflow::dag::BeginDefaultAgentExecutionWitness`
-    pub const BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("BeginDefaultAgentExecutionWitness"),
-    };
-    /// Create a workflow-owned vertex authorization grant under a DAGExecution.
-    ///
-    /// `nexus_workflow::dag::create_vertex_authorization_grant`
-    pub const CREATE_VERTEX_AUTHORIZATION_GRANT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("create_vertex_authorization_grant"),
-    };
-    /// The DAG struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::DAG`
-    pub const DAG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("DAG"),
-    };
-    /// The DAGExecution struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::DAGExecution`
-    pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("DAGExecution"),
-    };
-    /// The DagExecutionConfig struct type.
-    ///
-    /// `nexus_workflow::dag::DagExecutionConfig`
-    pub const DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("DagExecutionConfig"),
-    };
-    /// Create a break edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_break`
-    pub const EDGE_KIND_BREAK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_break"),
-    };
-    /// Create a collect edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_collect`
-    pub const EDGE_KIND_COLLECT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_collect"),
-    };
-    /// Create a do-while edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_do_while`
-    pub const EDGE_KIND_DO_WHILE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_do_while"),
-    };
-    /// Create a for-each edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_for_each`
-    pub const EDGE_KIND_FOR_EACH: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_for_each"),
-    };
-    /// Create a normal edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_normal`
-    pub const EDGE_KIND_NORMAL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_normal"),
-    };
-    /// Create a static edge kind.
-    ///
-    /// `nexus_workflow::dag::edge_kind_static`
-    pub const EDGE_KIND_STATIC: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_static"),
-    };
-    /// The EntryGroup struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::EntryGroup`
-    pub const ENTRY_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("EntryGroup"),
-    };
-    /// Create an EntryGroup from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::entry_group_from_string`
-    pub const ENTRY_GROUP_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("entry_group_from_string"),
-    };
-    /// The interface FailureEvidenceKind enum. Mostly used for creating generic types.
-    ///
-    /// `nexus_interface::verifier::FailureEvidenceKind`
+pub struct Verifier;
+
+impl Verifier {
     pub const FAILURE_EVIDENCE_KIND: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("FailureEvidenceKind"),
     };
-    /// Create a leader-evidence failure evidence kind.
-    ///
-    /// `nexus_interface::verifier::failure_evidence_kind_leader_evidence`
     pub const FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("failure_evidence_kind_leader_evidence"),
     };
-    /// Create a tool-evidence failure evidence kind.
-    ///
-    /// `nexus_interface::verifier::failure_evidence_kind_tool_evidence`
     pub const FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("failure_evidence_kind_tool_evidence"),
     };
-    /// The InputPort struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::InputPort`
-    pub const INPUT_PORT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("InputPort"),
-    };
-    /// Create an InputPort from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::input_port_from_string`
-    pub const INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("input_port_from_string"),
-    };
-    /// Create a new DAG object.
-    ///
-    /// `nexus_workflow::dag::new`
-    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("new"),
-    };
-    /// Build authenticated verifier request evidence from workflow execution and leader cap.
-    ///
-    /// `nexus_workflow::dag::new_authenticated_offchain_request_evidence_v1`
-    pub const NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "new_authenticated_offchain_request_evidence_v1",
-            ),
-        };
-    /// Create a new DAG execution config value.
-    ///
-    /// `nexus_workflow::dag::new_dag_execution_config`
-    pub const NEW_DAG_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("new_dag_execution_config"),
-    };
-    /// Serialize an on-chain tool-result submission envelope from DAG output arguments.
-    ///
-    /// `nexus_workflow::dag::on_chain_tool_result_submission_v1_bytes`
-    pub const ON_CHAIN_TOOL_RESULT_SUBMISSION_V1_BYTES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("on_chain_tool_result_submission_v1_bytes"),
-    };
-    /// The OutputPort struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::OutputPort`
-    pub const OUTPUT_PORT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("OutputPort"),
-    };
-    /// Create an OutputPort from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::output_port_from_string`
-    pub const OUTPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("output_port_from_string"),
-    };
-    /// The OutputVariant struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::OutputVariant`
-    pub const OUTPUT_VARIANT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("OutputVariant"),
-    };
-    /// Create an OutputVariant from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::output_variant_from_string`
-    pub const OUTPUT_VARIANT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("output_variant_from_string"),
-    };
-    /// Create a terminate post-failure action.
-    ///
-    /// `nexus_workflow::dag::post_failure_action_terminate`
-    pub const POST_FAILURE_ACTION_TERMINATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("post_failure_action_terminate"),
-    };
-    /// Create a transient-continue post-failure action.
-    ///
-    /// `nexus_workflow::dag::post_failure_action_transient_continue`
-    pub const POST_FAILURE_ACTION_TRANSIENT_CONTINUE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
-    };
-    /// Prepare a registered TAP agent DAG execution using a scheduled occurrence payment.
-    ///
-    /// `nexus_workflow::dag::prepare_agent_execution_from_scheduled_payment`
-    pub const PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_agent_execution_from_scheduled_payment",
-            ),
-        };
-    /// Scheduler entry point to invoke the default agent execution route
-    /// using a durable TAP scheduled payment reserve.
-    ///
-    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduled_payment`
-    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_default_agent_execution_from_scheduled_payment",
-            ),
-        };
-    /// Scheduler entry point to invoke the default agent execution route.
-    ///
-    /// `nexus_workflow::dag::prepare_default_agent_execution_from_scheduler`
-    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_default_agent_execution_from_scheduler",
-            ),
-        };
-    /// Refund an invoker-funded TAP payment owned by DAGExecution.
-    ///
-    /// `nexus_workflow::dag::refund_tap_execution_payment`
-    pub const REFUND_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("refund_tap_execution_payment"),
-    };
-    /// Refund an agent-vault-funded TAP payment owned by DAGExecution.
-    ///
-    /// `nexus_workflow::dag::refund_tap_execution_payment_from_agent_vault`
-    pub const REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "refund_tap_execution_payment_from_agent_vault",
-            ),
-        };
-    /// Register a scheduler execution policy config for a registered TAP agent execution.
-    ///
-    /// `nexus_workflow::dag::register_begin_agent_execution`
-    pub const REGISTER_BEGIN_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("register_begin_agent_execution"),
-    };
-    /// Register scheduler execution config for default agent execution.
-    ///
-    /// `nexus_workflow::dag::register_begin_default_agent_execution`
-    pub const REGISTER_BEGIN_DEFAULT_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("register_begin_default_agent_execution"),
-    };
-    /// Release an execution-owned vertex authorization grant for the current on-chain walk.
-    ///
-    /// `nexus_workflow::dag::release_vertex_authorization_for_onchain_walk`
-    pub const RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "release_vertex_authorization_for_onchain_walk",
-            ),
-        };
-    /// Function to call to continue to the next vertex in the given walk.
-    ///
-    /// `nexus_workflow::dag::request_network_to_execute_walks`
-    pub const REQUEST_NETWORK_TO_EXECUTE_WALKS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("request_network_to_execute_walks"),
-    };
-    /// Returns a new hot potato object RequestWalkExecution.
-    ///
-    /// `nexus_workflow::dag::request_walk_execution`
-    pub const REQUEST_WALK_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("request_walk_execution"),
-    };
-    /// Returns a new hot potato object RequestWalkExecution for one active walk.
-    ///
-    /// `nexus_workflow::dag::request_walk_execution_for_walk`
-    pub const REQUEST_WALK_EXECUTION_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("request_walk_execution_for_walk"),
-    };
-    /// Create a `RuntimeVertex::Plain` from a string.
-    ///
-    /// `nexus_workflow::dag::runtime_vertex_plain_from_string`
-    pub const RUNTIME_VERTEX_PLAIN_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("runtime_vertex_plain_from_string"),
-    };
-    /// Create a `RuntimeVertex::WithIterator` from a string.
-    ///
-    /// `nexus_workflow::dag::runtime_vertex_with_iterator_from_string`
-    pub const RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("runtime_vertex_with_iterator_from_string"),
-    };
-    /// Canonical off-chain tool-result submission entrypoint.
-    ///
-    /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_v1`
-    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("submit_off_chain_tool_result_for_walk_v1"),
-    };
-    /// Canonical no-verifier off-chain tool-result submission entrypoint.
-    ///
-    /// `nexus_workflow::dag::submit_off_chain_tool_result_for_walk_without_verifier_v1`
-    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: DAG_MODULE,
-            name: sui::types::Identifier::from_static(
-                "submit_off_chain_tool_result_for_walk_without_verifier_v1",
-            ),
-        };
-    /// Canonical on-chain tool-result submission entrypoint.
-    ///
-    /// `nexus_workflow::dag::submit_on_chain_tool_result_for_walk_v1`
-    pub const SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
-    };
-    /// Convert TaggedOutput to DAG types.
-    ///
-    /// `nexus_workflow::dag::tagged_output_to_dag_types`
-    pub const TOOL_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
-    };
-    /// Create a verifier config.
-    ///
-    /// `nexus_interface::verifier::verifier_config`
     pub const VERIFIER_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_config"),
     };
-    /// Create the authenticated communication verifier mode.
-    ///
-    /// `nexus_interface::verifier::verifier_mode_authenticated_communication`
     pub const VERIFIER_MODE_AUTHENTICATED_COMMUNICATION: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_authenticated_communication"),
     };
-    /// Create the `VerifierMode::None` variant.
-    ///
-    /// `nexus_interface::verifier::verifier_mode_none`
     pub const VERIFIER_MODE_NONE: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_none"),
     };
-    /// Create the `VerifierMode::ToolVerifierContract` variant.
-    ///
-    /// `nexus_interface::verifier::verifier_mode_tool_verifier_contract`
     pub const VERIFIER_MODE_TOOL_VERIFIER_CONTRACT: ModuleAndNameIdent = ModuleAndNameIdent {
         module: VERIFIER_MODULE,
         name: sui::types::Identifier::from_static("verifier_mode_tool_verifier_contract"),
     };
-    /// The Vertex struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_workflow::dag::Vertex`
-    pub const VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("Vertex"),
-    };
-    /// Create a Vertex from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::vertex_from_string`
-    pub const VERTEX_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("vertex_from_string"),
-    };
-    /// Create a new off-chain NodeIdent from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::vertex_off_chain`
-    pub const VERTEX_OFF_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("vertex_off_chain"),
-    };
-    /// Create a new onchain NodeIdent from an ASCII string.
-    ///
-    /// `nexus_workflow::dag::vertex_on_chain`
-    pub const VERTEX_ON_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("vertex_on_chain"),
-    };
-    /// Configure the DAG-wide default leader verifier policy.
-    ///
-    /// `nexus_workflow::dag::with_default_leader_verifier`
-    pub const WITH_DEFAULT_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_leader_verifier"),
-    };
-    /// Configure the DAG-wide default tool verifier policy.
-    ///
-    /// `nexus_workflow::dag::with_default_tool_verifier`
-    pub const WITH_DEFAULT_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_tool_verifier"),
-    };
-    /// Add a default value to a DAG. Default value is a Vertex + InputPort pair
-    /// with NexusData as the value.
-    ///
-    /// `nexus_workflow::dag::with_default_value`
-    pub const WITH_DEFAULT_VALUE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_value"),
-    };
-    /// Add an Edge to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_edge`
-    pub const WITH_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_edge"),
-    };
-    /// Mark a vertex as an entry vertex and assign it to a group.
-    ///
-    /// `nexus_workflow::dag::with_entry_in_group`
-    pub const WITH_ENTRY_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_entry_in_group"),
-    };
-    /// Add an input port as an entry input port and assign it to a group.
-    ///
-    /// `nexus_workflow::dag::with_entry_port_in_group`
-    pub const WITH_ENTRY_PORT_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_entry_port_in_group"),
-    };
-    /// Add an entry vertex to a DAG. Entry vertex is just a Vertex with its
-    /// required InputPorts specified.
-    ///
-    /// `nexus_workflow::dag::with_entry_vertex`
-    pub const WITH_ENTRY_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_entry_vertex"),
-    };
-    /// Add an output to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_output`
-    pub const WITH_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_output"),
-    };
-    /// Configure a DAG-level default post-failure action.
-    ///
-    /// `nexus_workflow::dag::with_post_failure_action`
-    pub const WITH_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_post_failure_action"),
-    };
-    /// Add a Vertex to a DAG.
-    ///
-    /// `nexus_workflow::dag::with_vertex`
-    pub const WITH_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex"),
-    };
-    /// Configure the vertex-level leader verifier policy.
-    ///
-    /// `nexus_workflow::dag::with_vertex_leader_verifier`
-    pub const WITH_VERTEX_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_leader_verifier"),
-    };
-    /// Configure a vertex-level post-failure action override.
-    ///
-    /// `nexus_workflow::dag::with_vertex_post_failure_action`
-    pub const WITH_VERTEX_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_post_failure_action"),
-    };
-    /// Configure the vertex-level tool verifier policy.
-    ///
-    /// `nexus_workflow::dag::with_vertex_tool_verifier`
-    pub const WITH_VERTEX_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_tool_verifier"),
-    };
-    /// Create a DAG-authenticated worksheet for the active tool-result submission.
-    ///
-    /// `nexus_workflow::dag::worksheet_for_tool_result_submission`
-    pub const WORKSHEET_FOR_TOOL_RESULT_SUBMISSION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("worksheet_for_tool_result_submission"),
-    };
 
-    /// Create an EntryGroup from a string.
-    pub fn entry_group_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::ENTRY_GROUP_FROM_STRING.module,
-                Self::ENTRY_GROUP_FROM_STRING.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an InputPort from a string.
-    pub fn input_port_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::INPUT_PORT_FROM_STRING.module,
-                Self::INPUT_PORT_FROM_STRING.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an OutputPort from a string.
-    pub fn output_port_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::OUTPUT_PORT_FROM_STRING.module,
-                Self::OUTPUT_PORT_FROM_STRING.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an OutputVariant from a string.
-    pub fn output_variant_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::OUTPUT_VARIANT_FROM_STRING.module,
-                Self::OUTPUT_VARIANT_FROM_STRING.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create a Vertex from a string.
-    pub fn vertex_from_str<T: AsRef<str>>(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        str: T,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::VERTEX_FROM_STRING.module,
-                Self::VERTEX_FROM_STRING.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create a new off-chain NodeIdent from a string.
-    pub fn off_chain_vertex_kind_from_fqn(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        fqn: &ToolFqn,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::VERTEX_OFF_CHAIN.module,
-                Self::VERTEX_OFF_CHAIN.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    pub fn on_chain_vertex_kind_from_fqn(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        fqn: &ToolFqn,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
-
-        Ok(tx.move_call(
-            sui::tx::Function::new(
-                workflow_pkg_id,
-                Self::VERTEX_ON_CHAIN.module,
-                Self::VERTEX_ON_CHAIN.name,
-            ),
-            vec![str],
-        ))
-    }
-
-    /// Create an edge kind from an enum variant.
-    pub fn edge_kind_from_enum(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        edge_kind: &EdgeKind,
-    ) -> sui::tx::Argument {
-        let ident = match edge_kind {
-            EdgeKind::Normal => Self::EDGE_KIND_NORMAL,
-            EdgeKind::ForEach => Self::EDGE_KIND_FOR_EACH,
-            EdgeKind::Collect => Self::EDGE_KIND_COLLECT,
-            EdgeKind::DoWhile => Self::EDGE_KIND_DO_WHILE,
-            EdgeKind::Break => Self::EDGE_KIND_BREAK,
-            EdgeKind::Static => Self::EDGE_KIND_STATIC,
-        };
-
-        tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
-            vec![],
-        )
-    }
-
-    /// Create a post-failure action from an enum variant.
-    pub fn post_failure_action_from_enum(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        action: &PostFailureAction,
-    ) -> sui::tx::Argument {
-        let ident = match action {
-            PostFailureAction::Terminate => Self::POST_FAILURE_ACTION_TERMINATE,
-            PostFailureAction::TransientContinue => Self::POST_FAILURE_ACTION_TRANSIENT_CONTINUE,
-        };
-
-        tx.move_call(
-            sui::tx::Function::new(workflow_pkg_id, ident.module, ident.name),
-            vec![],
-        )
-    }
-
-    /// Create a failure evidence kind from an enum variant.
     pub fn failure_evidence_kind_from_enum(
         tx: &mut sui::tx::TransactionBuilder,
         interface_pkg_id: sui::types::Address,
@@ -730,14 +58,12 @@ impl Dag {
             FailureEvidenceKind::ToolEvidence => Self::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE,
             FailureEvidenceKind::LeaderEvidence => Self::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE,
         };
-
         tx.move_call(
             sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
 
-    /// Create a verifier mode from an enum variant.
     pub fn verifier_mode_from_enum(
         tx: &mut sui::tx::TransactionBuilder,
         interface_pkg_id: sui::types::Address,
@@ -750,14 +76,12 @@ impl Dag {
             }
             VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
-
         tx.move_call(
             sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
             vec![],
         )
     }
 
-    /// Create a verifier config value from the Rust mirror.
     pub fn verifier_config(
         tx: &mut sui::tx::TransactionBuilder,
         interface_pkg_id: sui::types::Address,
@@ -765,7 +89,6 @@ impl Dag {
     ) -> anyhow::Result<sui::tx::Argument> {
         let mode = Self::verifier_mode_from_enum(tx, interface_pkg_id, &config.mode);
         let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
-
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -775,154 +98,149 @@ impl Dag {
             vec![mode, method],
         ))
     }
-
-    /// Create a runtime vertex from an enum variant
-    pub fn runtime_vertex_from_enum(
-        tx: &mut sui::tx::TransactionBuilder,
-        workflow_pkg_id: sui::types::Address,
-        runtime_vertex: &RuntimeVertex,
-    ) -> anyhow::Result<sui::tx::Argument> {
-        match runtime_vertex {
-            RuntimeVertex::Plain { vertex } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
-
-                Ok(tx.move_call(
-                    sui::tx::Function::new(
-                        workflow_pkg_id,
-                        Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.module,
-                        Self::RUNTIME_VERTEX_PLAIN_FROM_STRING.name,
-                    ),
-                    vec![name],
-                ))
-            }
-            RuntimeVertex::WithIterator {
-                vertex,
-                iteration,
-                out_of,
-            } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
-
-                let iteration = tx.pure(iteration);
-                let out_of = tx.pure(out_of);
-
-                Ok(tx.move_call(
-                    sui::tx::Function::new(
-                        workflow_pkg_id,
-                        Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.module,
-                        Self::RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING.name,
-                    ),
-                    vec![name, iteration, out_of],
-                ))
-            }
-        }
-    }
 }
 
-// == `nexus_workflow::tool_registry` ==
+pub struct Execution;
 
-pub struct ToolRegistry;
+impl Execution {
+    /// Bind the leader registry to Nexus Workflow.
+    ///
+    /// `nexus_workflow::execution::bind_leader_registry_workflow`
+    pub const BIND_LEADER_REGISTRY_WORKFLOW: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_MODULE,
+        name: sui::types::Identifier::from_static("bind_leader_registry_workflow"),
+    };
+    pub const DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_MODULE,
+        name: sui::types::Identifier::from_static("DAGExecution"),
+    };
+}
 
-const TOOL_REGISTRY_MODULE: sui::types::Identifier =
-    sui::types::Identifier::from_static("tool_registry");
+pub struct ExecutionEntries;
 
-impl ToolRegistry {
-    /// Claim collateral for a tool. The function call returns Balance<SUI>.
-    ///
-    /// `nexus_workflow::tool_registry::claim_collateral`
-    pub const CLAIM_COLLATERAL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("claim_collateral"),
+impl ExecutionEntries {
+    pub const ADVANCE_FOR_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("AdvanceForAgentExecution"),
     };
-    /// Claim collateral for a tool and transfer the balance to the tx sender.
-    ///
-    /// `nexus_workflow::tool_registry::claim_collateral_for_self`
-    pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("claim_collateral_for_self"),
+    pub const ADVANCE_FOR_DEFAULT_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("AdvanceForDefaultAgentExecution"),
     };
-    /// OverSlashing struct type. Used to fetch caps for slashing tools.
-    ///
-    /// `nexus_workflow::tool_registry::OverSlashing`
-    pub const OVER_SLASHING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("OverSlashing"),
+    pub const BEGIN_AGENT_FUNDED_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("begin_agent_funded_agent_execution"),
     };
-    /// OverTool struct type. Used for fetching tool owner caps.
-    ///
-    /// `nexus_workflow::tool_registry::OverTool`
-    pub const OVER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("OverTool"),
+    pub const BEGIN_DEFAULT_DAG_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("begin_default_dag_execution"),
     };
-    /// Register an off-chain tool. This returns the tool's owner cap.
-    ///
-    /// `nexus_workflow::tool_registry::register_off_chain_tool`
-    pub const REGISTER_OFF_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_off_chain_tool"),
+    pub const BEGIN_USER_FUNDED_AGENT_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("begin_user_funded_agent_execution"),
     };
-    /// Register an on-chain tool. This returns the tool's owner cap.
-    ///
-    /// `nexus_workflow::tool_registry::register_on_chain_tool`
-    pub const REGISTER_ON_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("register_on_chain_tool"),
+    pub const REQUEST_NETWORK_TO_EXECUTE_WALKS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("request_network_to_execute_walks"),
     };
-    /// Register a cap-gated on-chain tool. This returns the tool's owner cap.
-    ///
-    /// `nexus_workflow::tool_registry::register_on_chain_tool_with_workflow_authorization_cap`
-    pub const REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP: ModuleAndNameIdent =
+    pub const REQUEST_WALK_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("request_walk_execution"),
+    };
+    pub const REQUEST_WALK_EXECUTION_FOR_WALK: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_ENTRIES_MODULE,
+        name: sui::types::Identifier::from_static("request_walk_execution_for_walk"),
+    };
+}
+
+pub struct ExecutionSubmission;
+
+impl ExecutionSubmission {
+    pub const AUTHORIZE_WALK_SUBMISSION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SUBMISSION_MODULE,
+        name: sui::types::Identifier::from_static("authorize_walk_submission"),
+    };
+    pub const LEADER_STAMP_WORKSHEET: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SUBMISSION_MODULE,
+        name: sui::types::Identifier::from_static("leader_stamp_worksheet"),
+    };
+    pub const NEW_AUTHENTICATED_OFFCHAIN_REQUEST_EVIDENCE_V1: ModuleAndNameIdent =
         ModuleAndNameIdent {
-            module: TOOL_REGISTRY_MODULE,
+            module: EXECUTION_SUBMISSION_MODULE,
             name: sui::types::Identifier::from_static(
-                "register_on_chain_tool_with_workflow_authorization_cap",
+                "new_authenticated_offchain_request_evidence_v1",
             ),
         };
-    /// Tool struct type. Used for fetching tool info.
-    ///
-    /// `nexus_workflow::tool_registry::Tool`
-    pub const TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("Tool"),
+    pub const RELEASE_VERTEX_AUTHORIZATION_FOR_ONCHAIN_WALK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: EXECUTION_SUBMISSION_MODULE,
+            name: sui::types::Identifier::from_static(
+                "release_vertex_authorization_for_onchain_walk",
+            ),
+        };
+    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SUBMISSION_MODULE,
+        name: sui::types::Identifier::from_static("submit_off_chain_tool_result_for_walk_v1"),
     };
-    /// The ToolRegistry struct type.
-    ///
-    /// `nexus_workflow::tool_registry::ToolRegistry`
-    pub const TOOL_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("ToolRegistry"),
+    pub const SUBMIT_OFF_CHAIN_TOOL_RESULT_FOR_WALK_WITHOUT_VERIFIER_V1: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: EXECUTION_SUBMISSION_MODULE,
+            name: sui::types::Identifier::from_static(
+                "submit_off_chain_tool_result_for_walk_without_verifier_v1",
+            ),
+        };
+    pub const SUBMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SUBMISSION_MODULE,
+        name: sui::types::Identifier::from_static("submit_on_chain_tool_result_for_walk_v1"),
     };
-    /// Unregister a tool.
-    ///
-    /// `nexus_workflow::tool_registry::unregister`
-    pub const UNREGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("unregister"),
-    };
-    /// Update a tool's timeout.
-    ///
-    /// `nexus_workflow::tool_registry::update_tool_timeout`
-    pub const UPDATE_TOOL_TIMEOUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: TOOL_REGISTRY_MODULE,
-        name: sui::types::Identifier::from_static("update_tool_timeout"),
+    pub const WORKSHEET_FOR_TOOL_RESULT_SUBMISSION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SUBMISSION_MODULE,
+        name: sui::types::Identifier::from_static("worksheet_for_tool_result_submission"),
     };
 }
 
-// == `nexus_workflow::gas` ==
+pub struct ExecutionResolution;
+
+impl ExecutionResolution {
+    pub const ABORT_EXPIRED_EXECUTION: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_RESOLUTION_MODULE,
+        name: sui::types::Identifier::from_static("abort_expired_execution"),
+    };
+}
+
+pub struct ExecutionSettlement;
+
+impl ExecutionSettlement {
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SETTLEMENT_MODULE,
+        name: sui::types::Identifier::from_static("accomplish_tap_execution_payment"),
+    };
+    pub const ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: EXECUTION_SETTLEMENT_MODULE,
+            name: sui::types::Identifier::from_static(
+                "accomplish_tap_execution_payment_from_agent_vault",
+            ),
+        };
+    pub const REFUND_TAP_EXECUTION_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: EXECUTION_SETTLEMENT_MODULE,
+        name: sui::types::Identifier::from_static("refund_tap_execution_payment"),
+    };
+    pub const REFUND_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: EXECUTION_SETTLEMENT_MODULE,
+            name: sui::types::Identifier::from_static(
+                "refund_tap_execution_payment_from_agent_vault",
+            ),
+        };
+}
 
 pub struct Gas;
 
 const GAS_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("gas");
 
 impl Gas {
-    /// Derive a `ToolGas` object while setting the initial invocation price.
-    ///
-    /// `nexus_workflow::gas::create_tool_gas`
-    pub const CREATE_TOOL_GAS: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GAS_MODULE,
-        name: sui::types::Identifier::from_static("create_tool_gas"),
-    };
-    /// Same as `CREATE_TOOL_GAS` but object is shared.
+    /// Derive and share a `ToolGas` object while setting the initial invocation price.
     ///
     /// `nexus_workflow::gas::create_tool_gas_and_share`
     pub const CREATE_TOOL_GAS_AND_SHARE: ModuleAndNameIdent = ModuleAndNameIdent {

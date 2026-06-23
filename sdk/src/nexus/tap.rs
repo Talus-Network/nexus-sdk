@@ -259,7 +259,7 @@ pub struct AccomplishExecutionPaymentParams {
     /// The shared `DAGExecution` object whose TAP payment should be settled.
     pub execution_id: sui::types::Address,
     /// When set, the SDK fetches the agent object and routes through
-    /// `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault`
+    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment_from_agent_vault`
     /// — settling the payment out of the agent's vault rather than from the
     /// invoker-funded payment object. When `None`, the default
     /// `accomplish_tap_execution_payment` PTB is built.
@@ -609,7 +609,7 @@ impl TapActions {
         })
     }
 
-    /// Wraps the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment`
+    /// Wraps the on-chain `nexus_workflow::execution_settlement::accomplish_tap_execution_payment`
     /// PTB so the holder of the `DAGExecution` can settle its TAP payment
     /// directly — useful when the off-chain leader has not (yet) emitted the
     /// settlement transaction itself but the execution has reached a state
@@ -758,6 +758,11 @@ impl TapActions {
                     execution_arg,
                     registry,
                     agent,
+                    agent_id,
+                    dag_id,
+                    execution_priority_fee_per_gas_unit,
+                    entry_group.as_str(),
+                    &input_data,
                     skill_id,
                     selected_dag,
                     prepayment_coin,
@@ -784,6 +789,11 @@ impl TapActions {
                     execution_arg,
                     registry,
                     agent,
+                    agent_id,
+                    dag_id,
+                    execution_priority_fee_per_gas_unit,
+                    entry_group.as_str(),
+                    &input_data,
                     skill_id,
                     selected_dag,
                     prepay_amount,
@@ -2388,7 +2398,7 @@ mod tests {
     }
 
     /// `accomplish_execution_payment` wraps the on-chain
-    /// `nexus_workflow::dag::accomplish_tap_execution_payment` PTB. The
+    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment` PTB. The
     /// happy path fetches the shared `DAGExecution` object's metadata,
     /// builds a single move-call PTB targeting the workflow package, and
     /// returns the supplied `execution_id` verbatim in the result so
@@ -2449,11 +2459,13 @@ mod tests {
                 assert_eq!(call.package, expected_workflow_pkg_id);
                 assert_eq!(
                     call.function,
-                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.name
+                    crate::idents::workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT
+                        .name
                 );
                 assert_eq!(
                     call.module,
-                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT.module
+                    crate::idents::workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT
+                        .module
                 );
                 // The only argument is the shared DAGExecution input.
                 assert_eq!(call.arguments.len(), 1);
@@ -2555,12 +2567,12 @@ mod tests {
                 assert_eq!(call.package, expected_workflow_pkg_id);
                 assert_eq!(
                     call.function,
-                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT
+                    crate::idents::workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT
                         .name
                 );
                 assert_eq!(
                     call.module,
-                    crate::idents::workflow::Dag::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT
+                    crate::idents::workflow::ExecutionSettlement::ACCOMPLISH_TAP_EXECUTION_PAYMENT_FROM_AGENT_VAULT
                         .module
                 );
                 // (agent, execution) in that order — matches the Move

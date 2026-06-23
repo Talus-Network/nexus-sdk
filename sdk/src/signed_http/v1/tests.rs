@@ -153,6 +153,70 @@ fn verify_request_rejects_replayed_signature_with_different_body() {
 }
 
 #[test]
+fn engine_authenticate_invoke_rejects_replayed_signature_with_different_body() {
+    let leader_id = "0x1111";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_sk = sk_from_byte(7);
+    let leader_pk = leader_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![AllowedLeaderFileV1 {
+            leader_id: leader_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: 0,
+                public_key: hex::encode(leader_pk),
+            }],
+        }],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker = engine.invoker(leader_id.to_string(), 0, leader_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let signed_body = br#"{"hello":"world"}"#.to_vec();
+    let tampered_body = br#"{"hello":"attacker"}"#.to_vec();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound = invoker
+        .begin_invoke_with_nonce(
+            tool_id.to_string(),
+            http.clone(),
+            &signed_body,
+            "abc".to_string(),
+        )
+        .unwrap();
+
+    let err = match responder.authenticate_invoke(
+        http,
+        &tampered_body,
+        headers_ref_for_encoded(outbound.request_headers()),
+    ) {
+        Ok(_) => panic!("expected BodyHashMismatch"),
+        Err(err) => err,
+    };
+
+    assert!(matches!(err, SignedHttpError::BodyHashMismatch));
+}
+
+#[test]
 fn engine_end_to_end_roundtrip_happy_path() {
     let leader_id = "0x1111";
     let tool_id = "demo::tool::1.0.0";

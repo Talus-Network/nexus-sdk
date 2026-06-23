@@ -83,6 +83,101 @@ impl AgentRegistry {
     };
 }
 
+pub struct ToolRegistry;
+
+const TOOL_REGISTRY_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("tool_registry");
+
+impl ToolRegistry {
+    /// Claim collateral for a tool. The function call returns Balance<SUI>.
+    ///
+    /// `nexus_registry::tool_registry::claim_collateral`
+    pub const CLAIM_COLLATERAL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("claim_collateral"),
+    };
+    /// Claim collateral for a tool and transfer the balance to the tx sender.
+    ///
+    /// `nexus_registry::tool_registry::claim_collateral_for_self`
+    pub const CLAIM_COLLATERAL_FOR_SELF: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("claim_collateral_for_self"),
+    };
+    /// OverSlashing struct type. Used to fetch caps for slashing tools.
+    ///
+    /// `nexus_registry::tool_registry::OverSlashing`
+    pub const OVER_SLASHING: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("OverSlashing"),
+    };
+    /// OverTool struct type. Used for fetching tool owner caps.
+    ///
+    /// `nexus_registry::tool_registry::OverTool`
+    pub const OVER_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("OverTool"),
+    };
+    /// Register an off-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_registry::tool_registry::register_off_chain_tool`
+    pub const REGISTER_OFF_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("register_off_chain_tool"),
+    };
+    /// Register an on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_registry::tool_registry::register_on_chain_tool`
+    pub const REGISTER_ON_CHAIN_TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("register_on_chain_tool"),
+    };
+    /// Register a cap-gated on-chain tool. This returns the tool's owner cap.
+    ///
+    /// `nexus_registry::tool_registry::register_on_chain_tool_with_workflow_authorization_cap`
+    pub const REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: TOOL_REGISTRY_MODULE,
+            name: sui::types::Identifier::from_static(
+                "register_on_chain_tool_with_workflow_authorization_cap",
+            ),
+        };
+    /// Configure verifier methods supported by an off-chain tool.
+    ///
+    /// `nexus_registry::tool_registry::set_off_chain_supported_verifier_methods`
+    pub const SET_OFF_CHAIN_SUPPORTED_VERIFIER_METHODS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("set_off_chain_supported_verifier_methods"),
+    };
+    /// Tool struct type. Used for fetching tool info.
+    ///
+    /// `nexus_registry::tool_registry::Tool`
+    pub const TOOL: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("Tool"),
+    };
+    /// The ToolRegistry struct type.
+    ///
+    /// `nexus_registry::tool_registry::ToolRegistry`
+    pub const TOOL_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("ToolRegistry"),
+    };
+    /// Unregister a tool.
+    ///
+    /// `nexus_registry::tool_registry::unregister`
+    pub const UNREGISTER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("unregister"),
+    };
+    /// Update a tool's timeout.
+    ///
+    /// `nexus_registry::tool_registry::update_tool_timeout`
+    pub const UPDATE_TOOL_TIMEOUT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: TOOL_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("update_tool_timeout"),
+    };
+}
+
 // == `nexus_registry::network_auth` ==
 
 pub struct NetworkAuth;
@@ -233,6 +328,13 @@ impl Leader {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("register"),
     };
+    /// Configure verifier methods supported by a leader.
+    ///
+    /// `nexus_registry::leader::set_supported_verifier_methods`
+    pub const SET_SUPPORTED_VERIFIER_METHODS: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: LEADER_MODULE,
+        name: sui::types::Identifier::from_static("set_supported_verifier_methods"),
+    };
     /// Stake SUI into a leader's pool.
     ///
     /// `nexus_registry::leader::stake`
@@ -246,6 +348,58 @@ impl Leader {
     pub const SUSPEND_IF_TOKEN: ModuleAndNameIdent = ModuleAndNameIdent {
         module: LEADER_MODULE,
         name: sui::types::Identifier::from_static("suspend_if_token"),
+    };
+}
+
+// == `nexus_registry::verifier_registry` ==
+
+pub struct VerifierRegistry;
+
+pub const VERIFIER_REGISTRY_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("verifier_registry");
+
+impl VerifierRegistry {
+    /// Verifier registry shared object type.
+    ///
+    /// `nexus_registry::verifier_registry::VerifierRegistry`
+    pub const VERIFIER_REGISTRY: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("VerifierRegistry"),
+    };
+    /// Admin capability for verifier registry configuration.
+    ///
+    /// `nexus_registry::verifier_registry::VerifierRegistryAdminCap`
+    pub const VERIFIER_REGISTRY_ADMIN_CAP: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("VerifierRegistryAdminCap"),
+    };
+    /// Configure the DAG-wide default leader verifier policy after validating the method.
+    ///
+    /// `nexus_registry::verifier_registry::with_default_leader_verifier`
+    pub const WITH_DEFAULT_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("with_default_leader_verifier"),
+    };
+    /// Configure the DAG-wide default tool verifier policy after validating the method.
+    ///
+    /// `nexus_registry::verifier_registry::with_default_tool_verifier`
+    pub const WITH_DEFAULT_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("with_default_tool_verifier"),
+    };
+    /// Configure a vertex leader verifier after validating the method.
+    ///
+    /// `nexus_registry::verifier_registry::with_vertex_leader_verifier`
+    pub const WITH_VERTEX_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("with_vertex_leader_verifier"),
+    };
+    /// Configure a vertex tool verifier after validating the method.
+    ///
+    /// `nexus_registry::verifier_registry::with_vertex_tool_verifier`
+    pub const WITH_VERTEX_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: VERIFIER_REGISTRY_MODULE,
+        name: sui::types::Identifier::from_static("with_vertex_tool_verifier"),
     };
 }
 
