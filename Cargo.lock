@@ -9249,7 +9249,7 @@ dependencies = [
 [[package]]
 name = "sui-move-codegen"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fintegrating-to-sdk#ac7219597272547ce5c25868c75d01e18e8918a5"
+source = "git+https://github.com/Talus-Network/move-binding?tag=v0.1.0#aef3cdd4d275c3c5ee950b79fe2f2563ba294436"
 dependencies = [
  "prettyplease",
  "proc-macro2",

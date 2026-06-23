@@ -289,10 +289,9 @@ workspace = true
 optional = true
 
 # === Move binding ===
-
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/integrating-to-sdk"
+tag = "v0.1.0"
 optional = true
 
 # === Sui deps ===
