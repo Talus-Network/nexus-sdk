@@ -1,7 +1,7 @@
 //! Identifiers for the `nexus_registry` Move package.
 //!
-//! The per-module unit structs (`AgentRegistry`, `NetworkAuth`, `Leader`,
-//! `LeaderCap`, `ToolRegistry`, …) and their `ModuleAndNameIdent` constants are
+//! The per-module unit structs (`AgentRegistry`, `ToolRegistry`, `NetworkAuth`,
+//! `Leader`, `VerifierRegistry`, …) and their `ModuleAndNameIdent` constants are
 //! generated at build time from `generated/ir/registry.json`. This module keeps
 //! the public module identifiers consumed elsewhere and the `TypeTag` helper.
 
@@ -18,6 +18,9 @@ pub const LEADER_CAP_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("leader_cap");
 /// Module identifier for `nexus_registry::leader`.
 pub const LEADER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("leader");
+/// Module identifier for `nexus_registry::verifier_registry`.
+pub const VERIFIER_REGISTRY_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("verifier_registry");
 
 include!(concat!(env!("OUT_DIR"), "/idents_registry.rs"));
 

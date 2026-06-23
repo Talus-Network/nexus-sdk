@@ -16,13 +16,10 @@ pub const STANDARD_PAYMENT_MODULE: sui::types::Identifier =
 pub const INTERFACE_VERSION_MODULE: sui::types::Identifier =
     sui::types::Identifier::from_static("version");
 
-// Generated per-module structs for the `nexus_interface` package (`Agent`,
-// `Authorization`, `Payment`, `Verifier`, `Version`, …). These are the
-// single-source-of-truth identifiers for the interface package; the
-// hand-written `TapStandard` facade below is retained because it is a curated,
-// runtime-resolved view whose groupings deliberately span the interface and
-// registry packages and so do not map onto a single generated struct.
-include!(concat!(env!("OUT_DIR"), "/idents_interface.rs"));
+// The generated per-module identifiers for the `nexus_interface` package live in
+// [`crate::idents::interface`]. `TapStandard` below is a curated, runtime-resolved
+// facade whose constants deliberately span the interface and registry packages
+// and so do not map onto a single generated struct; it is retained by hand.
 
 // == Standard agent interface ==
 
@@ -91,6 +88,10 @@ impl TapStandard {
     pub const NEW_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_AGENT_MODULE,
         name: sui::types::Identifier::from_static("new_agent_execution_config"),
+    };
+    pub const NEW_DEFAULT_AGENT_EXECUTION_CONFIG: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: STANDARD_AGENT_MODULE,
+        name: sui::types::Identifier::from_static("new_default_agent_execution_config"),
     };
     pub const PAYMENT_POLICY_AGENT_FUNDED: ModuleAndNameIdent = ModuleAndNameIdent {
         module: STANDARD_PAYMENT_MODULE,

@@ -56,7 +56,7 @@ pub fn register_off_chain_for_self(
         false,
     ));
 
-    // `nexus_workflow::tool_registry::register_off_chain_tool()`
+    // `nexus_registry::tool_registry::register_off_chain_tool()`
     let result = tx.move_call(
         sui::tx::Function::new(
             objects.registry_pkg_id,
@@ -103,7 +103,7 @@ pub fn register_off_chain_for_self(
     // `single_invocation_cost_mist: u64`
     let single_invocation_cost_mist = tx.pure(&invocation_cost);
 
-    // `nexus_workflow::gas::create_tool_gas`
+    // `nexus_workflow::gas::create_tool_gas_and_share`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
@@ -237,7 +237,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
         false,
     ));
 
-    // `nexus_workflow::tool_registry::register_on_chain_tool*()`
+    // `nexus_registry::tool_registry::register_on_chain_tool*()`
     let register_ident = if workflow_authorization_cap_first {
         registry::ToolRegistry::REGISTER_ON_CHAIN_TOOL_WITH_WORKFLOW_AUTHORIZATION_CAP
     } else {
@@ -403,7 +403,7 @@ pub fn unregister(
     // `nexus::tool_registry::unregister()`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
+            objects.registry_pkg_id,
             registry::ToolRegistry::UNREGISTER.module,
             registry::ToolRegistry::UNREGISTER.name,
         ),
@@ -443,7 +443,7 @@ pub fn claim_collateral_for_self(
     // `nexus::tool_registry::claim_collateral_for_self()`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
+            objects.registry_pkg_id,
             registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module,
             registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.name,
         ),
@@ -486,7 +486,7 @@ pub fn update_tool_timeout(
     // `nexus::tool_registry::update_tool_timeout()`
     Ok(tx.move_call(
         sui::tx::Function::new(
-            objects.workflow_pkg_id,
+            objects.registry_pkg_id,
             registry::ToolRegistry::UPDATE_TOOL_TIMEOUT.module,
             registry::ToolRegistry::UPDATE_TOOL_TIMEOUT.name,
         ),
@@ -649,7 +649,7 @@ mod tests {
             panic!("Expected last command to be a MoveCall to unregister a tool");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(call.module, registry::ToolRegistry::UNREGISTER.module);
         assert_eq!(call.function, registry::ToolRegistry::UNREGISTER.name);
         assert_eq!(call.arguments.len(), 3);
@@ -676,7 +676,7 @@ mod tests {
             panic!("Expected last command to be a MoveCall to claim collateral for a tool");
         };
 
-        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(call.package, objects.registry_pkg_id);
         assert_eq!(
             call.module,
             registry::ToolRegistry::CLAIM_COLLATERAL_FOR_SELF.module

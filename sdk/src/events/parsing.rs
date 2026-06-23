@@ -686,7 +686,7 @@ mod tests {
         let digest = sui::types::Digest::generate(&mut rng);
         let objects = sui_mocks::mock_nexus_objects();
         let event_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.interface_pkg_id,
             sui::types::Identifier::new("dag").unwrap(),
             sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
             vec![],
@@ -945,7 +945,7 @@ mod tests {
         let digest = sui::types::Digest::generate(&mut rng);
         let objects = sui_mocks::mock_nexus_objects();
         let event_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.interface_pkg_id,
             sui::types::Identifier::new("dag").unwrap(),
             sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
             vec![],
@@ -1113,7 +1113,7 @@ mod tests {
             &objects,
             emitter_package,
             objects.workflow_pkg_id,
-            "dag",
+            "execution",
             "AgentSkillExecutionRequestedEvent",
             AgentSkillExecutionRequestedEventBcs {
                 execution_id: sui::types::Address::from_static("0x22"),
@@ -1166,7 +1166,7 @@ mod tests {
             &objects,
             emitter_package,
             objects.workflow_pkg_id,
-            "dag",
+            "execution",
             "AgentVertexAuthorizationRequiredEvent",
             AgentVertexAuthorizationRequiredEvent {
                 dag: sui::types::Address::from_static("0x44"),
@@ -1199,7 +1199,7 @@ mod tests {
                 vec![sui::types::TypeTag::Struct(Box::new(
                     sui::types::StructTag::new(
                         objects.workflow_pkg_id,
-                        sui::types::Identifier::new("dag").unwrap(),
+                        sui::types::Identifier::new("execution").unwrap(),
                         sui::types::Identifier::new("RequestWalkExecutionEvent").unwrap(),
                         vec![],
                     ),
@@ -1267,7 +1267,7 @@ mod tests {
         let event = wrapped_nexus_event(
             &objects,
             sui::types::Address::generate(&mut rng),
-            objects.workflow_pkg_id,
+            objects.interface_pkg_id,
             "dag",
             "DAGCreatedEvent",
             DAGCreatedEvent {
@@ -1324,7 +1324,7 @@ mod tests {
         let digest = sui::types::Digest::generate(&mut rng);
         let objects = sui_mocks::mock_nexus_objects();
         let event_type = sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.interface_pkg_id,
             sui::types::Identifier::new("dag").unwrap(),
             sui::types::Identifier::new("DAGCreatedEvent").unwrap(),
             vec![sui::types::TypeTag::U64],

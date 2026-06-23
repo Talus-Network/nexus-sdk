@@ -259,11 +259,11 @@ pub enum OffChainVerifierProofV1 {
 /// It only carries `_err_eval` failure-evidence classification and is not a
 /// proof carrier.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OffChainToolResultAuxiliaryV1 {
+pub struct OffChainToolResultAuxiliary {
     pub reported_failure_evidence_kind: Option<FailureEvidenceKind>,
 }
 
-impl OffChainToolResultAuxiliaryV1 {
+impl OffChainToolResultAuxiliary {
     pub fn success() -> Self {
         Self {
             reported_failure_evidence_kind: None,
@@ -641,19 +641,19 @@ mod tests {
 
     #[test]
     fn test_off_chain_tool_result_auxiliary_success_bcs_serializes() {
-        let value = OffChainToolResultAuxiliaryV1::success();
+        let value = OffChainToolResultAuxiliary::success();
 
         let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: OffChainToolResultAuxiliaryV1 = bcs::from_bytes(&bytes).unwrap();
+        let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed.reported_failure_evidence_kind, None);
     }
 
     #[test]
     fn test_off_chain_tool_result_auxiliary_err_eval_bcs_serializes() {
-        let value = OffChainToolResultAuxiliaryV1::err_eval(FailureEvidenceKind::ToolEvidence);
+        let value = OffChainToolResultAuxiliary::err_eval(FailureEvidenceKind::ToolEvidence);
 
         let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: OffChainToolResultAuxiliaryV1 = bcs::from_bytes(&bytes).unwrap();
+        let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(
             parsed.reported_failure_evidence_kind,
             Some(FailureEvidenceKind::ToolEvidence)

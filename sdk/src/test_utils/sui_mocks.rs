@@ -912,16 +912,20 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
+                    let (event_pkg_id, event_module) = match event {
+                        NexusEventKind::DAGCreated(_) => (objects.interface_pkg_id, "dag"),
+                        _ => (objects.workflow_pkg_id, "execution"),
+                    };
                     let t = format!(
                         "{}::event::EventWrapper<{}::dag::{}>",
                         objects.primitives_pkg_id,
-                        objects.workflow_pkg_id,
+                        event_pkg_id,
                         event.name()
                     );
 
                     let mut grpc_event = sui::grpc::Event::default();
-                    grpc_event.set_package_id(objects.workflow_pkg_id);
-                    grpc_event.set_module("dag".to_string());
+                    grpc_event.set_package_id(event_pkg_id);
+                    grpc_event.set_module(event_module.to_string());
                     grpc_event.set_sender(sui::types::Address::ZERO);
                     grpc_event.set_event_type(t);
                     grpc_event.set_contents(match event {

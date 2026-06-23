@@ -19,7 +19,7 @@ use {
 
 #[derive(Debug, Deserialize)]
 struct DynamicFieldNameBcs<K> {
-    #[allow(dead_code)]
+    #[allow(unused)]
     id: sui::types::Address,
     name: K,
 }

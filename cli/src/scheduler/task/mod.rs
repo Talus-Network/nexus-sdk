@@ -104,6 +104,12 @@ pub(crate) enum TaskCommand {
             value_name = "KIND"
         )]
         generator: TaskGeneratorArg,
+        /// Amount of SUI, in MIST, to reserve for default-agent scheduled execution payments.
+        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
+        prepay_amount: u64,
+        /// Maximum SUI, in MIST, that each occurrence may spend from the payment reserve.
+        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
+        occurrence_budget: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -168,6 +174,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             schedule_deadline,
             schedule_priority_fee_per_gas_unit,
             generator,
+            prepay_amount,
+            occurrence_budget,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -190,6 +198,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 schedule_deadline_offset_ms,
                 schedule_priority_fee_per_gas_unit,
                 generator.into(),
+                prepay_amount,
+                occurrence_budget,
                 gas,
             )
             .await

@@ -1155,7 +1155,7 @@ impl SignedHttpResponderV1 {
         &self,
         decoded: DecodedSignatureV1,
         http: HttpRequestMeta<'_>,
-        _body: &[u8],
+        body: &[u8],
     ) -> Result<VerifiedInboundRequestV1, SignedHttpError> {
         let claims: InvokeRequestClaimsV1 = serde_json::from_slice(&decoded.sig_input)
             .map_err(SignedHttpError::InvalidSignedInputJson)?;
@@ -1190,6 +1190,9 @@ impl SignedHttpResponderV1 {
 
         let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
             .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
+        if claimed_body_sha256 != sha256(body) {
+            return Err(SignedHttpError::BodyHashMismatch);
+        }
 
         validate_time_window(claims.iat_ms, claims.exp_ms, &self.engine.verify_options())?;
 

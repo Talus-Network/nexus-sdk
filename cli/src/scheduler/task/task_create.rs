@@ -11,7 +11,12 @@ use {
     },
     nexus_sdk::{
         events::NexusEventKind,
-        nexus::scheduler::{CreateTaskParams, GeneratorKind, OccurrenceRequest},
+        nexus::scheduler::{
+            CreateTaskParams,
+            CreateTaskTapPayment,
+            GeneratorKind,
+            OccurrenceRequest,
+        },
         types::{PolicySymbol, StorageConf},
     },
     std::collections::HashMap,
@@ -31,6 +36,8 @@ pub(crate) async fn create_task(
     schedule_deadline_offset_ms: Option<u64>,
     schedule_priority_fee_per_gas_unit: u64,
     generator: GeneratorKind,
+    prepay_amount: u64,
+    occurrence_budget: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
@@ -110,7 +117,13 @@ pub(crate) async fn create_task(
             generator,
             agent_id: None,
             skill_id: None,
-            tap_payment: None,
+            tap_payment: Some(CreateTaskTapPayment::UserFunded {
+                prepay_amount,
+                refund_recipient: None,
+                occurrence_budget,
+                selected_dag: None,
+                authorization_templates: Vec::new(),
+            }),
         })
         .await
         .map_err(NexusCliError::Nexus)?;

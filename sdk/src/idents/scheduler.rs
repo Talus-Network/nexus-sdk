@@ -2,9 +2,13 @@
 //!
 //! The `Scheduler` unit struct and its `ModuleAndNameIdent` constants are
 //! generated at build time from `generated/ir/scheduler.json`; this module adds
-//! the hand-written `TypeTag` helper on top.
+//! the public module identifier and the hand-written `TypeTag` helper on top.
 
 use crate::{idents::ModuleAndNameIdent, sui};
+
+/// Module identifier for `nexus_scheduler::scheduler`.
+pub const SCHEDULER_MODULE: sui::types::Identifier =
+    sui::types::Identifier::from_static("scheduler");
 
 include!(concat!(env!("OUT_DIR"), "/idents_scheduler.rs"));
 

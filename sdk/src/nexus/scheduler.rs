@@ -3,7 +3,7 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::{scheduler, sui_framework, tap, workflow},
+        idents::{scheduler, sui_framework, tap, workflow, ModuleAndNameIdent},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, DynamicMap, Response},
@@ -14,10 +14,11 @@ use {
         transactions::scheduler as scheduler_tx,
         types::{
             deserialize_sui_u64,
+            AgentExecutionConfig,
             AgentId,
             AgentVertexAuthorizationTemplate,
-            DagExecutionConfig,
             DataStorage,
+            ExecutionSelection,
             MoveFields,
             MoveOption,
             NexusObjects,
@@ -25,6 +26,7 @@ use {
             SkillId,
             Task,
             TransitionConfigKey,
+            TypeName,
         },
     },
     anyhow::{anyhow, bail},
@@ -33,15 +35,14 @@ use {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ScheduledAgentExecutionConfig {
-    Default(DagExecutionConfig),
-    Registered(DagExecutionConfig),
+    Default(AgentExecutionConfig),
+    Registered(AgentExecutionConfig),
 }
 
 impl ScheduledAgentExecutionConfig {
-    pub fn dag(&self) -> sui::types::Address {
+    pub fn dag(&self) -> Option<sui::types::Address> {
         match self {
-            Self::Default(config) => config.dag,
-            Self::Registered(config) => config.dag,
+            Self::Default(config) | Self::Registered(config) => config.selection.dag_id(),
         }
     }
 }
@@ -78,7 +79,7 @@ pub struct CreateTaskParams {
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
     /// When both `agent_id` and `skill_id` are supplied, the task is built
-    /// with the agent-bound execution policy (`BeginAgentExecutionWitness`)
+    /// with the agent-bound execution policy (`AdvanceForAgentExecution`)
     /// so the workflow dispatches walks against `(agent, skill)` rather
     /// than the default DAG-execution policy. Either both must be set or
     /// neither; supplying just one is rejected with `NexusError::Configuration`.
@@ -89,23 +90,20 @@ pub struct CreateTaskParams {
 
 #[derive(Clone, Debug)]
 pub enum CreateTaskTapPayment {
-    AddressFunded {
+    /// Reserve funded from the transaction sender's SUI balance.
+    UserFunded {
         prepay_amount: u64,
         refund_recipient: Option<sui::types::Address>,
         occurrence_budget: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
-    AgentVault {
+    /// Reserve funded from the selected agent's vault.
+    AgentFunded {
         prepay_amount: u64,
         occurrence_budget: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-    DefaultAddressFunded {
-        prepay_amount: u64,
-        refund_recipient: Option<sui::types::Address>,
-        occurrence_budget: u64,
     },
 }
 
@@ -214,22 +212,15 @@ fn create_task_payment_result(
     };
 
     match tap_payment {
-        CreateTaskTapPayment::AddressFunded {
-            prepay_amount,
-            occurrence_budget,
-            ..
-        }
-        | CreateTaskTapPayment::AgentVault {
+        CreateTaskTapPayment::UserFunded {
             prepay_amount,
             occurrence_budget,
             ..
         } => {
-            let Some((agent_id, skill_id)) = agent_binding else {
-                return Err(NexusError::Configuration(
-                    "agent scheduled payment requires both scheduled task agent_id and skill_id"
-                        .into(),
-                ));
-            };
+            let (agent_id, skill_id) = agent_binding.unwrap_or((
+                objects.default_dag_executor.agent_id,
+                objects.default_dag_executor.skill_id,
+            ));
 
             Ok(Some(CreateTaskTapPaymentResult {
                 agent_id,
@@ -238,21 +229,21 @@ fn create_task_payment_result(
                 occurrence_budget: *occurrence_budget,
             }))
         }
-        CreateTaskTapPayment::DefaultAddressFunded {
+        CreateTaskTapPayment::AgentFunded {
             prepay_amount,
             occurrence_budget,
             ..
         } => {
-            if agent_binding.is_some() {
+            let Some((agent_id, skill_id)) = agent_binding else {
                 return Err(NexusError::Configuration(
-                    "default scheduled payment cannot be used with scheduled task agent_id or skill_id"
+                    "agent-funded scheduled payment requires both scheduled task agent_id and skill_id"
                         .into(),
                 ));
-            }
+            };
 
             Ok(Some(CreateTaskTapPaymentResult {
-                agent_id: objects.default_dag_executor.agent_id,
-                skill_id: objects.default_dag_executor.skill_id,
+                agent_id,
+                skill_id,
                 prepay_amount: *prepay_amount,
                 occurrence_budget: *occurrence_budget,
             }))
@@ -289,7 +280,7 @@ impl SchedulerActions {
         };
         if let Some((agent_id, skill_id)) = agent_binding {
             let payment = match tap_payment {
-                Some(CreateTaskTapPayment::AddressFunded {
+                Some(CreateTaskTapPayment::UserFunded {
                     prepay_amount,
                     refund_recipient,
                     occurrence_budget,
@@ -302,7 +293,7 @@ impl SchedulerActions {
                     selected_dag,
                     authorization_templates,
                 },
-                Some(CreateTaskTapPayment::AgentVault {
+                Some(CreateTaskTapPayment::AgentFunded {
                     prepay_amount,
                     occurrence_budget,
                     selected_dag,
@@ -313,12 +304,6 @@ impl SchedulerActions {
                     selected_dag,
                     authorization_templates,
                 },
-                Some(CreateTaskTapPayment::DefaultAddressFunded { .. }) => {
-                    return Err(NexusError::Configuration(
-                        "default scheduled payment cannot be used with scheduled task agent_id or skill_id"
-                            .into(),
-                    ));
-                }
                 None => {
                     return Err(NexusError::Configuration(
                         "agent-bound scheduled tasks require an invoker-funded or agent-funded scheduled payment"
@@ -388,11 +373,22 @@ impl SchedulerActions {
             true,
         ));
         let task = match &tap_payment {
-            Some(CreateTaskTapPayment::DefaultAddressFunded {
+            Some(CreateTaskTapPayment::UserFunded {
                 prepay_amount,
                 occurrence_budget,
-                ..
+                refund_recipient,
+                selected_dag,
+                authorization_templates,
             }) => {
+                if refund_recipient.is_some()
+                    || selected_dag.is_some()
+                    || !authorization_templates.is_empty()
+                {
+                    return Err(NexusError::Configuration(
+                        "default-agent scheduled task user funding does not accept refund_recipient, selected_dag, or authorization_templates"
+                            .into(),
+                    ));
+                }
                 let prepay_amount = tx.pure(prepay_amount);
                 let gas = tx.gas();
                 let prepayment_coin = tx
@@ -404,7 +400,7 @@ impl SchedulerActions {
                             "failed to split default scheduled prepayment coin"
                         ))
                     })?;
-                scheduler_tx::new_invoker_funded_default_agent_task(
+                scheduler_tx::new_default_agent_task(
                     &mut tx,
                     objects,
                     metadata_arg,
@@ -415,26 +411,17 @@ impl SchedulerActions {
                     *occurrence_budget,
                 )
             }
-            Some(CreateTaskTapPayment::AddressFunded { .. }) => {
+            Some(CreateTaskTapPayment::AgentFunded { .. }) => {
                 return Err(NexusError::Configuration(
-                    "address-funded scheduled payment requires both scheduled task agent_id and skill_id"
+                    "agent-funded scheduled payment requires both scheduled task agent_id and skill_id"
                         .into(),
                 ));
             }
-            Some(CreateTaskTapPayment::AgentVault { .. }) => {
+            None => {
                 return Err(NexusError::Configuration(
-                    "agent-vault scheduled payment requires both scheduled task agent_id and skill_id"
-                        .into(),
+                    "default-agent scheduled task creation requires user-funded tap_payment".into(),
                 ));
             }
-            None => scheduler_tx::new_default_agent_task(
-                &mut tx,
-                objects,
-                metadata_arg,
-                constraints_arg,
-                execution_arg,
-                registry,
-            ),
         }
         .map_err(NexusError::TransactionBuilding)?;
 
@@ -865,7 +852,7 @@ pub async fn fetch_begin_default_agent_execution_config(
     crawler: &Crawler,
     objects: &NexusObjects,
     configured_automaton_id: &sui::types::Address,
-) -> anyhow::Result<DagExecutionConfig> {
+) -> anyhow::Result<AgentExecutionConfig> {
     let parent: DynamicMap<TransitionConfigKey<u64, PolicySymbol>, serde_json::Value> =
         DynamicMap::new(*configured_automaton_id, 0);
 
@@ -890,26 +877,21 @@ pub async fn fetch_scheduled_agent_execution_config(
 fn extract_begin_default_agent_execution_config(
     configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
     objects: &NexusObjects,
-) -> anyhow::Result<DagExecutionConfig> {
-    let expected_config =
-        workflow::Dag::DAG_EXECUTION_CONFIG.qualified_name(objects.workflow_type_origin_pkg_id());
-    let expected_symbol = workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS_TYPE
-        .qualified_name(objects.workflow_type_origin_pkg_id());
+) -> anyhow::Result<AgentExecutionConfig> {
+    let configs = configs.into_iter().collect::<Vec<_>>();
+    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
 
-    let mut candidates = configs.into_iter().filter(|(key, _)| {
-        key.config.matches_qualified_name(&expected_config)
-            && key.transition.state.is_none()
-            && key
-                .transition
-                .symbol
-                .matches_qualified_name(&expected_symbol)
-    });
-
-    let Some((_key, value)) = candidates.next() else {
-        bail!("Missing execution policy config for BeginDefaultAgentExecutionWitness");
+    let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
+        bail!(
+            "Missing execution policy config for AdvanceForDefaultAgentExecution; {}",
+            describe_transition_config_keys(&configs)
+        );
     };
 
-    let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
+    let config = decode_agent_execution_config(value, "AdvanceForDefaultAgentExecution config")?;
+    if !matches!(config.selection, ExecutionSelection::DefaultAgent { .. }) {
+        bail!("AdvanceForDefaultAgentExecution config is not a default-agent selection");
+    }
     Ok(config)
 }
 
@@ -918,33 +900,118 @@ fn extract_scheduled_agent_execution_config(
     objects: &NexusObjects,
 ) -> anyhow::Result<ScheduledAgentExecutionConfig> {
     let configs = configs.into_iter().collect::<Vec<_>>();
-    let default = extract_begin_default_agent_execution_config(configs.iter().cloned(), objects);
-    if let Ok(config) = default {
+    let default_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
+    if let Some(value) = find_execution_config_value(&configs, default_symbol, objects) {
+        let config =
+            decode_agent_execution_config(value, "AdvanceForDefaultAgentExecution config")?;
+        if !matches!(config.selection, ExecutionSelection::DefaultAgent { .. }) {
+            bail!("AdvanceForDefaultAgentExecution config is not a default-agent selection");
+        }
         return Ok(ScheduledAgentExecutionConfig::Default(config));
     }
 
-    let expected_config =
-        tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(objects.interface_pkg_id);
-    let expected_symbol = workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS_TYPE
-        .qualified_name(objects.workflow_type_origin_pkg_id());
+    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION_TYPE;
 
-    let mut candidates = configs.into_iter().filter(|(key, _)| {
-        key.config.matches_qualified_name(&expected_config)
-            && key.transition.state.is_none()
-            && key
-                .transition
-                .symbol
-                .matches_qualified_name(&expected_symbol)
-    });
-
-    let Some((_key, value)) = candidates.next() else {
+    let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
         bail!(
-            "Missing execution policy config for BeginDefaultAgentExecutionWitness or BeginAgentExecutionWitness"
+            "Missing execution policy config for AdvanceForDefaultAgentExecution or AdvanceForAgentExecution; {}",
+            describe_transition_config_keys(&configs)
         );
     };
 
-    let MoveFields(config): MoveFields<DagExecutionConfig> = serde_json::from_value(value)?;
+    let config = decode_agent_execution_config(value, "AdvanceForAgentExecution config")?;
+    if !matches!(config.selection, ExecutionSelection::AgentSkill { .. }) {
+        bail!("AdvanceForAgentExecution config is not an agent-skill selection");
+    }
     Ok(ScheduledAgentExecutionConfig::Registered(config))
+}
+
+fn find_execution_config_value<'a>(
+    configs: &'a [(TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)],
+    expected_symbol: &ModuleAndNameIdent,
+    objects: &NexusObjects,
+) -> Option<&'a serde_json::Value> {
+    let expected_config = &tap::TapStandard::AGENT_EXECUTION_CONFIG;
+
+    configs.iter().find_map(|(key, value)| {
+        let matches_config =
+            type_name_matches_ident(&key.config, expected_config, &[objects.interface_pkg_id]);
+        let matches_symbol = policy_symbol_matches_ident(
+            &key.transition.symbol,
+            expected_symbol,
+            &[
+                objects.workflow_type_origin_pkg_id(),
+                objects.workflow_pkg_id,
+            ],
+        );
+
+        (matches_config && key.transition.state.is_none() && matches_symbol).then_some(value)
+    })
+}
+
+fn decode_agent_execution_config(
+    value: &serde_json::Value,
+    label: &str,
+) -> anyhow::Result<AgentExecutionConfig> {
+    let MoveFields(config): MoveFields<AgentExecutionConfig> =
+        serde_json::from_value(value.clone()).map_err(|err| anyhow!("decode {label}: {err}"))?;
+    Ok(config)
+}
+
+fn describe_transition_config_keys(
+    configs: &[(TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)],
+) -> String {
+    let keys = configs
+        .iter()
+        .take(5)
+        .map(|(key, _)| {
+            format!(
+                "state={:?}, config={}, symbol={}",
+                key.transition.state,
+                key.config.name,
+                policy_symbol_display(&key.transition.symbol)
+            )
+        })
+        .collect::<Vec<_>>();
+    format!("fetched {} config(s): [{}]", configs.len(), keys.join(", "))
+}
+
+fn policy_symbol_display(symbol: &PolicySymbol) -> String {
+    match symbol {
+        PolicySymbol::Witness(name) => format!("witness({})", name.name),
+        PolicySymbol::Uid(uid) => format!("uid({uid})"),
+    }
+}
+
+fn policy_symbol_matches_ident(
+    symbol: &PolicySymbol,
+    ident: &ModuleAndNameIdent,
+    package_ids: &[sui::types::Address],
+) -> bool {
+    let PolicySymbol::Witness(name) = symbol else {
+        return false;
+    };
+
+    type_name_matches_ident(name, ident, package_ids)
+}
+
+fn type_name_matches_ident(
+    name: &TypeName,
+    ident: &ModuleAndNameIdent,
+    package_ids: &[sui::types::Address],
+) -> bool {
+    if package_ids
+        .iter()
+        .any(|package_id| name.matches_qualified_name(&ident.qualified_name(*package_id)))
+    {
+        return true;
+    }
+
+    let expected_suffix = format!("::{}::{}", ident.module, ident.name);
+    let actual = name.name.trim_start_matches("0x");
+    actual
+        .get(actual.len().saturating_sub(expected_suffix.len())..)
+        .is_some_and(|suffix| suffix.eq_ignore_ascii_case(&expected_suffix))
 }
 
 pub(crate) fn extract_task_id(
@@ -1223,6 +1290,40 @@ mod tests {
         )
     }
 
+    fn execution_config(
+        config_name: &str,
+        symbol: PolicySymbol,
+        config: AgentExecutionConfig,
+    ) -> (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value) {
+        (
+            TransitionConfigKey {
+                transition: TransitionKey {
+                    state: None,
+                    symbol,
+                },
+                config: TypeName::from(config_name.to_string()),
+            },
+            json!({ "fields": serde_json::to_value(config).expect("serialize config") }),
+        )
+    }
+
+    fn default_agent_execution_config(
+        objects: &NexusObjects,
+        dag_id: sui::types::Address,
+    ) -> AgentExecutionConfig {
+        AgentExecutionConfig {
+            selection: ExecutionSelection::DefaultAgent { dag_id },
+            network: objects.network_id,
+            entry_group: crate::types::SchedulerEntryGroup {
+                name: "entry".into(),
+            },
+            inputs: crate::nexus::crawler::Map::new(),
+            invoker: sui::types::Address::ZERO,
+            priority_fee_per_gas_unit: 0,
+            authorization_templates: vec![],
+        }
+    }
+
     fn event_bcs(
         primitives_pkg: sui::types::Address,
         event_pkg: sui::types::Address,
@@ -1355,6 +1456,93 @@ mod tests {
             .contains("Missing scheduler generator state config"));
     }
 
+    #[test]
+    fn scheduled_execution_config_matches_execution_entries_symbol_by_module_name() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let defining_pkg_not_in_objects = sui::types::Address::from_static("0x999");
+        let config_name =
+            tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(defining_pkg_not_in_objects);
+        let symbol = PolicySymbol::Witness(TypeName::new(
+            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
+                .qualified_name(defining_pkg_not_in_objects),
+        ));
+
+        let config = extract_scheduled_agent_execution_config(
+            vec![execution_config(
+                &config_name,
+                symbol,
+                default_agent_execution_config(&objects, dag_id),
+            )],
+            &objects,
+        )
+        .expect("config should match by execution_entries module/name");
+
+        assert_eq!(config.dag(), Some(dag_id));
+        assert!(matches!(config, ScheduledAgentExecutionConfig::Default(_)));
+    }
+
+    #[test]
+    fn scheduled_execution_config_matches_raw_move_type_names_without_0x_prefix() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let interface_pkg = "82da904e4d6040729d0b16ee49aae067bed36aec31e167b24e1e072221c1eb16";
+        let workflow_pkg = "deafc2c9ef3914a7d4945572d07fd961fef7ff1f3e1d329f4057c28538598776";
+        let config_name = format!("{interface_pkg}::agent::AgentExecutionConfig");
+        let symbol = PolicySymbol::Witness(TypeName::new(&format!(
+            "{workflow_pkg}::execution_entries::AdvanceForDefaultAgentExecution"
+        )));
+
+        let config = extract_scheduled_agent_execution_config(
+            vec![execution_config(
+                &config_name,
+                symbol,
+                default_agent_execution_config(&objects, dag_id),
+            )],
+            &objects,
+        )
+        .expect("config should match raw dynamic field type names by module/name");
+
+        assert_eq!(config.dag(), Some(dag_id));
+        assert!(matches!(config, ScheduledAgentExecutionConfig::Default(_)));
+    }
+
+    #[test]
+    fn scheduled_execution_config_does_not_swallow_default_selection_mismatch() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let config_name =
+            tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(objects.interface_pkg_id);
+        let symbol = PolicySymbol::Witness(TypeName::new(
+            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
+                .qualified_name(objects.workflow_pkg_id),
+        ));
+        let config = AgentExecutionConfig {
+            selection: ExecutionSelection::AgentSkill {
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 1,
+                selected_dag: MoveOption(Some(sui::types::Address::from_static("0xd"))),
+            },
+            network: objects.network_id,
+            entry_group: crate::types::SchedulerEntryGroup {
+                name: "entry".into(),
+            },
+            inputs: crate::nexus::crawler::Map::new(),
+            invoker: sui::types::Address::ZERO,
+            priority_fee_per_gas_unit: 0,
+            authorization_templates: vec![],
+        };
+
+        let err = extract_scheduled_agent_execution_config(
+            vec![execution_config(&config_name, symbol, config)],
+            &objects,
+        )
+        .expect_err("default witness with agent selection should not fall through");
+
+        assert!(err
+            .to_string()
+            .contains("AdvanceForDefaultAgentExecution config is not a default-agent selection"));
+    }
+
     #[tokio::test]
     async fn test_scheduler_create_task_without_initial_schedule() {
         let mut rng = rand::thread_rng();
@@ -1410,7 +1598,13 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
-            tap_payment: None,
+            tap_payment: Some(CreateTaskTapPayment::UserFunded {
+                prepay_amount: 1_000,
+                refund_recipient: None,
+                occurrence_budget: 100,
+                selected_dag: None,
+                authorization_templates: vec![],
+            }),
         };
 
         let result = nexus_client
@@ -1422,6 +1616,15 @@ mod tests {
         assert_eq!(result.task_id, task_id);
         assert_eq!(result.tx_digest, digest);
         assert!(result.initial_schedule.is_none());
+        assert_eq!(
+            result.tap_payment,
+            Some(CreateTaskTapPaymentResult {
+                agent_id: nexus_objects.default_dag_executor.agent_id,
+                skill_id: nexus_objects.default_dag_executor.skill_id,
+                prepay_amount: 1_000,
+                occurrence_budget: 100,
+            })
+        );
     }
 
     #[tokio::test]
@@ -1525,7 +1728,13 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
-            tap_payment: None,
+            tap_payment: Some(CreateTaskTapPayment::UserFunded {
+                prepay_amount: 2_000,
+                refund_recipient: None,
+                occurrence_budget: 200,
+                selected_dag: None,
+                authorization_templates: vec![],
+            }),
         };
 
         let result = nexus_client
@@ -1542,6 +1751,52 @@ mod tests {
             Some(NexusEventKind::RequestScheduledOccurrence(env))
                 if env.request.task == task_id && env.priority == 10 && env.start_ms == 200
         ));
+        assert_eq!(
+            result.tap_payment,
+            Some(CreateTaskTapPaymentResult {
+                agent_id: nexus_objects.default_dag_executor.agent_id,
+                skill_id: nexus_objects.default_dag_executor.skill_id,
+                prepay_amount: 2_000,
+                occurrence_budget: 200,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn create_task_rejects_default_without_tap_payment_before_rpc() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1_000);
+        let execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let subscription_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+        let (_url, nexus_client) = mock_nexus_client_with_server(
+            ledger_service_mock,
+            execution_service_mock,
+            subscription_service_mock,
+            nexus_objects,
+        )
+        .await;
+
+        let mut rng = rand::thread_rng();
+        let params = CreateTaskParams {
+            dag_id: sui::types::Address::generate(&mut rng),
+            entry_group: "entry".into(),
+            input_data: HashMap::new(),
+            metadata: vec![],
+            execution_priority_fee_per_gas_unit: 0,
+            initial_schedule: None,
+            generator: GeneratorKind::Queue,
+            agent_id: None,
+            skill_id: None,
+            tap_payment: None,
+        };
+
+        let result = nexus_client.scheduler().create_task(params).await;
+        let Err(err) = result else {
+            panic!("default scheduled task without payment must error");
+        };
+        assert!(matches!(err, NexusError::Configuration(_)));
+        assert!(err.to_string().contains("requires user-funded tap_payment"));
     }
 
     #[tokio::test]
@@ -1611,7 +1866,7 @@ mod tests {
             generator: GeneratorKind::Queue,
             agent_id: Some(agent_id),
             skill_id: Some(3),
-            tap_payment: Some(CreateTaskTapPayment::AddressFunded {
+            tap_payment: Some(CreateTaskTapPayment::UserFunded {
                 prepay_amount: 100,
                 refund_recipient: None,
                 occurrence_budget: 25,
