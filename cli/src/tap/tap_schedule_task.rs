@@ -51,8 +51,11 @@ pub(crate) async fn schedule_tap_task(
     let conf = CliConf::load().await.unwrap_or_default();
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
-    let is_default_dag_executor =
-        agent_id == nexus_client.get_nexus_objects().default_dag_executor.agent_id;
+    let is_default_dag_executor = agent_id
+        == nexus_client
+            .get_nexus_objects()
+            .default_dag_executor
+            .agent_id;
 
     if is_default_dag_executor {
         if matches!(payment_source, TapTaskPaymentSourceArg::AgentFunded) {

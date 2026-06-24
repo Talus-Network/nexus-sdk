@@ -104,10 +104,8 @@ pub(crate) async fn ensure_cli_agent_access(
 ) -> AnyResult<(), NexusCliError> {
     let signer = nexus_client.signer().get_active_address();
 
-    if let Some(owner) = wrapped_default_executor_owner(
-        &nexus_client.get_nexus_objects(),
-        agent_id,
-    ) {
+    if let Some(owner) = wrapped_default_executor_owner(&nexus_client.get_nexus_objects(), agent_id)
+    {
         return ensure_agent_owner_allowed(agent_id, &owner, signer, access);
     }
 
