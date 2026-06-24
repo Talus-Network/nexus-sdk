@@ -69,6 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled task settlement builders now keep automatic occurrence settlement task+execution-only and expose whole-reserve idle agent-funded scheduled reserve collection as a task+agent operation.
 - Scheduler task-state builders and `SchedulerActions::set_task_state` now pass the agent registry so default-agent task-state calls can validate against the registry-owned default agent and guarded scheduled-count cleanup path.
 - `TapActions::set_agent_task_state` and explicit-agent scheduler task-state PTB builders now operate TAP scheduled tasks with a required agent id.
+- Bump Sui SDK and images to `mainnet-v1.73.2`
 
 #### Removed
 
