@@ -132,7 +132,6 @@ pub struct GetSkillRequirementsResult {
 
 /// Parameters required to create an explicit-agent scheduled task.
 pub struct CreateAgentTaskParams {
-    pub dag_id: sui::types::Address,
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, DataStorage>>,
     pub metadata: Vec<(String, String)>,
@@ -175,6 +174,19 @@ pub enum AgentTaskPayment {
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
+}
+
+impl AgentTaskPayment {
+    /// Caller-supplied `selected_dag` for the policy's stored
+    /// `AgentExecutionConfig`. See [`CreateTaskTapPayment::selected_dag`] for
+    /// the pinned-vs-runtime contract.
+    pub fn selected_dag(&self) -> Option<sui::types::Address> {
+        match self {
+            Self::AddressFunded { selected_dag, .. } | Self::AgentVault { selected_dag, .. } => {
+                *selected_dag
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -677,7 +689,6 @@ impl TapActions {
         params: CreateAgentTaskParams,
     ) -> Result<crate::nexus::scheduler::CreateTaskResult, NexusError> {
         let CreateAgentTaskParams {
-            dag_id,
             entry_group,
             input_data,
             metadata,
@@ -700,10 +711,7 @@ impl TapActions {
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
-        let policy_selected_dag = match &payment {
-            AgentTaskPayment::AddressFunded { selected_dag, .. } => *selected_dag,
-            AgentTaskPayment::AgentVault { selected_dag, .. } => *selected_dag,
-        };
+        let policy_selected_dag = payment.selected_dag();
 
         let mut tx = sui::tx::TransactionBuilder::new();
         let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
@@ -764,7 +772,6 @@ impl TapActions {
                     registry,
                     agent,
                     agent_id,
-                    dag_id,
                     execution_priority_fee_per_gas_unit,
                     entry_group.as_str(),
                     &input_data,
@@ -795,7 +802,6 @@ impl TapActions {
                     registry,
                     agent,
                     agent_id,
-                    dag_id,
                     execution_priority_fee_per_gas_unit,
                     entry_group.as_str(),
                     &input_data,

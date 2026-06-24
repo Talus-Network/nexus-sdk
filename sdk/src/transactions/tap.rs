@@ -420,7 +420,6 @@ pub fn new_invoker_funded_agent_task(
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -438,7 +437,6 @@ pub fn new_invoker_funded_agent_task(
         tx,
         objects,
         agent_id,
-        dag_id,
         priority_fee_per_gas_unit,
         entry_group,
         input_data,
@@ -477,7 +475,6 @@ pub fn new_agent_funded_task(
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -494,7 +491,6 @@ pub fn new_agent_funded_task(
         tx,
         objects,
         agent_id,
-        dag_id,
         priority_fee_per_gas_unit,
         entry_group,
         input_data,
@@ -669,7 +665,6 @@ fn scheduled_agent_execution_config_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     agent_id: AgentId,
-    _dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -686,10 +681,9 @@ fn scheduled_agent_execution_config_arg(
         interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
     let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, objects, input_data)?;
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
-    // Don't override the caller — `agent_registry::resolve_agent_execution_config_dag`
-    // requires `selected_dag` to be `None` for pinned skills (`EDagSelectionRedundant`)
-    // and `Some` only for runtime-selected ones (`EDagSelectionRequired`). The caller
-    // resolves which based on the skill's on-chain `dag_binding`.
+    // `selected_dag` flows from the caller untouched: `agent_registry::resolve_agent_execution_config_dag`
+    // wants `None` for pinned skills (`EDagSelectionRedundant`) and `Some` for runtime-selected
+    // ones (`EDagSelectionRequired`); the caller picks based on the skill's on-chain `dag_binding`.
     agent_execution_config_arg(
         tx,
         objects,
@@ -912,6 +906,14 @@ mod tests {
                 None => panic!("missing command at index {index}"),
             }
         }
+
+        /// Walk an `Argument::Result(i)` back to the producing `MoveCall`.
+        fn produced_by(&self, argument: &sui::types::Argument) -> &sui::types::MoveCall {
+            let sui::types::Argument::Result(index) = argument else {
+                panic!("expected result argument, got {argument:?}");
+            };
+            self.move_call(*index as usize)
+        }
     }
 
     #[test]
@@ -1003,7 +1005,6 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xa"),
-            sui::types::Address::from_static("0xd"),
             11,
             "default",
             &std::collections::HashMap::new(),
@@ -1037,6 +1038,21 @@ mod tests {
             scheduler::Scheduler::NEW_AGENT_FUNDED_TASK.module
         );
         assert_eq!(call.arguments.len(), 8);
+
+        // Walk into the NEW_AGENT_EXECUTION_CONFIG call (argument index 5 of the
+        // constructor: `agent_config`) and verify selected_dag (its argument index 6)
+        // resolves to `Option::SOME` since the caller passed `Some(_)`.
+        let exec_config = inspector.produced_by(&call.arguments[5]);
+        assert_eq!(
+            exec_config.function,
+            crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
+        );
+        let selected_dag_builder = inspector.produced_by(&exec_config.arguments[6]);
+        assert_eq!(
+            selected_dag_builder.function,
+            move_std::Option::SOME.name,
+            "pinned-vs-runtime: caller passed Some, expected std::option::some builder"
+        );
     }
 
     #[test]
@@ -1059,7 +1075,6 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xa"),
-            sui::types::Address::from_static("0xd"),
             11,
             "default",
             &std::collections::HashMap::new(),
@@ -1090,6 +1105,21 @@ mod tests {
             scheduler::Scheduler::NEW_INVOKER_FUNDED_AGENT_TASK.module
         );
         assert_eq!(call.arguments.len(), 9);
+
+        // Verify selected_dag = None (passed by the caller) reaches
+        // NEW_AGENT_EXECUTION_CONFIG as `Option::NONE`. The constructor's
+        // `agent_config` arg sits at index 5; the config's `selected_dag` at index 6.
+        let exec_config = inspector.produced_by(&call.arguments[5]);
+        assert_eq!(
+            exec_config.function,
+            crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
+        );
+        let selected_dag_builder = inspector.produced_by(&exec_config.arguments[6]);
+        assert_eq!(
+            selected_dag_builder.function,
+            move_std::Option::NONE.name,
+            "pinned-vs-runtime: caller passed None, expected std::option::none builder"
+        );
     }
 
     #[test]
