@@ -723,17 +723,59 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
         let task_ref = task.object_ref();
 
-        if let Some(start_ms) = request.start_ms {
+        // Agent-funded tasks (created via `new_agent_funded_task`) are owned
+        // by the agent's id rather than the sender. The Move scheduler enforces
+        // `for_task` against `task.owner`, so the regular sender-keyed helpers
+        // fail; route through the `*_for_agent_funded_task` variants and pass
+        // the agent as an input.
+        let agent_arg = if task.data.owner == task.data.agent_id {
+            let agent_ref = self
+                .client
+                .crawler()
+                .get_object_metadata(task.data.agent_id)
+                .await
+                .map_err(NexusError::Rpc)?;
+            Some(
+                crate::nexus::tap::agent_argument_from_metadata(&mut tx, &agent_ref, false)
+                    .map_err(NexusError::TransactionBuilding)?,
+            )
+        } else {
+            None
+        };
+
+        let build_result = if let Some(start_ms) = request.start_ms {
             let deadline_offset = request
                 .deadline_offset_ms
                 .or_else(|| request.deadline_ms.map(|deadline| deadline - start_ms));
 
-            scheduler_tx::add_occurrence_absolute_for_task(
+            if let Some(agent) = agent_arg {
+                scheduler_tx::add_occurrence_absolute_for_agent_funded_task(
+                    &mut tx,
+                    objects,
+                    &task_ref,
+                    agent,
+                    start_ms,
+                    deadline_offset,
+                    request.priority_fee_per_gas_unit,
+                )
+            } else {
+                scheduler_tx::add_occurrence_absolute_for_task(
+                    &mut tx,
+                    objects,
+                    &task_ref,
+                    start_ms,
+                    deadline_offset,
+                    request.priority_fee_per_gas_unit,
+                )
+            }
+        } else if let Some(agent) = agent_arg {
+            scheduler_tx::add_occurrence_relative_for_agent_funded_task(
                 &mut tx,
                 objects,
                 &task_ref,
-                start_ms,
-                deadline_offset,
+                agent,
+                request.start_offset_ms.expect("validated start offset"),
+                request.deadline_offset_ms,
                 request.priority_fee_per_gas_unit,
             )
         } else {
@@ -745,8 +787,8 @@ impl SchedulerActions {
                 request.deadline_offset_ms,
                 request.priority_fee_per_gas_unit,
             )
-        }
-        .map_err(NexusError::TransactionBuilding)?;
+        };
+        build_result.map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 

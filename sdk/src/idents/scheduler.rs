@@ -12,6 +12,28 @@ pub const SCHEDULER_MODULE: sui::types::Identifier =
 
 include!(concat!(env!("OUT_DIR"), "/idents_scheduler.rs"));
 
+/// Hand-written identifiers for scheduler entry points that aren't yet in the
+/// committed IR. Regenerate `generated/ir/scheduler.json` after the matching
+/// Move package update lands and drop this block.
+impl Scheduler {
+    /// `nexus_scheduler::scheduler::add_occurrence_absolute_for_agent_funded_task`
+    pub const ADD_OCCURRENCE_ABSOLUTE_FOR_AGENT_FUNDED_TASK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: SCHEDULER_MODULE,
+            name: sui::types::Identifier::from_static(
+                "add_occurrence_absolute_for_agent_funded_task",
+            ),
+        };
+    /// `nexus_scheduler::scheduler::add_occurrence_relative_for_agent_funded_task`
+    pub const ADD_OCCURRENCE_RELATIVE_FOR_AGENT_FUNDED_TASK: ModuleAndNameIdent =
+        ModuleAndNameIdent {
+            module: SCHEDULER_MODULE,
+            name: sui::types::Identifier::from_static(
+                "add_occurrence_relative_for_agent_funded_task",
+            ),
+        };
+}
+
 /// Helper to turn a scheduler `ModuleAndNameIdent` into a `sui::types::TypeTag`.
 pub fn into_type_tag(
     scheduler_pkg_id: sui::types::Address,
