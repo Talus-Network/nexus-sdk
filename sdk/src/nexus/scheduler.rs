@@ -45,6 +45,42 @@ impl ScheduledAgentExecutionConfig {
             Self::Default(config) | Self::Registered(config) => config.selection.dag_id(),
         }
     }
+
+    /// Mirror of Move's `agent_registry::resolve_agent_execution_config_dag`.
+    /// For default-executor and runtime-selected skills the dag is encoded
+    /// directly in the config; for pinned skills it comes from the skill
+    /// record's `dag_binding`.
+    pub async fn resolve_dag(
+        &self,
+        crawler: &Crawler,
+        objects: &NexusObjects,
+    ) -> anyhow::Result<sui::types::Address> {
+        if let Some(dag) = self.dag() {
+            return Ok(dag);
+        }
+        let (agent_id, skill_id) = match self {
+            Self::Default(_) => bail!("default-agent scheduled config is missing its DAG id"),
+            Self::Registered(config) => match &config.selection {
+                ExecutionSelection::AgentSkill {
+                    agent_id, skill_id, ..
+                } => (*agent_id, *skill_id),
+                ExecutionSelection::DefaultAgent { .. } => {
+                    bail!("registered scheduled config carries a default-agent selection",)
+                }
+            },
+        };
+        let target = crate::nexus::tap::fetch_configured_active_tap_skill_execution_target(
+            crawler, objects, agent_id, skill_id,
+        )
+        .await?;
+        match target.data.skill.dag_binding {
+            crate::types::SkillDagBinding::Pinned { dag_id } => Ok(dag_id),
+            crate::types::SkillDagBinding::RuntimeSelected => bail!(
+                "scheduled agent execution config for runtime-selected skill {skill_id} \
+                 of agent {agent_id} is missing the selected dag id"
+            ),
+        }
+    }
 }
 
 /// High-level interface for scheduler operations.
