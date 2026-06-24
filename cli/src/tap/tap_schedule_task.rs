@@ -35,6 +35,7 @@ pub(crate) async fn schedule_tap_task(
     prepay_amount: u64,
     refund_recipient: Option<sui::types::Address>,
     occurrence_budget: u64,
+    dag_id_override: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -49,12 +50,25 @@ pub(crate) async fn schedule_tap_task(
 
     let conf = CliConf::load().await.unwrap_or_default();
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    match payment_source {
-        TapTaskPaymentSourceArg::AgentFunded => {
-            ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
+
+    let is_default_dag_executor =
+        agent_id == nexus_client.get_nexus_objects().default_dag_executor.agent_id;
+
+    if is_default_dag_executor {
+        if matches!(payment_source, TapTaskPaymentSourceArg::AgentFunded) {
+            return Err(NexusCliError::Any(anyhow!(
+                "--payment-source agent-funded is not supported for the default DAG executor agent; \
+                 use --payment-source user-funded"
+            )));
         }
-        TapTaskPaymentSourceArg::UserFunded => {
-            ensure_cli_agent_owner(&nexus_client, agent_id).await?;
+    } else {
+        match payment_source {
+            TapTaskPaymentSourceArg::AgentFunded => {
+                ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
+            }
+            TapTaskPaymentSourceArg::UserFunded => {
+                ensure_cli_agent_owner(&nexus_client, agent_id).await?;
+            }
         }
     }
 
@@ -66,11 +80,20 @@ pub(crate) async fn schedule_tap_task(
     )
     .await
     .map_err(NexusCliError::Any)?;
-    let dag_id = match target.data.skill.dag_binding {
-        SkillDagBinding::Pinned { dag_id } => dag_id,
-        SkillDagBinding::RuntimeSelected => {
+    let dag_id = match (target.data.skill.dag_binding, dag_id_override) {
+        (SkillDagBinding::Pinned { dag_id }, Some(override_id)) if override_id != dag_id => {
             return Err(NexusCliError::Any(anyhow!(
-                "active TAP skill for agent '{agent_id}' skill '{skill_id}' is runtime-DAG selected; expected a pinned DAG binding"
+                "skill is pinned to DAG '{dag_id}' but --dag-id '{override_id}' was supplied; \
+                 omit --dag-id or republish the skill with the new binding"
+            )));
+        }
+        (SkillDagBinding::Pinned { dag_id }, _) => dag_id,
+        (SkillDagBinding::RuntimeSelected, Some(override_id)) => override_id,
+        (SkillDagBinding::RuntimeSelected, None) => {
+            return Err(NexusCliError::Any(anyhow!(
+                "active TAP skill for agent '{agent_id}' skill '{skill_id}' is runtime-DAG selected; \
+                 pass --dag-id to select the DAG to execute (the default DAG executor's skill uses \
+                 runtime-selected binding so every caller must supply --dag-id)"
             )));
         }
     };
@@ -120,20 +143,47 @@ pub(crate) async fn schedule_tap_task(
         )));
     }
 
-    let tap_payment = match payment_source {
-        TapTaskPaymentSourceArg::UserFunded => CreateTaskTapPayment::UserFunded {
-            prepay_amount,
-            refund_recipient,
-            occurrence_budget,
-            selected_dag: Some(dag_id),
-            authorization_templates: Vec::new(),
-        },
-        TapTaskPaymentSourceArg::AgentFunded => CreateTaskTapPayment::AgentFunded {
-            prepay_amount,
-            occurrence_budget,
-            selected_dag: Some(dag_id),
-            authorization_templates: Vec::new(),
-        },
+    // The default DAG executor agent is wrapped inside a dynamic field on the
+    // agent registry, so it can't be fetched as a top-level Sui object. The
+    // scheduler exposes `new_default_agent_task` which resolves the agent
+    // through the registry; pass `agent_id`/`skill_id` as None so the SDK
+    // builds that PTB instead of the regular agent-bound one.
+    let (params_agent_id, params_skill_id, tap_payment) = if is_default_dag_executor {
+        (
+            None,
+            None,
+            CreateTaskTapPayment::UserFunded {
+                prepay_amount,
+                refund_recipient: None,
+                occurrence_budget,
+                selected_dag: None,
+                authorization_templates: Vec::new(),
+            },
+        )
+    } else {
+        // Move's `resolve_agent_execution_config_dag` requires `selected_dag`
+        // to be Some for runtime-selected skills and None for pinned ones
+        // (`EDagSelectionRequired` / `EDagSelectionRedundant`).
+        let selected_dag = match target.data.skill.dag_binding {
+            SkillDagBinding::RuntimeSelected => Some(dag_id),
+            SkillDagBinding::Pinned { .. } => None,
+        };
+        let payment = match payment_source {
+            TapTaskPaymentSourceArg::UserFunded => CreateTaskTapPayment::UserFunded {
+                prepay_amount,
+                refund_recipient,
+                occurrence_budget,
+                selected_dag,
+                authorization_templates: Vec::new(),
+            },
+            TapTaskPaymentSourceArg::AgentFunded => CreateTaskTapPayment::AgentFunded {
+                prepay_amount,
+                occurrence_budget,
+                selected_dag,
+                authorization_templates: Vec::new(),
+            },
+        };
+        (Some(agent_id), Some(skill_id), payment)
     };
 
     let tx_handle = loading!("Submitting TAP scheduled task transaction...");
@@ -147,8 +197,8 @@ pub(crate) async fn schedule_tap_task(
             execution_priority_fee_per_gas_unit,
             initial_schedule,
             generator,
-            agent_id: Some(agent_id),
-            skill_id: Some(skill_id),
+            agent_id: params_agent_id,
+            skill_id: params_skill_id,
             tap_payment: Some(tap_payment),
         })
         .await
@@ -188,6 +238,7 @@ mod tests {
             1,
             Some(sui::types::Address::from_static("0xb")),
             1,
+            None,
             None,
             DEFAULT_GAS_BUDGET,
         )
