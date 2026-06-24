@@ -72,7 +72,7 @@ Registers an on-chain Nexus Tool that resolves to a Move package, module, and wi
 
 Registration is partially idempotent — the Move-side `register_on_chain_tool` aborts with `EFqnAlreadyExists` when the FQN is already claimed, but the CLI surfaces that abort by changing the output to notify the user about the fact that the tool is already registered.
 
-`--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this when the workflow executor must mint a `WorkflowVertexAuthorizationGrant` before each call so the runtime can derive a `VertexAuthorizationCheckCap` and hand it to the tool's `execute` function — without the grant, the cap can't be minted and the vertex (i.e. the tool itself) can't run.
+`--workflow-authorization-cap-first` routes through `register_on_chain_tool_with_workflow_authorization_cap`, which marks the registered tool as cap-gated. Use this when the workflow executor must mint a `ProvenValue<AgentVertexAuthorization>` before each call so the runtime can derive a `VertexAuthorizationCheckCap` and hand it to the tool's `execute` function — without the grant, the cap can't be minted and the vertex (i.e. the tool itself) can't run.
 
 The JSON output includes the transaction `digest` + `tx_checkpoint`, the locally-derived `tool_id` and `tool_gas_id`, the `owner_cap_over_tool_id` and `owner_cap_over_gas_id` returned by the on-chain call, and the fully-decoded post-registration `Tool` record under the `tool` field — the same shape `nexus tool inspect` emits, so scripts only need to learn one Tool contract.
 
@@ -693,7 +693,7 @@ Executes a Talus agent skill through its current registry skill revision and DAG
 
 JSON output includes the new `DAGExecution` object id, the agent and skill ids, the active skill revision key, the submitted authorization plan, and the transaction digest/checkpoint. Pair with `nexus dag inspect-execution`, `nexus tap payments wait`, and (where relevant) `nexus dag execution-cost`.
 
-Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `WorkflowVertexAuthorizationGrant` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific.
+Cap-gated skills (tools registered with `--workflow-authorization-cap-first`) need a `ProvenValue<AgentVertexAuthorization>` minted and recorded in the tap package's shared state before the leader dispatches the walk. The CLI does **not** drive that wiring — its shape is skill-specific.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...
