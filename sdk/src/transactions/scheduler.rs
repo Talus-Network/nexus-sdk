@@ -399,16 +399,23 @@ pub fn new_execution_policy(
 }
 
 /// PTB template to construct and register a registered TAP agent execution policy.
+///
+/// `selected_dag` must be `None` for pinned skills and `Some(dag_id)` for
+/// runtime-selected skills. The stored config is later read by the leader at
+/// occurrence execution time and validated by
+/// `agent_registry::resolve_agent_execution_config_dag`, which aborts with
+/// `EDagSelectionRedundant` / `EDagSelectionRequired` if the value disagrees
+/// with the skill's on-chain `dag_binding`.
 #[allow(clippy::too_many_arguments)]
 pub fn new_agent_execution_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_id: AgentId,
     skill_id: SkillId,
+    selected_dag: Option<sui::types::Address>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -483,7 +490,7 @@ pub fn new_agent_execution_policy(
         with_vertex_inputs,
         priority_fee_per_gas_unit,
         skill_id,
-        Some(dag_id),
+        selected_dag,
         &[],
     )?;
 
@@ -775,6 +782,97 @@ pub fn add_occurrence_relative_for_task(
         ),
         vec![
             task,
+            start_offset_ms,
+            deadline_offset_ms,
+            priority_fee_per_gas_unit,
+            leader_registry,
+            clock,
+        ],
+    ))
+}
+
+/// PTB template to enqueue an absolute-start occurrence on a task whose owner
+/// is the agent (i.e. created via `new_agent_funded_task`). Mirrors
+/// `add_occurrence_absolute_for_task` but takes the agent reference so the
+/// Move-side for_task check resolves against the agent's id.
+#[allow(clippy::too_many_arguments)]
+pub fn add_occurrence_absolute_for_agent_funded_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: sui::tx::Argument,
+    start_time_ms: u64,
+    deadline_offset_ms: Option<u64>,
+    priority_fee_per_gas_unit: u64,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let start_time_ms = tx.pure(&start_time_ms);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+    let clock = tx.object(sui::tx::ObjectInput::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_AGENT_FUNDED_TASK.module,
+            scheduler::Scheduler::ADD_OCCURRENCE_ABSOLUTE_FOR_AGENT_FUNDED_TASK.name,
+        ),
+        vec![
+            task,
+            agent,
+            start_time_ms,
+            deadline_offset_ms,
+            priority_fee_per_gas_unit,
+            leader_registry,
+            clock,
+        ],
+    ))
+}
+
+/// PTB template to enqueue a relative-start occurrence on an agent-funded task.
+#[allow(clippy::too_many_arguments)]
+pub fn add_occurrence_relative_for_agent_funded_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: sui::tx::Argument,
+    start_offset_ms: u64,
+    deadline_offset_ms: Option<u64>,
+    priority_fee_per_gas_unit: u64,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let start_offset_ms = tx.pure(&start_offset_ms);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+    let clock = tx.object(sui::tx::ObjectInput::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_AGENT_FUNDED_TASK.module,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_AGENT_FUNDED_TASK.name,
+        ),
+        vec![
+            task,
+            agent,
             start_offset_ms,
             deadline_offset_ms,
             priority_fee_per_gas_unit,

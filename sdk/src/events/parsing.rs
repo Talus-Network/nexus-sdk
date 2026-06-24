@@ -497,6 +497,13 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
 
 /// Helper function to determine whether the event name may be emitted while
 /// Sui records a non-Nexus caller package as `event.package_id`.
+///
+/// When a PTB enters Nexus through a user package (e.g. a demo Move module
+/// that forwards into `scheduler::add_occurrence_*_for_agent_funded_task`),
+/// Sui attributes the emitted event to the entry package, not to the Nexus
+/// scheduler. The leader's event poller would otherwise reject the event and
+/// silently drop the work. We allow-list the events that we know can travel
+/// through such a public Nexus call site.
 fn allows_foreign_emitter(event_name: &str) -> bool {
     matches!(
         event_name,
@@ -509,6 +516,10 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             | "AgentSkillPaymentCreatedEvent"
             | "AgentVertexAuthorizationRequiredEvent"
             | "PaymentLockUpdateEvent"
+            // Scheduled-occurrence requests are emitted by
+            // `scheduler::add_occurrence_*_for_agent_funded_task` which the demo
+            // (and other user packages) call to trigger agent-funded tasks.
+            | "RequestScheduledOccurrenceEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
     )
@@ -1256,6 +1267,50 @@ mod tests {
                 was_locked: true,
                 ..
             }) if vertex == RuntimeVertex::plain("transfer")
+        ));
+
+        // `scheduler::add_occurrence_*_for_agent_funded_task` is invoked through
+        // user packages (e.g. `demo_tap::trigger_delayed_occurrence`); Sui then
+        // tags the emitted `OccurrenceScheduledEvent` with the user package id.
+        // The poller must still decode it as `RequestScheduledOccurrenceEvent`.
+        let occurrence_event = distributed_nexus_struct_event(
+            &objects,
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                sui::types::Identifier::new("scheduled_request").unwrap(),
+                sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    sui::types::StructTag::new(
+                        objects.scheduler_pkg_id,
+                        sui::types::Identifier::new("scheduler").unwrap(),
+                        sui::types::Identifier::new("OccurrenceScheduledEvent").unwrap(),
+                        vec![],
+                    ),
+                ))],
+            ),
+            RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent {
+                    task: sui::types::Address::from_static("0x77"),
+                    generator: crate::types::PolicySymbol::Witness(crate::types::TypeName {
+                        name: "scheduler::QueueGeneratorWitness".into(),
+                    }),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            },
+        );
+        let parsed =
+            NexusEvent::from_sui_grpc_event(5, digest, &occurrence_event, &objects).unwrap();
+        assert!(parsed.distribution.is_some());
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent { task, .. },
+                ..
+            }) if task == sui::types::Address::from_static("0x77")
         ));
     }
 

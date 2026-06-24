@@ -45,6 +45,42 @@ impl ScheduledAgentExecutionConfig {
             Self::Default(config) | Self::Registered(config) => config.selection.dag_id(),
         }
     }
+
+    /// Mirror of Move's `agent_registry::resolve_agent_execution_config_dag`.
+    /// For default-executor and runtime-selected skills the dag is encoded
+    /// directly in the config; for pinned skills it comes from the skill
+    /// record's `dag_binding`.
+    pub async fn resolve_dag(
+        &self,
+        crawler: &Crawler,
+        objects: &NexusObjects,
+    ) -> anyhow::Result<sui::types::Address> {
+        if let Some(dag) = self.dag() {
+            return Ok(dag);
+        }
+        let (agent_id, skill_id) = match self {
+            Self::Default(_) => bail!("default-agent scheduled config is missing its DAG id"),
+            Self::Registered(config) => match &config.selection {
+                ExecutionSelection::AgentSkill {
+                    agent_id, skill_id, ..
+                } => (*agent_id, *skill_id),
+                ExecutionSelection::DefaultAgent { .. } => {
+                    bail!("registered scheduled config carries a default-agent selection",)
+                }
+            },
+        };
+        let target = crate::nexus::tap::fetch_configured_active_tap_skill_execution_target(
+            crawler, objects, agent_id, skill_id,
+        )
+        .await?;
+        match target.data.skill.dag_binding {
+            crate::types::SkillDagBinding::Pinned { dag_id } => Ok(dag_id),
+            crate::types::SkillDagBinding::RuntimeSelected => bail!(
+                "scheduled agent execution config for runtime-selected skill {skill_id} \
+                 of agent {agent_id} is missing the selected dag id"
+            ),
+        }
+    }
 }
 
 /// High-level interface for scheduler operations.
@@ -105,6 +141,20 @@ pub enum CreateTaskTapPayment {
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
+}
+
+impl CreateTaskTapPayment {
+    /// Caller-supplied `selected_dag`. `None` is the on-chain shape for pinned
+    /// skills (the stored `AgentExecutionConfig` carries no dag; the resolver
+    /// reads it from the skill's `dag_binding`). `Some(_)` is required for
+    /// runtime-selected skills.
+    pub fn selected_dag(&self) -> Option<sui::types::Address> {
+        match self {
+            Self::UserFunded { selected_dag, .. } | Self::AgentFunded { selected_dag, .. } => {
+                *selected_dag
+            }
+        }
+    }
 }
 
 /// Result returned after creating a scheduled task.
@@ -316,7 +366,6 @@ impl SchedulerActions {
                 .client
                 .tap()
                 .create_agent_task(crate::nexus::tap::CreateAgentTaskParams {
-                    dag_id,
                     entry_group,
                     input_data,
                     metadata,
@@ -343,29 +392,15 @@ impl SchedulerActions {
             scheduler_tx::new_constraints_policy(&mut tx, objects, generator.into())
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let execution_arg = if let Some((agent_id, skill_id)) = agent_binding {
-            scheduler_tx::new_agent_execution_policy(
-                &mut tx,
-                objects,
-                dag_id,
-                execution_priority_fee_per_gas_unit,
-                entry_group.as_str(),
-                &input_data,
-                agent_id,
-                skill_id,
-            )
-            .map_err(NexusError::TransactionBuilding)?
-        } else {
-            scheduler_tx::new_execution_policy(
-                &mut tx,
-                objects,
-                dag_id,
-                execution_priority_fee_per_gas_unit,
-                entry_group.as_str(),
-                &input_data,
-            )
-            .map_err(NexusError::TransactionBuilding)?
-        };
+        let execution_arg = scheduler_tx::new_execution_policy(
+            &mut tx,
+            objects,
+            dag_id,
+            execution_priority_fee_per_gas_unit,
+            entry_group.as_str(),
+            &input_data,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
         let registry = tx.object(sui::tx::ObjectInput::shared(
             *objects.agent_registry.object_id(),
@@ -723,17 +758,59 @@ impl SchedulerActions {
         let objects = &self.client.nexus_objects;
         let task_ref = task.object_ref();
 
-        if let Some(start_ms) = request.start_ms {
+        // Agent-funded tasks (created via `new_agent_funded_task`) are owned
+        // by the agent's id rather than the sender. The Move scheduler enforces
+        // `for_task` against `task.owner`, so the regular sender-keyed helpers
+        // fail; route through the `*_for_agent_funded_task` variants and pass
+        // the agent as an input.
+        let agent_arg = if task.data.owner == task.data.agent_id {
+            let agent_ref = self
+                .client
+                .crawler()
+                .get_object_metadata(task.data.agent_id)
+                .await
+                .map_err(NexusError::Rpc)?;
+            Some(
+                crate::nexus::tap::agent_argument_from_metadata(&mut tx, &agent_ref, false)
+                    .map_err(NexusError::TransactionBuilding)?,
+            )
+        } else {
+            None
+        };
+
+        let build_result = if let Some(start_ms) = request.start_ms {
             let deadline_offset = request
                 .deadline_offset_ms
                 .or_else(|| request.deadline_ms.map(|deadline| deadline - start_ms));
 
-            scheduler_tx::add_occurrence_absolute_for_task(
+            if let Some(agent) = agent_arg {
+                scheduler_tx::add_occurrence_absolute_for_agent_funded_task(
+                    &mut tx,
+                    objects,
+                    &task_ref,
+                    agent,
+                    start_ms,
+                    deadline_offset,
+                    request.priority_fee_per_gas_unit,
+                )
+            } else {
+                scheduler_tx::add_occurrence_absolute_for_task(
+                    &mut tx,
+                    objects,
+                    &task_ref,
+                    start_ms,
+                    deadline_offset,
+                    request.priority_fee_per_gas_unit,
+                )
+            }
+        } else if let Some(agent) = agent_arg {
+            scheduler_tx::add_occurrence_relative_for_agent_funded_task(
                 &mut tx,
                 objects,
                 &task_ref,
-                start_ms,
-                deadline_offset,
+                agent,
+                request.start_offset_ms.expect("validated start offset"),
+                request.deadline_offset_ms,
                 request.priority_fee_per_gas_unit,
             )
         } else {
@@ -745,8 +822,8 @@ impl SchedulerActions {
                 request.deadline_offset_ms,
                 request.priority_fee_per_gas_unit,
             )
-        }
-        .map_err(NexusError::TransactionBuilding)?;
+        };
+        build_result.map_err(NexusError::TransactionBuilding)?;
 
         let mut gas_coin = self.client.gas.acquire_gas_coin().await;
 
@@ -1324,6 +1401,38 @@ mod tests {
         }
     }
 
+    fn agent_skill_execution_config(
+        objects: &NexusObjects,
+        agent_id: sui::types::Address,
+        skill_id: SkillId,
+        selected_dag: Option<sui::types::Address>,
+    ) -> AgentExecutionConfig {
+        AgentExecutionConfig {
+            selection: ExecutionSelection::AgentSkill {
+                agent_id,
+                skill_id,
+                selected_dag: crate::types::MoveOption(selected_dag),
+            },
+            network: objects.network_id,
+            entry_group: crate::types::SchedulerEntryGroup {
+                name: "entry".into(),
+            },
+            inputs: crate::nexus::crawler::Map::new(),
+            invoker: sui::types::Address::ZERO,
+            priority_fee_per_gas_unit: 0,
+            authorization_templates: vec![],
+        }
+    }
+
+    /// Build a `Crawler` that points at an empty mock server. Safe to use when
+    /// the test should *not* hit the network (e.g. asserting short-circuit
+    /// branches of `resolve_dag`).
+    async fn dummy_crawler() -> crate::nexus::crawler::Crawler {
+        let url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks::default());
+        let client = sui::grpc::Client::new(url).expect("mock client");
+        crate::nexus::crawler::Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
+    }
+
     fn event_bcs(
         primitives_pkg: sui::types::Address,
         event_pkg: sui::types::Address,
@@ -1392,6 +1501,67 @@ mod tests {
         let nexus_client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         (rpc_url, nexus_client)
+    }
+
+    #[tokio::test]
+    async fn resolve_dag_returns_default_executor_dag_without_crawler_hit() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag = sui::types::Address::from_static("0xd");
+        let config =
+            ScheduledAgentExecutionConfig::Default(default_agent_execution_config(&objects, dag));
+        let crawler = dummy_crawler().await;
+
+        let resolved = config
+            .resolve_dag(&crawler, &objects)
+            .await
+            .expect("default-agent config short-circuits via dag()");
+
+        assert_eq!(resolved, dag);
+    }
+
+    #[tokio::test]
+    async fn resolve_dag_returns_runtime_selected_dag_without_crawler_hit() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let dag = sui::types::Address::from_static("0xd");
+        let config = ScheduledAgentExecutionConfig::Registered(agent_skill_execution_config(
+            &objects,
+            sui::types::Address::from_static("0xa"),
+            7,
+            Some(dag),
+        ));
+        let crawler = dummy_crawler().await;
+
+        let resolved = config
+            .resolve_dag(&crawler, &objects)
+            .await
+            .expect("runtime-selected config short-circuits via dag()");
+
+        assert_eq!(resolved, dag);
+    }
+
+    #[tokio::test]
+    async fn resolve_dag_rejects_default_variant_carrying_agent_skill_selection() {
+        // Inconsistent shape: `Default(_)` is only correct for `DefaultAgent`
+        // selections; if it carries an `AgentSkill` selection with no dag we
+        // should refuse to silently fall back to the skill record lookup.
+        let objects = sui_mocks::mock_nexus_objects();
+        let config = ScheduledAgentExecutionConfig::Default(agent_skill_execution_config(
+            &objects,
+            sui::types::Address::from_static("0xa"),
+            7,
+            None,
+        ));
+        let crawler = dummy_crawler().await;
+
+        let err = config
+            .resolve_dag(&crawler, &objects)
+            .await
+            .expect_err("inconsistent Default(_) config must be rejected");
+
+        assert!(
+            err.to_string().contains("default-agent scheduled config"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

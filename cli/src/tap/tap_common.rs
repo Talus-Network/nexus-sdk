@@ -103,12 +103,35 @@ pub(crate) async fn ensure_cli_agent_access(
     access: AgentAccess,
 ) -> AnyResult<(), NexusCliError> {
     let signer = nexus_client.signer().get_active_address();
+
+    if let Some(owner) = wrapped_default_executor_owner(&nexus_client.get_nexus_objects(), agent_id)
+    {
+        return ensure_agent_owner_allowed(agent_id, &owner, signer, access);
+    }
+
     let metadata = nexus_client
         .crawler()
         .get_object_metadata(agent_id)
         .await
         .map_err(NexusCliError::Any)?;
     ensure_agent_owner_allowed(agent_id, &metadata.owner, signer, access)
+}
+
+/// The default DAG executor agent is stored as a wrapped value inside a
+/// dynamic field on the agent registry (see
+/// `agent_registry::bootstrap_default_runtime_dag_skill_for_deployment`), so
+/// `sui_getObject(agent_id)` returns NotFound for it. The registry that owns
+/// the wrapper is shared, and Move enforces the real per-call auth, so treat
+/// the wrapped agent as effectively shared.
+fn wrapped_default_executor_owner(
+    nexus_objects: &nexus_sdk::types::NexusObjects,
+    agent_id: AgentId,
+) -> Option<sui::types::Owner> {
+    if agent_id == nexus_objects.default_dag_executor.agent_id {
+        Some(sui::types::Owner::Shared(0))
+    } else {
+        None
+    }
 }
 
 pub(crate) fn ensure_agent_owner_allowed(
@@ -247,6 +270,25 @@ mod tests {
         assert!(
             error.to_string().contains("expected active wallet"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn wrapped_default_executor_owner_matches_only_default_dag_executor_agent() {
+        let nexus_objects = nexus_sdk::test_utils::sui_mocks::mock_nexus_objects();
+        let default_agent_id = nexus_objects.default_dag_executor.agent_id;
+
+        let owner = wrapped_default_executor_owner(&nexus_objects, default_agent_id)
+            .expect("default DAG executor agent is treated as wrapped");
+        assert!(
+            matches!(owner, sui::types::Owner::Shared(_)),
+            "wrapped agent should be reported as shared, got {owner:?}"
+        );
+
+        let other_agent_id = sui::types::Address::from_static("0xc");
+        assert!(
+            wrapped_default_executor_owner(&nexus_objects, other_agent_id).is_none(),
+            "non-default agents should not be treated as wrapped"
         );
     }
 }

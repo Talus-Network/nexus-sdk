@@ -400,6 +400,12 @@ pub(crate) enum TapCommand {
         refund_recipient: Option<sui::types::Address>,
         #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
         occurrence_budget: u64,
+        #[arg(
+            long = "dag-id",
+            help = "DAG to execute. Required when the skill's binding is runtime-selected (e.g. the default DAG executor agent). When the skill is pinned to a DAG, must match the pinned DAG id if supplied.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -702,6 +708,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             prepay_amount,
             refund_recipient,
             occurrence_budget,
+            dag_id,
             gas,
         } => {
             let crate::scheduler::task::ScheduleStartOptions {
@@ -728,6 +735,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 prepay_amount,
                 refund_recipient,
                 occurrence_budget,
+                dag_id,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
