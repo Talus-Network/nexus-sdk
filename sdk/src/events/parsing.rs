@@ -509,6 +509,7 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             | "AgentSkillPaymentCreatedEvent"
             | "AgentVertexAuthorizationRequiredEvent"
             | "PaymentLockUpdateEvent"
+            | "RequestScheduledOccurrenceEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
     )
