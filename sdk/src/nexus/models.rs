@@ -49,7 +49,7 @@ pub struct Dag {
 
 /// Struct holding the DAG execution information.
 ///
-/// See <sui/workflow/sources/dag.move:DAGExecution> for documentation.
+/// See <sui/workflow/sources/execution.move:DAGExecution> for documentation.
 #[derive(Clone, Debug, Deserialize)]
 pub struct DagExecution {
     /// The address of the sender of the transaction to trigger this DAG
@@ -67,6 +67,20 @@ pub struct DagExecution {
     pub scheduled_occurrence_index: Option<u64>,
     #[serde(default)]
     pub walks: Vec<DagExecutionWalk>,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub active_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub pending_abort_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub successful_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub failed_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub aborted_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub consumed_walks: u64,
+    #[serde(default, deserialize_with = "deserialize_sui_u64")]
+    pub cancelled_walks: u64,
 }
 
 impl DagExecution {
@@ -757,6 +771,13 @@ mod tests {
             scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
             scheduled_occurrence_index: Some(2),
             walks: Vec::new(),
+            active_walks: 0,
+            pending_abort_walks: 0,
+            successful_walks: 0,
+            failed_walks: 0,
+            aborted_walks: 0,
+            consumed_walks: 0,
+            cancelled_walks: 0,
         };
 
         let context = execution
@@ -785,7 +806,14 @@ mod tests {
             "skill_id": "11",
             "interface_version": "7",
             "scheduled_task_id": { "vec": ["0xf"] },
-            "scheduled_occurrence_index": { "vec": ["2"] }
+            "scheduled_occurrence_index": { "vec": ["2"] },
+            "active_walks": "1",
+            "pending_abort_walks": "2",
+            "successful_walks": "3",
+            "failed_walks": "4",
+            "aborted_walks": "5",
+            "consumed_walks": "6",
+            "cancelled_walks": "7"
         }))
         .expect("DAGExecution should parse current Move JSON fields");
 
@@ -796,5 +824,12 @@ mod tests {
             Some(sui::types::Address::from_static("0xf"))
         );
         assert_eq!(execution.scheduled_occurrence_index, Some(2));
+        assert_eq!(execution.active_walks, 1);
+        assert_eq!(execution.pending_abort_walks, 2);
+        assert_eq!(execution.successful_walks, 3);
+        assert_eq!(execution.failed_walks, 4);
+        assert_eq!(execution.aborted_walks, 5);
+        assert_eq!(execution.consumed_walks, 6);
+        assert_eq!(execution.cancelled_walks, 7);
     }
 }

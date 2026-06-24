@@ -102,7 +102,7 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("new_constraints_policy"),
     };
-    /// Creates a scheduled task for the registry-owned default agent.
+    /// Creates a funded scheduled task for the registry-owned default agent.
     ///
     /// `nexus_scheduler::scheduler::new_default_agent_task`
     pub const NEW_DEFAULT_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
@@ -122,13 +122,6 @@ impl Scheduler {
     pub const NEW_INVOKER_FUNDED_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("new_invoker_funded_agent_task"),
-    };
-    /// Creates a sender-owned default-agent scheduled task with invoker-funded payment reserve components.
-    ///
-    /// `nexus_scheduler::scheduler::new_invoker_funded_default_agent_task`
-    pub const NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: SCHEDULER_MODULE,
-        name: sui::types::Identifier::from_static("new_invoker_funded_default_agent_task"),
     };
     /// Creates a metadata container from key/value pairs.
     ///
@@ -186,36 +179,13 @@ impl Scheduler {
         module: SCHEDULER_MODULE,
         name: sui::types::Identifier::from_static("PeriodicGeneratorWitness"),
     };
-    /// Prepare a registered DAG execution from durable scheduled payment.
+    /// Prepare DAG execution from durable scheduled payment.
     ///
-    /// `nexus_scheduler::scheduler::prepare_agent_execution_from_scheduled_payment`
-    pub const PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: SCHEDULER_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_agent_execution_from_scheduled_payment",
-            ),
-        };
-    /// Prepare default DAG execution from durable scheduled payment.
-    ///
-    /// `nexus_scheduler::scheduler::prepare_default_agent_execution_from_scheduled_payment`
-    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: SCHEDULER_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_default_agent_execution_from_scheduled_payment",
-            ),
-        };
-    /// Prepare default DAG execution using an immediate payment coin.
-    ///
-    /// `nexus_scheduler::scheduler::prepare_default_agent_execution_from_scheduler`
-    pub const PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: SCHEDULER_MODULE,
-            name: sui::types::Identifier::from_static(
-                "prepare_default_agent_execution_from_scheduler",
-            ),
-        };
+    /// `nexus_scheduler::scheduler::prepare_execution_from_scheduled_payment`
+    pub const PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT: ModuleAndNameIdent = ModuleAndNameIdent {
+        module: SCHEDULER_MODULE,
+        name: sui::types::Identifier::from_static("prepare_execution_from_scheduled_payment"),
+    };
     /// The QueueGeneratorState struct type.
     ///
     /// `nexus_scheduler::scheduler::QueueGeneratorState`

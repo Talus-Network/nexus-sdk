@@ -325,7 +325,7 @@ Creates a new scheduler task tied to the specified DAG. Key options:
 - `--schedule-start-ms` supplies an absolute first-occurrence timestamp (milliseconds since epoch) while `--schedule-start-offset-ms` uses the current Sui clock as the base; the two switches are mutually exclusive.
 - `--schedule-deadline-offset-ms` sets the completion window relative to whichever start time was selected, and `--schedule-priority-fee-per-gas-unit` sets the priority fee for that initial occurrence.
 - `--generator` chooses the generator responsible for future occurrences (`queue` by default, `periodic` to enable recurring schedules).
-- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`BeginAgentExecutionWitness`) instead of the default DAG-execution policy. Use `nexus tap schedule-task` when task creation and TAP funding should happen in one transaction.
+- `--agent-id` and `--skill-id` (must be supplied together, or both omitted) scope the task to a registered TAP agent skill. When set, the workflow dispatches walks under the agent-bound execution policy (`AdvanceForAgentExecution`) instead of the default DAG-execution policy. Use `nexus tap schedule-task` when task creation and TAP funding should happen in one transaction.
 
 Initial schedule arguments (`--schedule-*`) are only valid for queue-based tasks. Selecting `--generator periodic` prepares the task for periodic execution, but you must configure the recurring schedule separately via `nexus scheduler periodic set`.
 
@@ -670,8 +670,8 @@ Settles the Talus agent payment linked to a shared `DAGExecution` so it moves to
 
 Two on-chain entrypoints are wrapped depending on the funding source:
 
-- Without `--alias`/`--agent-id`, the SDK builds a one-call PTB targeting `nexus_workflow::dag::accomplish_tap_execution_payment` — the invoker-funded path that settles out of the `TapExecutionPayment` object.
-- With `--alias` (resolved against the local agent alias map) or `--agent-id`, the SDK additionally fetches the agent's shared object and routes through `nexus_workflow::dag::accomplish_tap_execution_payment_from_agent_vault` so the payment settles out of the agent's payment vault.
+- Without `--alias`/`--agent-id`, the SDK builds a one-call PTB targeting `nexus_workflow::execution::accomplish_tap_execution_payment` — the invoker-funded path that settles out of the `TapExecutionPayment` object.
+- With `--alias` (resolved against the local agent alias map) or `--agent-id`, the SDK additionally fetches the agent's shared object and routes through `nexus_workflow::execution::accomplish_tap_execution_payment_from_agent_vault` so the payment settles out of the agent's payment vault.
 
 JSON output includes a `function` marker (`accomplish_tap_execution_payment` or `accomplish_tap_execution_payment_from_agent_vault`), the resolved `execution_id`, the resolved `agent_id` (or `null` on the invoker-funded path), and the transaction `digest`/`tx_checkpoint`. Pair with `nexus tap payments show` or `nexus tap payments wait` to confirm the linked `TapExecutionPayment` flipped to `accomplished: true`.
 

@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{move_std, primitives, scheduler, sui_framework, workflow},
+        idents::{interface, move_std, primitives, scheduler, sui_framework, workflow},
         sui,
         transactions::{self, agent_input::AgentInput},
         types::{AgentId, DataStorage, NexusObjects, SkillId, Storable, StorageKind},
@@ -97,40 +97,9 @@ where
 
 // == Task lifecycle ==
 
-/// PTB template to create a new default-agent scheduled task.
-pub fn new_task(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    registry: sui::tx::Argument,
-    metadata: sui::tx::Argument,
-    constraints: sui::tx::Argument,
-    execution: sui::tx::Argument,
-) -> anyhow::Result<sui::tx::Argument> {
-    new_default_agent_task(tx, objects, metadata, constraints, execution, registry)
-}
-
-/// PTB template to create a new scheduled task for the registry-owned default agent.
-pub fn new_default_agent_task(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    metadata: sui::tx::Argument,
-    constraints: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    registry: sui::tx::Argument,
-) -> anyhow::Result<sui::tx::Argument> {
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.scheduler_pkg_id,
-            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module,
-            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name,
-        ),
-        vec![metadata, constraints, execution, registry],
-    ))
-}
-
-/// PTB template to create a default-agent scheduled task with address-funded reserve components.
+/// PTB template to create a funded scheduled task for the registry-owned default agent.
 #[allow(clippy::too_many_arguments)]
-pub fn new_invoker_funded_default_agent_task(
+pub fn new_default_agent_task(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     metadata: sui::tx::Argument,
@@ -144,8 +113,8 @@ pub fn new_invoker_funded_default_agent_task(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
-            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.module,
-            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.name,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module,
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name,
         ),
         vec![
             metadata,
@@ -353,7 +322,7 @@ pub fn new_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::Dag::BEGIN_DEFAULT_AGENT_EXECUTION_WITNESS,
+        workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION,
     );
 
     let execution_symbol = tx.move_call(
@@ -410,24 +379,19 @@ pub fn new_execution_policy(
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
 
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     let with_vertex_inputs = build_inputs_vec_map(tx, objects, input_data)?;
 
-    let config = tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-        ),
-        vec![
-            dag_id_arg,
-            network_id_arg,
-            entry_group,
-            with_vertex_inputs,
-            priority_fee_per_gas_unit,
-        ],
-    );
+    let config = transactions::tap::default_agent_execution_config_arg(
+        tx,
+        objects,
+        dag_id_arg,
+        network_id_arg,
+        entry_group,
+        with_vertex_inputs,
+        priority_fee_per_gas_unit,
+    )?;
 
     register_begin_default_agent_execution(tx, objects, execution, config)?;
 
@@ -443,14 +407,14 @@ pub fn new_agent_execution_policy(
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
-    _agent_id: AgentId,
-    _skill_id: SkillId,
+    agent_id: AgentId,
+    skill_id: SkillId,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::Dag::BEGIN_AGENT_EXECUTION_WITNESS,
+        workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION,
     );
 
     let execution_symbol = tx.move_call(
@@ -502,46 +466,44 @@ pub fn new_agent_execution_policy(
         vec![execution_sequence],
     );
 
-    let dag_id_arg = sui_framework::Object::id_from_object_id(tx, dag_id)?;
+    let agent_id_arg = sui_framework::Object::id_from_object_id(tx, agent_id)?;
     let network_id_arg = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
     let entry_group =
-        workflow::Dag::entry_group_from_str(tx, objects.workflow_pkg_id, entry_group)?;
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
 
     let with_vertex_inputs = build_inputs_vec_map(tx, objects, input_data)?;
 
-    let config = tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.module,
-            workflow::Dag::NEW_DAG_EXECUTION_CONFIG.name,
-        ),
-        vec![
-            dag_id_arg,
-            network_id_arg,
-            entry_group,
-            with_vertex_inputs,
-            priority_fee_per_gas_unit,
-        ],
-    );
+    let config = transactions::tap::agent_execution_config_arg(
+        tx,
+        objects,
+        agent_id_arg,
+        network_id_arg,
+        entry_group,
+        with_vertex_inputs,
+        priority_fee_per_gas_unit,
+        skill_id,
+        Some(dag_id),
+        &[],
+    )?;
 
     register_begin_agent_execution(tx, objects, execution, config)?;
 
     Ok(execution)
 }
 
-fn build_inputs_vec_map(
+pub(crate) fn build_inputs_vec_map(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let inner_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::INPUT_PORT),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::INPUT_PORT),
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
     ];
 
     let outer_vec_map_type = vec![
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::VERTEX),
+        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::VERTEX),
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             sui_framework::PACKAGE_ID,
             sui_framework::VecMap::VEC_MAP.module,
@@ -562,7 +524,7 @@ fn build_inputs_vec_map(
 
     for (vertex_name, data) in input_data {
         // `vertex: Vertex`
-        let vertex = workflow::Dag::vertex_from_str(tx, objects.workflow_pkg_id, vertex_name)?;
+        let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex_name)?;
 
         // `with_vertex_input: VecMap<InputPort, NexusData>`
         let with_vertex_input = tx.move_call(
@@ -577,9 +539,9 @@ fn build_inputs_vec_map(
 
         for (port_name, value) in data {
             // `port: InputPort`
-            let port = workflow::Dag::input_port_from_str(
+            let port = interface::Graph::input_port_from_str(
                 tx,
-                objects.workflow_pkg_id,
+                objects.interface_pkg_id,
                 port_name.as_str(),
             )?;
 
@@ -1127,43 +1089,9 @@ pub fn register_begin_agent_execution(
     ))
 }
 
-/// PTB template to invoke DAG execution from the scheduler through the default DAG executor.
+/// PTB template to invoke DAG execution from a durable TAP scheduled payment.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_default_agent_execution_from_scheduler(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    tool_registry: sui::tx::Argument,
-    agent_registry: sui::tx::Argument,
-    task: sui::tx::Argument,
-    dag: sui::tx::Argument,
-    leader_cap: sui::tx::Argument,
-    payment_coin: sui::tx::Argument,
-    payment_max_budget: u64,
-    clock: sui::tx::Argument,
-) -> anyhow::Result<sui::tx::Argument> {
-    let payment_max_budget = tx.pure(&payment_max_budget);
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.scheduler_pkg_id,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.module,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULER.name,
-        ),
-        vec![
-            dag,
-            agent_registry,
-            tool_registry,
-            task,
-            leader_cap,
-            payment_coin,
-            payment_max_budget,
-            clock,
-        ],
-    ))
-}
-
-/// PTB template to invoke DAG execution from the scheduler using a durable TAP scheduled payment.
-#[allow(clippy::too_many_arguments)]
-pub fn prepare_default_agent_execution_from_scheduled_payment(
+pub fn prepare_execution_from_scheduled_payment(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     tool_registry: sui::tx::Argument,
@@ -1176,30 +1104,8 @@ pub fn prepare_default_agent_execution_from_scheduled_payment(
     Ok(tx.move_call(
         sui::tx::Function::new(
             objects.scheduler_pkg_id,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
-        ),
-        vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
-    ))
-}
-
-/// PTB template to invoke registered DAG execution from a durable TAP scheduled payment.
-#[allow(clippy::too_many_arguments)]
-pub fn prepare_agent_execution_from_scheduled_payment(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    tool_registry: sui::tx::Argument,
-    agent_registry: sui::tx::Argument,
-    task: sui::tx::Argument,
-    dag: sui::tx::Argument,
-    leader_cap: sui::tx::Argument,
-    clock: sui::tx::Argument,
-) -> anyhow::Result<sui::tx::Argument> {
-    Ok(tx.move_call(
-        sui::tx::Function::new(
-            objects.scheduler_pkg_id,
-            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
-            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module,
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name,
         ),
         vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
     ))
@@ -1279,7 +1185,7 @@ pub fn execute_scheduled_occurrence(
         false,
     ));
 
-    let results = prepare_default_agent_execution_from_scheduled_payment(
+    let results = prepare_execution_from_scheduled_payment(
         tx,
         objects,
         tool_registry,
@@ -1312,19 +1218,19 @@ pub fn execute_scheduled_occurrence(
 
     transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
 
-    // `nexus_workflow::dag::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
     let execution_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Execution::DAG_EXECUTION);
 
     // `sui::transfer::public_share_object<DAGExecution>`
     tx.move_call(
@@ -1424,7 +1330,7 @@ pub fn execute_registered_scheduled_occurrence(
         false,
     ));
 
-    let results = prepare_agent_execution_from_scheduled_payment(
+    let results = prepare_execution_from_scheduled_payment(
         tx,
         objects,
         tool_registry,
@@ -1457,19 +1363,19 @@ pub fn execute_registered_scheduled_occurrence(
 
     transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
 
-    // `nexus_workflow::dag::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::Dag::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
+            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
         ),
         vec![dag, execution, ticket, leader_registry, clock],
     );
 
     // `DAGExecution`
     let execution_type =
-        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Dag::DAG_EXECUTION);
+        workflow::into_type_tag(objects.workflow_pkg_id, workflow::Execution::DAG_EXECUTION);
 
     // `sui::transfer::public_share_object<DAGExecution>`
     tx.move_call(
@@ -1667,47 +1573,9 @@ mod tests {
         let constraints = tx.pure(&2_u64);
         let execution = tx.pure(&3_u64);
         let registry = tx.pure(&4_u64);
-
-        let _result = new_default_agent_task(
-            &mut tx,
-            &objects,
-            metadata,
-            constraints,
-            execution,
-            registry,
-        )
-        .expect("ptb construction succeeds");
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        assert_eq!(inspector.commands().len(), 1);
-
-        let call = inspector.move_call(0);
-        assert_eq!(call.package, objects.scheduler_pkg_id);
-        assert_eq!(
-            call.module,
-            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module
-        );
-        assert_eq!(
-            call.function,
-            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name
-        );
-        assert_eq!(call.arguments.len(), 4);
-        inspector.expect_u64(&call.arguments[0], 1);
-        inspector.expect_u64(&call.arguments[1], 2);
-        inspector.expect_u64(&call.arguments[2], 3);
-    }
-
-    #[test]
-    fn new_invoker_funded_default_agent_task_builds_call() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let metadata = tx.pure(&1_u64);
-        let constraints = tx.pure(&2_u64);
-        let execution = tx.pure(&3_u64);
-        let registry = tx.pure(&4_u64);
         let coin = tx.pure(&5_u64);
 
-        let _result = new_invoker_funded_default_agent_task(
+        let _result = new_default_agent_task(
             &mut tx,
             &objects,
             metadata,
@@ -1726,16 +1594,17 @@ mod tests {
         assert_eq!(call.package, objects.scheduler_pkg_id);
         assert_eq!(
             call.module,
-            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.module
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.module
         );
         assert_eq!(
             call.function,
-            scheduler::Scheduler::NEW_INVOKER_FUNDED_DEFAULT_AGENT_TASK.name
+            scheduler::Scheduler::NEW_DEFAULT_AGENT_TASK.name
         );
         assert_eq!(call.arguments.len(), 6);
         inspector.expect_u64(&call.arguments[0], 1);
         inspector.expect_u64(&call.arguments[1], 2);
         inspector.expect_u64(&call.arguments[2], 3);
+        inspector.expect_u64(&call.arguments[4], 5);
         inspector.expect_u64(&call.arguments[5], 25);
     }
 
@@ -2355,19 +2224,18 @@ mod tests {
             .find(|call| {
                 call.package == objects.scheduler_pkg_id
                     && call.module
-                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module
                     && call.function
-                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
-                            .name
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name
             })
             .expect("scheduler default-agent preparation call");
         assert_eq!(
             tap_call.module,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module
         );
         assert_eq!(
             tap_call.function,
-            scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
         assert_eq!(tap_call.arguments.len(), 6);
         let sui::types::Input::Shared(shared) = inspector.input(&tap_call.arguments[0]) else {
@@ -2455,19 +2323,18 @@ mod tests {
             .find(|call| {
                 call.package == objects.scheduler_pkg_id
                     && call.module
-                        == scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
-                            .module
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module
                     && call.function
-                        == scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name
             })
             .expect("scheduler registered-agent preparation call");
         assert_eq!(
             tap_call.module,
-            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module
         );
         assert_eq!(
             tap_call.function,
-            scheduler::Scheduler::PREPARE_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.name
+            scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name
         );
         assert_eq!(tap_call.arguments.len(), 6);
         inspector.expect_shared_object(&tap_call.arguments[0], &dag, false);
@@ -2534,10 +2401,9 @@ mod tests {
             .position(|call| {
                 call.package == objects.scheduler_pkg_id
                     && call.module
-                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT.module
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.module
                     && call.function
-                        == scheduler::Scheduler::PREPARE_DEFAULT_AGENT_EXECUTION_FROM_SCHEDULED_PAYMENT
-                            .name
+                        == scheduler::Scheduler::PREPARE_EXECUTION_FROM_SCHEDULED_PAYMENT.name
             })
             .expect("scheduler default-agent preparation call");
         let finish_idx = calls

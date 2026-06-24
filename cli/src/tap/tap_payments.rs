@@ -134,7 +134,7 @@ async fn list_payments(
     ))
 }
 
-/// Wrap the on-chain `nexus_workflow::dag::accomplish_tap_execution_payment*`
+/// Wrap the on-chain `nexus_workflow::execution_settlement::accomplish_tap_execution_payment*`
 /// PTBs. With no agent supplied, the SDK builds the invoker-funded PTB
 /// (`accomplish_tap_execution_payment`) and the shared `DAGExecution` is
 /// the only input. When `--alias` or `--agent-id` resolves to an agent,

@@ -1,5 +1,12 @@
 use crate::{
-    idents::{move_std, registry::AgentRegistry, scheduler, sui_framework, tap::TapStandard},
+    idents::{
+        interface,
+        move_std,
+        registry::AgentRegistry,
+        scheduler,
+        sui_framework,
+        tap::TapStandard,
+    },
     sui,
     types::{
         AgentId,
@@ -435,6 +442,14 @@ pub fn new_invoker_funded_agent_task(
     execution: sui::tx::Argument,
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
+    agent_id: AgentId,
+    dag_id: sui::types::Address,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, crate::types::DataStorage>,
+    >,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
     prepayment_coin: sui::tx::Argument,
@@ -442,9 +457,14 @@ pub fn new_invoker_funded_agent_task(
     occurrence_budget: u64,
     authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let agent_config = agent_execution_config_arg(
+    let agent_config = scheduled_agent_execution_config_arg(
         tx,
         objects,
+        agent_id,
+        dag_id,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
         skill_id,
         selected_dag,
         &authorization_templates,
@@ -479,15 +499,28 @@ pub fn new_agent_funded_task(
     execution: sui::tx::Argument,
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
+    agent_id: AgentId,
+    dag_id: sui::types::Address,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, crate::types::DataStorage>,
+    >,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
     prepay_amount: u64,
     occurrence_budget: u64,
     authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let agent_config = agent_execution_config_arg(
+    let agent_config = scheduled_agent_execution_config_arg(
         tx,
         objects,
+        agent_id,
+        dag_id,
+        priority_fee_per_gas_unit,
+        entry_group,
+        input_data,
         skill_id,
         selected_dag,
         &authorization_templates,
@@ -592,9 +625,37 @@ fn option_id_arg(
     }
 }
 
+pub(crate) fn default_agent_execution_config_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag_id: sui::tx::Argument,
+    network: sui::tx::Argument,
+    entry_group: sui::tx::Argument,
+    inputs: sui::tx::Argument,
+    priority_fee_per_gas_unit: sui::tx::Argument,
+) -> anyhow::Result<sui::tx::Argument> {
+    Ok(tap_interface_call(
+        tx,
+        objects,
+        TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG,
+        vec![
+            dag_id,
+            network,
+            entry_group,
+            inputs,
+            priority_fee_per_gas_unit,
+        ],
+    ))
+}
+
 pub(crate) fn agent_execution_config_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
+    agent_id: sui::tx::Argument,
+    network: sui::tx::Argument,
+    entry_group: sui::tx::Argument,
+    inputs: sui::tx::Argument,
+    priority_fee_per_gas_unit: sui::tx::Argument,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
     authorization_templates: &[AgentVertexAuthorizationTemplate],
@@ -607,8 +668,54 @@ pub(crate) fn agent_execution_config_arg(
         tx,
         objects,
         TapStandard::NEW_AGENT_EXECUTION_CONFIG,
-        vec![skill_id, selected_dag, authorization_templates],
+        vec![
+            agent_id,
+            network,
+            entry_group,
+            inputs,
+            priority_fee_per_gas_unit,
+            skill_id,
+            selected_dag,
+            authorization_templates,
+        ],
     ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scheduled_agent_execution_config_arg(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    agent_id: AgentId,
+    dag_id: sui::types::Address,
+    priority_fee_per_gas_unit: u64,
+    entry_group: &str,
+    input_data: &std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, crate::types::DataStorage>,
+    >,
+    skill_id: SkillId,
+    selected_dag: Option<sui::types::Address>,
+    authorization_templates: &[AgentVertexAuthorizationTemplate],
+) -> anyhow::Result<sui::tx::Argument> {
+    let agent_id = sui_framework::Object::id_from_object_id(tx, agent_id)?;
+    let network = sui_framework::Object::id_from_object_id(tx, objects.network_id)?;
+    let entry_group =
+        interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
+    let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, objects, input_data)?;
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
+    let selected_dag = selected_dag.or(Some(dag_id));
+    agent_execution_config_arg(
+        tx,
+        objects,
+        agent_id,
+        network,
+        entry_group,
+        inputs,
+        priority_fee_per_gas_unit,
+        skill_id,
+        selected_dag,
+        authorization_templates,
+    )
 }
 
 fn fixed_tool_arg(
@@ -925,6 +1032,11 @@ mod tests {
             execution,
             registry,
             agent,
+            sui::types::Address::from_static("0xa"),
+            sui::types::Address::from_static("0xd"),
+            11,
+            "default",
+            &std::collections::HashMap::new(),
             7,
             Some(sui::types::Address::from_static("0xd")),
             50,
@@ -976,6 +1088,11 @@ mod tests {
             execution,
             registry,
             agent,
+            sui::types::Address::from_static("0xa"),
+            sui::types::Address::from_static("0xd"),
+            11,
+            "default",
+            &std::collections::HashMap::new(),
             7,
             None,
             coin,

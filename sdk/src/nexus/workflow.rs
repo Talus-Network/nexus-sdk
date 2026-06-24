@@ -14,7 +14,7 @@ use {
             NexusEventKind,
             TerminalErrEvalRecordedEvent,
         },
-        idents::{sui_framework, workflow},
+        idents::{interface, sui_framework, workflow},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, Response},
@@ -409,19 +409,14 @@ pub fn execution_terminal_record_matches_retryable_vertex(
     walk_index: u64,
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
-    match value {
-        serde_json::Value::Object(object) => {
-            if let Some(record_value) = object.get(&walk_index.to_string()) {
-                if let Some(record) =
-                    crate::types::parse_execution_terminal_record_value(record_value)?
-                {
-                    return Ok(&record.vertex == next_vertex
-                        && record.failure_class == WorkflowFailureClass::Retryable);
-                }
-            }
+    let mut pending = vec![value];
+    let walk_index_key = walk_index.to_string();
+    let prioritized_nested_keys = ["contents", "entries", "fields", "inner", "vec", "value"];
 
-            if let (Some(key), Some(record_value)) = (object.get("key"), object.get("value")) {
-                if crate::types::parse_u64_value(key)? == Some(walk_index) {
+    while let Some(value) = pending.pop() {
+        match value {
+            serde_json::Value::Object(object) => {
+                if let Some(record_value) = object.get(&walk_index_key) {
                     if let Some(record) =
                         crate::types::parse_execution_terminal_record_value(record_value)?
                     {
@@ -429,54 +424,45 @@ pub fn execution_terminal_record_matches_retryable_vertex(
                             && record.failure_class == WorkflowFailureClass::Retryable);
                     }
                 }
-            }
 
-            for nested_key in ["contents", "entries", "fields", "inner", "vec", "value"] {
-                if let Some(nested) = object.get(nested_key) {
-                    if execution_terminal_record_matches_retryable_vertex(
-                        nested,
-                        walk_index,
-                        next_vertex,
-                    )? {
-                        return Ok(true);
+                if let (Some(key), Some(record_value)) = (object.get("key"), object.get("value")) {
+                    if crate::types::parse_u64_value(key)? == Some(walk_index) {
+                        if let Some(record) =
+                            crate::types::parse_execution_terminal_record_value(record_value)?
+                        {
+                            return Ok(&record.vertex == next_vertex
+                                && record.failure_class == WorkflowFailureClass::Retryable);
+                        }
+                    }
+                }
+
+                for (name, nested) in object.iter().rev() {
+                    if matches!(
+                        name.as_str(),
+                        "contents" | "entries" | "fields" | "inner" | "vec" | "value"
+                    ) {
+                        continue;
+                    }
+
+                    pending.push(nested);
+                }
+
+                for &nested_key in prioritized_nested_keys.iter().rev() {
+                    if let Some(nested) = object.get(nested_key) {
+                        pending.push(nested);
                     }
                 }
             }
-
-            for (name, nested) in object {
-                if matches!(
-                    name.as_str(),
-                    "contents" | "entries" | "fields" | "inner" | "vec" | "value"
-                ) {
-                    continue;
-                }
-
-                if execution_terminal_record_matches_retryable_vertex(
-                    nested,
-                    walk_index,
-                    next_vertex,
-                )? {
-                    return Ok(true);
+            serde_json::Value::Array(values) => {
+                for nested in values.iter().rev() {
+                    pending.push(nested);
                 }
             }
-
-            Ok(false)
+            _ => {}
         }
-        serde_json::Value::Array(values) => {
-            for nested in values {
-                if execution_terminal_record_matches_retryable_vertex(
-                    nested,
-                    walk_index,
-                    next_vertex,
-                )? {
-                    return Ok(true);
-                }
-            }
-
-            Ok(false)
-        }
-        _ => Ok(false),
     }
+
+    Ok(false)
 }
 
 pub async fn should_settle_tool_err_eval_gas(
@@ -550,9 +536,9 @@ impl WorkflowActions {
                     return None;
                 };
 
-                if nexus_objects.is_workflow_package(*object_type.address())
-                    && *object_type.module() == workflow::Dag::DAG.module
-                    && *object_type.name() == workflow::Dag::DAG.name
+                if *object_type.address() == nexus_objects.interface_pkg_id
+                    && *object_type.module() == interface::Dag::DAG.module
+                    && *object_type.name() == interface::Dag::DAG.name
                 {
                     Some(obj.object_id())
                 } else {
@@ -749,8 +735,8 @@ impl WorkflowActions {
                 };
 
                 if nexus_objects.is_workflow_package(*object_type.address())
-                    && *object_type.module() == workflow::Dag::DAG_EXECUTION.module
-                    && *object_type.name() == workflow::Dag::DAG_EXECUTION.name
+                    && *object_type.module() == workflow::Execution::DAG_EXECUTION.module
+                    && *object_type.name() == workflow::Execution::DAG_EXECUTION.name
                 {
                     Some(obj.object_id())
                 } else {
@@ -934,8 +920,8 @@ impl WorkflowActions {
                 };
 
                 if nexus_objects.is_workflow_package(*object_type.address())
-                    && *object_type.module() == workflow::Dag::DAG_EXECUTION.module
-                    && *object_type.name() == workflow::Dag::DAG_EXECUTION.name
+                    && *object_type.module() == workflow::Execution::DAG_EXECUTION.module
+                    && *object_type.name() == workflow::Execution::DAG_EXECUTION.name
                 {
                     Some(obj.object_id())
                 } else {
@@ -1389,6 +1375,31 @@ mod tests {
         serde_json::json,
     };
 
+    fn offchain_vertex_node_bcs(
+        tool_fqn: &crate::ToolFqn,
+    ) -> LinkedTableNodeBcs<TypeName, DagVertexInfoBcs> {
+        LinkedTableNodeBcs {
+            prev: crate::types::MoveOption(None::<TypeName>),
+            next: crate::types::MoveOption(None::<TypeName>),
+            value: DagVertexInfoBcs {
+                kind: crate::nexus::models::DagVertexKindBcs::OffChain {
+                    _variant_name: "OffChain".to_string(),
+                    tool_fqn: tool_fqn.to_string(),
+                },
+                input_ports: crate::types::MoveVecSet { contents: vec![] },
+                post_failure_action: crate::types::MoveOption(
+                    None::<crate::nexus::models::PostFailureActionBcs>,
+                ),
+                leader_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+                tool_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+            },
+        }
+    }
+
     #[derive(Clone)]
     struct RegistryObjectMock {
         registry_object: AgentRegistryObject,
@@ -1552,8 +1563,13 @@ mod tests {
                 }
 
                 for event in nexus_events.clone() {
+                    let module = if matches!(event, NexusEventKind::DAGCreated(_)) {
+                        "dag"
+                    } else {
+                        "execution"
+                    };
                     let t = format!(
-                        "{}::event::EventWrapper<{}::dag::{}>",
+                        "{}::event::EventWrapper<{}::{module}::{}>",
                         objects.primitives_pkg_id,
                         objects.workflow_pkg_id,
                         event.name()
@@ -1561,7 +1577,7 @@ mod tests {
 
                     let mut grpc_event = sui::grpc::Event::default();
                     grpc_event.set_package_id(objects.workflow_pkg_id);
-                    grpc_event.set_module("dag".to_string());
+                    grpc_event.set_module(module.to_string());
                     grpc_event.set_sender(sui::types::Address::ZERO);
                     grpc_event.set_event_type(t);
                     grpc_event.set_contents(match event {
@@ -1611,9 +1627,9 @@ mod tests {
             sui::types::ObjectData::Struct(
                 sui::types::MoveStruct::new(
                     sui::types::StructTag::new(
-                        nexus_objects.workflow_pkg_id,
-                        sui::types::Identifier::from_static("dag"),
-                        sui::types::Identifier::from_static("DAG"),
+                        nexus_objects.interface_pkg_id,
+                        interface::Dag::DAG.module,
+                        interface::Dag::DAG.name,
                         vec![],
                     ),
                     true,
@@ -1678,6 +1694,7 @@ mod tests {
         let execution_object_id = sui::types::Address::generate(&mut rng);
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let tool_gas_ref = sui_mocks::mock_sui_object_ref();
+        let tool_fqn = fqn!("xyz.taluslabs.test@1");
         let default_agent = sui::types::Address::generate(&mut rng);
         let default_skill_id = 11;
         let default_agent_ref = sui::types::ObjectReference::new(
@@ -1729,7 +1746,7 @@ mod tests {
                 sui::types::MoveStruct::new(
                     sui::types::StructTag::new(
                         nexus_objects.workflow_pkg_id,
-                        sui::types::Identifier::from_static("dag"),
+                        sui::types::Identifier::from_static("execution"),
                         sui::types::Identifier::from_static("DAGExecution"),
                         vec![],
                     ),
@@ -1767,22 +1784,13 @@ mod tests {
             vec![(TypeName::new("ToolVertex"), *tool_gas_ref.object_id())],
         );
 
-        // DAGVertexInfo
-        let vertex_info = DagVertexInfo {
-            kind: DagVertexKind::OffChain {
-                tool_fqn: fqn!("xyz.taluslabs.test@1"),
-            },
-            leader_verifier: None,
-            tool_verifier: None,
-            input_ports: Set::default(),
-        };
-
-        sui_mocks::grpc::mock_get_objects_json(
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
             &mut ledger_service_mock,
             vec![(
                 tool_gas_ref.clone(),
                 sui::types::Owner::Shared(0),
-                json!({ "value": vertex_info }),
+                TypeName::new("ToolVertex"),
+                offchain_vertex_node_bcs(&tool_fqn),
             )],
         );
 
@@ -1915,7 +1923,7 @@ mod tests {
                 sui::types::MoveStruct::new(
                     sui::types::StructTag::new(
                         nexus_objects.workflow_pkg_id,
-                        sui::types::Identifier::from_static("dag"),
+                        sui::types::Identifier::from_static("execution"),
                         sui::types::Identifier::from_static("DAGExecution"),
                         vec![],
                     ),
@@ -1953,20 +1961,13 @@ mod tests {
             &mut state_service_mock,
             vec![(TypeName::new("ToolVertex"), *tool_gas_ref.object_id())],
         );
-        let vertex_info = DagVertexInfo {
-            kind: DagVertexKind::OffChain {
-                tool_fqn: tool_fqn.clone(),
-            },
-            leader_verifier: None,
-            tool_verifier: None,
-            input_ports: Set::default(),
-        };
-        sui_mocks::grpc::mock_get_objects_json(
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
             &mut ledger_service_mock,
             vec![(
                 tool_gas_ref.clone(),
                 sui::types::Owner::Shared(0),
-                json!({ "value": vertex_info }),
+                TypeName::new("ToolVertex"),
+                offchain_vertex_node_bcs(&tool_fqn),
             )],
         );
         sui_mocks::grpc::mock_get_objects_metadata(
