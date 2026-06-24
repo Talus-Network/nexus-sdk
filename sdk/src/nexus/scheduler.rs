@@ -344,15 +344,20 @@ impl SchedulerActions {
                 .map_err(NexusError::TransactionBuilding)?;
 
         let execution_arg = if let Some((agent_id, skill_id)) = agent_binding {
+            let selected_dag = match &tap_payment {
+                Some(CreateTaskTapPayment::UserFunded { selected_dag, .. }) => *selected_dag,
+                Some(CreateTaskTapPayment::AgentFunded { selected_dag, .. }) => *selected_dag,
+                None => None,
+            };
             scheduler_tx::new_agent_execution_policy(
                 &mut tx,
                 objects,
-                dag_id,
                 execution_priority_fee_per_gas_unit,
                 entry_group.as_str(),
                 &input_data,
                 agent_id,
                 skill_id,
+                selected_dag,
             )
             .map_err(NexusError::TransactionBuilding)?
         } else {

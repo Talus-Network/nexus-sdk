@@ -700,6 +700,11 @@ impl TapActions {
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
+        let policy_selected_dag = match &payment {
+            AgentTaskPayment::AddressFunded { selected_dag, .. } => *selected_dag,
+            AgentTaskPayment::AgentVault { selected_dag, .. } => *selected_dag,
+        };
+
         let mut tx = sui::tx::TransactionBuilder::new();
         let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
             .map_err(NexusError::TransactionBuilding)?;
@@ -709,12 +714,12 @@ impl TapActions {
         let execution_arg = scheduler_tx::new_agent_execution_policy(
             &mut tx,
             objects,
-            dag_id,
             execution_priority_fee_per_gas_unit,
             entry_group.as_str(),
             &input_data,
             agent_id,
             skill_id,
+            policy_selected_dag,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let registry = tx.object(sui::tx::ObjectInput::shared(

@@ -399,16 +399,23 @@ pub fn new_execution_policy(
 }
 
 /// PTB template to construct and register a registered TAP agent execution policy.
+///
+/// `selected_dag` must be `None` for pinned skills and `Some(dag_id)` for
+/// runtime-selected skills. The stored config is later read by the leader at
+/// occurrence execution time and validated by
+/// `agent_registry::resolve_agent_execution_config_dag`, which aborts with
+/// `EDagSelectionRedundant` / `EDagSelectionRequired` if the value disagrees
+/// with the skill's on-chain `dag_binding`.
 #[allow(clippy::too_many_arguments)]
 pub fn new_agent_execution_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, DataStorage>>,
     agent_id: AgentId,
     skill_id: SkillId,
+    selected_dag: Option<sui::types::Address>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -483,7 +490,7 @@ pub fn new_agent_execution_policy(
         with_vertex_inputs,
         priority_fee_per_gas_unit,
         skill_id,
-        Some(dag_id),
+        selected_dag,
         &[],
     )?;
 
