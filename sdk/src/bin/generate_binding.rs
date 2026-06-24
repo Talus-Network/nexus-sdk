@@ -1,0 +1,202 @@
+//! Regenerates the committed Move-binding IR.
+//!
+//! This is the *network* half of the binding pipeline (see `sdk/src/idents/`):
+//! it fetches normalized Move package metadata from a running Sui gRPC endpoint
+//! and persists it as committed JSON. The *offline* half (rendering address-free
+//! identifier constants from that JSON) happens deterministically in `build.rs`,
+//! so normal builds never touch the network.
+//!
+//! Run it deliberately against a node that exposes the target packages (a
+//! localnet with the Nexus packages published, plus the `0x1`/`0x2` framework
+//! packages every node carries). `just sdk regenerate-idents` wraps the whole
+//! pipeline:
+//!
+//! ```bash
+//! NEXUS_BINDING_GRPC_URL=http://127.0.0.1:9000 \
+//! NEXUS_BINDING_PACKAGES="primitives=0x..,interface=0x..,workflow=0x..,move_std=0x1,sui_framework=0x2" \
+//!   cargo run -p nexus-sdk --features binding_codegen --bin generate_binding
+//! ```
+//!
+//! Each `name=0xid` pair becomes `sdk/src/idents/generated/ir/<name>.json`.
+//!
+//! # Step-by-step
+//!
+//! 1. Select a `sui` toolchain matching `nexus-next` (otherwise the Move build
+//!    fails, e.g. `Unbound function 'exists' in module 'sui::dynamic_field'`):
+//!
+//!    ```bash
+//!    suiup install sui@testnet-1.73.1 && suiup default set sui@testnet-1.73.1
+//!    ```
+//!
+//! 2. Start a localnet and fund the active address (leave it running):
+//!
+//!    ```bash
+//!    sui start --with-faucet --force-regenesis
+//!    sui client switch --env localnet && sui client faucet
+//!    ```
+//!
+//! 3. Publish the Nexus packages; this writes their ids to
+//!    `nexus-next/sui/bin/target/objects.localnet.toml`:
+//!
+//!    ```bash
+//!    (cd ../nexus-next/sui && NEXUS_PUBLISH_OVERWRITE=1 SUI_ENV=localnet ./bin/publish.sh publish)
+//!    ```
+//!
+//! 4. Fetch the IR (the `just` recipe reads the package ids from the objects
+//!    TOML and adds the `0x1`/`0x2` framework packages automatically):
+//!
+//!    ```bash
+//!    just sdk regenerate-idents
+//!    ```
+//!
+//! 5. Rebuild so `build.rs` re-renders the constants, then review the diff under
+//!    `sdk/src/idents/generated/ir/` and fix any call sites the compiler flags:
+//!
+//!    ```bash
+//!    cargo +stable check --all-features -p nexus-sdk
+//!    ```
+//!
+//! 6. Stop the localnet (Ctrl-C the `sui start` shell).
+
+use {
+    nexus_sdk::sui::{grpc::Client, types::Address},
+    std::{path::Path, process::ExitCode, str::FromStr},
+    sui_move_codegen::fetch_package,
+};
+
+/// Directory (relative to the crate manifest) that holds the committed IR.
+const IR_DIR: &str = "src/idents/generated/ir";
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    match run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("error: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), String> {
+    let grpc_url = std::env::var("NEXUS_BINDING_GRPC_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:9000".to_string());
+
+    let packages = std::env::var("NEXUS_BINDING_PACKAGES").map_err(|_| {
+        "set NEXUS_BINDING_PACKAGES to a comma-separated list of `name=0xpackageid` pairs \
+         (e.g. \"primitives=0x..,move_std=0x1,sui_framework=0x2\")"
+            .to_string()
+    })?;
+    let packages = parse_packages(&packages)?;
+
+    let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+
+    let mut client =
+        Client::new(&grpc_url).map_err(|e| format!("gRPC client for {grpc_url}: {e}"))?;
+
+    for (name, package_id) in packages {
+        let package = fetch_package(&mut client, package_id)
+            .await
+            .map_err(|e| format!("fetch `{name}` ({package_id}): {e}"))?;
+
+        let json = package
+            .to_json_string()
+            .map_err(|e| format!("serialize IR for `{name}`: {e}"))?;
+
+        let path = out_dir.join(format!("{name}.json"));
+        std::fs::write(&path, format!("{json}\n"))
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+
+        println!(
+            "wrote {} ({} modules)",
+            path.display(),
+            package.modules.len()
+        );
+    }
+
+    Ok(())
+}
+
+/// Parses a `NEXUS_BINDING_PACKAGES` spec into `(name, package_id)` pairs.
+///
+/// The spec is a comma-separated list of `name=0xpackageid` entries. Surrounding
+/// whitespace around entries, names, and ids is ignored, and empty entries (e.g.
+/// a trailing comma) are skipped. Returns an error string on a missing `=` or an
+/// unparsable address.
+fn parse_packages(spec: &str) -> Result<Vec<(String, Address)>, String> {
+    spec.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            let (name, id) = entry.split_once('=').ok_or_else(|| {
+                format!("malformed package entry `{entry}`, expected `name=0xid`")
+            })?;
+
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(format!("empty package name in entry `{entry}`"));
+            }
+
+            let id = id.trim();
+            let address =
+                Address::from_str(id).map_err(|e| format!("invalid package id `{id}`: {e}"))?;
+
+            Ok((name.to_string(), address))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_named_pairs_and_trims_whitespace() {
+        let parsed = parse_packages(
+            "  primitives = 0x1 , sui_framework=0x2 ,workflow=0x00000000000000000000000000000000000000000000000000000000000000aa",
+        )
+        .expect("valid spec");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("primitives".to_string(), Address::from_str("0x1").unwrap()),
+                (
+                    "sui_framework".to_string(),
+                    Address::from_str("0x2").unwrap()
+                ),
+                ("workflow".to_string(), Address::from_str("0xaa").unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_empty_entries() {
+        let parsed = parse_packages("move_std=0x1,,sui_framework=0x2,").expect("valid spec");
+        assert_eq!(parsed.len(), 2);
+    }
+
+    #[test]
+    fn empty_spec_yields_no_packages() {
+        assert!(parse_packages("   ").expect("empty is ok").is_empty());
+    }
+
+    #[test]
+    fn rejects_entry_without_equals() {
+        let err = parse_packages("primitives=0x1,workflow").expect_err("missing `=`");
+        assert!(err.contains("malformed package entry `workflow`"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_name() {
+        let err = parse_packages("=0x1").expect_err("empty name");
+        assert!(err.contains("empty package name"), "{err}");
+    }
+
+    #[test]
+    fn rejects_invalid_package_id() {
+        let err = parse_packages("primitives=not-an-address").expect_err("bad id");
+        assert!(err.contains("invalid package id `not-an-address`"), "{err}");
+    }
+}

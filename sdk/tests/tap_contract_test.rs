@@ -4,9 +4,9 @@ use {
     nexus_sdk::{
         events::RequestWalkExecutionEvent,
         idents::{
+            interface::Agent,
             primitives,
             registry::{AgentRegistry as AgentRegistryIdent, AGENT_REGISTRY_MODULE},
-            tap::TapStandard,
         },
         sui,
         transactions::tap as tap_tx,
@@ -689,11 +689,11 @@ fn agent_payment_vault_builders_target_tap_functions() {
     let calls = move_calls(&tx);
     let deposit = calls
         .iter()
-        .find(|call| call.function == TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name)
+        .find(|call| call.function == Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name)
         .expect("deposit vault call");
     let withdraw = calls
         .iter()
-        .find(|call| call.function == TapStandard::WITHDRAW_AGENT_PAYMENT_VAULT.name)
+        .find(|call| call.function == Agent::WITHDRAW_AGENT_PAYMENT_VAULT.name)
         .expect("withdraw vault call");
 
     assert_eq!(deposit.package, objects.interface_pkg_id);

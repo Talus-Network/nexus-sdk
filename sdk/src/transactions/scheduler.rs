@@ -57,7 +57,7 @@ where
     K: AsRef<str>,
     V: AsRef<str>,
 {
-    let string_type = move_std::StdString::type_tag();
+    let string_type = move_std::String::type_tag();
 
     let metadata = tx.move_call(
         sui::tx::Function::new(
@@ -322,7 +322,7 @@ pub fn new_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION,
+        workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE,
     );
 
     let execution_symbol = tx.move_call(
@@ -414,7 +414,7 @@ pub fn new_agent_execution_policy(
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
     let witness_tag = workflow::into_type_tag(
         objects.workflow_pkg_id,
-        workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION,
+        workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION_TYPE,
     );
 
     let execution_symbol = tx.move_call(

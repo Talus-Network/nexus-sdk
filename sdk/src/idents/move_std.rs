@@ -1,33 +1,19 @@
-use crate::{
-    idents::{move_std, ModuleAndNameIdent},
-    sui,
-};
+//! Identifiers for the `std` (`0x1`) Move package.
+//!
+//! The per-module unit structs (`Option`, `Ascii`, `Vector`, `String`, …) and
+//! their `ModuleAndNameIdent` constants are generated at build time from
+//! `generated/ir/move_std.json`. This module keeps the stable `0x1` package
+//! address and the hand-written argument/`TypeTag` helpers on top of them.
 
+use crate::{idents::ModuleAndNameIdent, sui};
+
+/// The `std` package is published at the fixed framework address `0x1`.
 pub const PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x1");
 
-// == `std::option` ==
-
-pub struct Option;
-
-const OPTION_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("option");
+include!(concat!(env!("OUT_DIR"), "/idents_move_std.rs"));
 
 impl Option {
-    /// `std::option::none`
-    pub const NONE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OPTION_MODULE,
-        name: sui::types::Identifier::from_static("none"),
-    };
-    /// `std::option::Option`
-    pub const OPTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OPTION_MODULE,
-        name: sui::types::Identifier::from_static("Option"),
-    };
-    /// `std::option::some`
-    pub const SOME: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: OPTION_MODULE,
-        name: sui::types::Identifier::from_static("some"),
-    };
-
+    /// Build the `std::option::Option<element>` type tag.
     pub fn type_tag(element: sui::types::TypeTag) -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
             PACKAGE_ID,
@@ -37,6 +23,7 @@ impl Option {
         )))
     }
 
+    /// Emit a `std::option::none<element>()` call.
     pub fn none(
         tx: &mut sui::tx::TransactionBuilder,
         element: sui::types::TypeTag,
@@ -48,6 +35,7 @@ impl Option {
         )
     }
 
+    /// Emit a `std::option::some<element>(value)` call.
     pub fn some(
         tx: &mut sui::tx::TransactionBuilder,
         element: sui::types::TypeTag,
@@ -61,24 +49,7 @@ impl Option {
     }
 }
 
-// == `std::ascii` ==
-
-pub struct Ascii;
-
-const ASCII_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("ascii");
-
 impl Ascii {
-    /// `std::ascii::string`
-    pub const STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: ASCII_MODULE,
-        name: sui::types::Identifier::from_static("string"),
-    };
-    /// `std::ascii::String`
-    pub const STRING_TYPE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: ASCII_MODULE,
-        name: sui::types::Identifier::from_static("String"),
-    };
-
     /// Convert a string to a Move ASCII string.
     pub fn ascii_string_from_str<T: AsRef<str>>(
         tx: &mut sui::tx::TransactionBuilder,
@@ -87,53 +58,17 @@ impl Ascii {
         let str = tx.pure(&str.as_ref().to_string());
 
         Ok(tx.move_call(
-            sui::tx::Function::new(move_std::PACKAGE_ID, Self::STRING.module, Self::STRING.name),
+            sui::tx::Function::new(PACKAGE_ID, Self::STRING.module, Self::STRING.name),
             vec![str],
         ))
     }
 }
 
-// == `std::vector` ==
-
-pub struct Vector;
-
-const VECTOR_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("vector");
-
-impl Vector {
-    /// `std::vector::empty`
-    pub const EMPTY: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: VECTOR_MODULE,
-        name: sui::types::Identifier::from_static("empty"),
-    };
-    /// `std::vector::push_back`
-    pub const PUSH_BACK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: VECTOR_MODULE,
-        name: sui::types::Identifier::from_static("push_back"),
-    };
-    /// `std::vector::singleton`
-    pub const SINGLETON: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: VECTOR_MODULE,
-        name: sui::types::Identifier::from_static("singleton"),
-    };
-}
-
-// == `std::string` ==
-
-pub struct StdString;
-
-const STRING_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("string");
-
-impl StdString {
-    /// `std::string::String`
-    pub const STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: STRING_MODULE,
-        name: sui::types::Identifier::from_static("String"),
-    };
-
+impl String {
     /// Convenience helper to build the `std::string::String` type tag.
     pub fn type_tag() -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-            move_std::PACKAGE_ID,
+            PACKAGE_ID,
             Self::STRING.module,
             Self::STRING.name,
             vec![],
@@ -168,7 +103,7 @@ mod tests {
 
     #[test]
     fn option_type_tag_wraps_element_type() {
-        let element = StdString::type_tag();
+        let element = String::type_tag();
         let tag = Option::type_tag(element.clone());
 
         let sui::types::TypeTag::Struct(tag) = tag else {

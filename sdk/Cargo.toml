@@ -12,6 +12,11 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "generate_binding"
+path = "src/bin/generate_binding.rs"
+required-features = ["binding_codegen"]
+
 [features]
 default = ["tool_fqn"]
 
@@ -42,7 +47,12 @@ move_publish = [
 
 # Sui idents feature enables the use of the `idents` module and adds sui-sdk
 # and move-core-types as dependencies.
-sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64"]
+sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64", "sui-move-codegen"]
+
+# Binding codegen feature gates the `generate_binding` binary, the network half
+# of the Move-binding identifier pipeline. It needs a full Tokio runtime to drive
+# the gRPC fetch; the offline render in `build.rs` requires none of this.
+binding_codegen = ["sui_types", "tokio/full", "sui-move-codegen"]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
@@ -121,7 +131,6 @@ full = [
     "schema_gen",
     "nexus",
 ]
-
 
 [dependencies]
 anyhow.workspace = true
@@ -279,6 +288,12 @@ optional = true
 workspace = true
 optional = true
 
+# === Move binding ===
+[dependencies.sui-move-codegen]
+git = "https://github.com/Talus-Network/move-binding"
+tag = "v0.1.0"
+optional = true
+
 # === Sui deps ===
 [dependencies.sui-rpc]
 version = "0.3.1"
@@ -342,6 +357,7 @@ tonic.workspace = true
 # === Build deps ===
 [build-dependencies]
 toml.workspace = true
+serde_json.workspace = true
 
 [dependencies.blake3]
 version = "1.3"

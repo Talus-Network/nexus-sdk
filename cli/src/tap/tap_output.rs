@@ -69,7 +69,7 @@ pub(crate) fn create_skill_artifact_result_json(
 
 pub(crate) fn create_agent_result_json(result: &CreateAgentResult) -> serde_json::Value {
     json!({
-        "function": TapStandard::CREATE_AGENT.name.to_string(),
+        "function": nexus_sdk::idents::registry::AgentRegistry::CREATE_AGENT.name.to_string(),
         "agent_id": result.agent_id,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -94,7 +94,7 @@ pub(crate) fn register_skill_result_json(
     result: &RegisterSkillResult,
 ) -> serde_json::Value {
     json!({
-        "function": TapStandard::REGISTER_SKILL.name.to_string(),
+        "function": nexus_sdk::idents::registry::AgentRegistry::REGISTER_SKILL.name.to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "agent_id": result.agent_id,
@@ -164,7 +164,7 @@ pub(crate) fn agent_execute_result_json(
 
 pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> serde_json::Value {
     json!({
-        "function": TapStandard::GET_SKILL_REQUIREMENTS.name.to_string(),
+        "function": nexus_sdk::idents::registry::AgentRegistry::GET_SKILL_REQUIREMENTS.name.to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
         "active_skill_revision_key": result.active_skill_revision_key,
@@ -310,7 +310,7 @@ pub(crate) fn vault_balance_result_json(
 
 pub(crate) fn vault_deposit_result_json(result: &DepositAgentVaultResult) -> serde_json::Value {
     json!({
-        "function": TapStandard::DEPOSIT_AGENT_PAYMENT_VAULT.name.to_string(),
+        "function": nexus_sdk::idents::interface::Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name.to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "agent_id": result.agent_id,

@@ -3,7 +3,7 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::{scheduler, sui_framework, tap, workflow, ModuleAndNameIdent},
+        idents::{scheduler, sui_framework, workflow, ModuleAndNameIdent},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, DynamicMap, Response},
@@ -879,7 +879,7 @@ fn extract_begin_default_agent_execution_config(
     objects: &NexusObjects,
 ) -> anyhow::Result<AgentExecutionConfig> {
     let configs = configs.into_iter().collect::<Vec<_>>();
-    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION;
+    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
 
     let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
         bail!(
@@ -900,7 +900,7 @@ fn extract_scheduled_agent_execution_config(
     objects: &NexusObjects,
 ) -> anyhow::Result<ScheduledAgentExecutionConfig> {
     let configs = configs.into_iter().collect::<Vec<_>>();
-    let default_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION;
+    let default_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
     if let Some(value) = find_execution_config_value(&configs, default_symbol, objects) {
         let config =
             decode_agent_execution_config(value, "AdvanceForDefaultAgentExecution config")?;
@@ -910,7 +910,7 @@ fn extract_scheduled_agent_execution_config(
         return Ok(ScheduledAgentExecutionConfig::Default(config));
     }
 
-    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION;
+    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION_TYPE;
 
     let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
         bail!(
@@ -931,7 +931,7 @@ fn find_execution_config_value<'a>(
     expected_symbol: &ModuleAndNameIdent,
     objects: &NexusObjects,
 ) -> Option<&'a serde_json::Value> {
-    let expected_config = &tap::TapStandard::AGENT_EXECUTION_CONFIG;
+    let expected_config = &crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG;
 
     configs.iter().find_map(|(key, value)| {
         let matches_config =
@@ -1461,10 +1461,10 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let dag_id = sui::types::Address::from_static("0xd");
         let defining_pkg_not_in_objects = sui::types::Address::from_static("0x999");
-        let config_name =
-            tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(defining_pkg_not_in_objects);
+        let config_name = crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG
+            .qualified_name(defining_pkg_not_in_objects);
         let symbol = PolicySymbol::Witness(TypeName::new(
-            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION
+            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
                 .qualified_name(defining_pkg_not_in_objects),
         ));
 
@@ -1510,10 +1510,10 @@ mod tests {
     #[test]
     fn scheduled_execution_config_does_not_swallow_default_selection_mismatch() {
         let objects = sui_mocks::mock_nexus_objects();
-        let config_name =
-            tap::TapStandard::AGENT_EXECUTION_CONFIG.qualified_name(objects.interface_pkg_id);
+        let config_name = crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG
+            .qualified_name(objects.interface_pkg_id);
         let symbol = PolicySymbol::Witness(TypeName::new(
-            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION
+            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
                 .qualified_name(objects.workflow_pkg_id),
         ));
         let config = AgentExecutionConfig {

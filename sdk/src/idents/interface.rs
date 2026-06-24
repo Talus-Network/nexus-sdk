@@ -1,247 +1,79 @@
+//! Identifiers for the `nexus_interface` Move package.
+//!
+//! The per-module unit structs (`Dag`, `Graph`, `Verifier`, `Agent`, …) and
+//! their `ModuleAndNameIdent` constants are generated at build time from
+//! `generated/ir/interface.json`. This module keeps the hand-written `Graph`
+//! construction helpers and the `TypeTag` helper on top of them.
+
 use crate::{
     idents::ModuleAndNameIdent,
     sui,
-    types::{EdgeKind, PostFailureAction, RuntimeVertex},
+    types::{
+        EdgeKind,
+        FailureEvidenceKind,
+        PostFailureAction,
+        RuntimeVertex,
+        VerifierConfig,
+        VerifierMode,
+    },
     ToolFqn,
 };
 
-// == `nexus_interface::{dag, graph}` ==
-
-const DAG_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("dag");
-const GRAPH_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("graph");
-const VERIFIER_MODULE: sui::types::Identifier = sui::types::Identifier::from_static("verifier");
-
-pub struct Dag;
-
-impl Dag {
-    /// The DAG struct. Mostly used for creating generic types.
-    ///
-    /// `nexus_interface::dag::DAG`
-    pub const DAG: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("DAG"),
-    };
-    /// Create a new DAG object.
-    ///
-    /// `nexus_interface::dag::new`
-    pub const NEW: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("new"),
-    };
-    /// Configure the DAG-wide default leader verifier policy.
-    ///
-    /// `nexus_interface::dag::with_default_leader_verifier`
-    pub const WITH_DEFAULT_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_leader_verifier"),
-    };
-    /// Configure the DAG-wide default tool verifier policy.
-    ///
-    /// `nexus_interface::dag::with_default_tool_verifier`
-    pub const WITH_DEFAULT_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_tool_verifier"),
-    };
-    /// Add a default value to a DAG.
-    ///
-    /// `nexus_interface::dag::with_default_value`
-    pub const WITH_DEFAULT_VALUE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_default_value"),
-    };
-    /// Add an edge to a DAG.
-    ///
-    /// `nexus_interface::dag::with_edge`
-    pub const WITH_EDGE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_edge"),
-    };
-    /// Mark a vertex as an entry vertex and assign it to a group.
-    ///
-    /// `nexus_interface::dag::with_entry_in_group`
-    pub const WITH_ENTRY_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_entry_in_group"),
-    };
-    /// Add an input port as an entry input port and assign it to a group.
-    ///
-    /// `nexus_interface::dag::with_entry_port_in_group`
-    pub const WITH_ENTRY_PORT_IN_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_entry_port_in_group"),
-    };
-    /// Add an output to a DAG.
-    ///
-    /// `nexus_interface::dag::with_output`
-    pub const WITH_OUTPUT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_output"),
-    };
-    /// Configure a DAG-level default post-failure action.
-    ///
-    /// `nexus_interface::dag::with_post_failure_action`
-    pub const WITH_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_post_failure_action"),
-    };
-    /// Add a vertex to a DAG.
-    ///
-    /// `nexus_interface::dag::with_vertex`
-    pub const WITH_VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex"),
-    };
-    /// Configure the vertex-level leader verifier policy.
-    ///
-    /// `nexus_interface::dag::with_vertex_leader_verifier`
-    pub const WITH_VERTEX_LEADER_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_leader_verifier"),
-    };
-    /// Configure a vertex-level post-failure action override.
-    ///
-    /// `nexus_interface::dag::with_vertex_post_failure_action`
-    pub const WITH_VERTEX_POST_FAILURE_ACTION: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_post_failure_action"),
-    };
-    /// Configure the vertex-level tool verifier policy.
-    ///
-    /// `nexus_interface::dag::with_vertex_tool_verifier`
-    pub const WITH_VERTEX_TOOL_VERIFIER: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: DAG_MODULE,
-        name: sui::types::Identifier::from_static("with_vertex_tool_verifier"),
-    };
-}
-
-pub struct Verifier;
+include!(concat!(env!("OUT_DIR"), "/idents_interface.rs"));
 
 impl Verifier {
-    /// Build external verifier submission evidence.
-    ///
-    /// `nexus_interface::verifier::new_external_verifier_submit_evidence_v1`
-    pub const NEW_EXTERNAL_VERIFIER_SUBMIT_EVIDENCE_V1: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: VERIFIER_MODULE,
-        name: sui::types::Identifier::from_static("new_external_verifier_submit_evidence_v1"),
-    };
-    /// Build an external-verifier off-chain proof.
-    ///
-    /// `nexus_interface::verifier::new_off_chain_verifier_proof_external_verifier_v1`
-    pub const NEW_OFF_CHAIN_VERIFIER_PROOF_EXTERNAL_VERIFIER_V1: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: VERIFIER_MODULE,
-            name: sui::types::Identifier::from_static(
-                "new_off_chain_verifier_proof_external_verifier_v1",
-            ),
+    pub fn failure_evidence_kind_from_enum(
+        tx: &mut sui::tx::TransactionBuilder,
+        interface_pkg_id: sui::types::Address,
+        evidence_kind: &FailureEvidenceKind,
+    ) -> sui::tx::Argument {
+        let ident = match evidence_kind {
+            FailureEvidenceKind::ToolEvidence => Self::FAILURE_EVIDENCE_KIND_TOOL_EVIDENCE,
+            FailureEvidenceKind::LeaderEvidence => Self::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE,
         };
-    /// Build a registered-key off-chain proof.
-    ///
-    /// `nexus_interface::verifier::new_off_chain_verifier_proof_registered_key_v1`
-    pub const NEW_OFF_CHAIN_VERIFIER_PROOF_REGISTERED_KEY_V1: ModuleAndNameIdent =
-        ModuleAndNameIdent {
-            module: VERIFIER_MODULE,
-            name: sui::types::Identifier::from_static(
-                "new_off_chain_verifier_proof_registered_key_v1",
-            ),
+        tx.move_call(
+            sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
+            vec![],
+        )
+    }
+
+    pub fn verifier_mode_from_enum(
+        tx: &mut sui::tx::TransactionBuilder,
+        interface_pkg_id: sui::types::Address,
+        mode: &VerifierMode,
+    ) -> sui::tx::Argument {
+        let ident = match mode {
+            VerifierMode::None => Self::VERIFIER_MODE_NONE,
+            VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
+                Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION
+            }
+            VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
+        tx.move_call(
+            sui::tx::Function::new(interface_pkg_id, ident.module, ident.name),
+            vec![],
+        )
+    }
+
+    pub fn verifier_config(
+        tx: &mut sui::tx::TransactionBuilder,
+        interface_pkg_id: sui::types::Address,
+        config: &VerifierConfig,
+    ) -> anyhow::Result<sui::tx::Argument> {
+        let mode = Self::verifier_mode_from_enum(tx, interface_pkg_id, &config.mode);
+        let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
+        Ok(tx.move_call(
+            sui::tx::Function::new(
+                interface_pkg_id,
+                Self::VERIFIER_CONFIG.module,
+                Self::VERIFIER_CONFIG.name,
+            ),
+            vec![mode, method],
+        ))
+    }
 }
-pub struct Graph;
 
 impl Graph {
-    /// `nexus_interface::graph::EdgeKind` constructors and type tags.
-    pub const EDGE_KIND_BREAK: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_break"),
-    };
-    pub const EDGE_KIND_COLLECT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_collect"),
-    };
-    pub const EDGE_KIND_DO_WHILE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_do_while"),
-    };
-    pub const EDGE_KIND_FOR_EACH: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_for_each"),
-    };
-    pub const EDGE_KIND_NORMAL: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_normal"),
-    };
-    pub const EDGE_KIND_STATIC: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("edge_kind_static"),
-    };
-    pub const ENTRY_GROUP: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("EntryGroup"),
-    };
-    pub const ENTRY_GROUP_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("entry_group_from_string"),
-    };
-    pub const INPUT_PORT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("InputPort"),
-    };
-    pub const INPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("input_port_from_string"),
-    };
-    pub const OUTPUT_PORT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("OutputPort"),
-    };
-    pub const OUTPUT_PORT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("output_port_from_string"),
-    };
-    pub const OUTPUT_VARIANT: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("OutputVariant"),
-    };
-    pub const OUTPUT_VARIANT_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("output_variant_from_string"),
-    };
-    pub const POST_FAILURE_ACTION_TERMINATE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("post_failure_action_terminate"),
-    };
-    pub const POST_FAILURE_ACTION_TRANSIENT_CONTINUE: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("post_failure_action_transient_continue"),
-    };
-    pub const RUNTIME_VERTEX_PLAIN_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("runtime_vertex_plain_from_string"),
-    };
-    pub const RUNTIME_VERTEX_WITH_ITERATOR_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("runtime_vertex_with_iterator_from_string"),
-    };
-    pub const TAGGED_OUTPUT_TO_DAG_TYPES: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("tagged_output_to_dag_types"),
-    };
-    pub const VERTEX: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("Vertex"),
-    };
-    pub const VERTEX_FROM_STRING: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("vertex_from_string"),
-    };
-    pub const VERTEX_OFF_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("vertex_off_chain"),
-    };
-    pub const VERTEX_ON_CHAIN: ModuleAndNameIdent = ModuleAndNameIdent {
-        module: GRAPH_MODULE,
-        name: sui::types::Identifier::from_static("vertex_on_chain"),
-    };
-
     pub fn entry_group_from_str<T: AsRef<str>>(
         tx: &mut sui::tx::TransactionBuilder,
         interface_pkg_id: sui::types::Address,

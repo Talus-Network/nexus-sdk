@@ -337,7 +337,7 @@ pub fn create_default_leader_verifier(
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = interface::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -356,7 +356,7 @@ pub fn create_default_tool_verifier(
     verifier: &VerifierConfig,
 ) -> anyhow::Result<sui::tx::Argument> {
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = interface::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -377,7 +377,7 @@ pub fn create_vertex_leader_verifier(
 ) -> anyhow::Result<sui::tx::Argument> {
     let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = interface::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -398,7 +398,7 @@ pub fn create_vertex_tool_verifier(
 ) -> anyhow::Result<sui::tx::Argument> {
     let vertex = interface::Graph::vertex_from_str(tx, objects.interface_pkg_id, vertex)?;
     let verifier_registry = verifier_registry_arg(tx, objects)?;
-    let verifier = workflow::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
+    let verifier = interface::Verifier::verifier_config(tx, objects.interface_pkg_id, verifier)?;
 
     Ok(tx.move_call(
         sui::tx::Function::new(
@@ -531,7 +531,11 @@ pub fn create_failure_evidence_kind(
     objects: &NexusObjects,
     evidence_kind: &FailureEvidenceKind,
 ) -> sui::tx::Argument {
-    workflow::Verifier::failure_evidence_kind_from_enum(tx, objects.interface_pkg_id, evidence_kind)
+    interface::Verifier::failure_evidence_kind_from_enum(
+        tx,
+        objects.interface_pkg_id,
+        evidence_kind,
+    )
 }
 
 fn prepare_tool_output(
@@ -775,7 +779,7 @@ fn prepare_move_option_failure_evidence_kind(
                 )
                 .with_type_args(vec![workflow::into_type_tag(
                     objects.interface_pkg_id,
-                    workflow::Verifier::FAILURE_EVIDENCE_KIND,
+                    interface::Verifier::FAILURE_EVIDENCE_KIND,
                 )]),
                 vec![kind],
             )
@@ -788,7 +792,7 @@ fn prepare_move_option_failure_evidence_kind(
             )
             .with_type_args(vec![workflow::into_type_tag(
                 objects.interface_pkg_id,
-                workflow::Verifier::FAILURE_EVIDENCE_KIND,
+                interface::Verifier::FAILURE_EVIDENCE_KIND,
             )]),
             vec![],
         ),
@@ -2881,11 +2885,11 @@ mod tests {
         assert_eq!(call.package, objects.interface_pkg_id);
         assert_eq!(
             call.module,
-            workflow::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
+            interface::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.module
         );
         assert_eq!(
             call.function,
-            workflow::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
+            interface::Verifier::FAILURE_EVIDENCE_KIND_LEADER_EVIDENCE.name
         );
     }
 
@@ -3523,7 +3527,7 @@ mod tests {
             failure_option.type_arguments,
             vec![workflow::into_type_tag(
                 interface_pkg_id,
-                workflow::Verifier::FAILURE_EVIDENCE_KIND
+                interface::Verifier::FAILURE_EVIDENCE_KIND
             )]
         );
 
@@ -3914,8 +3918,8 @@ mod tests {
         let agent_config_index = inspector
             .move_call_indices_to(
                 nexus_objects.interface_pkg_id,
-                &crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.module,
-                &crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.name,
+                &crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.module,
+                &crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name,
             )
             .into_iter()
             .next()
@@ -3934,7 +3938,7 @@ mod tests {
         let agent_config_call = inspector.move_call(agent_config_index);
         assert_eq!(
             agent_config_call.function,
-            crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.name
+            crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
         );
         assert_eq!(agent_config_call.arguments.len(), 8);
         inspector.expect_u64(&agent_config_call.arguments[5], agent_execution.skill_id);
@@ -4114,9 +4118,9 @@ mod tests {
         assert!(calls.iter().any(|call| {
             call.package == nexus_objects.interface_pkg_id
                 && call.module
-                    == crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module
+                    == crate::idents::interface::Agent::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module
                 && call.function
-                    == crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name
+                    == crate::idents::interface::Agent::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name
         }));
         assert!(calls.iter().any(|call| {
             call.package == nexus_objects.workflow_pkg_id
@@ -4126,8 +4130,8 @@ mod tests {
         let config_index = inspector
             .move_call_indices_to(
                 nexus_objects.interface_pkg_id,
-                &crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module,
-                &crate::idents::tap::TapStandard::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name,
+                &crate::idents::interface::Agent::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.module,
+                &crate::idents::interface::Agent::NEW_DEFAULT_AGENT_EXECUTION_CONFIG.name,
             )
             .into_iter()
             .next()
@@ -4135,8 +4139,8 @@ mod tests {
         inspector.expect_u64(&inspector.move_call(config_index).arguments[4], 17);
         assert!(!calls.iter().any(|call| {
             call.package == nexus_objects.interface_pkg_id
-                && call.module == crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.module
-                && call.function == crate::idents::tap::TapStandard::NEW_AGENT_EXECUTION_CONFIG.name
+                && call.module == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.module
+                && call.function == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
         }));
         let shared_inputs = inspector
             .inputs()
@@ -4384,8 +4388,8 @@ mod tests {
                 .iter()
                 .filter(|call| {
                     call.package == objects.interface_pkg_id
-                        && call.module == workflow::Verifier::VERIFIER_CONFIG.module
-                        && call.function == workflow::Verifier::VERIFIER_CONFIG.name
+                        && call.module == interface::Verifier::VERIFIER_CONFIG.module
+                        && call.function == interface::Verifier::VERIFIER_CONFIG.name
                 })
                 .count(),
             4
