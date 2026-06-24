@@ -669,7 +669,7 @@ fn scheduled_agent_execution_config_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
+    _dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -686,7 +686,10 @@ fn scheduled_agent_execution_config_arg(
         interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
     let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, objects, input_data)?;
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
-    let selected_dag = selected_dag.or(Some(dag_id));
+    // Don't override the caller — `agent_registry::resolve_agent_execution_config_dag`
+    // requires `selected_dag` to be `None` for pinned skills (`EDagSelectionRedundant`)
+    // and `Some` only for runtime-selected ones (`EDagSelectionRequired`). The caller
+    // resolves which based on the skill's on-chain `dag_binding`.
     agent_execution_config_arg(
         tx,
         objects,
