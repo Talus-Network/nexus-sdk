@@ -9267,8 +9267,8 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "sui-rpc 0.3.1",
- "sui-sdk-types 0.3.1",
+ "sui-rpc 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 2.0.111",
  "thiserror 1.0.69",
 ]
