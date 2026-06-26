@@ -31,15 +31,12 @@ pub const fn skill_id(value: u64) -> SkillId {
     value
 }
 
-/// TAP skill interface revision used for fresh lookup and in-flight pinning.
+/// TAP skill interface version used for fresh lookup and in-flight pinning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[serde(transparent)]
-pub struct InterfaceRevision(pub u64);
+pub struct InterfaceVersion(pub u64);
 
-/// Canonical name for `nexus_interface::version::InterfaceVersion`.
-pub type InterfaceVersion = InterfaceRevision;
-
-impl<'de> Deserialize<'de> for InterfaceRevision {
+impl<'de> Deserialize<'de> for InterfaceVersion {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -48,7 +45,7 @@ impl<'de> Deserialize<'de> for InterfaceRevision {
     }
 }
 
-impl fmt::Display for InterfaceRevision {
+impl fmt::Display for InterfaceVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -60,7 +57,7 @@ pub struct SkillRevisionKey {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
 }
 
 impl fmt::Display for SkillRevisionKey {
@@ -652,9 +649,6 @@ pub struct SkillRequirements {
     pub fixed_tools: Vec<FixedTool>,
 }
 
-/// Canonical core skill requirement name.
-pub type SkillRequirement = SkillRequirements;
-
 /// Stored `nexus_registry::agent_registry::AgentRecord`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentRecord {
@@ -676,7 +670,7 @@ pub struct SkillRecord {
     pub active: bool,
     pub dag_binding: SkillDagBinding,
     pub requirements: SkillRequirements,
-    pub current_interface_revision: InterfaceRevision,
+    pub current_interface_revision: InterfaceVersion,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub scheduled_task_count: u64,
 }
@@ -894,9 +888,6 @@ pub struct AgentPaymentVault {
     pub locked_amount: u64,
 }
 
-/// Backward-compatible alias for the current `nexus_interface::authorization` template.
-pub type ScheduledVertexAuthorizationTemplate = crate::types::AgentVertexAuthorizationTemplate;
-
 /// Registered skill plus the currently active skill revision used for fresh standard execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActiveSkillExecutionTarget {
@@ -918,7 +909,7 @@ pub struct SkillConfig {
     pub name: String,
     pub dag_path: PathBuf,
     pub requirements: SkillRequirements,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
 }
 
 impl SkillConfig {
@@ -939,7 +930,7 @@ impl SkillConfig {
 pub struct TapPublishArtifact {
     pub skill_name: String,
     pub dag_id: sui::types::Address,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub requirements: SkillRequirements,
 }
 
@@ -1246,7 +1237,7 @@ mod tests {
             key: SkillRevisionKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(revision),
+                interface_revision: InterfaceVersion(revision),
             },
             requirements: requirements(),
         }
@@ -1260,7 +1251,7 @@ mod tests {
             active,
             dag_binding: SkillDagBinding::pinned(addr("0x44")),
             requirements: requirements(),
-            current_interface_revision: InterfaceRevision(current_interface_revision),
+            current_interface_revision: InterfaceVersion(current_interface_revision),
             scheduled_task_count: 0,
         }
     }
@@ -1282,7 +1273,7 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].key.agent_id, addr("0xa"));
         assert_eq!(records[0].key.skill_id, 11);
-        assert_eq!(records[0].key.interface_revision, InterfaceRevision(2));
+        assert_eq!(records[0].key.interface_revision, InterfaceVersion(2));
     }
 
     #[test]
@@ -1311,7 +1302,7 @@ mod tests {
         )
         .expect("one active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion(1));
 
         let duplicate = vec![skill_revision(1), skill_revision(1)];
         assert!(matches!(
@@ -1347,7 +1338,7 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
         };
 
         let artifact =
@@ -1363,12 +1354,12 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, addr("0x8")).expect("valid artifact");
 
-        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert_eq!(artifact.interface_revision, InterfaceVersion(1));
         assert_eq!(artifact.requirements, config.requirements);
     }
 
@@ -1549,7 +1540,7 @@ mod tests {
 
     #[test]
     fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
-        let template: ScheduledVertexAuthorizationTemplate =
+        let template: crate::types::AgentVertexAuthorizationTemplate =
             serde_json::from_value(serde_json::json!({
                 "skill_id": "7",
                 "vertex": "0x656e747279",
@@ -1557,9 +1548,9 @@ mod tests {
             }))
             .expect("hex byte strings decode as UTF-8");
 
-        assert_eq!(template.vertex, "entry");
+        assert_eq!(template.vertex.as_str(), "entry");
 
-        let template: ScheduledVertexAuthorizationTemplate =
+        let template: crate::types::AgentVertexAuthorizationTemplate =
             serde_json::from_value(serde_json::json!({
                 "skill_id": "7",
                 "vertex": "0xnothex",
@@ -1567,7 +1558,7 @@ mod tests {
             }))
             .expect("plain byte string remains text");
 
-        assert_eq!(template.vertex, "0xnothex");
+        assert_eq!(template.vertex.as_str(), "0xnothex");
     }
 
     #[test]
@@ -1604,7 +1595,7 @@ mod tests {
         );
         assert_eq!(
             resolved.skill_revision.key.interface_revision,
-            InterfaceRevision(2)
+            InterfaceVersion(2)
         );
     }
 

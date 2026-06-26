@@ -75,7 +75,7 @@ mod tests {
                 schedule_policy: nexus_sdk::types::SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: nexus_sdk::types::InterfaceRevision(1),
+            interface_revision: nexus_sdk::types::InterfaceVersion(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))

@@ -17,7 +17,7 @@ fn terminal_err_eval_trace_entry(event: &NexusEventKind) -> serde_json::Value {
             "terminal_err_eval": true,
             "vertex": event.vertex,
             "failure_class": event.failure_class.to_string(),
-            "outcome": event.outcome.to_string(),
+            "outcome": event.outcome.as_ref().map(|outcome| outcome.to_string()),
             "reason": event.reason,
             "duplicate": event.duplicate,
             "err_eval_hash": hex::encode(&event.err_eval_hash),
@@ -166,7 +166,11 @@ pub(crate) async fn inspect_dag_execution(
                     "Terminal _err_eval recorded for vertex '{vertex}' as {failure_class} with outcome '{outcome}': '{reason}'.{duplicate_suffix}",
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
                     failure_class = e.failure_class.to_string().truecolor(100, 100, 100),
-                    outcome = e.outcome.to_string().truecolor(100, 100, 100),
+                    outcome = e.outcome
+                        .as_ref()
+                        .map(|outcome| outcome.to_string())
+                        .unwrap_or_else(|| "none".to_string())
+                        .truecolor(100, 100, 100),
                     reason = e.reason.truecolor(100, 100, 100),
                     duplicate_suffix = terminal_err_eval_duplicate_suffix(event_kind),
                 );
@@ -246,11 +250,11 @@ mod tests {
                 execution: sui::types::Address::TWO,
                 walk_index: 5,
                 vertex: RuntimeVertex::Plain {
-                    vertex: TypeName::new("failable"),
+                    vertex: TypeName::new("failable").into(),
                 },
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: PostFailureAction::TransientContinue,
+                outcome: Some(PostFailureAction::TransientContinue),
                 reason: "tool failed".to_string(),
                 err_eval_hash: vec![0xab, 0xcd],
                 duplicate: true,
@@ -284,7 +288,7 @@ mod tests {
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-                outcome: PostFailureAction::Terminate,
+                outcome: Some(PostFailureAction::Terminate),
                 reason: "timeout".to_string(),
                 err_eval_hash: vec![],
                 duplicate: true,

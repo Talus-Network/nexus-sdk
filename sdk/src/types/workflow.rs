@@ -1,130 +1,37 @@
-use {
-    super::nexus_data::NexusData,
-    crate::{
-        sui,
-        types::{
-            parse_published_move_enum_value,
-            parse_string_value,
-            strip_fields_owned,
-            SharedObjectRef,
+pub use crate::types::generated::{
+    interface_types::{
+        graph::PostFailureAction,
+        verifier::{
+            ExternalVerifierSubmitEvidence,
+            FailureEvidenceKind,
+            OffChainToolResultAuxiliary,
+            OffChainVerifierProof,
+            OffchainRequestEvidence,
+            OffchainResponseEvidence,
+            OffchainVerifierEvidence,
+            PreparedToolOutput,
+            PreparedToolOutputPort,
+            VerificationSubmissionKind,
+            VerificationVerdict,
+            VerifierConfig,
+            VerifierContractResult,
+            VerifierDecision,
+            VerifierMode,
         },
     },
+    workflow_types::execution_failure::WorkflowFailureClass,
+};
+use {
+    crate::{sui, types::SharedObjectRef},
     serde::{Deserialize, Serialize},
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum FailureEvidenceKind {
-    #[serde(rename = "tool_evidence", alias = "ToolEvidence")]
-    ToolEvidence,
-    #[serde(rename = "leader_evidence", alias = "LeaderEvidence")]
-    LeaderEvidence,
-}
-
-/// Distinguishes payload verification from normalized `_err_eval` reason
-/// verification inside verifier evidence and verifier contract results.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationSubmissionKind {
-    #[serde(rename = "success", alias = "Success")]
-    Success,
-    #[serde(rename = "err_eval", alias = "ErrEval")]
-    ErrEval,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationVerdict {
-    #[serde(rename = "accepted", alias = "Accepted")]
-    Accepted,
-    #[serde(rename = "invalid_leader_proof", alias = "InvalidLeaderProof")]
-    InvalidLeaderProof,
-    #[serde(rename = "invalid_tool_proof", alias = "InvalidToolProof")]
-    InvalidToolProof,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationSubmissionRole {
-    #[serde(rename = "leader", alias = "Leader")]
-    Leader,
-    #[serde(rename = "tool", alias = "Tool")]
-    Tool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerifierDecisionV1 {
-    #[serde(rename = "accept", alias = "Accept")]
-    Accept,
-    #[serde(rename = "reject", alias = "Reject")]
-    Reject,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerifierMode {
-    #[serde(rename = "none", alias = "None")]
-    None,
-    #[serde(rename = "leader_registered_key", alias = "LeaderRegisteredKey")]
-    LeaderRegisteredKey,
-    #[serde(rename = "leader_nautilus_enclave", alias = "LeaderNautilusEnclave")]
-    LeaderNautilusEnclave,
-    #[serde(rename = "tool_verifier_contract", alias = "ToolVerifierContract")]
-    ToolVerifierContract,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
-pub struct VerifierConfig {
-    pub mode: VerifierMode,
-    pub method: String,
-}
-
-impl VerifierConfig {
-    pub fn is_none(&self) -> bool {
-        self.mode == VerifierMode::None && self.method.is_empty()
-    }
-}
 
 impl Default for VerifierConfig {
     fn default() -> Self {
         Self {
             mode: VerifierMode::None,
-            method: String::new(),
+            method: "".into(),
         }
-    }
-}
-
-/// Standard output contract for external verifier packages. The workflow
-/// checks this result against the registered verifier method, accepted decision,
-/// submission kind, evidence kind, and submitted payload or reason hash.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VerifierContractResultV1 {
-    pub method: String,
-    pub decision: VerifierDecisionV1,
-    pub submission_kind: VerificationSubmissionKind,
-    pub failure_evidence_kind: FailureEvidenceKind,
-    pub payload_or_reason_hash: Vec<u8>,
-    pub credential: Vec<u8>,
-    pub detail: Vec<u8>,
-}
-
-impl VerifierContractResultV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-/// Request-side evidence that binds an offchain call to the concrete execution,
-/// walk, vertex, leader, tool, request hash, and request signature.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OffchainRequestEvidenceV1 {
-    pub execution: sui::types::Address,
-    pub walk_index: u64,
-    pub vertex: String,
-    pub tool_fqn: String,
-    pub leader_cap_id: sui::types::Address,
-    pub request_hash: Vec<u8>,
-    pub request_signature: Vec<u8>,
-}
-
-impl OffchainRequestEvidenceV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
     }
 }
 
@@ -133,48 +40,14 @@ impl OffchainRequestEvidenceV1 {
 /// The active PTB derives execution, vertex, and leader identity from
 /// authenticated Move objects instead of accepting those IDs from the caller.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthenticatedOffchainRequestEvidenceV1 {
+pub struct AuthenticatedOffchainRequestEvidence {
     pub walk_index: u64,
     pub tool_fqn: String,
     pub request_hash: Vec<u8>,
     pub request_signature: Vec<u8>,
 }
 
-impl AuthenticatedOffchainRequestEvidenceV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-/// Response-side evidence for the same offchain call, including the normalized
-/// `_err_eval` reason hash when the submission reports evaluation failure.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OffchainResponseEvidenceV1 {
-    pub status_code: u64,
-    pub response_hash: Vec<u8>,
-    pub response_signature: Vec<u8>,
-    pub normalized_err_eval_reason_hash: Option<Vec<u8>>,
-}
-
-impl OffchainResponseEvidenceV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-/// Typed verifier input consumed by external verifier packages. The workflow
-/// validates the returned proof against these bindings before accepting a
-/// verifier-aware tool result.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OffchainVerifierEvidenceV1 {
-    pub submission_kind: VerificationSubmissionKind,
-    pub payload_or_reason_hash: Vec<u8>,
-    pub transport_proof: Vec<u8>,
-    pub request: OffchainRequestEvidenceV1,
-    pub response: OffchainResponseEvidenceV1,
-}
-
-impl OffchainVerifierEvidenceV1 {
+impl AuthenticatedOffchainRequestEvidence {
     pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
         bcs::to_bytes(self)
     }
@@ -185,37 +58,22 @@ impl OffchainVerifierEvidenceV1 {
 /// Move constructs the full verifier request evidence from `DAGExecution`,
 /// `leader_cap`, and this request metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthenticatedOffchainVerifierEvidenceV1 {
+pub struct AuthenticatedOffchainVerifierEvidence {
     pub submission_kind: VerificationSubmissionKind,
     pub payload_or_reason_hash: Vec<u8>,
     pub transport_proof: Vec<u8>,
-    pub request: AuthenticatedOffchainRequestEvidenceV1,
-    pub response: OffchainResponseEvidenceV1,
+    pub request: AuthenticatedOffchainRequestEvidence,
+    pub response: OffchainResponseEvidence,
 }
 
-impl AuthenticatedOffchainVerifierEvidenceV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-/// Ephemeral proof value produced inside the PTB after calling an external
-/// verifier package. It is passed to the verifier-aware DAG entry as typed Move
-/// data, not through auxiliary BCS bytes.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExternalVerifierSubmitEvidenceV1 {
-    pub result: VerifierContractResultV1,
-    pub communication_evidence: Vec<u8>,
-}
-
-impl ExternalVerifierSubmitEvidenceV1 {
+impl AuthenticatedOffchainVerifierEvidence {
     pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
         bcs::to_bytes(self)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExternalVerifierRuntimeCallV1 {
+pub struct ExternalVerifierRuntimeCall {
     pub package_address: sui::types::Address,
     pub module_name: String,
     pub function_name: String,
@@ -224,147 +82,13 @@ pub struct ExternalVerifierRuntimeCallV1 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreparedToolOutputPortV1 {
-    pub port: String,
-    pub data: NexusData,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreparedToolOutputV1 {
-    pub output_variant: String,
-    pub output_ports_data: Vec<PreparedToolOutputPortV1>,
-}
-
-impl PreparedToolOutputV1 {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-/// The only verifier-aware proof envelope for offchain tool submissions.
-/// `RegisteredKey` carries signed transport evidence; `ExternalVerifier`
-/// carries the PTB-created verifier result.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OffChainVerifierProofV1 {
-    RegisteredKey {
-        verifier_credential: Vec<u8>,
-        communication_evidence: Vec<u8>,
-    },
-    ExternalVerifier {
-        evidence: ExternalVerifierSubmitEvidenceV1,
-    },
-}
-
-/// Optional auxiliary data for no-verifier and verifier-aware submissions.
-/// It only carries `_err_eval` failure-evidence classification and is not a
-/// proof carrier.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OffChainToolResultAuxiliary {
-    pub reported_failure_evidence_kind: Option<FailureEvidenceKind>,
-}
-
-impl OffChainToolResultAuxiliary {
-    pub fn success() -> Self {
-        Self {
-            reported_failure_evidence_kind: None,
-        }
-    }
-
-    pub fn err_eval(failure_evidence_kind: FailureEvidenceKind) -> Self {
-        Self {
-            reported_failure_evidence_kind: Some(failure_evidence_kind),
-        }
-    }
-
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
-impl<'de> Deserialize<'de> for VerifierConfig {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Standard {
-            mode: VerifierMode,
-            method: String,
-        }
-
-        if !deserializer.is_human_readable() {
-            let parsed = Standard::deserialize(deserializer)?;
-            return Ok(Self {
-                mode: parsed.mode,
-                method: parsed.method,
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        if let Ok(parsed) = serde_json::from_value::<Standard>(value.clone()) {
-            return Ok(Self {
-                mode: parsed.mode,
-                method: parsed.method,
-            });
-        }
-
-        let value = strip_fields_owned(value);
-        let object = value
-            .as_object()
-            .ok_or_else(|| serde::de::Error::custom("VerifierConfig must be an object"))?;
-
-        let mode_value = object
-            .get("mode")
-            .ok_or_else(|| serde::de::Error::custom("VerifierConfig missing mode"))?;
-        let mode = parse_published_move_enum_value::<VerifierMode>(mode_value)
-            .map_err(serde::de::Error::custom)?
-            .ok_or_else(|| serde::de::Error::custom("VerifierConfig mode did not parse"))?;
-
-        let method_value = object
-            .get("method")
-            .ok_or_else(|| serde::de::Error::custom("VerifierConfig missing method"))?;
-        let method = parse_string_value(method_value)
-            .map_err(serde::de::Error::custom)?
-            .ok_or_else(|| serde::de::Error::custom("VerifierConfig method did not parse"))?;
-
-        Ok(Self { mode, method })
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum WorkflowFailureClass {
-    #[serde(rename = "retryable", alias = "Retryable")]
-    Retryable,
-    #[serde(rename = "terminal_tool_failure", alias = "TerminalToolFailure")]
-    TerminalToolFailure,
-    #[serde(
-        rename = "terminal_submission_failure",
-        alias = "TerminalSubmissionFailure"
-    )]
-    TerminalSubmissionFailure,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionTerminalRecord {
     pub vertex: crate::types::RuntimeVertex,
     pub failure_class: WorkflowFailureClass,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PostFailureAction {
-    #[serde(rename = "terminate", alias = "Terminate")]
-    Terminate,
-    #[serde(
-        rename = "continue",
-        alias = "Continue",
-        alias = "TransientContinue",
-        alias = "transient_continue"
-    )]
-    TransientContinue,
-}
-
 impl PostFailureAction {
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Terminate => "terminate",
             Self::TransientContinue => "continue",
@@ -392,15 +116,22 @@ impl std::fmt::Display for WorkflowFailureClass {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::PublishedMoveEnum};
+    use {
+        super::*,
+        crate::types::{MoveOption, PublishedMoveEnum},
+    };
+
+    fn id(bytes: sui::types::Address) -> crate::types::generated_support::ID {
+        crate::types::generated_support::ID { bytes }
+    }
 
     #[test]
     fn test_post_failure_action_serde() {
-        let action: PostFailureAction = serde_json::from_str("\"continue\"").unwrap();
+        let action: PostFailureAction = serde_json::from_str("\"TransientContinue\"").unwrap();
         assert_eq!(action, PostFailureAction::TransientContinue);
         assert_eq!(
             serde_json::to_string(&PostFailureAction::Terminate).unwrap(),
-            "\"terminate\""
+            "\"Terminate\""
         );
     }
 
@@ -430,7 +161,7 @@ mod tests {
         assert_eq!(wrapped.0, WorkflowFailureClass::TerminalToolFailure);
 
         let string: PublishedMoveEnum<WorkflowFailureClass> =
-            serde_json::from_str("\"terminal_submission_failure\"").unwrap();
+            serde_json::from_str("\"TerminalSubmissionFailure\"").unwrap();
         assert_eq!(string.0, WorkflowFailureClass::TerminalSubmissionFailure);
     }
 
@@ -452,39 +183,14 @@ mod tests {
         assert_eq!(tagged.0, VerifierMode::LeaderRegisteredKey);
 
         let string: PublishedMoveEnum<VerifierMode> =
-            serde_json::from_str("\"tool_verifier_contract\"").unwrap();
+            serde_json::from_str("\"ToolVerifierContract\"").unwrap();
         assert_eq!(string.0, VerifierMode::ToolVerifierContract);
-    }
-
-    #[test]
-    fn test_verifier_config_deserializes_wrapped_move_json() {
-        let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
-            "fields": {
-                "mode": {
-                    "fields": {
-                        "@variant": "LeaderRegisteredKey"
-                    }
-                },
-                "method": {
-                    "bytes": "signed_http_v1"
-                }
-            }
-        }))
-        .unwrap();
-
-        assert_eq!(
-            parsed,
-            VerifierConfig {
-                mode: VerifierMode::LeaderRegisteredKey,
-                method: "signed_http_v1".to_string(),
-            }
-        );
     }
 
     #[test]
     fn test_verifier_config_deserializes_plain_json() {
         let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
-            "mode": "tool_verifier_contract",
+            "mode": "ToolVerifierContract",
             "method": "demo_verifier_v1"
         }))
         .unwrap();
@@ -493,7 +199,24 @@ mod tests {
             parsed,
             VerifierConfig {
                 mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".to_string(),
+                method: "demo_verifier_v1".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_verifier_config_deserializes_move_json_enum_mode() {
+        let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
+            "mode": { "@variant": "ToolVerifierContract" },
+            "method": "demo_verifier_v1"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            VerifierConfig {
+                mode: VerifierMode::ToolVerifierContract,
+                method: "demo_verifier_v1".into(),
             }
         );
     }
@@ -509,7 +232,7 @@ mod tests {
         assert_eq!(accepted_tagged.0, VerificationVerdict::Accepted);
 
         let accepted_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"accepted\"").unwrap();
+            serde_json::from_str("\"Accepted\"").unwrap();
         assert_eq!(accepted_string.0, VerificationVerdict::Accepted);
 
         let invalid_tool_proof_tagged: PublishedMoveEnum<VerificationVerdict> =
@@ -520,7 +243,7 @@ mod tests {
         );
 
         let invalid_tool_proof_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"invalid_tool_proof\"").unwrap();
+            serde_json::from_str("\"InvalidToolProof\"").unwrap();
         assert_eq!(
             invalid_tool_proof_string.0,
             VerificationVerdict::InvalidToolProof
@@ -534,8 +257,15 @@ mod tests {
         assert_eq!(tagged.0, FailureEvidenceKind::ToolEvidence);
 
         let string: PublishedMoveEnum<FailureEvidenceKind> =
-            serde_json::from_str("\"leader_evidence\"").unwrap();
+            serde_json::from_str("\"LeaderEvidence\"").unwrap();
         assert_eq!(string.0, FailureEvidenceKind::LeaderEvidence);
+    }
+
+    #[test]
+    fn test_move_option_deserializes_published_move_enum_payload() {
+        let parsed: MoveOption<FailureEvidenceKind> =
+            serde_json::from_value(serde_json::json!([{ "@variant": "ToolEvidence" }])).unwrap();
+        assert_eq!(parsed, MoveOption(Some(FailureEvidenceKind::ToolEvidence)));
     }
 
     #[test]
@@ -544,7 +274,7 @@ mod tests {
         assert_eq!(accepted, VerificationVerdict::Accepted);
         assert_eq!(
             serde_json::to_string(&VerificationVerdict::Accepted).unwrap(),
-            "\"accepted\""
+            "\"Accepted\""
         );
 
         let invalid_tool_proof: VerificationVerdict =
@@ -552,26 +282,26 @@ mod tests {
         assert_eq!(invalid_tool_proof, VerificationVerdict::InvalidToolProof);
         assert_eq!(
             serde_json::to_string(&VerificationVerdict::InvalidToolProof).unwrap(),
-            "\"invalid_tool_proof\""
+            "\"InvalidToolProof\""
         );
     }
 
     #[test]
     fn test_verifier_decision_v1_serde() {
-        let accepted: VerifierDecisionV1 = serde_json::from_str("\"Accept\"").unwrap();
-        assert_eq!(accepted, VerifierDecisionV1::Accept);
+        let accepted: VerifierDecision = serde_json::from_str("\"Accept\"").unwrap();
+        assert_eq!(accepted, VerifierDecision::Accept);
         assert_eq!(
-            serde_json::to_string(&VerifierDecisionV1::Reject).unwrap(),
-            "\"reject\""
+            serde_json::to_string(&VerifierDecision::Reject).unwrap(),
+            "\"Reject\""
         );
     }
 
     #[test]
     fn test_external_verifier_submit_evidence_v1_bcs_round_trip() {
-        let value = ExternalVerifierSubmitEvidenceV1 {
-            result: VerifierContractResultV1 {
-                method: "demo_verifier_v1".to_string(),
-                decision: VerifierDecisionV1::Accept,
+        let value = ExternalVerifierSubmitEvidence {
+            result: VerifierContractResult {
+                method: "demo_verifier_v1".into(),
+                decision: VerifierDecision::Accept,
                 submission_kind: VerificationSubmissionKind::Success,
                 failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
                 payload_or_reason_hash: vec![1, 2, 3],
@@ -581,92 +311,96 @@ mod tests {
             communication_evidence: vec![8, 9, 10],
         };
 
-        let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: ExternalVerifierSubmitEvidenceV1 = bcs::from_bytes(&bytes).unwrap();
+        let bytes = bcs::to_bytes(&value).unwrap();
+        let parsed: ExternalVerifierSubmitEvidence = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
 
     #[test]
     fn test_offchain_verifier_evidence_v1_bcs_round_trip() {
-        let value = OffchainVerifierEvidenceV1 {
+        let value = OffchainVerifierEvidence {
             submission_kind: VerificationSubmissionKind::Success,
             payload_or_reason_hash: vec![1, 2, 3],
             transport_proof: vec![4, 5, 6],
-            request: OffchainRequestEvidenceV1 {
-                execution: sui::types::Address::ZERO,
+            request: OffchainRequestEvidence {
+                execution: id(sui::types::Address::ZERO),
                 walk_index: 7,
-                vertex: "verified".to_string(),
-                tool_fqn: "example.tool@1".to_string(),
-                leader_cap_id: sui::types::Address::ZERO,
+                vertex: "verified".into(),
+                tool_fqn: "example.tool@1".into(),
+                leader_cap_id: id(sui::types::Address::ZERO),
                 request_hash: vec![8, 9],
                 request_signature: vec![10, 11],
             },
-            response: OffchainResponseEvidenceV1 {
+            response: OffchainResponseEvidence {
                 status_code: 200,
                 response_hash: vec![12, 13],
                 response_signature: vec![14, 15],
-                normalized_err_eval_reason_hash: Some(vec![16, 17]),
+                normalized_err_eval_reason_hash: MoveOption(Some(vec![16, 17])),
             },
         };
 
-        let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: OffchainVerifierEvidenceV1 = bcs::from_bytes(&bytes).unwrap();
+        let bytes = bcs::to_bytes(&value).unwrap();
+        let parsed: OffchainVerifierEvidence = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
 
     #[test]
     fn test_authenticated_offchain_verifier_evidence_v1_bcs_round_trip() {
-        let value = AuthenticatedOffchainVerifierEvidenceV1 {
+        let value = AuthenticatedOffchainVerifierEvidence {
             submission_kind: VerificationSubmissionKind::Success,
             payload_or_reason_hash: vec![1, 2, 3],
             transport_proof: vec![4, 5, 6],
-            request: AuthenticatedOffchainRequestEvidenceV1 {
+            request: AuthenticatedOffchainRequestEvidence {
                 walk_index: 7,
                 tool_fqn: "example.tool@1".to_string(),
                 request_hash: vec![8, 9],
                 request_signature: vec![10, 11],
             },
-            response: OffchainResponseEvidenceV1 {
+            response: OffchainResponseEvidence {
                 status_code: 200,
                 response_hash: vec![12, 13],
                 response_signature: vec![14, 15],
-                normalized_err_eval_reason_hash: Some(vec![16, 17]),
+                normalized_err_eval_reason_hash: MoveOption(Some(vec![16, 17])),
             },
         };
 
         let bytes = value.to_bcs_bytes().unwrap();
-        let parsed: AuthenticatedOffchainVerifierEvidenceV1 = bcs::from_bytes(&bytes).unwrap();
+        let parsed: AuthenticatedOffchainVerifierEvidence = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
 
     #[test]
     fn test_off_chain_tool_result_auxiliary_success_bcs_serializes() {
-        let value = OffChainToolResultAuxiliary::success();
+        let value = OffChainToolResultAuxiliary {
+            reported_failure_evidence_kind: MoveOption(None),
+        };
 
-        let bytes = value.to_bcs_bytes().unwrap();
+        let bytes = bcs::to_bytes(&value).unwrap();
         let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
-        assert_eq!(parsed.reported_failure_evidence_kind, None);
+        assert_eq!(parsed.reported_failure_evidence_kind, MoveOption(None));
     }
 
     #[test]
     fn test_off_chain_tool_result_auxiliary_err_eval_bcs_serializes() {
-        let value = OffChainToolResultAuxiliary::err_eval(FailureEvidenceKind::ToolEvidence);
+        let value = OffChainToolResultAuxiliary {
+            reported_failure_evidence_kind: MoveOption(Some(FailureEvidenceKind::ToolEvidence)),
+        };
 
-        let bytes = value.to_bcs_bytes().unwrap();
+        let bytes = bcs::to_bytes(&value).unwrap();
         let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(
             parsed.reported_failure_evidence_kind,
-            Some(FailureEvidenceKind::ToolEvidence)
+            MoveOption(Some(FailureEvidenceKind::ToolEvidence))
         );
     }
 
     #[test]
     fn test_off_chain_verifier_proof_v1_bcs_serializes() {
-        let value = OffChainVerifierProofV1::ExternalVerifier {
-            evidence: ExternalVerifierSubmitEvidenceV1 {
-                result: VerifierContractResultV1 {
-                    method: "demo_verifier_v1".to_string(),
-                    decision: VerifierDecisionV1::Accept,
+        let value = OffChainVerifierProof::ExternalVerifier {
+            evidence: ExternalVerifierSubmitEvidence {
+                result: VerifierContractResult {
+                    method: "demo_verifier_v1".into(),
+                    decision: VerifierDecision::Accept,
                     submission_kind: VerificationSubmissionKind::Success,
                     failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
                     payload_or_reason_hash: vec![1, 2, 3],
@@ -678,7 +412,7 @@ mod tests {
         };
 
         let bytes = bcs::to_bytes(&value).unwrap();
-        let parsed: OffChainVerifierProofV1 = bcs::from_bytes(&bytes).unwrap();
+        let parsed: OffChainVerifierProof = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
 }

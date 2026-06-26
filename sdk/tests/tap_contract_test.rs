@@ -18,7 +18,7 @@ use {
             ExecutionPaymentFinalState,
             ExecutionPaymentSourceKind,
             FixedTool,
-            InterfaceRevision,
+            InterfaceVersion,
             MoveTable,
             NexusObjects,
             PaymentSource,
@@ -92,7 +92,7 @@ fn skill_revision(revision: u64) -> SkillRevisionRecord {
         key: SkillRevisionKey {
             agent_id: addr("0xa1"),
             skill_id: 177,
-            interface_revision: InterfaceRevision(revision),
+            interface_revision: InterfaceVersion(revision),
         },
         requirements: requirements(),
     }
@@ -106,7 +106,7 @@ fn skill(agent_id: sui::types::Address, skill_id: u64, active_revision: u64) -> 
         active: true,
         dag_binding: SkillDagBinding::pinned(addr("0x94")),
         requirements: requirements(),
-        current_interface_revision: InterfaceRevision(active_revision),
+        current_interface_revision: InterfaceVersion(active_revision),
         scheduled_task_count: 0,
     }
 }
@@ -196,7 +196,7 @@ fn active_skill_revision_resolution_uses_skill_current_revision_pointer() {
     let resolved = resolve_active_tap_skill_revision(&records, &skills, addr("0xa1"), 177)
         .expect("one active skill_revision projection");
 
-    assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
+    assert_eq!(resolved.key.interface_revision, InterfaceVersion(1));
 
     let duplicate = vec![skill_revision(1), skill_revision(1)];
     assert!(matches!(
@@ -213,7 +213,7 @@ fn registry_recovery_projects_current_skill_revision_as_endpoint() {
     let active = registry
         .active_skill_revision_record(addr("0xa1"), 177)
         .expect("active registry skill_revision projection");
-    assert_eq!(active.key.interface_revision, InterfaceRevision(2));
+    assert_eq!(active.key.interface_revision, InterfaceVersion(2));
     assert_eq!(active.requirements, requirements());
 
     let records = registry
@@ -225,19 +225,16 @@ fn registry_recovery_projects_current_skill_revision_as_endpoint() {
         .skill_revision_record(SkillRevisionKey {
             agent_id: addr("0xa1"),
             skill_id: 177,
-            interface_revision: InterfaceRevision(2),
+            interface_revision: InterfaceVersion(2),
         })
         .expect("current projected skill_revision");
-    assert_eq!(pinned.key.interface_revision, InterfaceRevision(2));
+    assert_eq!(pinned.key.interface_revision, InterfaceVersion(2));
 
     let skill_bytes = bcs::to_bytes(&registry.skills[0]).expect("stored skill BCS");
     let stored_skill: SkillRecord = bcs::from_bytes(&skill_bytes).expect("stored skill decodes");
     assert_eq!(stored_skill.agent_id, None);
     assert_eq!(stored_skill.skill_id, None);
-    assert_eq!(
-        stored_skill.current_interface_revision,
-        InterfaceRevision(2)
-    );
+    assert_eq!(stored_skill.current_interface_revision, InterfaceVersion(2));
 }
 
 #[test]
@@ -263,7 +260,7 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
         evaluations: addr("0x54"),
         agent_id: addr("0xa1"),
         skill_id: 177,
-        interface_version: InterfaceRevision(7),
+        interface_version: InterfaceVersion(7),
         scheduled_task_id: None,
         scheduled_occurrence_index: None,
     }
@@ -279,7 +276,7 @@ fn request_walk_context_uses_required_agent_fields() {
 
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
-    assert_eq!(context.interface_revision, InterfaceRevision(7));
+    assert_eq!(context.interface_revision, InterfaceVersion(7));
     assert_eq!(context.scheduled_task_id, None);
     assert_eq!(context.scheduled_occurrence_index, None);
 }
@@ -310,7 +307,7 @@ fn request_walk_context_deserializes_move_option_fields() {
 
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
-    assert_eq!(context.interface_revision, InterfaceRevision(7));
+    assert_eq!(context.interface_revision, InterfaceVersion(7));
     assert_eq!(context.scheduled_task_id, Some(addr("0x66")));
     assert_eq!(context.scheduled_occurrence_index, Some(3));
 }
@@ -321,14 +318,14 @@ fn publish_artifact_preserves_skill_contract_without_endpoint_digest() {
         name: "weather".to_string(),
         dag_path: PathBuf::from("dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceRevision(3),
+        interface_revision: InterfaceVersion(3),
     };
 
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, addr("0x24"))
         .expect("valid artifact");
     assert_eq!(artifact.skill_name, "weather");
     assert_eq!(artifact.dag_id, addr("0x24"));
-    assert_eq!(artifact.interface_revision, InterfaceRevision(3));
+    assert_eq!(artifact.interface_revision, InterfaceVersion(3));
     assert_eq!(artifact.requirements, config.requirements);
 
     let value = serde_json::to_value(&artifact).expect("artifact json");
@@ -387,7 +384,7 @@ fn tap_execution_payment_model_matches_live_object_shape() {
     assert_eq!(payment.skill_revision_key().skill_id, 221);
     assert_eq!(
         payment.skill_revision_key().interface_revision,
-        InterfaceRevision(7)
+        InterfaceVersion(7)
     );
     assert_eq!(
         payment.payment_policy,
@@ -618,7 +615,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
         name: "demo_agent".to_string(),
         dag_path: PathBuf::from("demo-dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceRevision(1),
+        interface_revision: InterfaceVersion(1),
     };
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
         .expect("publish artifact");
@@ -644,7 +641,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let dag = tx.object(sui::tx::ObjectInput::shared(dag_id, 1, false));
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
-    nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
+    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
         &mut tx, &objects, dag, execution, leader_cap, 0,
     )
     .expect("workflow worksheet");
@@ -661,7 +658,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let create_agent = find_call(&AgentRegistryIdent::CREATE_AGENT.name);
     let register_skill = find_call(&AgentRegistryIdent::REGISTER_SKILL.name);
     let worksheet = find_call(
-        &nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION
+        &nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
             .name,
     );
 
@@ -669,7 +666,8 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     assert!(register_skill < worksheet);
     assert_eq!(
         move_call(&tx, worksheet).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
+            .name
     );
 }
 
@@ -717,7 +715,7 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
         name: "demo_agent".to_string(),
         dag_path: PathBuf::from("demo-dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceRevision(1),
+        interface_revision: InterfaceVersion(1),
     };
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
         .expect("publish artifact");
@@ -761,7 +759,7 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
 
-    nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
+    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
         &mut tx, &objects, dag, execution, leader_cap, 7,
     )
     .expect("workflow worksheet builder");
@@ -769,6 +767,7 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
+            .name
     );
 }

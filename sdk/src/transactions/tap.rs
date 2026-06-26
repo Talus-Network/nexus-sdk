@@ -762,7 +762,8 @@ fn scheduled_vertex_authorization_template_arg(
 ) -> anyhow::Result<sui::tx::Argument> {
     let skill_id = tx.pure(&template.skill_id);
     let vertex = move_std::Ascii::ascii_string_from_str(tx, &template.vertex)?;
-    let recipient_id = sui_framework::Object::id_from_object_id(tx, template.recipient_id)?;
+    let recipient_id =
+        sui_framework::Object::id_from_object_id(tx, template.recipient_id.clone().into())?;
     Ok(tap_interface_call(
         tx,
         objects,
@@ -1010,8 +1011,10 @@ mod tests {
             25,
             vec![AgentVertexAuthorizationTemplate {
                 skill_id: 7,
-                vertex: "demo_delayed_fire_vertex".to_string(),
-                recipient_id: sui::types::Address::from_static("0x82"),
+                vertex: "demo_delayed_fire_vertex".into(),
+                recipient_id: crate::types::generated_support::ID {
+                    bytes: sui::types::Address::from_static("0x82"),
+                },
             }],
         )
         .expect("ptb construction succeeds");

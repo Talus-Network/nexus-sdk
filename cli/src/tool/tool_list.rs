@@ -41,8 +41,8 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     };
 
     let tool_ids = timeouts
-        .iter()
-        .filter_map(|(fqn, _)| {
+        .keys()
+        .filter_map(|fqn| {
             Tool::derive_id(*nexus_objects.tool_registry.object_id(), &fqn.parse().ok()?).ok()
         })
         .collect::<Vec<_>>();

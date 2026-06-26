@@ -168,7 +168,7 @@ pub fn canonical_request_nexus_data_wire(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn encode_registered_key_transcript_v1(
+pub fn encode_registered_key_transcript(
     execution: Address,
     walk_index: u64,
     vertex_name: &str,
@@ -489,10 +489,10 @@ mod tests {
     }
 
     #[test]
-    fn encode_registered_key_transcript_v1_roundtrips() {
+    fn encode_registered_key_transcript_roundtrips() {
         let output_ports_data =
             HashMap::from([("message".to_string(), inline_data(json!("success")))]);
-        let encoded = encode_registered_key_transcript_v1(
+        let encoded = encode_registered_key_transcript(
             "0x5".parse().expect("execution"),
             3,
             "dummy",

@@ -1,6 +1,8 @@
 //! Read-only helpers and high-level actions for standard TAP.
 
 #[cfg(feature = "move_publish")]
+use crate::idents::publish_dependency_ids_or_framework_defaults;
+#[cfg(feature = "move_publish")]
 use crate::types::SkillConfig;
 use {
     crate::{
@@ -40,7 +42,7 @@ use {
             ExecutionPaymentHistoryList,
             ExecutionPaymentReceipt,
             ExecutionPaymentReceiptFieldKey,
-            InterfaceRevision,
+            InterfaceVersion,
             NexusObjects,
             SkillId,
             SkillRecord,
@@ -116,7 +118,7 @@ pub struct UpdateSkillResult {
     pub tx_checkpoint: u64,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub current_interface_revision: InterfaceRevision,
+    pub current_interface_revision: InterfaceVersion,
     pub dag_binding: crate::types::SkillDagBinding,
     pub requirements: SkillRequirements,
 }
@@ -277,6 +279,39 @@ pub struct AccomplishExecutionPaymentResult {
     pub agent_id: Option<sui::types::Address>,
 }
 
+/// Parameters for [`TapActions::refill_execution_payment`].
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentParams {
+    /// The shared `DAGExecution` object whose live TAP payment should receive
+    /// additional funds.
+    pub execution_id: sui::types::Address,
+    /// MIST amount split from the transaction gas coin and moved into the
+    /// execution payment.
+    pub amount: u64,
+}
+
+/// Parameters for [`TapActions::refill_execution_payment_from_agent_vault`].
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentFromAgentVaultParams {
+    /// The shared `DAGExecution` object whose live TAP payment should receive
+    /// additional funds.
+    pub execution_id: sui::types::Address,
+    /// Agent object whose vault is the refill source.
+    pub agent_id: AgentId,
+    /// MIST amount withdrawn from the agent vault.
+    pub amount: u64,
+}
+
+/// Result returned by TAP execution-payment refill helpers.
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub execution_id: sui::types::Address,
+    pub agent_id: Option<AgentId>,
+    pub amount: u64,
+}
+
 /// Whether a [`ExecutionPayment`] has reached an irrecoverable final state.
 pub fn payment_is_terminal(payment: &ExecutionPayment) -> bool {
     if payment.accomplished || payment.refunded {
@@ -305,15 +340,16 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let upgrade_cap = tx.publish(
             package.package.get_package_bytes(false),
-            package
-                .get_dependency_storage_package_ids()
-                .iter()
-                .map(|id| {
-                    id.to_string()
-                        .parse::<sui::types::Address>()
-                        .expect("compiled package dependency id must parse as Sui address")
-                })
-                .collect(),
+            publish_dependency_ids_or_framework_defaults(
+                package
+                    .get_dependency_storage_package_ids()
+                    .iter()
+                    .map(|id| {
+                        id.to_string()
+                            .parse::<sui::types::Address>()
+                            .expect("compiled package dependency id must parse as Sui address")
+                    }),
+            ),
         );
         let sender_arg = sui_framework::Address::address_from_type(&mut tx, address)
             .map_err(NexusError::TransactionBuilding)?;
@@ -668,6 +704,98 @@ impl TapActions {
             tx_checkpoint: response.checkpoint,
             execution_id: params.execution_id,
             agent_id: params.agent_id,
+        })
+    }
+
+    /// Refill a live TAP execution payment by splitting MIST from the caller's
+    /// transaction gas coin.
+    pub async fn refill_execution_payment(
+        &self,
+        params: RefillExecutionPaymentParams,
+    ) -> Result<RefillExecutionPaymentResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let execution_ref = self
+            .client
+            .crawler()
+            .get_object_metadata(params.execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let execution = tx.object(sui::tx::ObjectInput::shared(
+            *execution_ref.object_id(),
+            execution_ref.version(),
+            true,
+        ));
+        let amount = tx.pure(&params.amount);
+        let gas = tx.gas();
+        let refill_coin = tx
+            .split_coins(gas, vec![amount])
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                NexusError::TransactionBuilding(anyhow::anyhow!(
+                    "failed to split execution payment refill coin"
+                ))
+            })?;
+        dag_tx::refill_tap_execution_payment(
+            &mut tx,
+            &self.client.nexus_objects,
+            execution,
+            refill_coin,
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(RefillExecutionPaymentResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            execution_id: params.execution_id,
+            agent_id: None,
+            amount: params.amount,
+        })
+    }
+
+    /// Refill a live TAP execution payment from an agent payment vault.
+    pub async fn refill_execution_payment_from_agent_vault(
+        &self,
+        params: RefillExecutionPaymentFromAgentVaultParams,
+    ) -> Result<RefillExecutionPaymentResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let crawler = self.client.crawler();
+        let execution_ref = crawler
+            .get_object_metadata(params.execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let agent_ref = crawler
+            .get_object_metadata(params.agent_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let agent = agent_argument_from_metadata(&mut tx, &agent_ref, true)
+            .map_err(NexusError::TransactionBuilding)?;
+        let execution = tx.object(sui::tx::ObjectInput::shared(
+            *execution_ref.object_id(),
+            execution_ref.version(),
+            true,
+        ));
+        dag_tx::refill_tap_execution_payment_from_agent_vault(
+            &mut tx,
+            &self.client.nexus_objects,
+            agent,
+            execution,
+            params.amount,
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(RefillExecutionPaymentResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            execution_id: params.execution_id,
+            agent_id: Some(params.agent_id),
+            amount: params.amount,
         })
     }
 
@@ -1199,7 +1327,7 @@ pub async fn fetch_skill_revision(
     registry_id: sui::types::Address,
     agent_id: AgentId,
     skill_id: SkillId,
-    interface_revision: InterfaceRevision,
+    interface_revision: InterfaceVersion,
 ) -> anyhow::Result<Response<SkillRevisionRecord>> {
     let registry = fetch_agent_registry_tables(crawler, registry_id).await?;
     let record = registry.data.skill_revision_record(SkillRevisionKey {
@@ -1509,7 +1637,7 @@ mod tests {
                 DefaultDagExecutor,
                 ExecutionPaymentFinalState,
                 ExecutionPaymentSourceKind,
-                InterfaceRevision,
+                InterfaceVersion,
                 MoveTable,
                 NexusObjects,
                 SkillConfig,
@@ -1557,7 +1685,7 @@ mod tests {
             key: SkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(revision),
+                interface_revision: InterfaceVersion(revision),
             },
             requirements: SkillRequirements {
                 input_schema_commitment: vec![2],
@@ -1591,7 +1719,7 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0x3")),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceRevision(2),
+                current_interface_revision: InterfaceVersion(2),
                 scheduled_task_count: 0,
             }],
             default_executor: Some(DefaultDagExecutor {
@@ -1781,7 +1909,7 @@ mod tests {
         )
         .expect("one active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceRevision(2));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion(2));
     }
 
     #[test]
@@ -1797,7 +1925,7 @@ mod tests {
             .active_skill_revision_record(sui::types::Address::from_static("0xa"), 11)
             .expect("active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceRevision(2));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion(2));
     }
 
     #[test]
@@ -1816,7 +1944,7 @@ mod tests {
         );
         assert_eq!(
             target.skill_revision.key.interface_revision,
-            InterfaceRevision(2)
+            InterfaceVersion(2)
         );
     }
 
@@ -1870,12 +1998,12 @@ mod tests {
             registry.id,
             sui::types::Address::from_static("0xa"),
             11,
-            InterfaceRevision(2),
+            InterfaceVersion(2),
         )
         .await
         .expect("skill revision recovery should not require default executor decoding");
 
-        assert_eq!(response.data.key.interface_revision, InterfaceRevision(2));
+        assert_eq!(response.data.key.interface_revision, InterfaceVersion(2));
     }
 
     #[tokio::test]
@@ -1953,7 +2081,7 @@ mod tests {
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -2264,7 +2392,7 @@ mod tests {
                     event: events::SkillContractRevisionedEvent {
                         agent_id: *agent_ref.object_id(),
                         skill_id: 11,
-                        current_interface_revision: InterfaceRevision(2),
+                        current_interface_revision: InterfaceVersion(2),
                         dag_binding: SkillDagBinding::pinned(artifact.dag_id),
                         requirements: artifact.requirements.clone(),
                     },
@@ -2320,7 +2448,7 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
-        assert_eq!(result.current_interface_revision, InterfaceRevision(2));
+        assert_eq!(result.current_interface_revision, InterfaceVersion(2));
     }
 
     #[tokio::test]
@@ -2641,7 +2769,7 @@ mod tests {
 
         assert_eq!(
             result.active_skill_revision_key.interface_revision,
-            InterfaceRevision(2)
+            InterfaceVersion(2)
         );
         assert_eq!(result.requirements.input_schema_commitment, vec![2]);
     }
@@ -2656,7 +2784,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
             payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
             source_kind: ExecutionPaymentSourceKind::UserFunded {
                 user: sui::types::Address::from_static("0x1"),
@@ -2681,7 +2809,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id,
             skill_id: 11,
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
             payment_policy: crate::types::SkillPaymentPolicy::AgentFunded { max_budget: 100 },
             source_kind: ExecutionPaymentSourceKind::AgentFunded { agent_id },
             max_budget: 100,

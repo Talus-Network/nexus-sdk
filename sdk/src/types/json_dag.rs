@@ -8,7 +8,7 @@ use {
         types::{PostFailureAction, StorageKind, VerifierConfig},
         ToolFqn,
     },
-    serde::Deserialize,
+    serde::{Deserialize, Deserializer},
 };
 
 /// Name of the default entry group.
@@ -25,6 +25,7 @@ pub struct Dag {
     pub default_values: Option<Vec<DefaultValue>>,
     /// Default post-failure action for the entire DAG. Can be overridden per vertex.
     /// Determines whether the DAG continues execution or terminates when a vertex fails.
+    #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     pub post_failure_action: Option<PostFailureAction>,
     /// Configuration for verifying leader requests. Can be overridden per vertex.
     pub leader_verifier: Option<VerifierConfig>,
@@ -60,11 +61,37 @@ pub struct Vertex {
     /// Entry ports for this vertex that require input data from the user.
     pub entry_ports: Option<Vec<EntryPort>>,
     /// Override the DAG-level post-failure action for this specific vertex.
+    #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     pub post_failure_action: Option<PostFailureAction>,
     /// Override the DAG-level leader verifier for this specific vertex.
     pub leader_verifier: Option<VerifierConfig>,
     /// Override the DAG-level tool verifier for this specific vertex.
     pub tool_verifier: Option<VerifierConfig>,
+}
+
+fn deserialize_post_failure_action_option<'de, D>(
+    deserializer: D,
+) -> Result<Option<PostFailureAction>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let Some(value) = Option::<serde_json::Value>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+
+    if let Some(text) = value.as_str() {
+        return match text {
+            "continue" => Ok(Some(PostFailureAction::TransientContinue)),
+            "terminate" => Ok(Some(PostFailureAction::Terminate)),
+            _ => serde_json::from_value(value)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+        };
+    }
+
+    serde_json::from_value(value)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -148,12 +175,12 @@ mod tests {
     fn test_dag_deserialize_post_failure_action() {
         let dag: Dag = serde_json::from_str(
             r#"{
-                "post_failure_action": "continue",
+                "post_failure_action": "TransientContinue",
                 "vertices": [
                     {
                         "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
                         "name": "root",
-                        "post_failure_action": "terminate"
+                        "post_failure_action": "Terminate"
                     }
                 ],
                 "edges": []
@@ -169,6 +196,58 @@ mod tests {
             dag.vertices[0].post_failure_action,
             Some(PostFailureAction::Terminate)
         );
+    }
+
+    #[test]
+    fn test_dag_deserialize_post_failure_action_aliases_and_null() {
+        let dag: Dag = serde_json::from_str(
+            r#"{
+                "post_failure_action": "continue",
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root",
+                        "post_failure_action": "terminate"
+                    },
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@2" },
+                        "name": "optional",
+                        "post_failure_action": null
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            dag.post_failure_action,
+            Some(PostFailureAction::TransientContinue)
+        );
+        assert_eq!(
+            dag.vertices[0].post_failure_action,
+            Some(PostFailureAction::Terminate)
+        );
+        assert_eq!(dag.vertices[1].post_failure_action, None);
+    }
+
+    #[test]
+    fn test_dag_deserialize_post_failure_action_rejects_unknown_json_value() {
+        let error = serde_json::from_str::<Dag>(
+            r#"{
+                "post_failure_action": { "invalid": true },
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root"
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(!error.to_string().is_empty());
     }
 
     #[test]
@@ -194,12 +273,12 @@ mod tests {
     fn test_dag_deserialize_verifier_config() {
         let dag: Dag = serde_json::from_str(
             r#"{
-                "leader_verifier": { "mode": "leader_registered_key", "method": "signed_http_v1" },
+                "leader_verifier": { "mode": "LeaderRegisteredKey", "method": "signed_http_v1" },
                 "vertices": [
                     {
                         "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
                         "name": "root",
-                        "tool_verifier": { "mode": "tool_verifier_contract", "method": "demo_verifier_v1" }
+                        "tool_verifier": { "mode": "ToolVerifierContract", "method": "demo_verifier_v1" }
                     }
                 ],
                 "edges": []
@@ -211,14 +290,14 @@ mod tests {
             dag.leader_verifier,
             Some(VerifierConfig {
                 mode: VerifierMode::LeaderRegisteredKey,
-                method: "signed_http_v1".to_string(),
+                method: "signed_http_v1".into(),
             })
         );
         assert_eq!(
             dag.vertices[0].tool_verifier,
             Some(VerifierConfig {
                 mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".to_string(),
+                method: "demo_verifier_v1".into(),
             })
         );
     }

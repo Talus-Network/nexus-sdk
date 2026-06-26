@@ -1,10 +1,8 @@
-mod authorization;
 mod derive;
-mod interface_package_config;
-mod interface_version;
+pub mod generated;
+pub mod generated_support;
 mod json_dag;
 mod leader_registry;
-mod move_collections;
 mod move_json;
 mod network_auth;
 mod nexus_data;
@@ -19,21 +17,29 @@ mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
-mod sui_balance;
 mod tap;
 mod tool;
 mod tool_meta;
-mod type_name;
 mod workflow;
 
 pub use {
-    authorization::*,
+    crate::types::generated::{
+        interface_types::{
+            authorization::{
+                AgentSkillAuthorization,
+                AgentVertexAuthorization,
+                AgentVertexAuthorizationContext,
+                AgentVertexAuthorizationTemplate,
+                AuthorizationTrigger,
+            },
+            v1::InterfacePackageConfig,
+        },
+        primitives_types::authorization::{CloneableProvenValue, Grant, ProvenValue},
+    },
     derive::*,
-    interface_package_config::InterfacePackageConfig,
-    interface_version::*,
+    generated_support::*,
     json_dag::*,
     leader_registry::*,
-    move_collections::*,
     move_json::*,
     network_auth::*,
     nexus_data::*,
@@ -47,32 +53,29 @@ pub use {
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
-    sui_balance::SuiBalance,
     tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
-    type_name::TypeName,
     workflow::{
-        AuthenticatedOffchainRequestEvidenceV1,
-        AuthenticatedOffchainVerifierEvidenceV1,
+        AuthenticatedOffchainRequestEvidence,
+        AuthenticatedOffchainVerifierEvidence,
         ExecutionTerminalRecord,
-        ExternalVerifierRuntimeCallV1,
-        ExternalVerifierSubmitEvidenceV1,
+        ExternalVerifierRuntimeCall,
+        ExternalVerifierSubmitEvidence,
         FailureEvidenceKind,
         OffChainToolResultAuxiliary,
-        OffChainVerifierProofV1,
-        OffchainRequestEvidenceV1,
-        OffchainResponseEvidenceV1,
-        OffchainVerifierEvidenceV1,
+        OffChainVerifierProof,
+        OffchainRequestEvidence,
+        OffchainResponseEvidence,
+        OffchainVerifierEvidence,
         PostFailureAction,
-        PreparedToolOutputPortV1,
-        PreparedToolOutputV1,
+        PreparedToolOutput,
+        PreparedToolOutputPort,
         VerificationSubmissionKind,
-        VerificationSubmissionRole,
         VerificationVerdict,
         VerifierConfig,
-        VerifierContractResultV1,
-        VerifierDecisionV1,
+        VerifierContractResult,
+        VerifierDecision,
         VerifierMode,
         WorkflowFailureClass,
     },

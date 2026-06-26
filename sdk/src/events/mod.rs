@@ -133,7 +133,6 @@ events! {
     RequestScheduledWalkEvent => RequestScheduledWalk, "RequestScheduledWalkEvent",
     OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
     RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
-    AnnounceInterfacePackageEvent => AnnounceInterfacePackage, "AnnounceInterfacePackageEvent",
     AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
     SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
     SkillContractRevisionedEvent => SkillContractRevisioned, "SkillContractRevisionedEvent",
@@ -160,6 +159,7 @@ events! {
     ScheduledOccurrencePaymentFinalizedEvent => ScheduledOccurrencePaymentFinalized, "ScheduledOccurrencePaymentFinalizedEvent",
     ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
+    CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
     TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
@@ -207,7 +207,7 @@ pub struct RequestWalkExecutionEvent {
     #[serde(deserialize_with = "deserialize_sui_u64")]
     pub skill_id: SkillId,
     /// Skill interface version pinned for this execution.
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     /// TAP scheduled task that funded this execution, absent for immediate runs.
     #[serde(
         default,
@@ -228,7 +228,7 @@ pub struct RequestWalkExecutionEvent {
 pub struct RequestWalkContext {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub scheduled_task_id: Option<sui::types::Address>,
     pub scheduled_occurrence_index: Option<u64>,
 }
@@ -262,14 +262,6 @@ impl RequestWalkExecutionEvent {
         }))
     }
 }
-
-/// Fired via the Nexus `interface` package when a new agent is registered.
-/// Provides the agent's interface package and shared objects for SDK callers.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct AnnounceInterfacePackageEvent {
-    pub shared_objects: Vec<SharedObjectRef>,
-}
-
 /// Fired when a Talus agent is created and receives an on-chain identity handle.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AgentCreatedEvent {
@@ -291,7 +283,7 @@ pub struct SkillRegisteredEvent {
 pub struct SkillContractRevisionedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub current_interface_revision: InterfaceRevision,
+    pub current_interface_revision: InterfaceVersion,
     pub dag_binding: SkillDagBinding,
     pub requirements: SkillRequirements,
 }
@@ -308,8 +300,8 @@ pub struct DefaultDagExecutorUpdatedEvent {
 pub struct SkillActiveRevisionUpdatedEvent {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub previous_revision: InterfaceRevision,
-    pub current_interface_revision: InterfaceRevision,
+    pub previous_revision: InterfaceVersion,
+    pub current_interface_revision: InterfaceVersion,
 }
 
 /// Fired when immediate execution is requested for an agent skill.
@@ -318,7 +310,7 @@ pub struct AgentSkillExecutionRequestedEvent {
     pub execution_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub payment_id: sui::types::Address,
 }
 
@@ -350,7 +342,7 @@ pub struct AgentSkillPaymentCreatedEvent {
     pub execution_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub payer: sui::types::Address,
     pub source_kind: PaymentSourceKind,
     pub source_identity: sui::types::Address,
@@ -385,7 +377,7 @@ pub struct ScheduledPaymentReserveReceiptCreatedEvent {
     pub reserve_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     pub source_kind: ExecutionPaymentSourceKind,
     pub prepaid_amount: u64,
     pub occurrence_budget: u64,
@@ -398,7 +390,7 @@ pub struct GasPaymentConsumedEvent {
     pub execution_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub amount: u64,
     pub consumed_total: u64,
 }
@@ -409,7 +401,7 @@ pub struct ExecutionAccomplishedEvent {
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -418,7 +410,7 @@ pub struct ExecutionRefundedEvent {
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub refund_reason: Vec<u8>,
 }
 
@@ -428,7 +420,7 @@ pub struct ScheduledSkillExecutionTriggeredEvent {
     pub execution_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
     pub occurrence_index: u64,
 }
 
@@ -446,7 +438,7 @@ pub struct ScheduledSkillPaymentRefilledEvent {
     pub reserve_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     pub source_kind: ExecutionPaymentSourceKind,
     pub refill_amount: u64,
     pub occurrence_budget: u64,
@@ -462,7 +454,7 @@ pub struct ScheduledOccurrencePaymentCreatedEvent {
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     pub source_kind: ExecutionPaymentSourceKind,
     pub budget: u64,
     pub remaining_funds: u64,
@@ -474,7 +466,7 @@ pub struct ScheduledSkillPaymentCanceledEvent {
     pub reserve_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     pub source_kind: ExecutionPaymentSourceKind,
     pub refunded_amount: u64,
     pub remaining_funds: u64,
@@ -489,7 +481,7 @@ pub struct ScheduledOccurrencePaymentFinalizedEvent {
     pub payment_id: sui::types::Address,
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     pub final_state: ScheduledOccurrenceFinalState,
     pub remaining_funds: u64,
 }
@@ -553,8 +545,8 @@ pub struct TerminalErrEvalRecordedEvent {
     pub leader: sui::types::Address,
     /// How the workflow classified the failure.
     pub failure_class: WorkflowFailureClass,
-    /// Which post-failure action was resolved onchain.
-    pub outcome: PostFailureAction,
+    /// Which post-failure action was resolved onchain, if any.
+    pub outcome: Option<PostFailureAction>,
     /// The sanitized terminal reason string recorded onchain.
     pub reason: String,
     /// Hash of the `_err_eval` payload associated with this record.
@@ -581,11 +573,21 @@ pub struct VerificationVerdictEvent {
     pub checked_leader_kid: Option<u64>,
     pub checked_tool_kid: Option<u64>,
     pub payload_or_reason_hash: Vec<u8>,
-    pub submission_role: VerificationSubmissionRole,
     pub checked_identity: Vec<u8>,
-    pub policy_mode: VerifierMode,
     pub verdict_reference: Vec<u8>,
     pub verdict: VerificationVerdict,
+}
+
+/// Fired when a committed tool result is created or updated for settlement.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CommittedToolResultEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub leader: sui::types::Address,
+    pub has_primary_failure_evidence: bool,
+    pub has_secondary_failure_evidence: bool,
 }
 
 /// Submission-failure evidence payload recorded for terminal submission
@@ -979,7 +981,7 @@ mod tests {
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: PostFailureAction::TransientContinue,
+                outcome: Some(PostFailureAction::TransientContinue),
                 reason: "terminal _err_eval".to_string(),
                 err_eval_hash: vec![1, 2, 3, 4],
                 duplicate: true,
@@ -998,7 +1000,7 @@ mod tests {
                     parsed.failure_class,
                     WorkflowFailureClass::TerminalToolFailure
                 );
-                assert_eq!(parsed.outcome, PostFailureAction::TransientContinue);
+                assert_eq!(parsed.outcome, Some(PostFailureAction::TransientContinue));
                 assert_eq!(parsed.reason, "terminal _err_eval");
                 assert_eq!(parsed.err_eval_hash, vec![1, 2, 3, 4]);
                 assert!(parsed.duplicate);
@@ -1025,9 +1027,7 @@ mod tests {
                 checked_leader_kid: Some(11),
                 checked_tool_kid: Some(12),
                 payload_or_reason_hash: vec![1, 2, 3, 4],
-                submission_role: VerificationSubmissionRole::Tool,
                 checked_identity: vec![5, 6, 7],
-                policy_mode: VerifierMode::LeaderRegisteredKey,
                 verdict_reference: vec![8, 9],
                 verdict: VerificationVerdict::Accepted,
             },
@@ -1043,10 +1043,39 @@ mod tests {
                 assert_eq!(parsed.vertex, RuntimeVertex::plain("verified"));
                 assert_eq!(parsed.checked_leader_kid, Some(11));
                 assert_eq!(parsed.checked_tool_kid, Some(12));
-                assert_eq!(parsed.policy_mode, VerifierMode::LeaderRegisteredKey);
                 assert_eq!(parsed.verdict, VerificationVerdict::Accepted);
             }
             _ => panic!("Expected VerificationVerdictRecorded variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bcs_committed_tool_result_event() {
+        let event = Wrapper {
+            event: CommittedToolResultEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 7,
+                vertex: RuntimeVertex::plain("verified"),
+                leader: sui::types::Address::THREE,
+                has_primary_failure_evidence: true,
+                has_secondary_failure_evidence: false,
+            },
+        };
+
+        let bytes = bcs::to_bytes(&event).unwrap();
+        let (parsed, distribution) = super::parse_bcs("CommittedToolResultEvent", &bytes).unwrap();
+
+        assert!(distribution.is_none());
+        match parsed {
+            crate::events::NexusEventKind::CommittedToolResult(parsed) => {
+                assert_eq!(parsed.walk_index, 7);
+                assert_eq!(parsed.vertex, RuntimeVertex::plain("verified"));
+                assert_eq!(parsed.leader, sui::types::Address::THREE);
+                assert!(parsed.has_primary_failure_evidence);
+                assert!(!parsed.has_secondary_failure_evidence);
+            }
+            _ => panic!("Expected CommittedToolResult variant"),
         }
     }
 
@@ -1099,7 +1128,7 @@ mod tests {
             event: SkillContractRevisionedEvent {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                current_interface_revision: InterfaceRevision(3),
+                current_interface_revision: InterfaceVersion(3),
                 dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0xd")),
                 requirements: SkillRequirements::default(),
             },
@@ -1114,7 +1143,7 @@ mod tests {
             crate::events::NexusEventKind::SkillContractRevisioned(parsed) => {
                 assert_eq!(parsed.agent_id, event.event.agent_id);
                 assert_eq!(parsed.skill_id, event.event.skill_id);
-                assert_eq!(parsed.current_interface_revision, InterfaceRevision(3));
+                assert_eq!(parsed.current_interface_revision, InterfaceVersion(3));
             }
             _ => panic!("Expected SkillContractRevisioned variant"),
         }

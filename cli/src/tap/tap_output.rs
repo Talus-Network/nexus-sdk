@@ -357,7 +357,7 @@ mod tests {
             },
             types::{
                 DefaultDagExecutor,
-                InterfaceRevision,
+                InterfaceVersion,
                 SkillDagBinding,
                 SkillPaymentPolicy,
                 SkillRecord,
@@ -381,7 +381,7 @@ mod tests {
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion(1),
         };
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
             .expect("artifact builds")
@@ -401,7 +401,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: sui::types::Address::from_static("0xcc"),
             skill_id: 11,
-            interface_revision: InterfaceRevision(2),
+            interface_revision: InterfaceVersion(2),
             payment_policy: nexus_sdk::types::SkillPaymentPolicy::UserFunded,
             source_kind: nexus_sdk::types::ExecutionPaymentSourceKind::UserFunded {
                 user: sui::types::Address::from_static("0xee"),
@@ -519,7 +519,7 @@ mod tests {
             tx_checkpoint: 100,
             agent_id: sui::types::Address::from_static("0xa1"),
             skill_id: 7,
-            current_interface_revision: InterfaceRevision(2),
+            current_interface_revision: InterfaceVersion(2),
             dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
             requirements: artifact.requirements.clone(),
         };
@@ -545,7 +545,7 @@ mod tests {
                 skill_revision_key: SkillRevisionKey {
                     agent_id: sui::types::Address::from_static("0xa"),
                     skill_id: 11,
-                    interface_revision: InterfaceRevision(3),
+                    interface_revision: InterfaceVersion(3),
                 },
                 payment_max_budget: 99,
             }),
@@ -587,7 +587,7 @@ mod tests {
             active_skill_revision_key: SkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(3),
+                interface_revision: InterfaceVersion(3),
             },
             requirements,
         });
@@ -733,14 +733,14 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::pinned(dag_id),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceRevision(3),
+                current_interface_revision: InterfaceVersion(3),
                 scheduled_task_count: 0,
             },
             skill_revision: SkillRevisionRecord {
                 key: SkillRevisionKey {
                     agent_id,
                     skill_id: 7,
-                    interface_revision: InterfaceRevision(3),
+                    interface_revision: InterfaceVersion(3),
                 },
                 requirements,
             },
@@ -814,7 +814,7 @@ mod tests {
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(7),
+            interface_revision: InterfaceVersion(7),
         };
 
         let validate = validate_skill_result_json(&config);

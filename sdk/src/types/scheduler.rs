@@ -15,10 +15,126 @@ use {
             models::DagInputPort,
         },
         sui,
-        types::NexusData,
+        types::{generated::scheduler_types::scheduler::State as GeneratedTaskState, NexusData},
     },
     serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
+
+/// Scheduler task lifecycle state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TaskState {
+    Active,
+    Paused,
+    Canceled,
+    Completed,
+    Failed,
+}
+
+impl TaskState {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "Active",
+            Self::Paused => "Paused",
+            Self::Canceled => "Canceled",
+            Self::Completed => "Completed",
+            Self::Failed => "Failed",
+        }
+    }
+
+    fn from_variant_name(name: &str) -> Result<Self, String> {
+        match name {
+            "Active" => Ok(Self::Active),
+            "Paused" => Ok(Self::Paused),
+            "Canceled" => Ok(Self::Canceled),
+            "Completed" | "Exhausted" => Ok(Self::Completed),
+            "Failed" => Ok(Self::Failed),
+            other => Err(format!(
+                "unknown TaskState variant `{other}`, expected one of `Active`, `Paused`, `Canceled`, `Completed`, `Failed`"
+            )),
+        }
+    }
+}
+
+impl From<GeneratedTaskState> for TaskState {
+    fn from(value: GeneratedTaskState) -> Self {
+        match value {
+            GeneratedTaskState::Active => Self::Active,
+            GeneratedTaskState::Paused => Self::Paused,
+            GeneratedTaskState::Canceled => Self::Canceled,
+            GeneratedTaskState::Completed => Self::Completed,
+            GeneratedTaskState::Failed => Self::Failed,
+        }
+    }
+}
+
+impl From<TaskState> for GeneratedTaskState {
+    fn from(value: TaskState) -> Self {
+        match value {
+            TaskState::Active => Self::Active,
+            TaskState::Paused => Self::Paused,
+            TaskState::Canceled => Self::Canceled,
+            TaskState::Completed => Self::Completed,
+            TaskState::Failed => Self::Failed,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TaskState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            return GeneratedTaskState::deserialize(deserializer).map(Into::into);
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        parse_task_state_value(value).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for TaskState {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if !serializer.is_human_readable() {
+            return GeneratedTaskState::from(self.clone()).serialize(serializer);
+        }
+
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+fn parse_task_state_value(value: serde_json::Value) -> Result<TaskState, String> {
+    let value = strip_fields_owned(value);
+
+    if let serde_json::Value::String(name) = value {
+        return TaskState::from_variant_name(&name);
+    }
+
+    let serde_json::Value::Object(object) = value else {
+        return Err("TaskState must be a string or Move enum object".to_string());
+    };
+
+    let variant = object
+        .get("_variant_name")
+        .or_else(|| object.get("@variant"))
+        .or_else(|| object.get("variant"))
+        .or_else(|| object.get("type"))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            if object.len() == 1 {
+                object.keys().next().cloned()
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "TaskState missing variant tag".to_string())?;
+
+    TaskState::from_variant_name(&variant)
+}
 
 /// Representation of `nexus_interface::agent::ExecutionSelection`.
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -387,108 +503,6 @@ impl PolicySymbol {
     }
 }
 
-/// Scheduled task state.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TaskState {
-    Active,
-    Paused,
-    Canceled,
-    Completed,
-    Failed,
-}
-
-impl<'de> Deserialize<'de> for TaskState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        enum Standard {
-            Active,
-            Paused,
-            Canceled,
-            Completed,
-            Failed,
-        }
-
-        if !deserializer.is_human_readable() {
-            return match Standard::deserialize(deserializer)? {
-                Standard::Active => Ok(TaskState::Active),
-                Standard::Paused => Ok(TaskState::Paused),
-                Standard::Canceled => Ok(TaskState::Canceled),
-                Standard::Completed => Ok(TaskState::Completed),
-                Standard::Failed => Ok(TaskState::Failed),
-            };
-        }
-
-        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
-
-        let variant = match value {
-            serde_json::Value::String(variant) => variant,
-            serde_json::Value::Object(object) => object
-                .get("variant")
-                .or_else(|| object.get("@variant"))
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| serde::de::Error::custom("TaskState missing variant tag"))?
-                .to_string(),
-            other => {
-                return Err(serde::de::Error::custom(format!(
-                    "unexpected value for TaskState: {other}"
-                )))
-            }
-        };
-
-        match variant.as_str() {
-            "Active" => Ok(TaskState::Active),
-            "Paused" => Ok(TaskState::Paused),
-            "Canceled" => Ok(TaskState::Canceled),
-            "Completed" => Ok(TaskState::Completed),
-            "Failed" => Ok(TaskState::Failed),
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["Active", "Paused", "Canceled", "Completed", "Failed"],
-            )),
-        }
-    }
-}
-
-impl Serialize for TaskState {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        #[derive(Serialize)]
-        enum Standard<'a> {
-            Active,
-            Paused,
-            Canceled,
-            Completed,
-            Failed,
-            #[allow(dead_code)]
-            #[serde(skip)]
-            _Marker(&'a ()),
-        }
-
-        if !serializer.is_human_readable() {
-            return match self {
-                TaskState::Active => Standard::Active.serialize(serializer),
-                TaskState::Paused => Standard::Paused.serialize(serializer),
-                TaskState::Canceled => Standard::Canceled.serialize(serializer),
-                TaskState::Completed => Standard::Completed.serialize(serializer),
-                TaskState::Failed => Standard::Failed.serialize(serializer),
-            };
-        }
-
-        match self {
-            TaskState::Active => "Active".serialize(serializer),
-            TaskState::Paused => "Paused".serialize(serializer),
-            TaskState::Canceled => "Canceled".serialize(serializer),
-            TaskState::Completed => "Completed".serialize(serializer),
-            TaskState::Failed => "Failed".serialize(serializer),
-        }
-    }
-}
-
 /// Marker data stored in the constraints policy.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ConstraintsData {}
@@ -570,14 +584,32 @@ mod tests {
             let from_string: TaskState = serde_json::from_value(json!(name)).unwrap();
             assert_eq!(from_string, expected);
 
-            let from_variant: TaskState = serde_json::from_value(json!({
-                "variant": name
-            }))
-            .unwrap();
-            assert_eq!(from_variant, expected);
+            let from_move_json: TaskState =
+                serde_json::from_value(json!({ "@variant": name })).unwrap();
+            assert_eq!(from_move_json, expected);
 
             assert_eq!(serde_json::to_value(&expected).unwrap(), json!(name));
         }
+    }
+
+    #[test]
+    fn task_state_deserializes_move_json_variant_wrappers() {
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "_variant_name": "Active" })).unwrap(),
+            TaskState::Active
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "variant": "Paused" })).unwrap(),
+            TaskState::Paused
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "Canceled": {} })).unwrap(),
+            TaskState::Canceled
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!("Exhausted")).unwrap(),
+            TaskState::Completed
+        );
     }
 
     #[test]
@@ -678,8 +710,10 @@ mod tests {
             priority_fee_per_gas_unit: 1000,
             authorization_templates: vec![AgentVertexAuthorizationTemplate {
                 skill_id: 2,
-                vertex: "cap_first".to_string(),
-                recipient_id,
+                vertex: "cap_first".into(),
+                recipient_id: crate::types::generated_support::ID {
+                    bytes: recipient_id,
+                },
             }],
         };
 

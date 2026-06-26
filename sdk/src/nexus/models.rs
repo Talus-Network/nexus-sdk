@@ -14,7 +14,7 @@ use {
             parse_u64_value,
             strip_fields_owned,
             AgentId,
-            InterfaceRevision,
+            InterfaceVersion,
             MoveOption,
             MoveVecSet,
             NexusData,
@@ -41,10 +41,14 @@ pub struct Dag {
     pub defaults_to_input_ports: DynamicMap<DagVertexInputPort, NexusData>,
     pub edges: DynamicMap<TypeName, Vec<DagEdge>>,
     pub outputs: DynamicMap<TypeName, Vec<DagOutputVariantPort>>,
-    #[serde(default, skip_serializing_if = "VerifierConfig::is_none")]
+    #[serde(default, skip_serializing_if = "verifier_config_is_none")]
     pub leader_verifier: VerifierConfig,
-    #[serde(default, skip_serializing_if = "VerifierConfig::is_none")]
+    #[serde(default, skip_serializing_if = "verifier_config_is_none")]
     pub tool_verifier: VerifierConfig,
+}
+
+fn verifier_config_is_none(config: &VerifierConfig) -> bool {
+    config.mode == VerifierMode::None && config.method.as_str().is_empty()
 }
 
 /// Struct holding the DAG execution information.
@@ -60,7 +64,7 @@ pub struct DagExecution {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_sui_u64")]
     pub skill_id: SkillId,
-    pub interface_version: InterfaceRevision,
+    pub interface_version: InterfaceVersion,
     #[serde(default, deserialize_with = "deserialize_move_option_field")]
     pub scheduled_task_id: Option<sui::types::Address>,
     #[serde(default, deserialize_with = "deserialize_move_option_sui_u64_field")]
@@ -106,6 +110,12 @@ impl DagExecution {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum DagExecutionWalk {
     Active {
+        next_vertex: crate::types::RuntimeVertex,
+        timeout_ms: u64,
+        requires_vertex_authorization_grant: bool,
+        created_at: u64,
+    },
+    PendingSettlement {
         next_vertex: crate::types::RuntimeVertex,
         timeout_ms: u64,
         requires_vertex_authorization_grant: bool,
@@ -167,38 +177,51 @@ impl<'de> Deserialize<'de> for DagExecutionWalk {
 
         let fields = fields.map(strip_fields_ref).unwrap_or(&value);
         match variant {
-            "Active" => {
-                let fields = fields
-                    .as_object()
-                    .ok_or_else(|| serde::de::Error::custom("Active DAGWalk fields missing"))?;
+            "Active" | "PendingSettlement" => {
+                let fields = fields.as_object().ok_or_else(|| {
+                    serde::de::Error::custom(format!("{variant} DAGWalk fields missing"))
+                })?;
                 let next_vertex =
                     parse_runtime_vertex_value(fields.get("next_vertex").ok_or_else(|| {
-                        serde::de::Error::custom("Active DAGWalk missing next_vertex")
+                        serde::de::Error::custom(format!("{variant} DAGWalk missing next_vertex"))
                     })?)
                     .map_err(serde::de::Error::custom)?
                     .ok_or_else(|| {
-                        serde::de::Error::custom("Active DAGWalk missing next_vertex")
+                        serde::de::Error::custom(format!("{variant} DAGWalk missing next_vertex"))
                     })?;
                 let timeout_ms = parse_u64_value(fields.get("timeout_ms").ok_or_else(|| {
-                    serde::de::Error::custom("Active DAGWalk missing timeout_ms")
+                    serde::de::Error::custom(format!("{variant} DAGWalk missing timeout_ms"))
                 })?)
                 .map_err(serde::de::Error::custom)?
-                .ok_or_else(|| serde::de::Error::custom("Active DAGWalk missing timeout_ms"))?;
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!("{variant} DAGWalk missing timeout_ms"))
+                })?;
                 let created_at = parse_u64_value(fields.get("created_at").ok_or_else(|| {
-                    serde::de::Error::custom("Active DAGWalk missing created_at")
+                    serde::de::Error::custom(format!("{variant} DAGWalk missing created_at"))
                 })?)
                 .map_err(serde::de::Error::custom)?
-                .ok_or_else(|| serde::de::Error::custom("Active DAGWalk missing created_at"))?;
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!("{variant} DAGWalk missing created_at"))
+                })?;
                 let requires_vertex_authorization_grant = fields
                     .get("requires_vertex_authorization_grant")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                Ok(Self::Active {
-                    next_vertex,
-                    timeout_ms,
-                    requires_vertex_authorization_grant,
-                    created_at,
-                })
+                match variant {
+                    "Active" => Ok(Self::Active {
+                        next_vertex,
+                        timeout_ms,
+                        requires_vertex_authorization_grant,
+                        created_at,
+                    }),
+                    "PendingSettlement" => Ok(Self::PendingSettlement {
+                        next_vertex,
+                        timeout_ms,
+                        requires_vertex_authorization_grant,
+                        created_at,
+                    }),
+                    _ => unreachable!(),
+                }
             }
             "Successful" => Ok(Self::Successful),
             "Failed" => Ok(Self::Failed),
@@ -366,7 +389,7 @@ impl VerifierConfigBcs {
                 VerifierModeBcs::LeaderRegisteredKey => VerifierMode::LeaderRegisteredKey,
                 VerifierModeBcs::ToolVerifierContract => VerifierMode::ToolVerifierContract,
             },
-            method: self.method,
+            method: self.method.into(),
         })
     }
 }
@@ -470,6 +493,28 @@ pub struct BcsMapEntry<K, V> {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct BcsMap<K, V> {
     pub contents: Vec<BcsMapEntry<K, V>>,
+}
+
+/// Raw on-chain `NexusData` wire shape for committed-result wake reads.
+///
+/// The public `NexusData` type eagerly parses payload bytes as JSON, but committed-result metadata
+/// reads only need to skip over output payload bytes without inspecting them.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct RawNexusDataBcs {
+    #[allow(dead_code)]
+    pub(crate) storage: Vec<u8>,
+    #[allow(dead_code)]
+    pub(crate) one: Vec<u8>,
+    #[allow(dead_code)]
+    pub(crate) many: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct CommittedToolResultLeaderRecordBcs {
+    pub(crate) commit_tx_digest: Vec<u8>,
+    pub(crate) recipient: sui::types::Address,
+    pub(crate) commit_gas_charge: MoveOption<u64>,
+    pub(crate) settlement_gas_charge: MoveOption<u64>,
 }
 
 impl<K, V> BcsMap<K, V>
@@ -583,7 +628,7 @@ pub struct DagOutputVariantPort {
 mod tests {
     use {
         super::*,
-        crate::{events::RequestWalkContext, fqn, types::InterfaceRevision},
+        crate::{events::RequestWalkContext, fqn, types::InterfaceVersion},
         serde_json::json,
         std::str::FromStr,
     };
@@ -660,7 +705,7 @@ mod tests {
             vertex.tool_verifier,
             Some(VerifierConfig {
                 mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".to_string(),
+                method: "demo_verifier_v1".into(),
             })
         );
     }
@@ -767,7 +812,7 @@ mod tests {
             dag_id: sui::types::Address::from_static("0xd"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            interface_version: InterfaceRevision(7),
+            interface_version: InterfaceVersion(7),
             scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
             scheduled_occurrence_index: Some(2),
             walks: Vec::new(),
@@ -790,7 +835,7 @@ mod tests {
             RequestWalkContext {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(7),
+                interface_revision: InterfaceVersion(7),
                 scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
                 scheduled_occurrence_index: Some(2),
             }
@@ -831,5 +876,34 @@ mod tests {
         assert_eq!(execution.aborted_walks, 5);
         assert_eq!(execution.consumed_walks, 6);
         assert_eq!(execution.cancelled_walks, 7);
+    }
+
+    #[test]
+    fn dag_execution_walk_decodes_pending_settlement_variant() {
+        let walk: DagExecutionWalk = serde_json::from_value(json!({
+            "PendingSettlement": {
+                "next_vertex": {
+                    "Plain": {
+                        "vertex": {
+                            "name": "settling"
+                        }
+                    }
+                },
+                "timeout_ms": "5000",
+                "requires_vertex_authorization_grant": true,
+                "created_at": "42"
+            }
+        }))
+        .expect("PendingSettlement DAGWalk should parse current Move JSON");
+
+        assert_eq!(
+            walk,
+            DagExecutionWalk::PendingSettlement {
+                next_vertex: crate::types::RuntimeVertex::plain("settling"),
+                timeout_ms: 5000,
+                requires_vertex_authorization_grant: true,
+                created_at: 42,
+            }
+        );
     }
 }

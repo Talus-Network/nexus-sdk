@@ -6,7 +6,7 @@ use {
             tap_input_commitment_from_dag_inputs,
             validate_requirements,
             FixedTool,
-            InterfaceRevision,
+            InterfaceVersion,
             SkillPaymentPolicy,
             SkillRequirements,
         },
@@ -103,7 +103,7 @@ fn build_artifact(
     Ok(TapPublishArtifact {
         skill_name,
         dag_id,
-        interface_revision: InterfaceRevision(interface_revision),
+        interface_revision: InterfaceVersion(interface_revision),
         requirements,
     })
 }
@@ -212,7 +212,7 @@ mod tests {
 
         assert_eq!(artifact.skill_name, "owned sum skill");
         assert_eq!(artifact.dag_id, sui::types::Address::from_static("0xd"));
-        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert_eq!(artifact.interface_revision, InterfaceVersion(1));
         assert_eq!(
             artifact.requirements.input_schema_commitment,
             b"sum-input".to_vec()

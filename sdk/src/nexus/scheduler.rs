@@ -1220,7 +1220,7 @@ mod tests {
             owner,
             agent_id: sui::types::Address::from_static("0xa11ce"),
             skill_id: 7,
-            interface_version: crate::types::InterfaceRevision(1),
+            interface_version: crate::types::InterfaceVersion(1),
             metadata,
             constraints,
             execution,

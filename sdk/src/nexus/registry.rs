@@ -5,11 +5,10 @@ use {
         nexus::crawler::{prost_value_to_json_value, Crawler},
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
         types::{
-            ExternalVerifierRuntimeCallV1,
+            generated::registry_types,
+            ExternalVerifierRuntimeCall,
             LeaderRegistry,
-            MoveTable,
             SharedObjectRef,
-            TypeName,
             VerifierConfig,
         },
     },
@@ -98,8 +97,8 @@ pub struct ExternalVerifierRuntimeMetadata {
 }
 
 impl ExternalVerifierRuntimeMetadata {
-    pub fn runtime_call(&self) -> ExternalVerifierRuntimeCallV1 {
-        ExternalVerifierRuntimeCallV1 {
+    pub fn runtime_call(&self) -> ExternalVerifierRuntimeCall {
+        ExternalVerifierRuntimeCall {
             package_address: self.package_address,
             module_name: self.call_shape.module_name.clone(),
             function_name: self.call_shape.function_name.clone(),
@@ -115,59 +114,6 @@ pub struct VerifierCallShapeV1 {
     pub function_name: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct VerifierRegistryBcs {
-    #[allow(dead_code)]
-    id: sui::types::Address,
-    methods: MoveTable<String, VerifierMethodRecordBcs>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-enum VerifierImplementationBcs {
-    BuiltIn {
-        #[allow(dead_code)]
-        witness: sui::types::Address,
-    },
-    ExternalV1 {
-        witness: sui::types::Address,
-        #[allow(dead_code)]
-        interface_version: InterfaceVersionBcs,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct InterfaceVersionBcs {
-    #[allow(dead_code)]
-    inner: u64,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct VerifierMethodRecordBcs {
-    #[allow(dead_code)]
-    method: String,
-    implementation: VerifierImplementationBcs,
-    shared_objects: Vec<SharedObjectRef>,
-    capabilities: VerifierMethodCapabilitiesBcs,
-    call_shape: Option<VerifierCallShapeV1>,
-    #[allow(dead_code)]
-    credential_identity: Option<VerifierCredentialIdentityBcs>,
-    witness_type: Option<TypeName>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct VerifierMethodCapabilitiesBcs {
-    supports_success: bool,
-    supports_err_eval: bool,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct VerifierCredentialIdentityBcs {
-    #[allow(dead_code)]
-    kind: String,
-    #[allow(dead_code)]
-    version: u64,
-}
-
 /// Fetch external verifier runtime metadata from the verifier registry.
 ///
 /// This keeps verifier-registry BCS layout knowledge in the SDK. Callers get only the
@@ -178,38 +124,44 @@ pub async fn fetch_external_verifier_runtime_metadata(
     verifier: VerifierConfig,
 ) -> anyhow::Result<ExternalVerifierRuntimeMetadata> {
     let registry = crawler
-        .get_object_contents_bcs::<VerifierRegistryBcs>(*registry_ref.object_id())
+        .get_object_contents_bcs::<registry_types::verifier_registry::VerifierRegistry>(
+            *registry_ref.object_id(),
+        )
         .await?;
     let mut methods = crawler
-        .get_dynamic_fields_bcs::<String, VerifierMethodRecordBcs>(
+        .get_dynamic_fields_bcs::<String, registry_types::verifier_registry::VerifierMethodRecord>(
             registry.data.methods.id,
             registry.data.methods.size(),
         )
         .await?;
-    let record = methods.remove(&verifier.method).ok_or_else(|| {
+    let record = methods.remove(verifier.method.as_str()).ok_or_else(|| {
         anyhow!(
             "Verifier method '{}' is not registered in the verifier registry",
-            verifier.method
+            verifier.method.as_str()
         )
     })?;
 
     if !record.capabilities.supports_success && !record.capabilities.supports_err_eval {
         bail!(
             "Verifier method '{}' has no supported submission modes",
-            verifier.method
+            verifier.method.as_str()
         );
     }
 
-    let call_shape = record.call_shape.ok_or_else(|| {
+    let call_shape = record.call_shape.0.map(|shape| VerifierCallShapeV1 {
+        module_name: shape.module_name.into(),
+        function_name: shape.function_name.into(),
+    });
+    let call_shape = call_shape.ok_or_else(|| {
         anyhow!(
             "Verifier method '{}' is missing runtime call-shape metadata",
-            verifier.method
+            verifier.method.as_str()
         )
     })?;
-    let witness_type = record.witness_type.ok_or_else(|| {
+    let witness_type = record.witness_type.0.ok_or_else(|| {
         anyhow!(
             "Verifier method '{}' is missing witness type metadata",
-            verifier.method
+            verifier.method.as_str()
         )
     })?;
     let witness_type_name = if witness_type.name.starts_with("0x") {
@@ -225,22 +177,29 @@ pub async fn fetch_external_verifier_runtime_metadata(
     if record.shared_objects.iter().any(|shared| shared.ref_mut) {
         bail!(
             "Verifier method '{}' uses mutable shared objects, which are unsupported",
-            verifier.method
+            verifier.method.as_str()
         );
     }
 
-    let witness_id = match record.implementation {
-        VerifierImplementationBcs::ExternalV1 { witness, .. } => witness,
-        VerifierImplementationBcs::BuiltIn { .. } => {
+    let witness_id: sui::types::Address = match record.implementation {
+        registry_types::verifier_registry::VerifierImplementation::ExternalV1 {
+            witness, ..
+        } => witness.into(),
+        registry_types::verifier_registry::VerifierImplementation::BuiltIn { .. } => {
             bail!(
                 "Verifier method '{}' is not an external verifier contract",
-                verifier.method
+                verifier.method.as_str()
             )
         }
     };
 
     let object_ids = std::iter::once(witness_id)
-        .chain(record.shared_objects.iter().map(|shared| shared.id))
+        .chain(
+            record
+                .shared_objects
+                .iter()
+                .map(|shared| shared.id_address()),
+        )
         .collect::<Vec<_>>();
     let metadata = crawler.get_objects_metadata(&object_ids).await?;
     let mut metadata_by_id = metadata
@@ -254,10 +213,11 @@ pub async fn fetch_external_verifier_runtime_metadata(
         .shared_objects
         .into_iter()
         .map(|shared| {
-            let object_ref = metadata_by_id.remove(&shared.id).ok_or_else(|| {
+            let shared_id = shared.id_address();
+            let object_ref = metadata_by_id.remove(&shared_id).ok_or_else(|| {
                 anyhow!(
                     "Verifier shared object '{}' metadata was not returned by the crawler",
-                    shared.id
+                    shared_id
                 )
             })?;
             Ok((shared, object_ref))
