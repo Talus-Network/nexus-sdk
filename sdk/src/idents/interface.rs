@@ -44,9 +44,7 @@ impl Verifier {
     ) -> sui::tx::Argument {
         let ident = match mode {
             VerifierMode::None => Self::VERIFIER_MODE_NONE,
-            VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
-                Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION
-            }
+            VerifierMode::LeaderRegisteredKey => Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION,
             VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
         tx.move_call(
@@ -227,7 +225,7 @@ impl Graph {
     ) -> anyhow::Result<sui::tx::Argument> {
         match runtime_vertex {
             RuntimeVertex::Plain { vertex } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, vertex.name.as_ref())?;
                 Ok(tx.move_call(
                     sui::tx::Function::new(
                         interface_pkg_id,
@@ -242,7 +240,7 @@ impl Graph {
                 iteration,
                 out_of,
             } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let name = super::move_std::Ascii::ascii_string_from_str(tx, vertex.name.as_ref())?;
                 let iteration = tx.pure(iteration);
                 let out_of = tx.pure(out_of);
                 Ok(tx.move_call(

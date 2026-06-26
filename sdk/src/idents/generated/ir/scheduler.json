@@ -1,6 +1,6 @@
 {
-  "storage_id": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
-  "original_id": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+  "storage_id": "0xa5",
+  "original_id": "0xa5",
   "version": 1,
   "modules": {
     "scheduler": {
@@ -8,7 +8,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "AgentSkillAuthorizationFieldKey"
           },
@@ -34,7 +34,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "Constraints"
           },
@@ -60,7 +60,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "Execution"
           },
@@ -86,7 +86,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "Metadata"
           },
@@ -142,7 +142,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "MissedOccurrenceEvent"
           },
@@ -207,7 +207,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -221,7 +221,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "Occurrence"
           },
@@ -268,7 +268,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -282,7 +282,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "OccurrenceConsumedEvent"
           },
@@ -342,7 +342,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -361,7 +361,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "OccurrenceScheduledEvent"
           },
@@ -395,7 +395,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -409,7 +409,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "PeriodicGeneratorState"
           },
@@ -436,7 +436,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Occurrence"
                             },
@@ -532,7 +532,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "PeriodicGeneratorWitness"
           },
@@ -558,7 +558,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "PeriodicScheduleConfiguredEvent"
           },
@@ -677,7 +677,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "QueueEntry"
           },
@@ -697,7 +697,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -721,7 +721,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "QueueGeneratorState"
           },
@@ -748,7 +748,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -783,7 +783,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "QueueEntry"
                             },
@@ -800,7 +800,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "QueueGeneratorWitness"
           },
@@ -826,7 +826,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "ScheduledPaymentReserveFieldKey"
           },
@@ -852,7 +852,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionCanceledEvent"
           },
@@ -886,7 +886,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionCreatedEvent"
           },
@@ -925,7 +925,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionPausedEvent"
           },
@@ -959,7 +959,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "ScheduledSkillExecutionResumedEvent"
           },
@@ -993,7 +993,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "State"
           },
@@ -1039,7 +1039,7 @@
         },
         {
           "type_name": {
-            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+            "address": "0xa5",
             "module": "scheduler",
             "name": "Task"
           },
@@ -1097,7 +1097,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "version",
                         "name": "InterfaceVersion"
                       },
@@ -1111,7 +1111,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Metadata"
                       },
@@ -1125,7 +1125,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1133,7 +1133,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -1150,7 +1150,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1158,7 +1158,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -1175,7 +1175,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "State"
                       },
@@ -1224,14 +1224,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1242,11 +1242,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start_time_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -1261,18 +1261,18 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             },
             {
-              "name": "arg4",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1283,7 +1283,7 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1301,7 +1301,129 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "add_occurrence_relative_for_agent_task",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "task",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "scheduler",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "agent",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "start_offset_ms",
+              "ty": "U64"
+            },
+            {
+              "name": "deadline_offset_ms",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "priority_fee_per_gas_unit",
+              "ty": "U64"
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1328,14 +1450,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1346,11 +1468,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start_offset_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -1365,18 +1487,18 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             },
             {
-              "name": "arg4",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -1387,7 +1509,7 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1405,7 +1527,7 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1439,14 +1561,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1457,7 +1579,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "witness",
               "ty": {
                 "TypeParameter": 0
               }
@@ -1479,14 +1601,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1497,7 +1619,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "witness",
               "ty": {
                 "TypeParameter": 0
               }
@@ -1512,14 +1634,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -1530,7 +1652,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start_time",
               "ty": "U64"
             }
           ],
@@ -1543,14 +1665,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1561,14 +1683,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1599,14 +1721,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1617,14 +1739,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1644,14 +1766,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -1659,7 +1781,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -1682,14 +1804,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1700,14 +1822,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -1727,14 +1849,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1752,7 +1874,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "policy",
                       "name": "Policy"
                     },
@@ -1760,7 +1882,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                            "address": "0xa5",
                             "module": "scheduler",
                             "name": "Constraints"
                           },
@@ -1781,14 +1903,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1806,7 +1928,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "policy",
                       "name": "Policy"
                     },
@@ -1814,7 +1936,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                            "address": "0xa5",
                             "module": "scheduler",
                             "name": "Execution"
                           },
@@ -1835,14 +1957,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1864,14 +1986,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1882,14 +2004,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1900,7 +2022,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1927,14 +2049,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -1945,14 +2067,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -1963,14 +2085,14 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -1990,14 +2112,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2017,14 +2139,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2035,14 +2157,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -2053,14 +2175,14 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -2071,7 +2193,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -2098,14 +2220,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2116,14 +2238,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2134,7 +2256,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2152,7 +2274,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -2174,7 +2296,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -2190,14 +2312,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2208,14 +2330,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2226,7 +2348,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2244,7 +2366,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -2266,7 +2388,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -2282,14 +2404,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2300,14 +2422,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -2318,14 +2440,14 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -2345,14 +2467,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2363,15 +2485,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "first_start_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "period_ms",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -2386,7 +2508,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "max_iterations",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -2401,7 +2523,7 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             }
           ],
@@ -2414,14 +2536,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "authorization",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "authorization",
                         "name": "AgentSkillAuthorization"
                       },
@@ -2437,7 +2559,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "Grant"
                   },
@@ -2445,7 +2567,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                          "address": "0xa2",
                           "module": "authorization",
                           "name": "AgentVertexAuthorization"
                         },
@@ -2465,14 +2587,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2483,7 +2605,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -2510,14 +2632,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2537,7 +2659,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2555,14 +2677,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "occurrence",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2573,7 +2695,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "pruned_at",
               "ty": "U64"
             }
           ],
@@ -2586,7 +2708,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2604,14 +2726,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "occurrence",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2622,7 +2744,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "executed_at",
               "ty": "U64"
             }
           ],
@@ -2635,7 +2757,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2653,14 +2775,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "occurrence",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2671,18 +2793,18 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "request_ms",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2693,7 +2815,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2720,7 +2842,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2738,14 +2860,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -2765,7 +2887,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2792,7 +2914,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2810,7 +2932,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "owner",
               "ty": "Address"
             }
           ],
@@ -2823,7 +2945,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2850,7 +2972,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2877,14 +2999,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -2895,11 +3017,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start_time_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -2914,26 +3036,26 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             },
             {
-              "name": "arg4",
+              "name": "request_ms",
               "ty": "U64"
             },
             {
-              "name": "arg5",
+              "name": "owner",
               "ty": "Address"
             },
             {
-              "name": "arg6",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -2944,7 +3066,7 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2971,14 +3093,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "occurrence",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -2989,7 +3111,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "now",
               "ty": "U64"
             }
           ],
@@ -3002,14 +3124,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3029,14 +3151,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3051,7 +3173,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -3067,14 +3189,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -3085,11 +3207,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start_time",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "steps",
               "ty": "U64"
             }
           ],
@@ -3102,14 +3224,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3120,11 +3242,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "proof",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -3142,14 +3264,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3160,7 +3282,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "addr",
               "ty": "Address"
             }
           ],
@@ -3173,14 +3295,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3202,14 +3324,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3231,14 +3353,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3260,14 +3382,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3289,14 +3411,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3318,14 +3440,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3347,11 +3469,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "start_time_ms",
               "ty": "U64"
             },
             {
-              "name": "arg1",
+              "name": "deadline_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3366,15 +3488,15 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "generator",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -3387,7 +3509,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -3403,14 +3525,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3430,14 +3552,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3457,41 +3579,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
-                        "module": "scheduler",
-                        "name": "Task"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "mark_task_failed",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "arg0",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3511,14 +3606,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -3538,11 +3633,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "start_time_ms",
               "ty": "U64"
             },
             {
-              "name": "arg1",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3579,11 +3674,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3592,11 +3687,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "constraints",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3604,7 +3699,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3616,11 +3711,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "execution",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3628,7 +3723,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -3640,11 +3735,11 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "owner",
               "ty": "Address"
             },
             {
-              "name": "arg4",
+              "name": "agent_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3657,15 +3752,15 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "skill_id",
               "ty": "U64"
             },
             {
-              "name": "arg6",
+              "name": "interface_version",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "version",
                     "name": "InterfaceVersion"
                   },
@@ -3674,7 +3769,7 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3696,7 +3791,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -3712,11 +3807,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3725,11 +3820,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "constraints",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3737,7 +3832,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3749,11 +3844,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "execution",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3761,7 +3856,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -3773,14 +3868,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -3791,14 +3886,14 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -3809,11 +3904,11 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "agent_config",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -3822,15 +3917,15 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "prepay_amount",
               "ty": "U64"
             },
             {
-              "name": "arg7",
+              "name": "occurrence_budget",
               "ty": "U64"
             },
             {
-              "name": "arg8",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3852,7 +3947,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -3868,7 +3963,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "sequence",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3883,7 +3978,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -3897,7 +3992,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3919,7 +4014,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -3927,7 +4022,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Constraints"
                       },
@@ -3946,11 +4041,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -3959,11 +4054,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "constraints",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3971,7 +4066,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -3983,11 +4078,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "execution",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -3995,7 +4090,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4007,14 +4102,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4025,7 +4120,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "prepayment",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4049,11 +4144,11 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "occurrence_budget",
               "ty": "U64"
             },
             {
-              "name": "arg6",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4075,7 +4170,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4091,7 +4186,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "sequence",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4106,7 +4201,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -4120,7 +4215,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4142,7 +4237,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -4150,7 +4245,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Execution"
                       },
@@ -4169,11 +4264,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -4182,11 +4277,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "constraints",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4194,7 +4289,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -4206,11 +4301,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "execution",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4218,7 +4313,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4230,14 +4325,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4248,14 +4343,14 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -4266,11 +4361,11 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "agent_config",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -4279,7 +4374,7 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "prepayment",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4303,15 +4398,15 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "refund_recipient",
               "ty": "Address"
             },
             {
-              "name": "arg8",
+              "name": "occurrence_budget",
               "ty": "U64"
             },
             {
-              "name": "arg9",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4333,7 +4428,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4349,7 +4444,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "values",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4387,7 +4482,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Metadata"
                 },
@@ -4403,14 +4498,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4421,15 +4516,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "first_start_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "period_ms",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "deadline_offset_ms",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4444,7 +4539,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "max_iterations",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4459,18 +4554,18 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "priority_fee_per_gas_unit",
               "ty": "U64"
             },
             {
-              "name": "arg6",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4481,7 +4576,7 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4499,7 +4594,7 @@
               }
             },
             {
-              "name": "arg8",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4529,7 +4624,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "PeriodicGeneratorState"
                 },
@@ -4548,7 +4643,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "QueueGeneratorState"
                 },
@@ -4564,11 +4659,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -4577,11 +4672,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "constraints",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4589,7 +4684,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Constraints"
                         },
@@ -4601,11 +4696,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "execution",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Policy"
                   },
@@ -4613,7 +4708,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                          "address": "0xa5",
                           "module": "scheduler",
                           "name": "Execution"
                         },
@@ -4625,14 +4720,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4643,14 +4738,14 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -4661,11 +4756,11 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "owner",
               "ty": "Address"
             },
             {
-              "name": "arg6",
+              "name": "agent_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4678,11 +4773,11 @@
               }
             },
             {
-              "name": "arg7",
+              "name": "skill_id",
               "ty": "U64"
             },
             {
-              "name": "arg8",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4704,7 +4799,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Task"
                 },
@@ -4720,14 +4815,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "occurrence",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Occurrence"
                       },
@@ -4738,7 +4833,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "now",
               "ty": "U64"
             }
           ],
@@ -4753,14 +4848,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4771,14 +4866,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -4789,7 +4884,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4816,14 +4911,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4843,14 +4938,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -4861,14 +4956,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -4879,7 +4974,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4906,7 +5001,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4924,14 +5019,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -4942,18 +5037,18 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "request_ms",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -4964,7 +5059,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4991,14 +5086,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5006,7 +5101,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -5034,7 +5129,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -5050,14 +5145,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5079,14 +5174,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5101,7 +5196,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "Occurrence"
                 },
@@ -5117,14 +5212,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "dag",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "dag",
                         "name": "DAG"
                       },
@@ -5135,14 +5230,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -5153,14 +5248,14 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "tool_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
                       },
@@ -5171,14 +5266,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5189,14 +5284,14 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "leader_cap",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -5204,7 +5299,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                              "address": "0xa3",
                               "module": "leader_cap",
                               "name": "OverNetwork"
                             },
@@ -5218,7 +5313,7 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "clock",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5236,7 +5331,7 @@
               }
             },
             {
-              "name": "arg6",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -5258,19 +5353,9 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
+                  "address": "0xa4",
                   "module": "execution",
                   "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
-                  "module": "execution",
-                  "name": "RequestWalkExecution"
                 },
                 "type_arguments": []
               }
@@ -5284,7 +5369,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5302,14 +5387,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5320,7 +5405,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "now",
               "ty": "U64"
             }
           ],
@@ -5335,7 +5420,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5353,14 +5438,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "periodic",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "PeriodicGeneratorState"
                       },
@@ -5371,18 +5456,18 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "now",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5393,7 +5478,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5420,7 +5505,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5438,14 +5523,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "single",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5456,18 +5541,18 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "now",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5478,7 +5563,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5505,7 +5590,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5523,14 +5608,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5541,11 +5626,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "entry",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -5554,14 +5639,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5572,7 +5657,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5599,14 +5684,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "current",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -5617,14 +5702,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "candidate",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -5646,14 +5731,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "entry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -5664,7 +5749,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "now",
               "ty": "U64"
             }
           ],
@@ -5679,14 +5764,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -5694,7 +5779,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -5722,7 +5807,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -5738,14 +5823,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -5767,14 +5852,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5785,11 +5870,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "occurrence",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Occurrence"
                   },
@@ -5798,7 +5883,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "request_ms",
               "ty": "U64"
             }
           ],
@@ -5806,7 +5891,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -5822,7 +5907,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5840,14 +5925,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5858,11 +5943,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "entry",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -5871,14 +5956,14 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -5889,7 +5974,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5916,14 +6001,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -5938,7 +6023,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -5954,7 +6039,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "start_time_ms",
               "ty": "U64"
             }
           ],
@@ -5969,7 +6054,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task_id",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5987,14 +6072,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6005,18 +6090,18 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "now",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
                       },
@@ -6027,7 +6112,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -6054,14 +6139,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6072,15 +6157,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "priority",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "entry",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "QueueEntry"
                   },
@@ -6098,14 +6183,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "current",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6116,14 +6201,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "candidate",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueEntry"
                       },
@@ -6145,14 +6230,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "QueueGeneratorState"
                       },
@@ -6167,7 +6252,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "QueueEntry"
                 },
@@ -6183,14 +6268,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6198,7 +6283,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -6212,11 +6297,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "config",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -6234,14 +6319,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6249,7 +6334,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Execution"
                             },
@@ -6263,11 +6348,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "config",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -6285,14 +6370,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6300,7 +6385,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -6314,11 +6399,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "periodic",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "PeriodicGeneratorState"
                   },
@@ -6336,14 +6421,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -6351,7 +6436,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                              "address": "0xa5",
                               "module": "scheduler",
                               "name": "Constraints"
                             },
@@ -6365,11 +6450,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "queue",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "QueueGeneratorState"
                   },
@@ -6387,14 +6472,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6409,7 +6494,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "address": "0xa2",
                   "module": "authorization",
                   "name": "AgentSkillAuthorization"
                 },
@@ -6419,7 +6504,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "address": "0xa2",
                   "module": "payment",
                   "name": "ScheduledPaymentReserve"
                 },
@@ -6436,14 +6521,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6458,7 +6543,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "address": "0xa2",
                   "module": "payment",
                   "name": "ScheduledPaymentReserve"
                 },
@@ -6474,14 +6559,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6496,7 +6581,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "address": "0xa2",
                   "module": "authorization",
                   "name": "AgentSkillAuthorization"
                 },
@@ -6512,14 +6597,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -6530,7 +6615,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -6543,11 +6628,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "agent_config",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "agent",
                     "name": "AgentExecutionConfig"
                   },
@@ -6573,7 +6658,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "authorization",
                     "name": "AgentVertexAuthorizationTemplate"
                   },
@@ -6590,14 +6675,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6608,14 +6693,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x372efa354647a9fffb08d14011ce19849ff4b840a4d2de4b1551d5dd76c151e",
+                        "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
                       },
@@ -6626,7 +6711,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -6653,14 +6738,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6671,14 +6756,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "agent",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                        "address": "0xa2",
                         "module": "agent",
                         "name": "Agent"
                       },
@@ -6689,7 +6774,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -6716,14 +6801,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6741,7 +6826,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                      "address": "0xa2",
                       "module": "payment",
                       "name": "ScheduledPaymentReserve"
                     },
@@ -6759,14 +6844,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6784,7 +6869,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                      "address": "0xa2",
                       "module": "payment",
                       "name": "ScheduledPaymentReserve"
                     },
@@ -6802,14 +6887,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6827,7 +6912,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                      "address": "0xa2",
                       "module": "authorization",
                       "name": "AgentSkillAuthorization"
                     },
@@ -6845,14 +6930,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6863,14 +6948,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "execution",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x9443a311ef6e1184d72771e6062c2e169b48c19981c27640a0329c1bec5e0c33",
+                        "address": "0xa4",
                         "module": "execution",
                         "name": "DAGExecution"
                       },
@@ -6890,14 +6975,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6908,11 +6993,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "authorization",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "authorization",
                     "name": "AgentSkillAuthorization"
                   },
@@ -6921,11 +7006,11 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "payment_reserve",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                    "address": "0xa2",
                     "module": "payment",
                     "name": "ScheduledPaymentReserve"
                   },
@@ -6943,14 +7028,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -6981,14 +7066,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7010,14 +7095,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7032,7 +7117,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x37161efdf34c9e1e96d9cac8bb23808c47e623f5d1a5bf3735ee9a7958c59636",
+                  "address": "0xa2",
                   "module": "version",
                   "name": "InterfaceVersion"
                 },
@@ -7048,14 +7133,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7077,14 +7162,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7106,14 +7191,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7128,7 +7213,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                  "address": "0xa5",
                   "module": "scheduler",
                   "name": "State"
                 },
@@ -7144,14 +7229,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "task",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                        "address": "0xa5",
                         "module": "scheduler",
                         "name": "Task"
                       },
@@ -7162,11 +7247,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "new_metadata",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xe8d6f4e7827fdbe1e473012848c6832d066a64b358682b2b4f2850a0e2e2ac9c",
+                    "address": "0xa5",
                     "module": "scheduler",
                     "name": "Metadata"
                   },
@@ -7175,7 +7260,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,

@@ -160,6 +160,7 @@ events! {
     ScheduledOccurrencePaymentFinalizedEvent => ScheduledOccurrencePaymentFinalized, "ScheduledOccurrencePaymentFinalizedEvent",
     ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
     ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
+    CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
     WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     WalkFailedEvent => WalkFailed, "WalkFailedEvent",
     TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
@@ -581,11 +582,21 @@ pub struct VerificationVerdictEvent {
     pub checked_leader_kid: Option<u64>,
     pub checked_tool_kid: Option<u64>,
     pub payload_or_reason_hash: Vec<u8>,
-    pub submission_role: VerificationSubmissionRole,
     pub checked_identity: Vec<u8>,
-    pub policy_mode: VerifierMode,
     pub verdict_reference: Vec<u8>,
     pub verdict: VerificationVerdict,
+}
+
+/// Fired when a committed tool result is created or updated for settlement.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CommittedToolResultEvent {
+    pub dag: sui::types::Address,
+    pub execution: sui::types::Address,
+    pub walk_index: u64,
+    pub vertex: RuntimeVertex,
+    pub leader: sui::types::Address,
+    pub has_primary_failure_evidence: bool,
+    pub has_secondary_failure_evidence: bool,
 }
 
 /// Submission-failure evidence payload recorded for terminal submission
@@ -1025,9 +1036,7 @@ mod tests {
                 checked_leader_kid: Some(11),
                 checked_tool_kid: Some(12),
                 payload_or_reason_hash: vec![1, 2, 3, 4],
-                submission_role: VerificationSubmissionRole::Tool,
                 checked_identity: vec![5, 6, 7],
-                policy_mode: VerifierMode::LeaderRegisteredKey,
                 verdict_reference: vec![8, 9],
                 verdict: VerificationVerdict::Accepted,
             },
@@ -1043,10 +1052,39 @@ mod tests {
                 assert_eq!(parsed.vertex, RuntimeVertex::plain("verified"));
                 assert_eq!(parsed.checked_leader_kid, Some(11));
                 assert_eq!(parsed.checked_tool_kid, Some(12));
-                assert_eq!(parsed.policy_mode, VerifierMode::LeaderRegisteredKey);
                 assert_eq!(parsed.verdict, VerificationVerdict::Accepted);
             }
             _ => panic!("Expected VerificationVerdictRecorded variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_bcs_committed_tool_result_event() {
+        let event = Wrapper {
+            event: CommittedToolResultEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 7,
+                vertex: RuntimeVertex::plain("verified"),
+                leader: sui::types::Address::THREE,
+                has_primary_failure_evidence: true,
+                has_secondary_failure_evidence: false,
+            },
+        };
+
+        let bytes = bcs::to_bytes(&event).unwrap();
+        let (parsed, distribution) = super::parse_bcs("CommittedToolResultEvent", &bytes).unwrap();
+
+        assert!(distribution.is_none());
+        match parsed {
+            crate::events::NexusEventKind::CommittedToolResult(parsed) => {
+                assert_eq!(parsed.walk_index, 7);
+                assert_eq!(parsed.vertex, RuntimeVertex::plain("verified"));
+                assert_eq!(parsed.leader, sui::types::Address::THREE);
+                assert!(parsed.has_primary_failure_evidence);
+                assert!(!parsed.has_secondary_failure_evidence);
+            }
+            _ => panic!("Expected CommittedToolResult variant"),
         }
     }
 

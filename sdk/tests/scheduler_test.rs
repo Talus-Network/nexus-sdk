@@ -6,6 +6,7 @@ use {
         types::{
             deserialize_sui_option_u64,
             deserialize_sui_u64,
+            generated::scheduler_types::scheduler::State as GeneratedTaskState,
             PolicySymbol,
             TaskState,
             TypeName,
@@ -30,12 +31,16 @@ fn policy_symbol_supports_pos0_fallback_shape() {
 }
 
 #[test]
-fn task_state_supports_variant_object_and_errors_on_unknown_variant() {
-    let paused: TaskState = serde_json::from_value(json!({ "variant": "Paused" }))
-        .expect("deserialize TaskState from object");
+fn task_state_uses_generated_enum_deserialization() {
+    let paused: TaskState =
+        serde_json::from_value(json!("Paused")).expect("deserialize TaskState from string");
     assert_eq!(paused, TaskState::Paused);
 
-    let err = serde_json::from_value::<TaskState>(json!({ "variant": "Bogus" }))
+    let active: TaskState = serde_json::from_value(json!({ "@variant": "Active" }))
+        .expect("deserialize TaskState from Move JSON variant");
+    assert_eq!(active, TaskState::Active);
+
+    let err = serde_json::from_value::<TaskState>(json!("Bogus"))
         .expect_err("unknown TaskState should error");
     let msg = err.to_string();
     assert!(
@@ -46,8 +51,17 @@ fn task_state_supports_variant_object_and_errors_on_unknown_variant() {
 
 #[test]
 fn task_state_roundtrips_through_bcs() {
-    for state in [TaskState::Active, TaskState::Paused, TaskState::Canceled] {
+    for (state, generated) in [
+        (TaskState::Active, GeneratedTaskState::Active),
+        (TaskState::Paused, GeneratedTaskState::Paused),
+        (TaskState::Canceled, GeneratedTaskState::Canceled),
+        (TaskState::Completed, GeneratedTaskState::Completed),
+        (TaskState::Failed, GeneratedTaskState::Failed),
+    ] {
         let bytes = bcs::to_bytes(&state).expect("bcs serialize TaskState");
+        let generated_bytes = bcs::to_bytes(&generated).expect("bcs serialize generated state");
+        assert_eq!(bytes, generated_bytes);
+
         let decoded: TaskState = bcs::from_bytes(&bytes).expect("bcs deserialize TaskState");
         assert_eq!(decoded, state);
     }

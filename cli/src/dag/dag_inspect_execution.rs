@@ -246,7 +246,7 @@ mod tests {
                 execution: sui::types::Address::TWO,
                 walk_index: 5,
                 vertex: RuntimeVertex::Plain {
-                    vertex: TypeName::new("failable"),
+                    vertex: TypeName::new("failable").into(),
                 },
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,

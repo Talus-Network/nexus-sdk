@@ -8,16 +8,15 @@ use {
         idents::primitives,
         sui,
         types::{
+            generated::workflow_types,
             normalize_json_string,
             parse_address_value,
             parse_bool_value,
             parse_byte_vector_value,
-            parse_optional_string_value,
             parse_published_move_enum_value,
             parse_runtime_vertex_value,
             parse_string_value,
             parse_u64_value,
-            MoveOption,
             NexusObjects,
         },
     },
@@ -191,66 +190,31 @@ fn try_parse_terminal_err_eval_recorded_event(
         return Ok(None);
     };
 
-    let Some(dag) = object.get("dag") else {
-        return Ok(None);
-    };
-    let Some(execution) = object.get("execution") else {
-        return Ok(None);
-    };
-    let Some(walk_index) = object.get("walk_index") else {
-        return Ok(None);
-    };
-    let Some(vertex) = object.get("vertex") else {
-        return Ok(None);
-    };
-    let Some(leader) = object.get("leader") else {
-        return Ok(None);
-    };
-    let Some(failure_class) = object.get("failure_class") else {
-        return Ok(None);
-    };
-    let Some(outcome) = object.get("outcome") else {
-        return Ok(None);
-    };
-    let Some(reason) = object.get("reason") else {
-        return Ok(None);
-    };
-    let Some(err_eval_hash) = object.get("err_eval_hash") else {
-        return Ok(None);
-    };
-    let Some(duplicate) = object.get("duplicate") else {
+    for key in [
+        "dag",
+        "execution",
+        "walk_index",
+        "vertex",
+        "leader",
+        "failure_class",
+        "outcome",
+        "reason",
+        "err_eval_hash",
+        "duplicate",
+    ] {
+        if !object.contains_key(key) {
+            return Ok(None);
+        }
+    }
+
+    let Some(raw) = parse_generated_event::<
+        workflow_types::execution_events::TerminalErrEvalRecordedEvent,
+    >(value)?
+    else {
         return Ok(None);
     };
 
-    Ok(Some(crate::events::TerminalErrEvalRecordedEvent {
-        dag: parse_address_value(dag)?
-            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval dag: {dag}"))?,
-        execution: parse_address_value(execution)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval execution: {execution}")
-        })?,
-        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval walk_index: {walk_index}")
-        })?,
-        vertex: parse_runtime_vertex_value(vertex)?
-            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval vertex: {vertex}"))?,
-        leader: parse_address_value(leader)?
-            .ok_or_else(|| anyhow::anyhow!("Could not parse terminal err_eval leader: {leader}"))?,
-        failure_class: parse_published_move_enum_value(failure_class)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval failure_class: {failure_class}")
-        })?,
-        outcome: parse_published_move_enum_value(outcome)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval outcome: {outcome}")
-        })?,
-        reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval reason: {reason}")
-        })?),
-        err_eval_hash: parse_byte_vector_value(err_eval_hash)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval err_eval_hash: {err_eval_hash}")
-        })?,
-        duplicate: parse_bool_value(duplicate)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse terminal err_eval duplicate: {duplicate}")
-        })?,
-    }))
+    Ok(Some(raw.into_public()))
 }
 
 fn try_parse_submission_failure_evidence_recorded_event(
@@ -260,229 +224,229 @@ fn try_parse_submission_failure_evidence_recorded_event(
         return Ok(None);
     };
 
-    let Some(execution) = object.get("execution") else {
+    if !object.contains_key("execution") {
         return Ok(None);
-    };
-    let Some(walk_index) = object.get("walk_index") else {
+    }
+    if !object.contains_key("walk_index") {
         return Ok(None);
-    };
-    let Some(vertex) = object.get("vertex") else {
+    }
+    if !object.contains_key("vertex") {
         return Ok(None);
-    };
-    let Some(failed_leader) = object.get("failed_leader") else {
+    }
+    if !object.contains_key("failed_leader") {
         return Ok(None);
-    };
-    let Some(winning_leader) = object.get("winning_leader") else {
+    }
+    if !object.contains_key("winning_leader") {
         return Ok(None);
-    };
-    let Some(reason) = object.get("reason") else {
+    }
+    if !object.contains_key("reason") {
         return Ok(None);
-    };
-    let Some(err_eval_hash) = object.get("err_eval_hash") else {
+    }
+    if !object.contains_key("err_eval_hash") {
+        return Ok(None);
+    }
+
+    let value = submission_failure_value_with_default_dag(value);
+    let Some(raw) = parse_generated_event::<
+        workflow_types::execution_events::SubmissionFailureEvidenceRecordedEvent,
+    >(&value)?
+    else {
         return Ok(None);
     };
 
-    Ok(Some(
-        crate::events::SubmissionFailureEvidenceRecordedEvent {
-            execution: parse_address_value(execution)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure execution: {execution}")
-            })?,
-            walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure walk_index: {walk_index}")
-            })?,
-            vertex: parse_runtime_vertex_value(vertex)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure vertex: {vertex}")
-            })?,
-            failed_leader: parse_address_value(failed_leader)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure failed_leader: {failed_leader}")
-            })?,
-            winning_leader: match parse_optional_string_value(winning_leader)? {
-                Some(Some(value)) => {
-                    Some(serde_json::from_value(serde_json::Value::String(value))?)
-                }
-                Some(None) => None,
-                None => {
-                    return Err(anyhow::anyhow!(
-                        "Could not parse submission failure winning_leader: {winning_leader}"
-                    ))
-                }
-            },
-            reason: normalize_json_string(parse_string_value(reason)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure reason: {reason}")
-            })?),
-            err_eval_hash: parse_byte_vector_value(err_eval_hash)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse submission failure err_eval_hash: {err_eval_hash}")
-            })?,
-        },
-    ))
+    Ok(Some(raw.into_public()))
+}
+
+fn submission_failure_value_with_default_dag(value: &serde_json::Value) -> serde_json::Value {
+    let serde_json::Value::Object(mut object) = value.clone() else {
+        return value.clone();
+    };
+    object
+        .entry("dag".to_string())
+        .or_insert_with(|| serde_json::Value::String(sui::types::Address::ZERO.to_string()));
+    serde_json::Value::Object(object)
 }
 
 fn try_parse_verification_verdict_event(
     value: &serde_json::Value,
 ) -> anyhow::Result<Option<crate::events::VerificationVerdictEvent>> {
+    let Some(raw) =
+        parse_generated_event::<workflow_types::execution_events::VerificationVerdictEvent>(value)?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(raw.into_public()))
+}
+
+trait IntoPublicEvent {
+    type Public;
+
+    fn into_public(self) -> Self::Public;
+}
+
+impl IntoPublicEvent for workflow_types::execution_events::TerminalErrEvalRecordedEvent {
+    type Public = crate::events::TerminalErrEvalRecordedEvent;
+
+    fn into_public(self) -> Self::Public {
+        crate::events::TerminalErrEvalRecordedEvent {
+            dag: self.dag.into(),
+            execution: self.execution.into(),
+            walk_index: self.walk_index,
+            vertex: self.vertex,
+            leader: self.leader,
+            failure_class: workflow_failure_class_into_public(self.failure_class),
+            outcome: self.outcome,
+            reason: self.reason.into(),
+            err_eval_hash: self.err_eval_hash,
+            duplicate: self.duplicate,
+        }
+    }
+}
+
+impl IntoPublicEvent for workflow_types::execution_events::SubmissionFailureEvidenceRecordedEvent {
+    type Public = crate::events::SubmissionFailureEvidenceRecordedEvent;
+
+    fn into_public(self) -> Self::Public {
+        crate::events::SubmissionFailureEvidenceRecordedEvent {
+            execution: self.execution.into(),
+            walk_index: self.walk_index,
+            vertex: self.vertex,
+            failed_leader: self.failed_leader,
+            winning_leader: self.winning_leader.0,
+            reason: self.reason.into(),
+            err_eval_hash: self.err_eval_hash,
+        }
+    }
+}
+
+impl IntoPublicEvent for workflow_types::execution_events::VerificationVerdictEvent {
+    type Public = crate::events::VerificationVerdictEvent;
+
+    fn into_public(self) -> Self::Public {
+        crate::events::VerificationVerdictEvent {
+            dag: self.dag.into(),
+            execution: self.execution.into(),
+            walk_index: self.walk_index,
+            vertex: self.vertex,
+            leader: self.leader,
+            submission_kind: self.submission_kind,
+            failure_evidence_kind: self.failure_evidence_kind,
+            leader_verifier_mode: self.leader_verifier_mode,
+            leader_verifier_method: self.leader_verifier_method.into(),
+            tool_verifier_mode: self.tool_verifier_mode,
+            tool_verifier_method: self.tool_verifier_method.into(),
+            checked_leader_kid: self.checked_leader_kid.0,
+            checked_tool_kid: self.checked_tool_kid.0,
+            payload_or_reason_hash: self.payload_or_reason_hash,
+            checked_identity: self.checked_identity,
+            verdict_reference: self.verdict_reference,
+            verdict: self.verdict,
+        }
+    }
+}
+
+fn workflow_failure_class_into_public(
+    value: workflow_types::execution_failure::WorkflowFailureClass,
+) -> crate::types::WorkflowFailureClass {
+    match value {
+        workflow_types::execution_failure::WorkflowFailureClass::Retryable => {
+            crate::types::WorkflowFailureClass::Retryable
+        }
+        workflow_types::execution_failure::WorkflowFailureClass::TerminalToolFailure => {
+            crate::types::WorkflowFailureClass::TerminalToolFailure
+        }
+        workflow_types::execution_failure::WorkflowFailureClass::TerminalSubmissionFailure => {
+            crate::types::WorkflowFailureClass::TerminalSubmissionFailure
+        }
+    }
+}
+
+fn parse_generated_event<T>(value: &serde_json::Value) -> anyhow::Result<Option<T>>
+where
+    T: serde::de::DeserializeOwned,
+{
     let serde_json::Value::Object(object) = value else {
         return Ok(None);
     };
 
-    let Some(dag) = object.get("dag") else {
-        return Ok(None);
-    };
-    let Some(execution) = object.get("execution") else {
-        return Ok(None);
-    };
-    let Some(walk_index) = object.get("walk_index") else {
-        return Ok(None);
-    };
-    let Some(vertex) = object.get("vertex") else {
-        return Ok(None);
-    };
-    let Some(leader) = object.get("leader") else {
-        return Ok(None);
-    };
-    let Some(submission_kind) = object.get("submission_kind") else {
-        return Ok(None);
-    };
-    let Some(failure_evidence_kind) = object.get("failure_evidence_kind") else {
-        return Ok(None);
-    };
-    let Some(leader_verifier_mode) = object.get("leader_verifier_mode") else {
-        return Ok(None);
-    };
-    let Some(leader_verifier_method) = object.get("leader_verifier_method") else {
-        return Ok(None);
-    };
-    let Some(tool_verifier_mode) = object.get("tool_verifier_mode") else {
-        return Ok(None);
-    };
-    let Some(tool_verifier_method) = object.get("tool_verifier_method") else {
-        return Ok(None);
-    };
-    let Some(checked_leader_kid) = object.get("checked_leader_kid") else {
-        return Ok(None);
-    };
-    let Some(checked_tool_kid) = object.get("checked_tool_kid") else {
-        return Ok(None);
-    };
-    let Some(payload_or_reason_hash) = object.get("payload_or_reason_hash") else {
-        return Ok(None);
-    };
-    let Some(submission_role) = object.get("submission_role") else {
-        return Ok(None);
-    };
-    let Some(checked_identity) = object.get("checked_identity") else {
-        return Ok(None);
-    };
-    let Some(policy_mode) = object.get("policy_mode") else {
-        return Ok(None);
-    };
-    let Some(verdict_reference) = object.get("verdict_reference") else {
-        return Ok(None);
-    };
-    let Some(verdict) = object.get("verdict") else {
-        return Ok(None);
-    };
+    let normalized = serde_json::Value::Object(
+        object
+            .iter()
+            .map(|(key, value)| Ok((key.clone(), normalize_generated_event_field(key, value)?)))
+            .collect::<anyhow::Result<_>>()?,
+    );
 
-    Ok(Some(crate::events::VerificationVerdictEvent {
-        dag: parse_address_value(dag)?
-            .ok_or_else(|| anyhow::anyhow!("Could not parse verification verdict dag: {dag}"))?,
-        execution: parse_address_value(execution)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict execution: {execution}")
-        })?,
-        walk_index: parse_u64_value(walk_index)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict walk_index: {walk_index}")
-        })?,
-        vertex: parse_runtime_vertex_value(vertex)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict vertex: {vertex}")
-        })?,
-        leader: parse_address_value(leader)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict leader: {leader}")
-        })?,
-        submission_kind: parse_published_move_enum_value(submission_kind)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict submission_kind: {submission_kind}"
-            )
-        })?,
-        failure_evidence_kind: parse_published_move_enum_value(failure_evidence_kind)?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Could not parse verification verdict failure_evidence_kind: {failure_evidence_kind}"
-                )
-            })?,
-        leader_verifier_mode: parse_published_move_enum_value(leader_verifier_mode)?.ok_or_else(
-            || {
-                anyhow::anyhow!(
-                    "Could not parse verification verdict leader_verifier_mode: {leader_verifier_mode}"
-                )
-            },
-        )?,
-        leader_verifier_method: parse_string_value(leader_verifier_method)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict leader_verifier_method: {leader_verifier_method}"
-            )
-        })?,
-        tool_verifier_mode: parse_published_move_enum_value(tool_verifier_mode)?.ok_or_else(
-            || {
-                anyhow::anyhow!(
-                    "Could not parse verification verdict tool_verifier_mode: {tool_verifier_mode}"
-                )
-            },
-        )?,
-        tool_verifier_method: parse_string_value(tool_verifier_method)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict tool_verifier_method: {tool_verifier_method}"
-            )
-        })?,
-        checked_leader_kid: parse_optional_u64_value(checked_leader_kid).map_err(|source| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict checked_leader_kid: {checked_leader_kid}: {source}"
-            )
-        })?,
-        checked_tool_kid: parse_optional_u64_value(checked_tool_kid).map_err(|source| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict checked_tool_kid: {checked_tool_kid}: {source}"
-            )
-        })?,
-        payload_or_reason_hash: parse_byte_vector_value(payload_or_reason_hash)?.ok_or_else(
-            || {
-                anyhow::anyhow!(
-                    "Could not parse verification verdict payload_or_reason_hash: {payload_or_reason_hash}"
-                )
-            },
-        )?,
-        submission_role: parse_published_move_enum_value(submission_role)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict submission_role: {submission_role}"
-            )
-        })?,
-        checked_identity: parse_byte_vector_value(checked_identity)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict checked_identity: {checked_identity}"
-            )
-        })?,
-        policy_mode: parse_published_move_enum_value(policy_mode)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict policy_mode: {policy_mode}")
-        })?,
-        verdict_reference: parse_byte_vector_value(verdict_reference)?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Could not parse verification verdict verdict_reference: {verdict_reference}"
-            )
-        })?,
-        verdict: parse_published_move_enum_value(verdict)?.ok_or_else(|| {
-            anyhow::anyhow!("Could not parse verification verdict verdict: {verdict}")
-        })?,
-    }))
+    Ok(Some(serde_json::from_value(normalized)?))
 }
 
-fn parse_optional_u64_value(value: &serde_json::Value) -> anyhow::Result<Option<u64>> {
-    if value.is_null() {
-        return Ok(None);
-    }
+fn normalize_generated_event_field(
+    key: &str,
+    value: &serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    let value = match key {
+        "dag" | "execution" => id_json(value)?,
+        "leader" | "failed_leader" => parse_address_value(value)?
+            .map(|address| serde_json::Value::String(address.to_string()))
+            .unwrap_or_else(|| value.clone()),
+        "winning_leader" | "checked_leader_kid" | "checked_tool_kid" => value.clone(),
+        "walk_index" => parse_u64_value(value)?
+            .map(serde_json::Value::from)
+            .unwrap_or_else(|| value.clone()),
+        "vertex" => {
+            serde_json::to_value(parse_runtime_vertex_value(value)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse generated event vertex: {value}")
+            })?)?
+        }
+        "failure_class" => workflow_failure_class_json(value)?,
+        "outcome"
+        | "submission_kind"
+        | "failure_evidence_kind"
+        | "leader_verifier_mode"
+        | "tool_verifier_mode"
+        | "verdict" => normalize_move_enum_json(value)?,
+        "reason" | "leader_verifier_method" | "tool_verifier_method" => serde_json::Value::String(
+            normalize_json_string(parse_string_value(value)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse generated event string field {key}: {value}")
+            })?),
+        ),
+        "err_eval_hash" | "payload_or_reason_hash" | "checked_identity" | "verdict_reference" => {
+            serde_json::to_value(parse_byte_vector_value(value)?.ok_or_else(|| {
+                anyhow::anyhow!("Could not parse generated event byte-vector field {key}: {value}")
+            })?)?
+        }
+        "duplicate" => parse_bool_value(value)?
+            .map(serde_json::Value::from)
+            .unwrap_or_else(|| value.clone()),
+        _ => value.clone(),
+    };
+    Ok(value)
+}
 
-    if let Some(parsed) = parse_u64_value(value)? {
-        return Ok(Some(parsed));
-    }
+fn id_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    let address = parse_address_value(value)?
+        .ok_or_else(|| anyhow::anyhow!("Could not parse generated event object id: {value}"))?;
+    Ok(serde_json::json!({ "bytes": address }))
+}
 
-    Ok(serde_json::from_value::<MoveOption<u64>>(value.clone())?.0)
+fn normalize_move_enum_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    let parsed = parse_published_move_enum_value::<String>(value)?;
+    Ok(parsed
+        .map(serde_json::Value::String)
+        .unwrap_or_else(|| value.clone()))
+}
+
+fn workflow_failure_class_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    let parsed = parse_published_move_enum_value::<crate::types::WorkflowFailureClass>(value)?
+        .ok_or_else(|| anyhow::anyhow!("Could not parse workflow failure class: {value}"))?;
+    let variant = match parsed {
+        crate::types::WorkflowFailureClass::Retryable => "Retryable",
+        crate::types::WorkflowFailureClass::TerminalToolFailure => "TerminalToolFailure",
+        crate::types::WorkflowFailureClass::TerminalSubmissionFailure => {
+            "TerminalSubmissionFailure"
+        }
+    };
+    Ok(serde_json::Value::String(variant.to_string()))
 }
 
 /// Helper function to determine whether the given address is one of the Nexus
@@ -509,6 +473,7 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
             | "AgentSkillPaymentCreatedEvent"
             | "AgentVertexAuthorizationRequiredEvent"
             | "PaymentLockUpdateEvent"
+            | "RequestScheduledOccurrenceEvent"
             | "RequestScheduledWalkEvent"
             | "RequestWalkExecutionEvent"
     )
@@ -835,6 +800,59 @@ mod tests {
                 assert!(!parsed.duplicate);
             }
             _ => panic!("Expected TerminalErrEvalRecorded event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_from_grpc_valid_committed_tool_result_event() {
+        let index = 2u64;
+        let digest = sui::types::Digest::generate(rand::thread_rng());
+        let objects = sui_mocks::mock_nexus_objects();
+        let event_type = sui::types::StructTag::new(
+            objects.workflow_pkg_id,
+            sui::types::Identifier::new("execution_events").unwrap(),
+            sui::types::Identifier::new("CommittedToolResultEvent").unwrap(),
+            vec![],
+        );
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(event_type));
+        let data = Wrapper {
+            event: CommittedToolResultEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 7,
+                vertex: RuntimeVertex::plain("retryable"),
+                leader: sui::types::Address::THREE,
+                has_primary_failure_evidence: true,
+                has_secondary_failure_evidence: false,
+            },
+        };
+        let bcs = bcs::to_bytes(&data).expect("BCS serialization should succeed");
+
+        let event = sui_mocks::mock_sui_event(
+            objects.primitives_pkg_id,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                primitives::Event::EVENT_WRAPPER.module,
+                primitives::Event::EVENT_WRAPPER.name,
+                vec![wrapper_type],
+            ),
+            bcs,
+        );
+
+        let nexus_event = NexusEvent::from_sui_grpc_event(index, digest, &event, &objects).unwrap();
+
+        assert_eq!(nexus_event.generics, vec![]);
+        assert_eq!(nexus_event.id, (digest, index));
+        match nexus_event.data {
+            NexusEventKind::CommittedToolResult(parsed) => {
+                assert_eq!(parsed.walk_index, 7);
+                assert_eq!(parsed.vertex, RuntimeVertex::plain("retryable"));
+                assert_eq!(parsed.leader, sui::types::Address::THREE);
+                assert!(parsed.has_primary_failure_evidence);
+                assert!(!parsed.has_secondary_failure_evidence);
+            }
+            _ => panic!("Expected CommittedToolResultEvent event"),
         }
     }
 
@@ -1235,6 +1253,45 @@ mod tests {
             }) if request.next_vertex == RuntimeVertex::plain("transfer")
         ));
 
+        let scheduled_occurrence_event = distributed_nexus_struct_event(
+            &objects,
+            emitter_package,
+            sui::types::StructTag::new(
+                objects.primitives_pkg_id,
+                sui::types::Identifier::new("scheduled_request").unwrap(),
+                sui::types::Identifier::new("RequestScheduledExecution").unwrap(),
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    sui::types::StructTag::new(
+                        objects.scheduler_pkg_id,
+                        sui::types::Identifier::new("scheduler").unwrap(),
+                        sui::types::Identifier::new("OccurrenceScheduledEvent").unwrap(),
+                        vec![],
+                    ),
+                ))],
+            ),
+            RequestScheduledOccurrenceEvent {
+                request: OccurrenceScheduledEvent {
+                    task: sui::types::Address::from_static("0x12"),
+                    generator: objects.scheduler_queue_generator_symbol(),
+                },
+                priority: 1,
+                request_ms: 2,
+                start_ms: 3,
+                deadline_ms: 4,
+            },
+        );
+        let parsed =
+            NexusEvent::from_sui_grpc_event(4, digest, &scheduled_occurrence_event, &objects)
+                .unwrap();
+        assert!(parsed.distribution.is_some());
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
+                request,
+                ..
+            }) if request.task == sui::types::Address::from_static("0x12")
+        ));
+
         let lock_event = wrapped_nexus_event(
             &objects,
             emitter_package,
@@ -1248,7 +1305,7 @@ mod tests {
                 was_locked: true,
             },
         );
-        let parsed = NexusEvent::from_sui_grpc_event(4, digest, &lock_event, &objects).unwrap();
+        let parsed = NexusEvent::from_sui_grpc_event(5, digest, &lock_event, &objects).unwrap();
         assert!(matches!(
             parsed.data,
             NexusEventKind::PaymentLockUpdate(PaymentLockUpdateEvent {
@@ -2171,8 +2228,8 @@ mod tests {
                             }
                         },
                         "leader": { "value": "0x3" },
-                        "failure_class": "terminal_submission_failure",
-                        "outcome": "terminate",
+                        "failure_class": "TerminalSubmissionFailure",
+                        "outcome": "Terminate",
                         "reason": "\"timeout\"",
                         "err_eval_hash": { "bytes": [9, 8, 7] },
                         "duplicate": false
@@ -2213,8 +2270,8 @@ mod tests {
                             "vertex": { "name": "failable" }
                         },
                         "leader": "0x3",
-                        "failure_class": "terminal_submission_failure",
-                        "outcome": "terminate",
+                        "failure_class": "TerminalSubmissionFailure",
+                        "outcome": "Terminate",
                         "reason": "\"timeout\"",
                         "err_eval_hash": { "bytes": [9, 8, 7] },
                         "duplicate": false
@@ -2278,6 +2335,88 @@ mod tests {
                 winning_leader: Some(sui::types::Address::from_static("0x4")),
                 reason: "rpc timeout".to_string(),
                 err_eval_hash: vec![1, 2, 255],
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_submission_failure_evidence_recorded_event_none_winner_shape() {
+        let parsed = parse_submission_failure_evidence_recorded_event(json!({
+            "execution": "0x2",
+            "walk_index": 6,
+            "vertex": {
+                "_variant_name": "Plain",
+                "vertex": { "name": "failable" }
+            },
+            "failed_leader": "0x3",
+            "winning_leader": null,
+            "reason": "rpc timeout",
+            "err_eval_hash": [1, 2, 255]
+        }))
+        .expect("submission failure should parse");
+
+        assert_eq!(
+            parsed,
+            Some(SubmissionFailureEvidenceRecordedEvent {
+                execution: sui::types::Address::TWO,
+                walk_index: 6,
+                vertex: RuntimeVertex::plain("failable"),
+                failed_leader: sui::types::Address::THREE,
+                winning_leader: None,
+                reason: "rpc timeout".to_string(),
+                err_eval_hash: vec![1, 2, 255],
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_verification_verdict_event_nested_move_json_shape() {
+        let parsed = parse_verification_verdict_event(json!({
+            "dag": "0x1",
+            "execution": "0x2",
+            "walk_index": "8",
+            "vertex": {
+                "_variant_name": "WithIterator",
+                "vertex": { "name": "loop_body" },
+                "iteration": "2",
+                "out_of": "5"
+            },
+            "leader": "0x3",
+            "submission_kind": { "_variant_name": "Success" },
+            "failure_evidence_kind": "ToolEvidence",
+            "leader_verifier_mode": "LeaderRegisteredKey",
+            "leader_verifier_method": "\"signed_http_v1\"",
+            "tool_verifier_mode": { "@variant": "ToolVerifierContract" },
+            "tool_verifier_method": "demo_verifier_v1",
+            "checked_leader_kid": 11,
+            "checked_tool_kid": null,
+            "payload_or_reason_hash": { "bytes": "0x0102ff" },
+            "checked_identity": [7, 8],
+            "verdict_reference": { "fields": { "bytes": [9, 10] } },
+            "verdict": "Accepted"
+        }))
+        .expect("verification verdict should parse");
+
+        assert_eq!(
+            parsed,
+            Some(VerificationVerdictEvent {
+                dag: sui::types::Address::from_static("0x1"),
+                execution: sui::types::Address::TWO,
+                walk_index: 8,
+                vertex: RuntimeVertex::with_iterator("loop_body", 2, 5),
+                leader: sui::types::Address::THREE,
+                submission_kind: crate::types::VerificationSubmissionKind::Success,
+                failure_evidence_kind: crate::types::FailureEvidenceKind::ToolEvidence,
+                leader_verifier_mode: crate::types::VerifierMode::LeaderRegisteredKey,
+                leader_verifier_method: "signed_http_v1".to_string(),
+                tool_verifier_mode: crate::types::VerifierMode::ToolVerifierContract,
+                tool_verifier_method: "demo_verifier_v1".to_string(),
+                checked_leader_kid: Some(11),
+                checked_tool_kid: None,
+                payload_or_reason_hash: vec![1, 2, 255],
+                checked_identity: vec![7, 8],
+                verdict_reference: vec![9, 10],
+                verdict: crate::types::VerificationVerdict::Accepted,
             })
         );
     }

@@ -467,7 +467,9 @@ pub fn parse_runtime_vertex_value(
 
             let vertex = parse_type_name_value(vertex)?
                 .ok_or_else(|| anyhow!("Could not parse plain runtime vertex name: {vertex}"))?;
-            Ok(Some(RuntimeVertex::Plain { vertex }))
+            Ok(Some(RuntimeVertex::Plain {
+                vertex: vertex.into(),
+            }))
         }
         "WithIterator" | "with_iterator" => {
             let Some(vertex) = object.get("vertex") else {
@@ -488,7 +490,7 @@ pub fn parse_runtime_vertex_value(
                 .ok_or_else(|| anyhow!("Could not parse runtime vertex out_of: {out_of}"))?;
 
             Ok(Some(RuntimeVertex::WithIterator {
-                vertex,
+                vertex: vertex.into(),
                 iteration,
                 out_of,
             }))
@@ -714,7 +716,7 @@ mod tests {
                     }
                 }
             },
-            "failure_class": "terminal_submission_failure"
+            "failure_class": "TerminalSubmissionFailure"
         }))
         .expect("plain execution terminal record should parse");
 
