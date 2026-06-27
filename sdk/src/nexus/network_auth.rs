@@ -254,9 +254,9 @@ impl NetworkAuthActions {
         let key_records = self
             .client
             .crawler()
-            .get_dynamic_fields_bcs::<u64, crate::types::KeyRecord>(
-                binding.data.keys.id,
-                binding.data.keys.size(),
+            .get_dynamic_fields_bcs::<u64, KeyRecord>(
+                binding.data.key_table_id(),
+                binding.data.key_table_size(),
             )
             .await
             .map_err(|e| {
@@ -271,14 +271,14 @@ impl NetworkAuthActions {
                 kid,
                 public_key_hex: hex::encode(&record.public_key),
                 added_at_ms: record.added_at_ms,
-                revoked: record.revoked_at_ms.is_some(),
+                revoked: record.revoked_at_ms().is_some(),
             })
             .collect();
         keys.sort_by_key(|k| k.kid);
 
         Ok(Some(ToolKeyList {
             binding_object_id,
-            active_key_id: binding.data.active_key_id,
+            active_key_id: binding.data.active_key_id(),
             next_key_id: binding.data.next_key_id,
             keys,
         }))
@@ -314,7 +314,7 @@ impl NetworkAuthActions {
                     ))
                 })?;
 
-            let active_kid = binding.data.active_key_id.ok_or_else(|| {
+            let active_kid = binding.data.active_key_id().ok_or_else(|| {
                 NexusError::Parsing(anyhow::anyhow!(
                     "leader binding {binding_object_id} has no active key"
                 ))
@@ -323,9 +323,9 @@ impl NetworkAuthActions {
             let keys = self
                 .client
                 .crawler()
-                .get_dynamic_fields_bcs::<u64, crate::types::KeyRecord>(
-                    binding.data.keys.id,
-                    binding.data.keys.size(),
+                .get_dynamic_fields_bcs::<u64, KeyRecord>(
+                    binding.data.key_table_id(),
+                    binding.data.key_table_size(),
                 )
                 .await
                 .map_err(|e| {
@@ -339,7 +339,6 @@ impl NetworkAuthActions {
                     "leader binding {binding_object_id} missing active key record kid={active_kid}"
                 ))
             })?;
-
             let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
                 NexusError::Parsing(anyhow::anyhow!(
                     "leader binding {binding_object_id} active key is not 32 bytes"
@@ -404,11 +403,8 @@ impl NetworkAuthActions {
             .data
             .identities
             .contents
-            .into_iter()
-            .filter_map(|id| match id {
-                IdentityKey::Leader { leader_cap_id } => Some(leader_cap_id),
-                _ => None,
-            })
+            .iter()
+            .filter_map(IdentityKey::leader_cap_id)
             .collect::<Vec<_>>();
 
         out.sort_unstable();
@@ -498,16 +494,16 @@ impl NetworkAuthActions {
                 ))
             })?;
 
-        let Some(active_kid) = binding.data.active_key_id else {
+        let Some(active_kid) = binding.data.active_key_id() else {
             return Ok(None);
         };
 
         let keys = self
             .client
             .crawler()
-            .get_dynamic_fields_bcs::<u64, crate::types::KeyRecord>(
-                binding.data.keys.id,
-                binding.data.keys.size(),
+            .get_dynamic_fields_bcs::<u64, KeyRecord>(
+                binding.data.key_table_id(),
+                binding.data.key_table_size(),
             )
             .await
             .map_err(|e| {
@@ -521,7 +517,6 @@ impl NetworkAuthActions {
                 "leader binding {binding_object_id} missing active key record kid={active_kid}"
             ))
         })?;
-
         let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
             NexusError::Parsing(anyhow::anyhow!(
                 "leader binding {binding_object_id} active key is not 32 bytes"
@@ -634,11 +629,8 @@ impl NetworkAuthReader {
             .data
             .identities
             .contents
-            .into_iter()
-            .filter_map(|id| match id {
-                IdentityKey::Leader { leader_cap_id } => Some(leader_cap_id),
-                _ => None,
-            })
+            .iter()
+            .filter_map(IdentityKey::leader_cap_id)
             .collect::<Vec<_>>();
 
         out.sort_unstable();
@@ -745,12 +737,15 @@ async fn try_get_active_ed25519_key(
     crawler: &Crawler,
     binding: &Response<KeyBinding>,
 ) -> Result<Option<ActiveEd25519Key>, NexusError> {
-    let Some(active_kid) = binding.data.active_key_id else {
+    let Some(active_kid) = binding.data.active_key_id() else {
         return Ok(None);
     };
 
     let keys = crawler
-        .get_dynamic_fields_bcs::<u64, KeyRecord>(binding.data.keys.id, binding.data.keys.size())
+        .get_dynamic_fields_bcs::<u64, KeyRecord>(
+            binding.data.key_table_id(),
+            binding.data.key_table_size(),
+        )
         .await
         .map_err(|e| {
             NexusError::Rpc(anyhow::anyhow!(
@@ -765,7 +760,6 @@ async fn try_get_active_ed25519_key(
             binding.object_id
         ))
     })?;
-
     let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
         NexusError::Parsing(anyhow::anyhow!(
             "key binding {} active key kid={active_kid} is not 32 bytes",
@@ -781,7 +775,7 @@ async fn try_get_active_ed25519_key(
         )));
     }
 
-    if record.revoked_at_ms.is_some() {
+    if record.revoked_at_ms().is_some() {
         return Err(NexusError::Parsing(anyhow::anyhow!(
             "key binding {} active key kid={active_kid} is revoked",
             binding.object_id
@@ -888,9 +882,7 @@ impl NetworkAuthCodec {
     fn binding_object_id(&self, identity: &IdentityKey) -> Result<sui::types::Address, NexusError> {
         let key_type =
             registry::into_type_tag(self.registry_pkg_id, registry::NetworkAuth::IDENTITY_KEY);
-        let key_bcs = bcs::to_bytes(identity).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode IdentityKey: {e}"))
-        })?;
+        let key_bcs = identity_bcs(identity)?;
         Ok(self
             .network_auth_object_id
             .derive_object_id(&key_type, &key_bcs))
@@ -904,15 +896,18 @@ impl NetworkAuthCodec {
     ) -> Result<Vec<u8>, NexusError> {
         let mut out = Vec::new();
         out.extend_from_slice(POP_DOMAIN_V1);
-        out.extend_from_slice(&bcs::to_bytes(identity).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode IdentityKey: {e}"))
-        })?);
+        out.extend_from_slice(&identity_bcs(identity)?);
         out.extend_from_slice(&bcs::to_bytes(&key_id).map_err(|e| {
             NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode key_id: {e}"))
         })?);
         out.extend_from_slice(&public_key);
         Ok(out)
     }
+}
+
+fn identity_bcs(identity: &IdentityKey) -> Result<Vec<u8>, NexusError> {
+    bcs::to_bytes(identity)
+        .map_err(|e| NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode IdentityKey: {e}")))
 }
 
 fn sign_bytes(signing_key: &SigningKey, msg: &[u8]) -> [u8; 64] {
@@ -1003,7 +998,7 @@ mod tests {
 
         let mut expected = Vec::new();
         expected.extend_from_slice(POP_DOMAIN_V1);
-        expected.extend_from_slice(&bcs::to_bytes(&identity).unwrap());
+        expected.extend_from_slice(&identity_bcs(&identity).unwrap());
         expected.extend_from_slice(&bcs::to_bytes(&key_id).unwrap());
         expected.extend_from_slice(&public_key);
 
@@ -1026,23 +1021,24 @@ mod tests {
             super::*,
             crate::{
                 test_utils::sui_mocks,
-                types::{KeyRecord, MoveTable, MoveVecSet},
+                types::{KeyRecord, MoveTable},
             },
             serde::Serialize,
             tonic::{Response, Status},
         };
 
         #[derive(Clone, Debug, Serialize)]
-        struct NetworkAuthBcs {
-            id: sui::types::Address,
-            identities: MoveVecSet<IdentityKey>,
-        }
-
-        #[derive(Clone, Debug, Serialize)]
         struct DynamicFieldValueBcs<K, V> {
             id: sui::types::Address,
             name: K,
             value: V,
+        }
+
+        fn raw_network_auth_for_test(
+            id: sui::types::Address,
+            identities: Vec<IdentityKey>,
+        ) -> NetworkAuth {
+            NetworkAuth::new_for_test(id, identities)
         }
 
         fn owner_immutable() -> sui::grpc::Owner {
@@ -1080,14 +1076,14 @@ mod tests {
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding {
-                id: sui::types::Address::from_static("0x222"),
+            let binding = KeyBinding::new_for_test(
+                sui::types::Address::from_static("0x222"),
                 identity,
-                description: None,
-                next_key_id: active_kid + 1,
-                active_key_id: Some(active_kid),
-                keys: MoveTable::new(key_table_id, 1),
-            };
+                None,
+                active_kid + 1,
+                Some(active_kid),
+                MoveTable::new(key_table_id, 1),
+            );
             let binding_bytes = bcs::to_bytes(&binding).unwrap();
 
             let field_object_id = sui::types::Address::from_static("0x333");
@@ -1160,21 +1156,19 @@ mod tests {
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding {
-                id: sui::types::Address::from_static("0x222"),
-                identity: identity.clone(),
-                description: None,
-                next_key_id: active_kid + 1,
-                active_key_id: Some(active_kid),
-                keys: MoveTable::new(key_table_id, 1),
-            };
+            let binding = KeyBinding::new_for_test(
+                sui::types::Address::from_static("0x222"),
+                identity.clone(),
+                None,
+                active_kid + 1,
+                Some(active_kid),
+                MoveTable::new(key_table_id, 1),
+            );
 
-            let network_auth = NetworkAuthBcs {
-                id: network_auth_object_id,
-                identities: MoveVecSet {
-                    contents: vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
-                },
-            };
+            let network_auth = raw_network_auth_for_test(
+                network_auth_object_id,
+                vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
+            );
 
             let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
             let binding_bytes = bcs::to_bytes(&binding).unwrap();
@@ -1255,12 +1249,7 @@ mod tests {
                 network_auth_object_id,
                 leader_cap_id,
                 active_kid,
-                KeyRecord {
-                    scheme: 0,
-                    public_key: public_key.to_vec(),
-                    added_at_ms: 0,
-                    revoked_at_ms: None,
-                },
+                KeyRecord::new_for_test(0, public_key.to_vec(), 0, None),
             )
             .await;
 
@@ -1297,29 +1286,22 @@ mod tests {
 
             let active_kid = 3u64;
             let public_key = [7u8; 32];
-            let record = KeyRecord {
-                scheme: 0,
-                public_key: public_key.to_vec(),
-                added_at_ms: 0,
-                revoked_at_ms: None,
-            };
+            let record = KeyRecord::new_for_test(0, public_key.to_vec(), 0, None);
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding {
-                id: sui::types::Address::from_static("0x222"),
-                identity: identity.clone(),
-                description: None,
-                next_key_id: active_kid + 1,
-                active_key_id: Some(active_kid),
-                keys: MoveTable::new(key_table_id, 1),
-            };
+            let binding = KeyBinding::new_for_test(
+                sui::types::Address::from_static("0x222"),
+                identity.clone(),
+                None,
+                active_kid + 1,
+                Some(active_kid),
+                MoveTable::new(key_table_id, 1),
+            );
 
-            let network_auth = NetworkAuthBcs {
-                id: network_auth_object_id,
-                identities: MoveVecSet {
-                    contents: vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
-                },
-            };
+            let network_auth = raw_network_auth_for_test(
+                network_auth_object_id,
+                vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
+            );
 
             let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
             let binding_bytes = bcs::to_bytes(&binding).unwrap();
@@ -1328,7 +1310,7 @@ mod tests {
             let field_value = DynamicFieldValueBcs {
                 id: sui::types::Address::from_static("0x444"),
                 name: active_kid,
-                value: record.clone(),
+                value: record,
             };
             let field_bytes = bcs::to_bytes(&field_value).unwrap();
 
@@ -1480,12 +1462,7 @@ mod tests {
             let out_path = out_dir.path().join("allowed-leaders.json");
 
             let active_kid = 7u64;
-            let record = KeyRecord {
-                scheme: 0,
-                public_key: vec![9u8; 32],
-                added_at_ms: 0,
-                revoked_at_ms: None,
-            };
+            let record = KeyRecord::new_for_test(0, vec![9u8; 32], 0, None);
 
             let syncer = build_reader_and_syncer(
                 out_path.clone(),
@@ -1527,12 +1504,7 @@ mod tests {
 
             let active_kid = 1u64;
             let public_key = [4u8; 32];
-            let record = KeyRecord {
-                scheme: 0,
-                public_key: public_key.to_vec(),
-                added_at_ms: 0,
-                revoked_at_ms: None,
-            };
+            let record = KeyRecord::new_for_test(0, public_key.to_vec(), 0, None);
 
             let expected = AllowedLeadersFileV1 {
                 version: 1,
@@ -1584,27 +1556,17 @@ mod tests {
             let key_table_id = sui::types::Address::from_static("0x111");
 
             // Two keys: kid=0 (revoked), kid=1 (active).
-            let record_0 = KeyRecord {
-                scheme: 0,
-                public_key: vec![0xaau8; 32],
-                added_at_ms: 1000,
-                revoked_at_ms: Some(2000),
-            };
-            let record_1 = KeyRecord {
-                scheme: 0,
-                public_key: vec![0xbbu8; 32],
-                added_at_ms: 3000,
-                revoked_at_ms: None,
-            };
+            let record_0 = KeyRecord::new_for_test(0, vec![0xaau8; 32], 1000, Some(2000));
+            let record_1 = KeyRecord::new_for_test(0, vec![0xbbu8; 32], 3000, None);
 
-            let binding = KeyBinding {
-                id: sui::types::Address::from_static("0x222"),
-                identity: identity.clone(),
-                description: None,
-                next_key_id: 2,
-                active_key_id: Some(1),
-                keys: MoveTable::new(key_table_id, 2),
-            };
+            let binding = KeyBinding::new_for_test(
+                sui::types::Address::from_static("0x222"),
+                identity.clone(),
+                None,
+                2,
+                Some(1),
+                MoveTable::new(key_table_id, 2),
+            );
 
             let binding_bytes = bcs::to_bytes(&binding).unwrap();
 
@@ -1614,12 +1576,12 @@ mod tests {
             let field_0_value = DynamicFieldValueBcs {
                 id: sui::types::Address::from_static("0x555"),
                 name: 0u64,
-                value: record_0.clone(),
+                value: record_0,
             };
             let field_1_value = DynamicFieldValueBcs {
                 id: sui::types::Address::from_static("0x666"),
                 name: 1u64,
-                value: record_1.clone(),
+                value: record_1,
             };
             let field_0_bytes = bcs::to_bytes(&field_0_value).unwrap();
             let field_1_bytes = bcs::to_bytes(&field_1_value).unwrap();

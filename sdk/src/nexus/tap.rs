@@ -1,6 +1,8 @@
 //! Read-only helpers and high-level actions for standard TAP.
 
 #[cfg(feature = "move_publish")]
+use crate::idents::publish_dependency_ids_or_framework_defaults;
+#[cfg(feature = "move_publish")]
 use crate::types::SkillConfig;
 use {
     crate::{
@@ -277,6 +279,39 @@ pub struct AccomplishExecutionPaymentResult {
     pub agent_id: Option<sui::types::Address>,
 }
 
+/// Parameters for [`TapActions::refill_execution_payment`].
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentParams {
+    /// The shared `DAGExecution` object whose live TAP payment should receive
+    /// additional funds.
+    pub execution_id: sui::types::Address,
+    /// MIST amount split from the transaction gas coin and moved into the
+    /// execution payment.
+    pub amount: u64,
+}
+
+/// Parameters for [`TapActions::refill_execution_payment_from_agent_vault`].
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentFromAgentVaultParams {
+    /// The shared `DAGExecution` object whose live TAP payment should receive
+    /// additional funds.
+    pub execution_id: sui::types::Address,
+    /// Agent object whose vault is the refill source.
+    pub agent_id: AgentId,
+    /// MIST amount withdrawn from the agent vault.
+    pub amount: u64,
+}
+
+/// Result returned by TAP execution-payment refill helpers.
+#[derive(Clone, Debug)]
+pub struct RefillExecutionPaymentResult {
+    pub tx_digest: sui::types::Digest,
+    pub tx_checkpoint: u64,
+    pub execution_id: sui::types::Address,
+    pub agent_id: Option<AgentId>,
+    pub amount: u64,
+}
+
 /// Whether a [`ExecutionPayment`] has reached an irrecoverable final state.
 pub fn payment_is_terminal(payment: &ExecutionPayment) -> bool {
     if payment.accomplished || payment.refunded {
@@ -305,15 +340,16 @@ impl TapActions {
         let mut tx = sui::tx::TransactionBuilder::new();
         let upgrade_cap = tx.publish(
             package.package.get_package_bytes(false),
-            package
-                .get_dependency_storage_package_ids()
-                .iter()
-                .map(|id| {
-                    id.to_string()
-                        .parse::<sui::types::Address>()
-                        .expect("compiled package dependency id must parse as Sui address")
-                })
-                .collect(),
+            publish_dependency_ids_or_framework_defaults(
+                package
+                    .get_dependency_storage_package_ids()
+                    .iter()
+                    .map(|id| {
+                        id.to_string()
+                            .parse::<sui::types::Address>()
+                            .expect("compiled package dependency id must parse as Sui address")
+                    }),
+            ),
         );
         let sender_arg = sui_framework::Address::address_from_type(&mut tx, address)
             .map_err(NexusError::TransactionBuilding)?;
@@ -668,6 +704,98 @@ impl TapActions {
             tx_checkpoint: response.checkpoint,
             execution_id: params.execution_id,
             agent_id: params.agent_id,
+        })
+    }
+
+    /// Refill a live TAP execution payment by splitting MIST from the caller's
+    /// transaction gas coin.
+    pub async fn refill_execution_payment(
+        &self,
+        params: RefillExecutionPaymentParams,
+    ) -> Result<RefillExecutionPaymentResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let execution_ref = self
+            .client
+            .crawler()
+            .get_object_metadata(params.execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let execution = tx.object(sui::tx::ObjectInput::shared(
+            *execution_ref.object_id(),
+            execution_ref.version(),
+            true,
+        ));
+        let amount = tx.pure(&params.amount);
+        let gas = tx.gas();
+        let refill_coin = tx
+            .split_coins(gas, vec![amount])
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                NexusError::TransactionBuilding(anyhow::anyhow!(
+                    "failed to split execution payment refill coin"
+                ))
+            })?;
+        dag_tx::refill_tap_execution_payment(
+            &mut tx,
+            &self.client.nexus_objects,
+            execution,
+            refill_coin,
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(RefillExecutionPaymentResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            execution_id: params.execution_id,
+            agent_id: None,
+            amount: params.amount,
+        })
+    }
+
+    /// Refill a live TAP execution payment from an agent payment vault.
+    pub async fn refill_execution_payment_from_agent_vault(
+        &self,
+        params: RefillExecutionPaymentFromAgentVaultParams,
+    ) -> Result<RefillExecutionPaymentResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let crawler = self.client.crawler();
+        let execution_ref = crawler
+            .get_object_metadata(params.execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let agent_ref = crawler
+            .get_object_metadata(params.agent_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let agent = agent_argument_from_metadata(&mut tx, &agent_ref, true)
+            .map_err(NexusError::TransactionBuilding)?;
+        let execution = tx.object(sui::tx::ObjectInput::shared(
+            *execution_ref.object_id(),
+            execution_ref.version(),
+            true,
+        ));
+        dag_tx::refill_tap_execution_payment_from_agent_vault(
+            &mut tx,
+            &self.client.nexus_objects,
+            agent,
+            execution,
+            params.amount,
+        );
+
+        let response = self.submit_tap_transaction(tx, address).await?;
+        Ok(RefillExecutionPaymentResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            execution_id: params.execution_id,
+            agent_id: Some(params.agent_id),
+            amount: params.amount,
         })
     }
 

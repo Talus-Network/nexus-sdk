@@ -1,3 +1,16 @@
+pub use crate::types::generated::{
+    interface_types::{
+        graph::PostFailureAction,
+        verifier::{
+            FailureEvidenceKind,
+            VerificationSubmissionKind,
+            VerificationVerdict,
+            VerifierDecision as VerifierDecisionV1,
+            VerifierMode,
+        },
+    },
+    workflow_types::execution_failure::WorkflowFailureClass,
+};
 use {
     super::nexus_data::NexusData,
     crate::{
@@ -12,63 +25,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum FailureEvidenceKind {
-    #[serde(rename = "tool_evidence", alias = "ToolEvidence")]
-    ToolEvidence,
-    #[serde(rename = "leader_evidence", alias = "LeaderEvidence")]
-    LeaderEvidence,
-}
-
-/// Distinguishes payload verification from normalized `_err_eval` reason
-/// verification inside verifier evidence and verifier contract results.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationSubmissionKind {
-    #[serde(rename = "success", alias = "Success")]
-    Success,
-    #[serde(rename = "err_eval", alias = "ErrEval")]
-    ErrEval,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationVerdict {
-    #[serde(rename = "accepted", alias = "Accepted")]
-    Accepted,
-    #[serde(rename = "invalid_leader_proof", alias = "InvalidLeaderProof")]
-    InvalidLeaderProof,
-    #[serde(rename = "invalid_tool_proof", alias = "InvalidToolProof")]
-    InvalidToolProof,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerificationSubmissionRole {
-    #[serde(rename = "leader", alias = "Leader")]
-    Leader,
-    #[serde(rename = "tool", alias = "Tool")]
-    Tool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerifierDecisionV1 {
-    #[serde(rename = "accept", alias = "Accept")]
-    Accept,
-    #[serde(rename = "reject", alias = "Reject")]
-    Reject,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum VerifierMode {
-    #[serde(rename = "none", alias = "None")]
-    None,
-    #[serde(rename = "leader_registered_key", alias = "LeaderRegisteredKey")]
-    LeaderRegisteredKey,
-    #[serde(rename = "leader_nautilus_enclave", alias = "LeaderNautilusEnclave")]
-    LeaderNautilusEnclave,
-    #[serde(rename = "tool_verifier_contract", alias = "ToolVerifierContract")]
-    ToolVerifierContract,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct VerifierConfig {
     pub mode: VerifierMode,
     pub method: String,
@@ -331,40 +288,14 @@ impl<'de> Deserialize<'de> for VerifierConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum WorkflowFailureClass {
-    #[serde(rename = "retryable", alias = "Retryable")]
-    Retryable,
-    #[serde(rename = "terminal_tool_failure", alias = "TerminalToolFailure")]
-    TerminalToolFailure,
-    #[serde(
-        rename = "terminal_submission_failure",
-        alias = "TerminalSubmissionFailure"
-    )]
-    TerminalSubmissionFailure,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionTerminalRecord {
     pub vertex: crate::types::RuntimeVertex,
     pub failure_class: WorkflowFailureClass,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PostFailureAction {
-    #[serde(rename = "terminate", alias = "Terminate")]
-    Terminate,
-    #[serde(
-        rename = "continue",
-        alias = "Continue",
-        alias = "TransientContinue",
-        alias = "transient_continue"
-    )]
-    TransientContinue,
-}
-
 impl PostFailureAction {
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Terminate => "terminate",
             Self::TransientContinue => "continue",
@@ -396,11 +327,11 @@ mod tests {
 
     #[test]
     fn test_post_failure_action_serde() {
-        let action: PostFailureAction = serde_json::from_str("\"continue\"").unwrap();
+        let action: PostFailureAction = serde_json::from_str("\"TransientContinue\"").unwrap();
         assert_eq!(action, PostFailureAction::TransientContinue);
         assert_eq!(
             serde_json::to_string(&PostFailureAction::Terminate).unwrap(),
-            "\"terminate\""
+            "\"Terminate\""
         );
     }
 
@@ -430,7 +361,7 @@ mod tests {
         assert_eq!(wrapped.0, WorkflowFailureClass::TerminalToolFailure);
 
         let string: PublishedMoveEnum<WorkflowFailureClass> =
-            serde_json::from_str("\"terminal_submission_failure\"").unwrap();
+            serde_json::from_str("\"TerminalSubmissionFailure\"").unwrap();
         assert_eq!(string.0, WorkflowFailureClass::TerminalSubmissionFailure);
     }
 
@@ -452,7 +383,7 @@ mod tests {
         assert_eq!(tagged.0, VerifierMode::LeaderRegisteredKey);
 
         let string: PublishedMoveEnum<VerifierMode> =
-            serde_json::from_str("\"tool_verifier_contract\"").unwrap();
+            serde_json::from_str("\"ToolVerifierContract\"").unwrap();
         assert_eq!(string.0, VerifierMode::ToolVerifierContract);
     }
 
@@ -484,7 +415,7 @@ mod tests {
     #[test]
     fn test_verifier_config_deserializes_plain_json() {
         let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
-            "mode": "tool_verifier_contract",
+            "mode": "ToolVerifierContract",
             "method": "demo_verifier_v1"
         }))
         .unwrap();
@@ -509,7 +440,7 @@ mod tests {
         assert_eq!(accepted_tagged.0, VerificationVerdict::Accepted);
 
         let accepted_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"accepted\"").unwrap();
+            serde_json::from_str("\"Accepted\"").unwrap();
         assert_eq!(accepted_string.0, VerificationVerdict::Accepted);
 
         let invalid_tool_proof_tagged: PublishedMoveEnum<VerificationVerdict> =
@@ -520,7 +451,7 @@ mod tests {
         );
 
         let invalid_tool_proof_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"invalid_tool_proof\"").unwrap();
+            serde_json::from_str("\"InvalidToolProof\"").unwrap();
         assert_eq!(
             invalid_tool_proof_string.0,
             VerificationVerdict::InvalidToolProof
@@ -534,7 +465,7 @@ mod tests {
         assert_eq!(tagged.0, FailureEvidenceKind::ToolEvidence);
 
         let string: PublishedMoveEnum<FailureEvidenceKind> =
-            serde_json::from_str("\"leader_evidence\"").unwrap();
+            serde_json::from_str("\"LeaderEvidence\"").unwrap();
         assert_eq!(string.0, FailureEvidenceKind::LeaderEvidence);
     }
 
@@ -544,7 +475,7 @@ mod tests {
         assert_eq!(accepted, VerificationVerdict::Accepted);
         assert_eq!(
             serde_json::to_string(&VerificationVerdict::Accepted).unwrap(),
-            "\"accepted\""
+            "\"Accepted\""
         );
 
         let invalid_tool_proof: VerificationVerdict =
@@ -552,7 +483,7 @@ mod tests {
         assert_eq!(invalid_tool_proof, VerificationVerdict::InvalidToolProof);
         assert_eq!(
             serde_json::to_string(&VerificationVerdict::InvalidToolProof).unwrap(),
-            "\"invalid_tool_proof\""
+            "\"InvalidToolProof\""
         );
     }
 
@@ -562,7 +493,7 @@ mod tests {
         assert_eq!(accepted, VerifierDecisionV1::Accept);
         assert_eq!(
             serde_json::to_string(&VerifierDecisionV1::Reject).unwrap(),
-            "\"reject\""
+            "\"Reject\""
         );
     }
 

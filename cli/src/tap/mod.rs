@@ -6,6 +6,7 @@ mod tap_create_skill_artifact;
 mod tap_default_agent;
 mod tap_dry_run;
 mod tap_execute;
+mod tap_execution;
 mod tap_output;
 mod tap_payments;
 mod tap_publish_skill;
@@ -79,6 +80,7 @@ use {
     tap_default_agent::show_default_agent,
     tap_dry_run::dry_run_skill,
     tap_execute::execute_agent_dag_skill,
+    tap_execution::handle_execution_command,
     tap_output::{
         agent_execute_result_json,
         agent_list_result_json,
@@ -251,6 +253,8 @@ pub(crate) enum TapCommand {
         about = "Inspect standard TAP execution payments and history."
     )]
     Payments(PaymentsCommand),
+    #[command(subcommand, about = "Settle or abort active TAP executions.")]
+    Execution(ExecutionCommand),
     #[command(subcommand, about = "Inspect the agent registry.")]
     Registry(RegistryCommand),
     #[command(subcommand, about = "Inspect the standard TAP default agent metadata.")]
@@ -591,6 +595,62 @@ pub(crate) enum PaymentsCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+    #[command(
+        about = "Refill a live TAP execution payment. Uses a coin top-up by default, or the agent vault when `--alias`/`--agent-id` is supplied."
+    )]
+    Refill {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID whose TAP payment should be refilled.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[arg(long, help = "MIST amount to add to the execution payment.")]
+        amount: u64,
+        #[arg(
+            long,
+            help = "Local agent alias whose vault funds the refill.",
+            value_name = "NAME",
+            conflicts_with = "agent_id"
+        )]
+        alias: Option<String>,
+        #[arg(
+            long,
+            help = "Talus agent object ID whose vault funds the refill.",
+            value_name = "OBJECT_ID"
+        )]
+        agent_id: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ExecutionCommand {
+    #[command(about = "Permissionlessly settle one committed result walk after it is eligible.")]
+    Settle {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID to settle.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[arg(long = "walk-index", help = "Committed-result walk index to settle.")]
+        walk_index: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Permissionlessly abort an expired TAP DAG execution.")]
+    Abort {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID to abort.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
@@ -652,6 +712,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::Agent(command) => handle_agent_command(command).await,
         TapCommand::Vault(command) => handle_vault_command(command).await,
         TapCommand::Payments(command) => handle_payments_command(command).await,
+        TapCommand::Execution(command) => handle_execution_command(command).await,
         TapCommand::Registry(RegistryCommand::Show) => show_registry().await,
         TapCommand::DefaultAgent(DefaultAgentCommand::Show) => show_default_agent().await,
         TapCommand::Bind { artifact, gas } => {
@@ -977,6 +1038,65 @@ mod tests {
                 .to_string()
                 .contains("No Talus agent alias"),
             "unexpected error: {resolve_vault_error}"
+        );
+
+        let refill_error = handle(TapCommand::Payments(PaymentsCommand::Refill {
+            execution_id: sui::types::Address::from_static("0xee"),
+            amount: 100,
+            alias: None,
+            agent_id: None,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments refill dispatch reaches missing RPC");
+        assert!(
+            refill_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {refill_error}"
+        );
+
+        let refill_vault_error = handle(TapCommand::Payments(PaymentsCommand::Refill {
+            execution_id: sui::types::Address::from_static("0xee"),
+            amount: 100,
+            alias: Some("missing".to_string()),
+            agent_id: None,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments refill --alias resolves before RPC");
+        assert!(
+            refill_vault_error
+                .to_string()
+                .contains("No Talus agent alias"),
+            "unexpected error: {refill_vault_error}"
+        );
+
+        let execution_settle_error = handle(TapCommand::Execution(ExecutionCommand::Settle {
+            execution_id: sui::types::Address::from_static("0xee"),
+            walk_index: 0,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("execution settle dispatch reaches missing RPC");
+        assert!(
+            execution_settle_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {execution_settle_error}"
+        );
+
+        let execution_abort_error = handle(TapCommand::Execution(ExecutionCommand::Abort {
+            execution_id: sui::types::Address::from_static("0xee"),
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("execution abort dispatch reaches missing RPC");
+        assert!(
+            execution_abort_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {execution_abort_error}"
         );
 
         let default_agent_error = handle(TapCommand::DefaultAgent(DefaultAgentCommand::Show))

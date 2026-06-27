@@ -1196,12 +1196,7 @@ pub fn execute_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
-    let [execution, ticket] = results.to_nested(2)[..] else {
-        return Err(anyhow::anyhow!(
-            "Failed to receive execution and ticket arguments"
-        ));
-    };
+    let execution = results;
 
     let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
@@ -1216,16 +1211,16 @@ pub fn execute_scheduled_occurrence(
         .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
-    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
+    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution);
 
-    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::start_execution()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::START_EXECUTION.module,
+            workflow::ExecutionEntries::START_EXECUTION.name,
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![dag, execution, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -1341,12 +1336,7 @@ pub fn execute_registered_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
-    let [execution, ticket] = results.to_nested(2)[..] else {
-        return Err(anyhow::anyhow!(
-            "Failed to receive execution and ticket arguments"
-        ));
-    };
+    let execution = results;
 
     let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
@@ -1361,16 +1351,16 @@ pub fn execute_registered_scheduled_occurrence(
         .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
-    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
+    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution);
 
-    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::start_execution()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::START_EXECUTION.module,
+            workflow::ExecutionEntries::START_EXECUTION.name,
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![dag, execution, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -2253,6 +2243,16 @@ mod tests {
         inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
         inspector.expect_clock(&tap_call.arguments[5]);
 
+        let lock_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.workflow_pkg_id
+                    && call.module == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module
+                    && call.function == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name
+            })
+            .expect("tool payment lock call");
+        assert_eq!(lock_call.arguments.len(), 3);
+
         let finish_call = calls
             .iter()
             .find(|call| {
@@ -2343,6 +2343,16 @@ mod tests {
         inspector.expect_shared_object(&tap_call.arguments[3], &task, true);
         inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
         inspector.expect_clock(&tap_call.arguments[5]);
+
+        let lock_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.workflow_pkg_id
+                    && call.module == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module
+                    && call.function == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name
+            })
+            .expect("tool payment lock call");
+        assert_eq!(lock_call.arguments.len(), 3);
 
         let finish_call = calls
             .iter()

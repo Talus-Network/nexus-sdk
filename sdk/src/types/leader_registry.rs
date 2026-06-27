@@ -1,8 +1,14 @@
 //! Rust projections of `nexus_registry::leader` on-chain object data.
 
 use {
-    super::{MoveTable, MoveVecSet, TypeName},
-    crate::sui,
+    super::{MoveOption, MoveTable, MoveVecSet, TypeName},
+    crate::{
+        sui,
+        types::{
+            generated::{primitives_types, registry_types},
+            generated_support,
+        },
+    },
     anyhow::Context,
     serde::{Deserialize, Serialize},
 };
@@ -15,9 +21,9 @@ pub struct LeaderRegistry {
     min_stake_mist: u64,
     max_transaction_budget: u64,
     leaders: MoveVecSet<sui::types::Address>,
-    records: MoveTable<sui::types::Address, LeaderRecord>,
+    records: MoveTable<sui::types::Address, generated_support::Ignored>,
     capabilities: LeaderCapabilities,
-    workflow_witness_type: MoveOptionLayout<TypeName>,
+    workflow_witness_type: MoveOption<TypeName>,
 }
 
 impl LeaderRegistry {
@@ -33,7 +39,9 @@ impl LeaderRegistry {
 
     /// Decode `LeaderRegistry` object contents from BCS bytes.
     pub fn from_bcs(contents: &[u8]) -> anyhow::Result<Self> {
-        bcs::from_bytes(contents).context("failed to decode leader registry object")
+        let raw = bcs::from_bytes::<registry_types::leader::LeaderRegistry>(contents)
+            .context("failed to decode leader registry object")?;
+        Ok(Self::from_raw(raw))
     }
 
     /// Network ID used by all leader capabilities issued by this registry.
@@ -44,6 +52,21 @@ impl LeaderRegistry {
     /// Maximum budget (in MIST) a leader may spend on a single transaction.
     pub fn max_transaction_budget(&self) -> u64 {
         self.max_transaction_budget
+    }
+
+    fn from_raw(raw: registry_types::leader::LeaderRegistry) -> Self {
+        Self {
+            id: raw.id.into(),
+            unbonding_duration_ms: raw.unbonding_duration_ms,
+            min_stake_mist: raw.min_stake_mist,
+            max_transaction_budget: raw.max_transaction_budget,
+            leaders: MoveVecSet {
+                contents: raw.leaders.contents.into_iter().map(Into::into).collect(),
+            },
+            records: MoveTable::new(raw.records.id, raw.records.size),
+            capabilities: LeaderCapabilities::from_raw(raw.capabilities),
+            workflow_witness_type: raw.workflow_witness_type,
+        }
     }
 
     #[cfg(test)]
@@ -59,26 +82,38 @@ impl LeaderRegistry {
                 allowed_addresses: MoveVecSet { contents: vec![] },
                 network_id: network,
                 admin_cap_id: sui::types::Address::ZERO,
-                leader_cap_issuer: CloneableOwnerCap {
-                    id: sui::types::Address::ZERO,
-                    what_for: id,
-                    inner: OwnerCap {
-                        unique: sui::types::Address::ZERO,
-                    },
-                },
+                leader_cap_issuer: leader_cap_issuer_for_test(
+                    sui::types::Address::ZERO,
+                    id,
+                    sui::types::Address::ZERO,
+                ),
             },
-            workflow_witness_type: MoveOptionLayout { vec: vec![] },
+            workflow_witness_type: MoveOption(None),
         }
     }
 }
 
+type LeaderCapIssuer =
+    primitives_types::owner_cap::CloneableOwnerCap<registry_types::leader_cap::OverNetwork>;
+
 /// Stored capability issuer state inside `LeaderRegistry`.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct LeaderCapabilities {
     allowed_addresses: MoveVecSet<sui::types::Address>,
     network_id: sui::types::Address,
     admin_cap_id: sui::types::Address,
-    leader_cap_issuer: CloneableOwnerCap,
+    leader_cap_issuer: LeaderCapIssuer,
+}
+
+impl Clone for LeaderCapabilities {
+    fn clone(&self) -> Self {
+        Self {
+            allowed_addresses: self.allowed_addresses.clone(),
+            network_id: self.network_id,
+            admin_cap_id: self.admin_cap_id,
+            leader_cap_issuer: clone_leader_cap_issuer(&self.leader_cap_issuer),
+        }
+    }
 }
 
 impl LeaderCapabilities {
@@ -86,26 +121,50 @@ impl LeaderCapabilities {
     pub fn network_id(&self) -> sui::types::Address {
         self.network_id
     }
+
+    fn from_raw(raw: registry_types::leader::CapabilityManger) -> Self {
+        Self {
+            allowed_addresses: raw.allowed_addresses,
+            network_id: raw.network_id.into(),
+            admin_cap_id: raw.admin_cap_id.into(),
+            leader_cap_issuer: raw.leader_cap_issuer,
+        }
+    }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct LeaderRecord;
+fn clone_leader_cap_issuer(value: &LeaderCapIssuer) -> LeaderCapIssuer {
+    leader_cap_issuer_from_parts(
+        value.id.id.bytes,
+        value.what_for.bytes,
+        value.inner.unique.bytes,
+    )
+}
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct CloneableOwnerCap {
+fn leader_cap_issuer_from_parts(
     id: sui::types::Address,
     what_for: sui::types::Address,
-    inner: OwnerCap,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct OwnerCap {
     unique: sui::types::Address,
+) -> LeaderCapIssuer {
+    LeaderCapIssuer {
+        id: generated_support::UID {
+            id: generated_support::ID { bytes: id },
+        },
+        what_for: generated_support::ID { bytes: what_for },
+        inner: primitives_types::owner_cap::OwnerCap {
+            unique: generated_support::ID { bytes: unique },
+            phantom_t0: std::marker::PhantomData,
+        },
+        phantom_t0: std::marker::PhantomData,
+    }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct MoveOptionLayout<T> {
-    vec: Vec<T>,
+#[cfg(test)]
+fn leader_cap_issuer_for_test(
+    id: sui::types::Address,
+    what_for: sui::types::Address,
+    unique: sui::types::Address,
+) -> LeaderCapIssuer {
+    leader_cap_issuer_from_parts(id, what_for, unique)
 }
 
 #[cfg(test)]
@@ -116,8 +175,8 @@ mod tests {
     /// `from_bcs`, then re-encode and assert the byte stream is bit-identical
     /// to the input. This is the strongest invariant we can assert without
     /// `PartialEq` on the type — it proves every nested struct (`MoveVecSet`,
-    /// `MoveTable`, `LeaderCapabilities`, `CloneableOwnerCap`, `OwnerCap`,
-    /// `MoveOptionLayout<TypeName>`) reads back exactly what was written.
+    /// `MoveTable`, `LeaderCapabilities`, generated owner-cap types, and
+    /// `MoveOption<TypeName>`) reads back exactly what was written.
     #[test]
     fn from_bcs_round_trips_empty_registry_payload() {
         let registry_id = sui::types::Address::from_static("0x1");
@@ -138,7 +197,7 @@ mod tests {
 
     /// Round-trip a populated payload that exercises the non-empty branch of
     /// every collection on the type: a `MoveVecSet` with multiple addresses,
-    /// a `MoveTable` with a non-zero size, and a `MoveOptionLayout<TypeName>`
+    /// a `MoveTable` with a non-zero size, and a `MoveOption<TypeName>`
     /// holding `Some(TypeName)`. Catches Deserialize regressions that an
     /// empty-only fixture would silently let through (e.g. wrong tag width
     /// on the option, wrong length prefix on the set, missing `#[serde(skip)]`
@@ -169,17 +228,9 @@ mod tests {
                 },
                 network_id,
                 admin_cap_id,
-                leader_cap_issuer: CloneableOwnerCap {
-                    id: issuer_id,
-                    what_for: registry_id,
-                    inner: OwnerCap {
-                        unique: issuer_inner,
-                    },
-                },
+                leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
             },
-            workflow_witness_type: MoveOptionLayout {
-                vec: vec![TypeName::new("0x42::workflow::Witness")],
-            },
+            workflow_witness_type: MoveOption(Some(TypeName::new("0x42::workflow::Witness"))),
         };
 
         let bytes = bcs::to_bytes(&original).expect("encode populated registry");
@@ -192,6 +243,33 @@ mod tests {
         );
         assert_eq!(decoded.network_id(), network_id);
         assert_eq!(decoded.max_transaction_budget(), 7_500_000_000);
+    }
+
+    #[test]
+    fn leader_capabilities_clone_preserves_nested_generated_owner_cap() {
+        let registry_id = sui::types::Address::from_static("0x10");
+        let network_id = sui::types::Address::from_static("0x20");
+        let leader = sui::types::Address::from_static("0x30");
+        let admin_cap_id = sui::types::Address::from_static("0x50");
+        let issuer_id = sui::types::Address::from_static("0x60");
+        let issuer_inner = sui::types::Address::from_static("0x61");
+        let capabilities = LeaderCapabilities {
+            allowed_addresses: MoveVecSet {
+                contents: vec![leader],
+            },
+            network_id,
+            admin_cap_id,
+            leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
+        };
+
+        let cloned = capabilities.clone();
+
+        assert_eq!(cloned.allowed_addresses.contents, vec![leader]);
+        assert_eq!(cloned.network_id(), network_id);
+        assert_eq!(cloned.admin_cap_id, admin_cap_id);
+        assert_eq!(cloned.leader_cap_issuer.id.id.bytes, issuer_id);
+        assert_eq!(cloned.leader_cap_issuer.what_for.bytes, registry_id);
+        assert_eq!(cloned.leader_cap_issuer.inner.unique.bytes, issuer_inner);
     }
 
     /// Truncated input must surface the contextual error message from

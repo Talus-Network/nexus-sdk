@@ -758,7 +758,7 @@ mod tests {
             execution: sui_mocks::mock_sui_address(),
             walk_index: 0,
             vertex: crate::events::RuntimeVertex::Plain {
-                vertex: crate::events::TypeName::new("v"),
+                vertex: crate::events::TypeName::new("v").into(),
             },
             variant: crate::events::TypeName::new("ok"),
             variant_ports_to_data: crate::events::PortsData::from_map(Default::default()),

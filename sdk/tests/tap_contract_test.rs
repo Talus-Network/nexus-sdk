@@ -644,7 +644,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let dag = tx.object(sui::tx::ObjectInput::shared(dag_id, 1, false));
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
-    nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
+    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
         &mut tx, &objects, dag, execution, leader_cap, 0,
     )
     .expect("workflow worksheet");
@@ -661,7 +661,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let create_agent = find_call(&AgentRegistryIdent::CREATE_AGENT.name);
     let register_skill = find_call(&AgentRegistryIdent::REGISTER_SKILL.name);
     let worksheet = find_call(
-        &nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION
+        &nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
             .name,
     );
 
@@ -669,7 +669,8 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     assert!(register_skill < worksheet);
     assert_eq!(
         move_call(&tx, worksheet).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
+            .name
     );
 }
 
@@ -761,7 +762,7 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
     let leader_cap = tx.pure(&1_u64);
 
-    nexus_sdk::transactions::dag::worksheet_for_tool_result_submission(
+    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
         &mut tx, &objects, dag, execution, leader_cap, 7,
     )
     .expect("workflow worksheet builder");
@@ -769,6 +770,7 @@ fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let tx = finish_transaction(tx);
     assert_eq!(
         move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::WORKSHEET_FOR_TOOL_RESULT_SUBMISSION.name
+        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
+            .name
     );
 }

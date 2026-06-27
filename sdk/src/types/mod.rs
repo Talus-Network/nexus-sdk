@@ -1,5 +1,7 @@
 mod authorization;
 mod derive;
+pub mod generated;
+pub mod generated_support;
 mod interface_package_config;
 mod interface_version;
 mod json_dag;
@@ -68,7 +70,6 @@ pub use {
         PreparedToolOutputPortV1,
         PreparedToolOutputV1,
         VerificationSubmissionKind,
-        VerificationSubmissionRole,
         VerificationVerdict,
         VerifierConfig,
         VerifierContractResultV1,
