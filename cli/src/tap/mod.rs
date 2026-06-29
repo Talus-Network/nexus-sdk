@@ -878,12 +878,12 @@ mod tests {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -1170,7 +1170,7 @@ mod tests {
             .await
             .expect("generated config validates");
         assert_eq!(config.name, "weather skill");
-        assert_eq!(config.interface_revision, InterfaceVersion(1));
+        assert_eq!(config.interface_revision, InterfaceVersion::new(1));
     }
 
     #[tokio::test]
@@ -1210,12 +1210,12 @@ mod tests {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -1227,7 +1227,7 @@ mod tests {
                 tx_checkpoint: 42,
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                current_interface_revision: InterfaceVersion(3),
+                current_interface_revision: InterfaceVersion::new(3),
                 dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
                 requirements: artifact.requirements.clone(),
             },
@@ -1245,12 +1245,12 @@ mod tests {
             name: "bad".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let config_path = tempdir.join("skill.tap.json");
         tokio::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
@@ -1555,12 +1555,12 @@ public struct WeatherSkill has drop {}
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))

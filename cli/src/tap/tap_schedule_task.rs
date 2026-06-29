@@ -92,7 +92,7 @@ pub(crate) async fn schedule_tap_task(
                 testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
             ))
         })?;
-        input_data.insert(vertex, committed);
+        input_data.insert(vertex, committed.into_map());
     }
 
     let schedule_requested = schedule_start_ms.is_some()

@@ -3,7 +3,7 @@ use {
         idents::{interface, move_std, primitives, scheduler, sui_framework, workflow},
         sui,
         transactions::{self, agent_input::AgentInput},
-        types::{AgentId, DataStorage, NexusObjects, SkillId, Storable, StorageKind},
+        types::{AgentId, NexusData, NexusObjects, SkillId, StorageKind},
     },
     serde::{Deserialize, Serialize},
     std::collections::{HashMap, HashSet},
@@ -316,7 +316,7 @@ pub fn new_execution_policy(
     dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -406,7 +406,7 @@ pub fn new_agent_execution_policy(
     dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<sui::tx::Argument> {
@@ -495,7 +495,7 @@ pub fn new_agent_execution_policy(
 pub(crate) fn build_inputs_vec_map(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let inner_vec_map_type = vec![
         interface::into_type_tag(objects.interface_pkg_id, interface::Graph::INPUT_PORT),
@@ -550,12 +550,12 @@ pub(crate) fn build_inputs_vec_map(
                 StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
             };
 

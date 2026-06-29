@@ -1,153 +1,137 @@
-//! Module defines [`PortsData`] - struct that represents data stored on-chain
-//! in relation to their variants and ports. This can deserialize directly to
-//! [`crate::types::NexusData`]
+//! Helpers for generated input/output port data maps.
 
 use {
-    crate::types::{DataStorage, NexusData, StorageConf, TypeName},
+    crate::types::{
+        generated::{
+            interface_types::graph::{InputPort, OutputPort},
+            primitives_types::data::NexusData,
+            sui_framework_types::vec_map::{Entry as GeneratedEntry, VecMap as GeneratedVecMap},
+        },
+        MoveString,
+        StorageConf,
+    },
     futures::future::try_join_all,
-    serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PortsData {
-    values: HashMap<String, NexusData>,
-}
+pub type PortsData = GeneratedVecMap<InputPort, NexusData>;
+pub type OutputPortsData = GeneratedVecMap<OutputPort, NexusData>;
 
 impl PortsData {
-    /// Consumes self and returns the inner [`HashMap`].
     pub fn into_map(self) -> HashMap<String, NexusData> {
-        self.values
+        self.contents
+            .into_iter()
+            .map(|entry| (String::from(entry.key.name), entry.value))
+            .collect()
     }
 
-    /// Creates a [`PortsData`] from a [`HashMap`].
     pub fn from_map(values: HashMap<String, NexusData>) -> Self {
-        PortsData { values }
-    }
-
-    /// Function to commit all [`NexusData`] values to storage. This is done in
-    /// parallel.
-    pub async fn commit_all(
-        self,
-        storage_conf: &StorageConf,
-    ) -> anyhow::Result<HashMap<String, DataStorage>> {
-        let commit_futures = self.values.into_iter().map(|(key, data)| {
-            let storage_conf = storage_conf.clone();
-
-            async move {
-                match data.commit(&storage_conf).await {
-                    Ok(storage) => Ok((key, storage)),
-                    Err(e) => Err(e),
-                }
-            }
-        });
-
-        try_join_all(commit_futures).await.map(|results| {
-            results
+        Self {
+            contents: values
                 .into_iter()
-                .collect::<HashMap<String, DataStorage>>()
-        })
-    }
-
-    /// Function to fetch all [`NexusData`] values from storage. This is done in
-    /// parallel.
-    pub async fn fetch_all(
-        self,
-        storage_conf: &StorageConf,
-    ) -> anyhow::Result<HashMap<String, DataStorage>> {
-        let fetch_futures = self.values.into_iter().map(|(key, data)| {
-            let storage_conf = storage_conf.clone();
-
-            async move {
-                match data.fetch(&storage_conf).await {
-                    Ok(storage) => Ok((key, storage)),
-                    Err(e) => Err(e),
-                }
-            }
-        });
-
-        try_join_all(fetch_futures).await.map(|results| {
-            results
-                .into_iter()
-                .collect::<HashMap<String, DataStorage>>()
-        })
-    }
-}
-
-impl std::ops::Deref for PortsData {
-    type Target = HashMap<String, NexusData>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.values
-    }
-}
-
-impl std::ops::DerefMut for PortsData {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.values
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for PortsData {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct VecMapWrapper {
-            contents: Vec<VecMapEntry>,
-        }
-
-        #[derive(Deserialize)]
-        struct VecMapEntry {
-            key: TypeName,
-            value: NexusData,
-        }
-
-        let values = VecMapWrapper::deserialize(deserializer)?;
-
-        Ok(PortsData {
-            values: values
-                .contents
-                .into_iter()
-                .map(|entry| (entry.key.name, entry.value))
+                .map(|(key, value)| GeneratedEntry {
+                    key: InputPort {
+                        name: MoveString::from(key),
+                    },
+                    value,
+                })
                 .collect(),
-        })
+        }
+    }
+
+    pub async fn commit_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+        let commit_futures = self.contents.into_iter().map(|entry| {
+            let storage_conf = storage_conf.clone();
+            async move {
+                entry
+                    .value
+                    .commit(&storage_conf)
+                    .await
+                    .map(|value| GeneratedEntry {
+                        key: entry.key,
+                        value,
+                    })
+            }
+        });
+
+        try_join_all(commit_futures)
+            .await
+            .map(|contents| Self { contents })
+    }
+
+    pub async fn fetch_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+        let fetch_futures = self.contents.into_iter().map(|entry| {
+            let storage_conf = storage_conf.clone();
+            async move {
+                entry
+                    .value
+                    .fetch(&storage_conf)
+                    .await
+                    .map(|value| GeneratedEntry {
+                        key: entry.key,
+                        value,
+                    })
+            }
+        });
+
+        try_join_all(fetch_futures)
+            .await
+            .map(|contents| Self { contents })
     }
 }
 
-impl serde::Serialize for PortsData {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(Serialize)]
-        struct VecMapEntry {
-            key: TypeName,
-            value: NexusData,
-        }
+impl OutputPortsData {
+    pub fn into_map(self) -> HashMap<String, NexusData> {
+        self.contents
+            .into_iter()
+            .map(|entry| (String::from(entry.key.name), entry.value))
+            .collect()
+    }
 
-        #[derive(Serialize)]
-        struct VecMapWrapper {
-            contents: Vec<VecMapEntry>,
-        }
+    pub async fn commit_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+        let commit_futures = self.contents.into_iter().map(|entry| {
+            let storage_conf = storage_conf.clone();
+            async move {
+                entry
+                    .value
+                    .commit(&storage_conf)
+                    .await
+                    .map(|value| GeneratedEntry {
+                        key: entry.key,
+                        value,
+                    })
+            }
+        });
 
-        let contents: Vec<VecMapEntry> = self
-            .values
-            .iter()
-            .map(|(key, value)| VecMapEntry {
-                key: TypeName::new(key),
-                value: value.clone(),
-            })
-            .collect();
+        try_join_all(commit_futures)
+            .await
+            .map(|contents| Self { contents })
+    }
 
-        VecMapWrapper { contents }.serialize(serializer)
+    pub async fn fetch_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+        let fetch_futures = self.contents.into_iter().map(|entry| {
+            let storage_conf = storage_conf.clone();
+            async move {
+                entry
+                    .value
+                    .fetch(&storage_conf)
+                    .await
+                    .map(|value| GeneratedEntry {
+                        key: entry.key,
+                        value,
+                    })
+            }
+        });
+
+        try_join_all(fetch_futures)
+            .await
+            .map(|contents| Self { contents })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, serde_json::json};
+    use {super::*, crate::types::StorageKind, serde_json::json};
 
     fn sample_ports_data() -> PortsData {
         let mut values = HashMap::new();
@@ -155,17 +139,27 @@ mod tests {
             "port1".to_string(),
             NexusData::new_inline(json!({ "key": "value" })),
         );
-        PortsData { values }
+        PortsData::from_map(values)
     }
 
     #[test]
     fn test_ser_deser_ports_data() {
         let ports_data = sample_ports_data();
         let json = serde_json::to_string(&ports_data).unwrap();
+        let data_bytes = serde_json::to_vec(&json!({ "key": "value" })).unwrap();
 
         assert_eq!(
-            json,
-            r#"{"contents":[{"key":{"name":"port1"},"value":{"storage":"aW5saW5l","one":"eyJrZXkiOiJ2YWx1ZSJ9","many":[]}}]}"#
+            serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+            json!({
+                "contents": [{
+                    "key": { "name": "port1" },
+                    "value": {
+                        "storage": b"inline",
+                        "one": data_bytes,
+                        "many": []
+                    }
+                }]
+            })
         );
 
         let deserialized: PortsData = serde_json::from_str(&json).unwrap();
@@ -177,78 +171,86 @@ mod tests {
         let ports_data = sample_ports_data();
         let map = ports_data.clone().into_map();
 
-        // The map should contain the same entries as the original PortsData
         assert_eq!(map.len(), 1);
-        assert!(map.contains_key("port1"));
-        assert_eq!(map.get("port1"), ports_data.values.get("port1"));
+        assert_eq!(
+            map.get("port1").unwrap(),
+            &NexusData::new_inline(json!({ "key": "value" }))
+        );
     }
 
     #[test]
     fn test_into_map_empty_ports_data() {
-        let ports_data = PortsData {
-            values: HashMap::new(),
-        };
+        let ports_data = PortsData::from_map(HashMap::new());
         let map = ports_data.into_map();
         assert!(map.is_empty());
     }
 
     #[tokio::test]
     async fn test_commit_all_success() {
-        let mut values = HashMap::new();
-        values.insert(
-            "port1".to_string(),
-            NexusData::new_inline(json!({ "key": "value" })),
-        );
-        let ports_data = PortsData { values };
-
-        let storage_conf = StorageConf::default();
-
-        let result = ports_data.clone().commit_all(&storage_conf).await;
-        assert!(result.is_ok());
-        let map = result.unwrap();
-        assert_eq!(map.len(), 1);
-        assert!(map.contains_key("port1"));
-    }
-
-    #[tokio::test]
-    async fn test_fetch_all_success() {
-        let mut values = HashMap::new();
-        values.insert(
-            "port1".to_string(),
-            NexusData::new_inline(json!({ "key": "value" })),
-        );
-        let ports_data = PortsData { values };
-
-        let storage_conf = StorageConf::default();
-
-        let result = ports_data.clone().fetch_all(&storage_conf).await;
-        assert!(result.is_ok());
-        let map = result.unwrap();
-        assert_eq!(map.len(), 1);
-        assert!(map.contains_key("port1"));
-    }
-
-    #[tokio::test]
-    async fn test_commit_all_empty_ports_data() {
-        let ports_data = PortsData {
-            values: HashMap::new(),
-        };
+        let ports_data = sample_ports_data();
         let storage_conf = StorageConf::default();
 
         let result = ports_data.commit_all(&storage_conf).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+
+        let map = result.unwrap().into_map();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["port1"].storage_kind(), StorageKind::Inline);
+        assert_eq!(map["port1"].as_json(), json!({ "key": "value" }));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_all_success() {
+        let ports_data = sample_ports_data();
+        let storage_conf = StorageConf::default();
+
+        let result = ports_data.fetch_all(&storage_conf).await;
+        assert!(result.is_ok());
+
+        let map = result.unwrap().into_map();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["port1"].storage_kind(), StorageKind::Inline);
+        assert_eq!(map["port1"].as_json(), json!({ "key": "value" }));
+    }
+
+    #[tokio::test]
+    async fn test_commit_all_empty_ports_data() {
+        let ports_data = PortsData::from_map(HashMap::new());
+        let storage_conf = StorageConf::default();
+
+        let result = ports_data.commit_all(&storage_conf).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contents.is_empty());
     }
 
     #[tokio::test]
     async fn test_fetch_all_empty_ports_data() {
-        let ports_data = PortsData {
-            values: HashMap::new(),
+        let ports_data = PortsData::from_map(HashMap::new());
+        let storage_conf = StorageConf::default();
+
+        let result = ports_data.fetch_all(&storage_conf).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().contents.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_output_ports_data_fetch_all_success() {
+        let ports_data = OutputPortsData {
+            contents: vec![GeneratedEntry {
+                key: OutputPort {
+                    name: MoveString::from("output1"),
+                },
+                value: NexusData::new_inline(json!({ "key": "value" })),
+            }],
         };
         let storage_conf = StorageConf::default();
 
         let result = ports_data.fetch_all(&storage_conf).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+
+        let map = result.unwrap().into_map();
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["output1"].storage_kind(), StorageKind::Inline);
+        assert_eq!(map["output1"].as_json(), json!({ "key": "value" }));
     }
 }

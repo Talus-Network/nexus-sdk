@@ -425,7 +425,7 @@ pub fn new_invoker_funded_agent_task(
     entry_group: &str,
     input_data: &std::collections::HashMap<
         String,
-        std::collections::HashMap<String, crate::types::DataStorage>,
+        std::collections::HashMap<String, crate::types::NexusData>,
     >,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
@@ -482,7 +482,7 @@ pub fn new_agent_funded_task(
     entry_group: &str,
     input_data: &std::collections::HashMap<
         String,
-        std::collections::HashMap<String, crate::types::DataStorage>,
+        std::collections::HashMap<String, crate::types::NexusData>,
     >,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
@@ -538,7 +538,7 @@ fn schedule_policy_arg(
             max_occurrences,
         } => {
             let min_interval_ms = tx.pure(min_interval_ms);
-            let max_occurrences = option_u64_arg(tx, max_occurrences.as_ref())?;
+            let max_occurrences = option_u64_arg(tx, max_occurrences.0.as_ref())?;
             tap_interface_call(
                 tx,
                 objects,
@@ -674,7 +674,7 @@ fn scheduled_agent_execution_config_arg(
     entry_group: &str,
     input_data: &std::collections::HashMap<
         String,
-        std::collections::HashMap<String, crate::types::DataStorage>,
+        std::collections::HashMap<String, crate::types::NexusData>,
     >,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
@@ -707,8 +707,8 @@ fn fixed_tool_arg(
     fixed_tool: &FixedTool,
 ) -> anyhow::Result<sui::tx::Argument> {
     let tool_registry_id =
-        sui_framework::Object::id_from_object_id(tx, fixed_tool.tool_registry_id)?;
-    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &fixed_tool.tool_fqn)?;
+        sui_framework::Object::id_from_object_id(tx, fixed_tool.tool_registry_address())?;
+    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &fixed_tool.tool_fqn_string())?;
 
     Ok(tap_interface_call(
         tx,
@@ -953,10 +953,10 @@ mod tests {
             b"input commitment".to_vec(),
             SkillPaymentPolicy::UserFunded,
             SkillSchedulePolicy::default(),
-            vec![FixedTool {
-                tool_registry_id: *objects.tool_registry.object_id(),
-                tool_fqn: "demo.tool@1".to_string(),
-            }],
+            vec![FixedTool::new(
+                *objects.tool_registry.object_id(),
+                "demo.tool@1",
+            )],
         )
         .expect("ptb construction succeeds");
 
@@ -1012,9 +1012,9 @@ mod tests {
             vec![AgentVertexAuthorizationTemplate {
                 skill_id: 7,
                 vertex: "demo_delayed_fire_vertex".into(),
-                recipient_id: crate::types::generated_support::ID {
-                    bytes: sui::types::Address::from_static("0x82"),
-                },
+                recipient_id: crate::types::sui_address_to_id(sui::types::Address::from_static(
+                    "0x82",
+                )),
             }],
         )
         .expect("ptb construction succeeds");

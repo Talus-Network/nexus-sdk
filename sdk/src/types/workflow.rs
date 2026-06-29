@@ -121,8 +121,8 @@ mod tests {
         crate::types::{MoveOption, PublishedMoveEnum},
     };
 
-    fn id(bytes: sui::types::Address) -> crate::types::generated_support::ID {
-        crate::types::generated_support::ID { bytes }
+    fn id(bytes: sui::types::Address) -> crate::types::generated::sui_framework_types::object::ID {
+        crate::types::generated_support::sui_address_to_id(bytes)
     }
 
     #[test]

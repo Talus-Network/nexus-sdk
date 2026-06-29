@@ -130,7 +130,7 @@ pub async fn fetch_external_verifier_runtime_metadata(
         .await?;
     let mut methods = crawler
         .get_dynamic_fields_bcs::<String, registry_types::verifier_registry::VerifierMethodRecord>(
-            registry.data.methods.id,
+            registry.data.methods.id(),
             registry.data.methods.size(),
         )
         .await?;

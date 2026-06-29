@@ -139,6 +139,7 @@ pub struct ExecutionPayment {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: u64,
     pub interface_revision: InterfaceVersion,
+    #[serde(deserialize_with = "deserialize_skill_payment_policy")]
     pub payment_policy: SkillPaymentPolicy,
     pub source_kind: ExecutionPaymentSourceKind,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
@@ -274,9 +275,85 @@ pub struct ScheduledPaymentReserve {
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub occurrence_budget: u64,
     pub remaining_funds: SuiBalance,
+    #[serde(deserialize_with = "deserialize_skill_payment_policy")]
     pub payment_policy: SkillPaymentPolicy,
     pub in_flight: Vec<ScheduledOccurrenceRecord>,
     pub payment_receipts: Vec<ExecutionPaymentReceipt>,
+}
+
+fn deserialize_skill_payment_policy<'de, D>(deserializer: D) -> Result<SkillPaymentPolicy, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return SkillPaymentPolicy::deserialize(deserializer);
+    }
+
+    let value = Value::deserialize(deserializer)?;
+    parse_skill_payment_policy_value(&value)
+        .ok_or_else(|| D::Error::custom("missing TAP skill payment policy value"))
+}
+
+fn parse_skill_payment_policy_value(value: &Value) -> Option<SkillPaymentPolicy> {
+    fn policy_from_text(text: &str, value: &Value) -> Option<SkillPaymentPolicy> {
+        match text {
+            "user_funded" | "UserFunded" | "userFunded" => Some(SkillPaymentPolicy::UserFunded),
+            "agent_funded" | "AgentFunded" | "agentFunded" => {
+                Some(SkillPaymentPolicy::AgentFunded {
+                    max_budget: extract_max_budget(value).unwrap_or(0),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    match value {
+        Value::String(text) => policy_from_text(text, value),
+        Value::Object(object) => {
+            for key in ["@variant", "variant", "type"] {
+                if let Some(Value::String(text)) = object.get(key) {
+                    if let Some(policy) = policy_from_text(text, value) {
+                        return Some(policy);
+                    }
+                }
+            }
+
+            if let Some(fields) = object.get("fields") {
+                if let Some(policy) = parse_skill_payment_policy_value(fields) {
+                    return Some(policy);
+                }
+            }
+
+            object
+                .iter()
+                .find_map(|(key, nested)| policy_from_text(key, nested))
+        }
+        _ => None,
+    }
+}
+
+fn extract_max_budget(value: &Value) -> Option<u64> {
+    match value {
+        Value::Object(object) => {
+            if let Some(budget) = object.get("max_budget").and_then(parse_u64_value) {
+                return Some(budget);
+            }
+
+            object
+                .get("fields")
+                .and_then(extract_max_budget)
+                .or_else(|| object.values().find_map(extract_max_budget))
+        }
+        _ => None,
+    }
+}
+
+fn parse_u64_value(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => text.parse().ok(),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

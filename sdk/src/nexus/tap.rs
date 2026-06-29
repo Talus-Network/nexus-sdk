@@ -32,7 +32,6 @@ use {
             AgentRegistryObject,
             AgentVaultFieldKey,
             AgentVertexAuthorizationTemplate,
-            DataStorage,
             DefaultDagExecutor,
             DefaultDagExecutorFieldKey,
             DefaultDagExecutorRecord,
@@ -43,6 +42,7 @@ use {
             ExecutionPaymentReceipt,
             ExecutionPaymentReceiptFieldKey,
             InterfaceVersion,
+            NexusData,
             NexusObjects,
             SkillId,
             SkillRecord,
@@ -136,7 +136,7 @@ pub struct GetSkillRequirementsResult {
 pub struct CreateAgentTaskParams {
     pub dag_id: sui::types::Address,
     pub entry_group: String,
-    pub input_data: HashMap<String, HashMap<String, DataStorage>>,
+    pub input_data: HashMap<String, HashMap<String, NexusData>>,
     pub metadata: Vec<(String, String)>,
     pub execution_priority_fee_per_gas_unit: u64,
     pub initial_schedule: Option<crate::nexus::scheduler::OccurrenceRequest>,
@@ -427,7 +427,7 @@ impl TapActions {
         Ok(CreateAgentResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            agent_id: event.agent_id,
+            agent_id: event.agent_id.into(),
             agent_object: response
                 .objects
                 .iter()
@@ -480,7 +480,7 @@ impl TapActions {
             agent,
             artifact.dag_id,
             artifact.skill_name.as_bytes().to_vec(),
-            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.input_commitment.clone(),
             artifact.requirements.payment_policy.clone(),
             artifact.requirements.schedule_policy.clone(),
             artifact.requirements.fixed_tools.clone(),
@@ -501,7 +501,7 @@ impl TapActions {
         Ok(RegisterSkillResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            agent_id: event.agent_id,
+            agent_id: event.agent_id.into(),
             skill_id: event.skill_id,
         })
     }
@@ -596,7 +596,7 @@ impl TapActions {
         Ok(UpdateSkillResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            agent_id: event.agent_id,
+            agent_id: event.agent_id.into(),
             skill_id: event.skill_id,
             current_interface_revision: event.current_interface_revision,
             dag_binding: event.dag_binding,
@@ -1043,7 +1043,7 @@ impl TapActions {
             agent,
             artifact.dag_id,
             artifact.skill_name.as_bytes().to_vec(),
-            artifact.requirements.input_schema_commitment.clone(),
+            artifact.requirements.input_commitment.clone(),
             artifact.requirements.payment_policy.clone(),
             artifact.requirements.schedule_policy.clone(),
             artifact.requirements.fixed_tools.clone(),
@@ -1097,7 +1097,7 @@ impl TapActions {
         Ok(BindAgentSkillResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            agent_id: agent_event.agent_id,
+            agent_id: agent_event.agent_id.into(),
             agent_object,
             skill_id: skill_event.skill_id,
         })
@@ -1238,7 +1238,7 @@ async fn fetch_agent_registry_tables(
         .await?;
     let agent_records = crawler
         .get_dynamic_fields_bcs::<sui::types::Address, crate::types::AgentRecord>(
-            raw.data.agents.id,
+            raw.data.agents.id(),
             raw.data.agents.size(),
         )
         .await?;
@@ -1247,7 +1247,7 @@ async fn fetch_agent_registry_tables(
     let mut skills = Vec::new();
     for (agent_id, agent) in agent_records {
         let skill_records = crawler
-            .get_dynamic_fields_bcs::<SkillId, SkillRecord>(agent.skills.id, agent.skills.size())
+            .get_dynamic_fields_bcs::<SkillId, SkillRecord>(agent.skills.id(), agent.skills.size())
             .await?;
 
         for (skill_id, mut skill) in skill_records {
@@ -1680,15 +1680,21 @@ mod tests {
         )));
     }
 
+    fn generated_id(
+        bytes: sui::types::Address,
+    ) -> crate::types::generated::sui_framework_types::object::ID {
+        crate::types::sui_address_to_id(bytes)
+    }
+
     fn skill_revision(revision: u64) -> SkillRevisionRecord {
         SkillRevisionRecord {
             key: SkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(revision),
+                interface_revision: InterfaceVersion::new(revision),
             },
             requirements: SkillRequirements {
-                input_schema_commitment: vec![2],
+                input_commitment: vec![2],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
@@ -1700,7 +1706,7 @@ mod tests {
         let agent = sui::types::Address::from_static("0xa");
         let skill_id = 11;
         let requirements = SkillRequirements {
-            input_schema_commitment: vec![2],
+            input_commitment: vec![2],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -1719,7 +1725,7 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0x3")),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceVersion(2),
+                current_interface_revision: InterfaceVersion::new(2),
                 scheduled_task_count: 0,
             }],
             default_executor: Some(DefaultDagExecutor {
@@ -1909,7 +1915,7 @@ mod tests {
         )
         .expect("one active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceVersion(2));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion::new(2));
     }
 
     #[test]
@@ -1925,7 +1931,7 @@ mod tests {
             .active_skill_revision_record(sui::types::Address::from_static("0xa"), 11)
             .expect("active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceVersion(2));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion::new(2));
     }
 
     #[test]
@@ -1944,7 +1950,7 @@ mod tests {
         );
         assert_eq!(
             target.skill_revision.key.interface_revision,
-            InterfaceVersion(2)
+            InterfaceVersion::new(2)
         );
     }
 
@@ -1998,12 +2004,15 @@ mod tests {
             registry.id,
             sui::types::Address::from_static("0xa"),
             11,
-            InterfaceVersion(2),
+            InterfaceVersion::new(2),
         )
         .await
         .expect("skill revision recovery should not require default executor decoding");
 
-        assert_eq!(response.data.key.interface_revision, InterfaceVersion(2));
+        assert_eq!(
+            response.data.key.interface_revision,
+            InterfaceVersion::new(2)
+        );
     }
 
     #[tokio::test]
@@ -2076,12 +2085,12 @@ mod tests {
             name: "weather skill".to_string(),
             dag_path: std::path::PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -2138,7 +2147,7 @@ mod tests {
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: events::AgentCreatedEvent {
-                        agent_id: sui::types::Address::from_static("0xa"),
+                        agent_id: generated_id(sui::types::Address::from_static("0xa")),
                         vault_id: sui::types::Address::from_static("0xb"),
                     },
                 })
@@ -2222,7 +2231,7 @@ mod tests {
                     "AgentCreatedEvent",
                     bcs::to_bytes(&Wrapper {
                         event: events::AgentCreatedEvent {
-                            agent_id: *agent_ref.object_id(),
+                            agent_id: generated_id(*agent_ref.object_id()),
                             vault_id: sui::types::Address::from_static("0xb"),
                         },
                     })
@@ -2235,7 +2244,7 @@ mod tests {
                     "SkillRegisteredEvent",
                     bcs::to_bytes(&Wrapper {
                         event: events::SkillRegisteredEvent {
-                            agent_id: *agent_ref.object_id(),
+                            agent_id: generated_id(*agent_ref.object_id()),
                             skill_id: 11,
                             dag_id: artifact.dag_id,
                             dag_binding: SkillDagBinding::pinned(artifact.dag_id),
@@ -2306,7 +2315,7 @@ mod tests {
                 "SkillRegisteredEvent",
                 bcs::to_bytes(&Wrapper {
                     event: events::SkillRegisteredEvent {
-                        agent_id: *agent_ref.object_id(),
+                        agent_id: generated_id(*agent_ref.object_id()),
                         skill_id: 11,
                         dag_id: artifact.dag_id,
                         dag_binding: SkillDagBinding::pinned(artifact.dag_id),
@@ -2390,9 +2399,9 @@ mod tests {
                 "SkillContractRevisionedEvent",
                 bcs::to_bytes(&Wrapper {
                     event: events::SkillContractRevisionedEvent {
-                        agent_id: *agent_ref.object_id(),
+                        agent_id: generated_id(*agent_ref.object_id()),
                         skill_id: 11,
-                        current_interface_revision: InterfaceVersion(2),
+                        current_interface_revision: InterfaceVersion::new(2),
                         dag_binding: SkillDagBinding::pinned(artifact.dag_id),
                         requirements: artifact.requirements.clone(),
                     },
@@ -2448,7 +2457,7 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
-        assert_eq!(result.current_interface_revision, InterfaceVersion(2));
+        assert_eq!(result.current_interface_revision, InterfaceVersion::new(2));
     }
 
     #[tokio::test]
@@ -2769,9 +2778,9 @@ mod tests {
 
         assert_eq!(
             result.active_skill_revision_key.interface_revision,
-            InterfaceVersion(2)
+            InterfaceVersion::new(2)
         );
-        assert_eq!(result.requirements.input_schema_commitment, vec![2]);
+        assert_eq!(result.requirements.input_commitment, vec![2]);
     }
 
     fn baseline_payment(
@@ -2784,7 +2793,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
             payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
             source_kind: ExecutionPaymentSourceKind::UserFunded {
                 user: sui::types::Address::from_static("0x1"),
@@ -2809,7 +2818,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id,
             skill_id: 11,
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
             payment_policy: crate::types::SkillPaymentPolicy::AgentFunded { max_budget: 100 },
             source_kind: ExecutionPaymentSourceKind::AgentFunded { agent_id },
             max_budget: 100,

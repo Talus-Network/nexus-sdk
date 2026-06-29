@@ -9,13 +9,13 @@ use {
             AuthenticatedOffchainRequestEvidence,
             AuthenticatedOffchainVerifierEvidence,
             Dag,
-            DataStorage,
             DefaultValue,
             Edge,
             EntryPort,
             ExternalVerifierRuntimeCall,
             FailureEvidenceKind,
             FromPort,
+            NexusData,
             NexusObjects,
             OffChainToolResultAuxiliary,
             OffChainVerifierProof,
@@ -25,7 +25,6 @@ use {
             PostFailureAction,
             RuntimeVertex,
             SkillId,
-            Storable,
             StorageKind,
             VerifierConfig,
             Vertex,
@@ -48,11 +47,11 @@ const MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS: usize = 64;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PreparedToolOutput {
     pub output_variant: String,
-    pub output_ports_data: HashMap<String, DataStorage>,
+    pub output_ports_data: HashMap<String, NexusData>,
 }
 
 impl PreparedToolOutput {
-    pub fn terminal_err_eval(reason: DataStorage) -> Self {
+    pub fn terminal_err_eval(reason: NexusData) -> Self {
         Self {
             output_variant: TERMINAL_ERR_EVAL_VARIANT.to_string(),
             output_ports_data: HashMap::from([(TERMINAL_ERR_EVAL_REASON_PORT.to_string(), reason)]),
@@ -570,12 +569,12 @@ fn prepare_tool_output(
             StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                 tx,
                 objects.primitives_pkg_id,
-                dag_data.as_json(),
+                &dag_data.as_json(),
             )?,
             StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                 tx,
                 objects.primitives_pkg_id,
-                dag_data.as_json(),
+                &dag_data.as_json(),
             )?,
         };
 
@@ -1594,7 +1593,7 @@ pub fn commit_on_chain_terminal_err_eval_for_walk(
     leader_registry: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
-    reason: DataStorage,
+    reason: NexusData,
     failure_evidence_kind: &FailureEvidenceKind,
     tool_witness_id: Option<sui::types::Address>,
 ) -> anyhow::Result<()> {
@@ -1943,7 +1942,7 @@ pub fn begin_user_funded_agent_execution(
     _dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     payment_coin: sui::tx::Argument,
     clock: sui::tx::Argument,
@@ -2004,12 +2003,12 @@ pub fn begin_user_funded_agent_execution(
                 StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
             };
 
@@ -2082,7 +2081,7 @@ pub fn begin_default_dag_execution(
     dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     payment_coin: sui::tx::Argument,
     clock: sui::tx::Argument,
@@ -2143,12 +2142,12 @@ pub fn begin_default_dag_execution(
                 StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
             };
 
@@ -2235,7 +2234,7 @@ pub fn execute_agent_dag(
     agent: AgentInput,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> anyhow::Result<()> {
@@ -2260,7 +2259,7 @@ pub fn execute_default_agent_dag(
     dag: &sui::types::ObjectReference,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> anyhow::Result<()> {
@@ -2286,7 +2285,7 @@ fn execute_agent_dag_internal(
     agent: Option<AgentInput>,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
     default_executor: bool,
@@ -2576,8 +2575,10 @@ mod tests {
         RuntimeVertex::plain("vertex1")
     }
 
-    fn generated_id(bytes: sui::types::Address) -> crate::types::generated_support::ID {
-        crate::types::generated_support::ID { bytes }
+    fn generated_id(
+        bytes: sui::types::Address,
+    ) -> crate::types::generated::sui_framework_types::object::ID {
+        crate::types::sui_address_to_id(bytes)
     }
 
     fn generated_nexus_data(
@@ -2592,7 +2593,7 @@ mod tests {
             output_variant: "ok".to_string(),
             output_ports_data: HashMap::from([(
                 "result".to_string(),
-                DataStorage::try_from(serde_json::json!({
+                NexusData::try_from(serde_json::json!({
                     "kind": "inline",
                     "data": { "value": 7 }
                 }))
@@ -2714,7 +2715,7 @@ mod tests {
 
     #[test]
     fn test_prepared_tool_output_terminal_err_eval_shape() {
-        let reason = DataStorage::try_from(serde_json::json!({
+        let reason = NexusData::try_from(serde_json::json!({
             "kind": "inline",
             "data": "tool failed"
         }))
@@ -2730,7 +2731,7 @@ mod tests {
             .get("reason")
             .expect("terminal reason port should be present");
         assert_eq!(reason.storage_kind(), StorageKind::Inline);
-        assert_eq!(reason.as_json(), &expected_reason);
+        assert_eq!(reason.as_json(), expected_reason);
     }
 
     #[test]
@@ -3913,7 +3914,7 @@ mod tests {
             __ph_5,
             13,
             &mock_runtime_vertex(),
-            DataStorage::try_from(serde_json::json!({
+            NexusData::try_from(serde_json::json!({
                 "kind": "inline",
                 "data": "tool failed"
             }))
@@ -3971,7 +3972,7 @@ mod tests {
             __ph_5,
             13,
             &mock_runtime_vertex(),
-            DataStorage::try_from(serde_json::json!({
+            NexusData::try_from(serde_json::json!({
                 "kind": "inline",
                 "data": "tool failed"
             }))
@@ -4152,7 +4153,7 @@ mod tests {
                 "port1".to_string(),
                 serde_json::json!({"kind": "inline", "data": { "key": "value"} })
                     .try_into()
-                    .expect("Failed to convert JSON to DataStorage"),
+                    .expect("Failed to convert JSON to NexusData"),
             )]),
         );
 
@@ -4465,7 +4466,7 @@ mod tests {
                 "port1".to_string(),
                 serde_json::json!({"kind": "inline", "data": { "key": "value"} })
                     .try_into()
-                    .expect("Failed to convert JSON to DataStorage"),
+                    .expect("Failed to convert JSON to NexusData"),
             )]),
         );
 

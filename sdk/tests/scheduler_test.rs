@@ -6,7 +6,6 @@ use {
         types::{
             deserialize_sui_option_u64,
             deserialize_sui_u64,
-            generated::scheduler_types::scheduler::State as GeneratedTaskState,
             PolicySymbol,
             TaskState,
             TypeName,
@@ -26,7 +25,7 @@ fn policy_symbol_supports_pos0_fallback_shape() {
     let symbol: PolicySymbol = serde_json::from_value(value).expect("deserialize policy symbol");
     assert_eq!(
         symbol,
-        PolicySymbol::Witness(TypeName::new("0x1::module::Type"))
+        PolicySymbol::witness(TypeName::new("0x1::module::Type"))
     );
 }
 
@@ -51,16 +50,14 @@ fn task_state_uses_generated_enum_deserialization() {
 
 #[test]
 fn task_state_roundtrips_through_bcs() {
-    for (state, generated) in [
-        (TaskState::Active, GeneratedTaskState::Active),
-        (TaskState::Paused, GeneratedTaskState::Paused),
-        (TaskState::Canceled, GeneratedTaskState::Canceled),
-        (TaskState::Completed, GeneratedTaskState::Completed),
-        (TaskState::Failed, GeneratedTaskState::Failed),
+    for state in [
+        TaskState::Active,
+        TaskState::Paused,
+        TaskState::Canceled,
+        TaskState::Completed,
+        TaskState::Failed,
     ] {
         let bytes = bcs::to_bytes(&state).expect("bcs serialize TaskState");
-        let generated_bytes = bcs::to_bytes(&generated).expect("bcs serialize generated state");
-        assert_eq!(bytes, generated_bytes);
 
         let decoded: TaskState = bcs::from_bytes(&bytes).expect("bcs deserialize TaskState");
         assert_eq!(decoded, state);
@@ -125,5 +122,5 @@ fn policy_symbol_uid_pos0_fallback_parses_addresses() {
     });
 
     let parsed: PolicySymbol = serde_json::from_value(value).expect("deserialize PolicySymbol");
-    assert_eq!(parsed, PolicySymbol::Uid(addr));
+    assert_eq!(parsed, PolicySymbol::uid(addr));
 }

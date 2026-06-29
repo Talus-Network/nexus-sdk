@@ -1,7 +1,7 @@
 //! Public SDK helpers for generated `nexus_registry::network_auth` Move types.
 
 #[cfg(test)]
-use super::{generated_support::UID, MoveOption};
+use super::{generated_support::sui_address_to_uid, MoveOption};
 pub use crate::types::generated::registry_types::network_auth::{
     IdentityKey,
     KeyBinding,
@@ -9,8 +9,8 @@ pub use crate::types::generated::registry_types::network_auth::{
     NetworkAuth,
 };
 use {
-    super::generated_support::{MoveString, ID},
-    crate::sui,
+    super::generated_support::MoveString,
+    crate::{sui, types::generated::sui_framework_types::object::ID},
 };
 
 impl IdentityKey {
@@ -63,7 +63,7 @@ impl KeyBinding {
     }
 
     pub fn key_table_id(&self) -> sui::types::Address {
-        self.keys.id
+        self.keys.id()
     }
 
     pub fn key_table_size(&self) -> usize {
@@ -80,9 +80,7 @@ impl KeyBinding {
         keys: super::MoveTable<u64, KeyRecord>,
     ) -> Self {
         Self {
-            id: UID {
-                id: ID { bytes: id },
-            },
+            id: sui_address_to_uid(id),
             identity,
             description: MoveOption(description),
             next_key_id,
@@ -128,9 +126,7 @@ impl NetworkAuth {
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, identities: Vec<IdentityKey>) -> Self {
         Self {
-            id: UID {
-                id: ID { bytes: id },
-            },
+            id: sui_address_to_uid(id),
             identities: super::MoveVecSet {
                 contents: identities,
             },

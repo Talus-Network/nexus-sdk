@@ -344,6 +344,33 @@ where
         .ok_or_else(|| serde::de::Error::custom("missing TAP byte-vector value"))
 }
 
+/// Deserialize a vector of Move byte vectors from arrays or encoded strings.
+pub fn deserialize_tap_byte_vector_vec<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return Vec::<Vec<u8>>::deserialize(deserializer);
+    }
+
+    let value = Value::deserialize(deserializer)?;
+    let value = strip_fields_owned(value);
+    let Value::Array(values) = value else {
+        return Err(serde::de::Error::custom(
+            "expected array of TAP byte-vector values",
+        ));
+    };
+
+    values
+        .into_iter()
+        .map(|value| {
+            parse_byte_vector_value(&value)
+                .map_err(serde::de::Error::custom)?
+                .ok_or_else(|| serde::de::Error::custom("missing TAP byte-vector value"))
+        })
+        .collect()
+}
+
 pub fn deserialize_vertex_execution_payment_settlement_kind_value(
     value: &serde_json::Value,
 ) -> Option<VertexExecutionPaymentSettlementKind> {

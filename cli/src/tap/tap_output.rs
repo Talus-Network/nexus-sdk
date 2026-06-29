@@ -168,8 +168,18 @@ pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> s
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
         "active_skill_revision_key": result.active_skill_revision_key,
-        "requirements": result.requirements,
+        "requirements": requirements_json(&result.requirements),
     })
+}
+
+fn requirements_json(requirements: &nexus_sdk::types::SkillRequirements) -> serde_json::Value {
+    let mut value = serde_json::to_value(requirements).unwrap_or_else(|_| json!({}));
+    if let Some(object) = value.as_object_mut() {
+        if let Some(input_commitment) = object.remove("input_commitment") {
+            object.insert("input_schema_commitment".to_string(), input_commitment);
+        }
+    }
+    value
 }
 
 pub(crate) fn schedule_task_result_json(
@@ -376,12 +386,12 @@ mod tests {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
             .expect("artifact builds")
@@ -401,7 +411,7 @@ mod tests {
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: sui::types::Address::from_static("0xcc"),
             skill_id: 11,
-            interface_revision: InterfaceVersion(2),
+            interface_revision: InterfaceVersion::new(2),
             payment_policy: nexus_sdk::types::SkillPaymentPolicy::UserFunded,
             source_kind: nexus_sdk::types::ExecutionPaymentSourceKind::UserFunded {
                 user: sui::types::Address::from_static("0xee"),
@@ -519,7 +529,7 @@ mod tests {
             tx_checkpoint: 100,
             agent_id: sui::types::Address::from_static("0xa1"),
             skill_id: 7,
-            current_interface_revision: InterfaceVersion(2),
+            current_interface_revision: InterfaceVersion::new(2),
             dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
             requirements: artifact.requirements.clone(),
         };
@@ -545,7 +555,7 @@ mod tests {
                 skill_revision_key: SkillRevisionKey {
                     agent_id: sui::types::Address::from_static("0xa"),
                     skill_id: 11,
-                    interface_revision: InterfaceVersion(3),
+                    interface_revision: InterfaceVersion::new(3),
                 },
                 payment_max_budget: 99,
             }),
@@ -575,7 +585,7 @@ mod tests {
     #[test]
     fn tap_requirements_json_helper_exposes_live_state() {
         let requirements = SkillRequirements {
-            input_schema_commitment: vec![1],
+            input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -587,7 +597,7 @@ mod tests {
             active_skill_revision_key: SkillRevisionKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(3),
+                interface_revision: InterfaceVersion::new(3),
             },
             requirements,
         });
@@ -716,7 +726,7 @@ mod tests {
         let agent_id = sui::types::Address::from_static("0xad");
         let dag_id = sui::types::Address::from_static("0xd");
         let requirements = SkillRequirements {
-            input_schema_commitment: vec![1, 2, 3],
+            input_commitment: vec![1, 2, 3],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -733,14 +743,14 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::pinned(dag_id),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceVersion(3),
+                current_interface_revision: InterfaceVersion::new(3),
                 scheduled_task_count: 0,
             },
             skill_revision: SkillRevisionRecord {
                 key: SkillRevisionKey {
                     agent_id,
                     skill_id: 7,
-                    interface_revision: InterfaceVersion(3),
+                    interface_revision: InterfaceVersion::new(3),
                 },
                 requirements,
             },
@@ -809,12 +819,12 @@ mod tests {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
             requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceVersion(7),
+            interface_revision: InterfaceVersion::new(7),
         };
 
         let validate = validate_skill_result_json(&config);

@@ -8,7 +8,7 @@ use {
         sui,
         types::{
             generated::{primitives_types, registry_types},
-            generated_support,
+            generated_support::{sui_address_to_id, sui_address_to_uid},
         },
     },
     anyhow::Context,
@@ -46,9 +46,7 @@ impl LeaderRegistry {
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, network: sui::types::Address) -> Self {
         Self {
-            id: generated_support::UID {
-                id: generated_support::ID { bytes: id },
-            },
+            id: sui_address_to_uid(id),
             unbonding_duration_ms: 0,
             min_stake_mist: 0,
             max_transaction_budget: 10_000_000_000,
@@ -56,10 +54,8 @@ impl LeaderRegistry {
             records: MoveTable::new(sui::types::Address::ZERO, 0),
             capabilities: CapabilityManger {
                 allowed_addresses: MoveVecSet { contents: vec![] },
-                network_id: generated_support::ID { bytes: network },
-                admin_cap_id: generated_support::ID {
-                    bytes: sui::types::Address::ZERO,
-                },
+                network_id: sui_address_to_id(network),
+                admin_cap_id: sui_address_to_id(sui::types::Address::ZERO),
                 leader_cap_issuer: leader_cap_issuer_for_test(
                     sui::types::Address::ZERO,
                     id,
@@ -103,12 +99,10 @@ fn leader_cap_issuer_from_parts(
     unique: sui::types::Address,
 ) -> LeaderCapIssuer {
     LeaderCapIssuer {
-        id: generated_support::UID {
-            id: generated_support::ID { bytes: id },
-        },
-        what_for: generated_support::ID { bytes: what_for },
+        id: sui_address_to_uid(id),
+        what_for: sui_address_to_id(what_for),
         inner: primitives_types::owner_cap::OwnerCap {
-            unique: generated_support::ID { bytes: unique },
+            unique: sui_address_to_id(unique),
             phantom_t0: std::marker::PhantomData,
         },
         phantom_t0: std::marker::PhantomData,
@@ -161,27 +155,20 @@ mod tests {
         let issuer_inner = sui::types::Address::from_static("0x61");
 
         let original = LeaderRegistry {
-            id: generated_support::UID {
-                id: generated_support::ID { bytes: registry_id },
-            },
+            id: sui_address_to_uid(registry_id),
             unbonding_duration_ms: 5_000,
             min_stake_mist: 1_000_000,
             max_transaction_budget: 7_500_000_000,
             leaders: MoveVecSet {
-                contents: vec![
-                    generated_support::ID { bytes: leader_a },
-                    generated_support::ID { bytes: leader_b },
-                ],
+                contents: vec![sui_address_to_id(leader_a), sui_address_to_id(leader_b)],
             },
             records: MoveTable::new(table_id, 3),
             capabilities: CapabilityManger {
                 allowed_addresses: MoveVecSet {
                     contents: vec![leader_a],
                 },
-                network_id: generated_support::ID { bytes: network_id },
-                admin_cap_id: generated_support::ID {
-                    bytes: admin_cap_id,
-                },
+                network_id: sui_address_to_id(network_id),
+                admin_cap_id: sui_address_to_id(admin_cap_id),
                 leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
             },
             workflow_witness_type: MoveOption(Some(TypeName::new("0x42::workflow::Witness"))),
@@ -211,10 +198,8 @@ mod tests {
             allowed_addresses: MoveVecSet {
                 contents: vec![leader],
             },
-            network_id: generated_support::ID { bytes: network_id },
-            admin_cap_id: generated_support::ID {
-                bytes: admin_cap_id,
-            },
+            network_id: sui_address_to_id(network_id),
+            admin_cap_id: sui_address_to_id(admin_cap_id),
             leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
         };
 

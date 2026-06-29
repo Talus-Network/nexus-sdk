@@ -253,7 +253,7 @@ impl NexusObjects {
     }
 
     fn sched_generator_symbol(&self, ident: &ModuleAndNameIdent) -> PolicySymbol {
-        PolicySymbol::Witness(TypeName::new(
+        PolicySymbol::witness(TypeName::new(
             &ident.qualified_name(self.scheduler_type_origin_pkg_id()),
         ))
     }
@@ -601,12 +601,12 @@ mod tests {
         assert!(objects.scheduler_matches_periodic_generator(&periodic));
 
         // Symbols using the current (upgraded) package should also match.
-        let current_queue = PolicySymbol::Witness(TypeName::new(
+        let current_queue = PolicySymbol::witness(TypeName::new(
             &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.scheduler_pkg_id),
         ));
         assert!(objects.scheduler_matches_queue_generator(&current_queue));
 
-        let current_periodic = PolicySymbol::Witness(TypeName::new(
+        let current_periodic = PolicySymbol::witness(TypeName::new(
             &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS
                 .qualified_name(objects.scheduler_pkg_id),
         ));

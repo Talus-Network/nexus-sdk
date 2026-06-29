@@ -3,13 +3,12 @@
 use {
     super::{
         serde_parsers::{
-            deserialize_move_ascii_string,
             deserialize_tap_address_value,
             deserialize_tap_byte_vector,
             deserialize_tap_u64_value,
-            serialize_move_ascii_string,
         },
         MoveOption,
+        MoveString,
         MoveTable,
     },
     crate::sui,
@@ -32,22 +31,53 @@ pub const fn skill_id(value: u64) -> SkillId {
 }
 
 /// TAP skill interface version used for fresh lookup and in-flight pinning.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-#[serde(transparent)]
-pub struct InterfaceVersion(pub u64);
+pub type InterfaceVersion = crate::types::generated::interface_types::version::InterfaceVersion;
+/// Generated fixed-tool requirement for a skill DAG.
+pub type FixedTool = crate::types::generated::interface_types::agent::FixedTool;
+/// Generated DAG binding mode for a registered TAP skill.
+pub type SkillDagBinding = crate::types::generated::interface_types::agent::SkillDagBinding;
+/// Generated recurrence mode for a scheduled skill.
+pub type SkillRecurrenceKind = crate::types::generated::interface_types::agent::SkillRecurrenceKind;
+/// Backwards-compatible public recurrence alias for the generated Move type.
+pub type RecurrenceKind = SkillRecurrenceKind;
+/// Generated TAP-facing skill requirements.
+pub type SkillRequirement = crate::types::generated::interface_types::agent::SkillRequirement;
+/// Backwards-compatible plural alias for the generated TAP skill requirement type.
+pub type SkillRequirements = SkillRequirement;
+/// Generated TAP-facing schedule policy.
+pub type SkillSchedulePolicy = crate::types::generated::interface_types::agent::SkillSchedulePolicy;
+/// Generated TAP-facing payment policy.
+pub type SkillPaymentPolicy = crate::types::generated::interface_types::payment::SkillPaymentPolicy;
 
-impl<'de> Deserialize<'de> for InterfaceVersion {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserialize_tap_u64_value(deserializer).map(Self)
+impl InterfaceVersion {
+    pub const fn new(inner: u64) -> Self {
+        Self { inner }
+    }
+}
+
+impl Copy for InterfaceVersion {}
+
+impl std::hash::Hash for InterfaceVersion {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl PartialOrd for InterfaceVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for InterfaceVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.inner.cmp(&other.inner)
     }
 }
 
 impl fmt::Display for InterfaceVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.inner)
     }
 }
 
@@ -149,86 +179,9 @@ fn deserialize_payment_mode_value(value: &serde_json::Value) -> Option<PaymentMo
     }
 }
 
-/// TAP-facing payment policy summary used by config digest and dry-run checks.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Default)]
-pub enum SkillPaymentPolicy {
-    #[default]
-    UserFunded,
-    AgentFunded {
-        max_budget: u64,
-    },
-}
-
-impl<'de> Deserialize<'de> for SkillPaymentPolicy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            enum RawTapPaymentPolicy {
-                UserFunded,
-                AgentFunded { max_budget: u64 },
-            }
-
-            return RawTapPaymentPolicy::deserialize(deserializer).map(|raw| match raw {
-                RawTapPaymentPolicy::UserFunded => SkillPaymentPolicy::UserFunded,
-                RawTapPaymentPolicy::AgentFunded { max_budget } => {
-                    SkillPaymentPolicy::AgentFunded { max_budget }
-                }
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_payment_policy_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP payment policy value"))
-    }
-}
-
-fn deserialize_payment_policy_value(value: &serde_json::Value) -> Option<SkillPaymentPolicy> {
-    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
-        ["@variant", "variant", "type"]
-            .into_iter()
-            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
-    }
-
-    fn parse_agent_funded(fields: Option<&serde_json::Value>) -> Option<SkillPaymentPolicy> {
-        let max_budget = fields
-            .and_then(|fields| match fields {
-                serde_json::Value::Object(object) => object.get("max_budget"),
-                other => Some(other),
-            })
-            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
-        Some(SkillPaymentPolicy::AgentFunded { max_budget })
-    }
-
-    match value {
-        serde_json::Value::String(text) if text == "UserFunded" || text == "user_funded" => {
-            Some(SkillPaymentPolicy::UserFunded)
-        }
-        serde_json::Value::Object(object) => {
-            if let Some(text) = variant_text(object) {
-                return match text {
-                    "UserFunded" | "user_funded" => Some(SkillPaymentPolicy::UserFunded),
-                    "AgentFunded" | "agent_funded" => {
-                        parse_agent_funded(object.get("fields").or(Some(value)))
-                    }
-                    _ => None,
-                };
-            }
-
-            if object.contains_key("UserFunded") {
-                return Some(SkillPaymentPolicy::UserFunded);
-            }
-            if let Some(fields) = object.get("AgentFunded") {
-                return parse_agent_funded(Some(fields));
-            }
-            if object.contains_key("max_budget") {
-                return parse_agent_funded(Some(value));
-            }
-            None
-        }
-        _ => None,
+impl Default for SkillPaymentPolicy {
+    fn default() -> Self {
+        Self::UserFunded
     }
 }
 
@@ -485,13 +438,6 @@ impl PaymentSource {
     }
 }
 
-/// DAG binding mode for a registered TAP skill.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SkillDagBinding {
-    Pinned { dag_id: sui::types::Address },
-    RuntimeSelected,
-}
-
 impl SkillDagBinding {
     pub fn pinned(dag_id: sui::types::Address) -> Self {
         Self::Pinned { dag_id }
@@ -501,120 +447,12 @@ impl SkillDagBinding {
         Self::RuntimeSelected
     }
 
-    pub fn pinned_dag_id(self) -> Option<sui::types::Address> {
+    pub fn pinned_dag_id(&self) -> Option<sui::types::Address> {
         match self {
-            Self::Pinned { dag_id } => Some(dag_id),
+            Self::Pinned { dag_id } => Some(*dag_id),
             Self::RuntimeSelected => None,
         }
     }
-}
-
-/// TAP-facing recurrence mode for a scheduled skill.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub enum RecurrenceKind {
-    Once,
-    Recursive {
-        min_interval_ms: u64,
-        max_occurrences: Option<u64>,
-    },
-}
-
-impl<'de> Deserialize<'de> for RecurrenceKind {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            enum RawTapRecurrenceKind {
-                Once,
-                Recursive {
-                    min_interval_ms: u64,
-                    max_occurrences: Option<u64>,
-                },
-            }
-
-            return RawTapRecurrenceKind::deserialize(deserializer).map(|raw| match raw {
-                RawTapRecurrenceKind::Once => RecurrenceKind::Once,
-                RawTapRecurrenceKind::Recursive {
-                    min_interval_ms,
-                    max_occurrences,
-                } => RecurrenceKind::Recursive {
-                    min_interval_ms,
-                    max_occurrences,
-                },
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_recurrence_kind_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP recurrence kind value"))
-    }
-}
-
-fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<RecurrenceKind> {
-    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
-        ["@variant", "variant", "type"]
-            .into_iter()
-            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
-    }
-
-    fn parse_recursive(fields: Option<&serde_json::Value>) -> Option<RecurrenceKind> {
-        let serde_json::Value::Object(object) = fields? else {
-            return None;
-        };
-        let min_interval_ms = object
-            .get("min_interval_ms")
-            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
-        let max_occurrences = object
-            .get("max_occurrences")
-            .and_then(|value| {
-                crate::types::deserialize_move_option_sui_u64(value.clone())
-                    .ok()
-                    .map(|value| value.0)
-            })
-            .flatten();
-        Some(RecurrenceKind::Recursive {
-            min_interval_ms,
-            max_occurrences,
-        })
-    }
-
-    match value {
-        serde_json::Value::String(text) if text == "Once" || text == "once" => {
-            Some(RecurrenceKind::Once)
-        }
-        serde_json::Value::Object(object) => {
-            if let Some(text) = variant_text(object) {
-                return match text {
-                    "Once" | "once" => Some(RecurrenceKind::Once),
-                    "Recursive" | "recursive" => {
-                        parse_recursive(object.get("fields").or(Some(value)))
-                    }
-                    _ => None,
-                };
-            }
-
-            if object.contains_key("Once") {
-                return Some(RecurrenceKind::Once);
-            }
-            if let Some(fields) = object.get("Recursive") {
-                return parse_recursive(Some(fields));
-            }
-            if object.contains_key("min_interval_ms") {
-                return parse_recursive(Some(value));
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// TAP-facing schedule policy summary used by dry-run checks.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillSchedulePolicy {
-    pub recurrence: RecurrenceKind,
-    pub allow_recursive: bool,
 }
 
 impl Default for SkillSchedulePolicy {
@@ -626,27 +464,32 @@ impl Default for SkillSchedulePolicy {
     }
 }
 
-/// Fixed tool that must be preserved by a skill DAG.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FixedTool {
-    pub tool_registry_id: sui::types::Address,
-    #[serde(
-        alias = "fqn",
-        deserialize_with = "deserialize_move_ascii_string",
-        serialize_with = "serialize_move_ascii_string"
-    )]
-    pub tool_fqn: String,
+impl FixedTool {
+    pub fn new(tool_registry_id: sui::types::Address, tool_fqn: impl Into<String>) -> Self {
+        Self {
+            tool_registry_id: crate::types::sui_address_to_id(tool_registry_id),
+            tool_fqn: MoveString::from(tool_fqn.into()),
+        }
+    }
+
+    pub fn tool_registry_address(&self) -> sui::types::Address {
+        self.tool_registry_id.clone().into()
+    }
+
+    pub fn tool_fqn_string(&self) -> String {
+        self.tool_fqn.clone().into()
+    }
 }
 
-/// User-facing skill requirements fetched before dry-run or execution.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillRequirements {
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub input_schema_commitment: Vec<u8>,
-    pub payment_policy: SkillPaymentPolicy,
-    pub schedule_policy: SkillSchedulePolicy,
-    #[serde(default)]
-    pub fixed_tools: Vec<FixedTool>,
+impl Default for SkillRequirements {
+    fn default() -> Self {
+        Self {
+            input_commitment: Vec::new(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
+            fixed_tools: Vec::new(),
+        }
+    }
 }
 
 /// Stored `nexus_registry::agent_registry::AgentRecord`.
@@ -1029,11 +872,11 @@ impl fmt::Display for SkillRevisionResolutionError {
 impl std::error::Error for SkillRevisionResolutionError {}
 
 pub fn validate_requirements(requirements: &SkillRequirements) -> Result<(), TapValidationError> {
-    if requirements.input_schema_commitment.is_empty() {
+    if requirements.input_commitment.is_empty() {
         return Err(TapValidationError::MissingInputCommitment);
     }
     for tool in &requirements.fixed_tools {
-        if tool.tool_fqn.trim().is_empty() {
+        if tool.tool_fqn_string().trim().is_empty() {
             return Err(TapValidationError::EmptyAuthorizedToolModule);
         }
     }
@@ -1225,7 +1068,7 @@ mod tests {
 
     fn requirements() -> SkillRequirements {
         SkillRequirements {
-            input_schema_commitment: vec![1],
+            input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::AgentFunded { max_budget: 100 },
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -1237,7 +1080,7 @@ mod tests {
             key: SkillRevisionKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(revision),
+                interface_revision: InterfaceVersion::new(revision),
             },
             requirements: requirements(),
         }
@@ -1251,7 +1094,7 @@ mod tests {
             active,
             dag_binding: SkillDagBinding::pinned(addr("0x44")),
             requirements: requirements(),
-            current_interface_revision: InterfaceVersion(current_interface_revision),
+            current_interface_revision: InterfaceVersion::new(current_interface_revision),
             scheduled_task_count: 0,
         }
     }
@@ -1273,13 +1116,13 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].key.agent_id, addr("0xa"));
         assert_eq!(records[0].key.skill_id, 11);
-        assert_eq!(records[0].key.interface_revision, InterfaceVersion(2));
+        assert_eq!(records[0].key.interface_revision, InterfaceVersion::new(2));
     }
 
     #[test]
     fn validate_rejects_missing_input_commitment() {
         let mut requirements = requirements();
-        requirements.input_schema_commitment.clear();
+        requirements.input_commitment.clear();
 
         assert_eq!(
             validate_requirements(&requirements),
@@ -1302,7 +1145,7 @@ mod tests {
         )
         .expect("one active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceVersion(1));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion::new(1));
 
         let duplicate = vec![skill_revision(1), skill_revision(1)];
         assert!(matches!(
@@ -1329,7 +1172,7 @@ mod tests {
             bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
         assert_eq!(decoded.id, addr("0xf"));
-        assert_eq!(decoded.agents.id, addr("0x90"));
+        assert_eq!(decoded.agents.id(), addr("0x90"));
     }
 
     #[test]
@@ -1338,7 +1181,7 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
 
         let artifact =
@@ -1354,12 +1197,12 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceVersion(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, addr("0x8")).expect("valid artifact");
 
-        assert_eq!(artifact.interface_revision, InterfaceVersion(1));
+        assert_eq!(artifact.interface_revision, InterfaceVersion::new(1));
         assert_eq!(artifact.requirements, config.requirements);
     }
 
@@ -1595,7 +1438,7 @@ mod tests {
         );
         assert_eq!(
             resolved.skill_revision.key.interface_revision,
-            InterfaceVersion(2)
+            InterfaceVersion::new(2)
         );
     }
 

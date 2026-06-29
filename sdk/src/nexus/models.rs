@@ -812,7 +812,7 @@ mod tests {
             dag_id: sui::types::Address::from_static("0xd"),
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            interface_version: InterfaceVersion(7),
+            interface_version: InterfaceVersion::new(7),
             scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
             scheduled_occurrence_index: Some(2),
             walks: Vec::new(),
@@ -835,7 +835,7 @@ mod tests {
             RequestWalkContext {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(7),
+                interface_revision: InterfaceVersion::new(7),
                 scheduled_task_id: Some(sui::types::Address::from_static("0xf")),
                 scheduled_occurrence_index: Some(2),
             }

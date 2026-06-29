@@ -1,12 +1,11 @@
 mod derive;
 pub mod generated;
-pub mod generated_support;
+mod generated_support;
 mod json_dag;
 mod leader_registry;
 mod move_json;
 mod network_auth;
 mod nexus_data;
-mod nexus_data_parser;
 mod nexus_objects;
 mod payment;
 mod ports_data;
@@ -34,7 +33,10 @@ pub use {
             },
             v1::InterfacePackageConfig,
         },
-        primitives_types::authorization::{CloneableProvenValue, Grant, ProvenValue},
+        primitives_types::{
+            authorization::{CloneableProvenValue, Grant, ProvenValue},
+            data::NexusData,
+        },
     },
     derive::*,
     generated_support::*,

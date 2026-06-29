@@ -1,3 +1,6 @@
+//! SDK helper for using movebinding generated types.
+//! Need to be fixed in movebinding directly and then removed from here.
+
 use {
     crate::sui,
     serde::{
@@ -7,11 +10,11 @@ use {
         Serialize,
     },
     std::{borrow::Cow, fmt, marker::PhantomData},
-    sui_move::{HasCopy, HasDrop, HasKey, HasStore, MoveStruct, MoveType},
+    sui_move::{HasCopy, HasDrop, HasStore, MoveStruct, MoveType},
 };
 
 /// Ubiquitously used Move type-name wrapper.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct TypeName {
     pub name: String,
 }
@@ -56,28 +59,195 @@ impl fmt::Display for TypeName {
     }
 }
 
-/// Move `sui::vec_set::VecSet<T>`.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct MoveVecSet<T> {
-    pub contents: Vec<T>,
+impl<'de> Deserialize<'de> for TypeName {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            struct RawTypeName {
+                name: String,
+            }
+
+            return RawTypeName::deserialize(deserializer)
+                .map(|value| TypeName { name: value.name });
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        super::move_json::parse_type_name_value(&value)
+            .map_err(D::Error::custom)?
+            .ok_or_else(|| D::Error::custom("invalid TypeName value"))
+    }
 }
 
-/// Move `sui::table::Table<K, V>`.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct MoveTable<K, V> {
-    pub id: sui::types::Address,
-    pub size: u64,
-    #[serde(skip)]
-    _marker: PhantomData<(K, V)>,
+pub type Bag = crate::types::generated::sui_framework_types::bag::Bag;
+pub type ObjectBag = crate::types::generated::sui_framework_types::object_bag::ObjectBag;
+pub type PriorityQueue<T> =
+    crate::types::generated::sui_framework_types::priority_queue::PriorityQueue<T>;
+pub type MoveTable<K, V> = crate::types::generated::sui_framework_types::table::Table<K, V>;
+pub type MoveVecSet<T> = crate::types::generated::sui_framework_types::vec_set::VecSet<T>;
+pub type ID = crate::types::generated::sui_framework_types::object::ID;
+pub type UID = crate::types::generated::sui_framework_types::object::UID;
+
+pub fn sui_address_to_id(
+    bytes: sui::types::Address,
+) -> crate::types::generated::sui_framework_types::object::ID {
+    crate::types::generated::sui_framework_types::object::ID { bytes }
 }
 
-impl<K, V> MoveTable<K, V> {
+pub fn sui_address_to_uid(
+    bytes: sui::types::Address,
+) -> crate::types::generated::sui_framework_types::object::UID {
+    crate::types::generated::sui_framework_types::object::UID {
+        id: sui_address_to_id(bytes),
+    }
+}
+
+/// Serde bridge that lets generated Sui object IDs keep their Move layout
+/// while accepting Sui JSON address strings.
+#[derive(Clone, Debug, Serialize)]
+pub struct ObjectIdSerde {
+    pub bytes: sui::types::Address,
+}
+
+impl<'de> Deserialize<'de> for ObjectIdSerde {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct IdRepr {
+            bytes: sui::types::Address,
+        }
+
+        if !deserializer.is_human_readable() {
+            return IdRepr::deserialize(deserializer).map(|value| Self { bytes: value.bytes });
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(bytes) =
+            super::move_json::parse_address_value(&value).map_err(serde::de::Error::custom)?
+        {
+            return Ok(Self { bytes });
+        }
+
+        serde_json::from_value::<IdRepr>(value)
+            .map(|value| Self { bytes: value.bytes })
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+impl From<ObjectIdSerde> for crate::types::generated::sui_framework_types::object::ID {
+    fn from(value: ObjectIdSerde) -> Self {
+        sui_address_to_id(value.bytes)
+    }
+}
+
+impl From<crate::types::generated::sui_framework_types::object::ID> for ObjectIdSerde {
+    fn from(value: crate::types::generated::sui_framework_types::object::ID) -> Self {
+        Self { bytes: value.bytes }
+    }
+}
+
+/// Serde bridge that lets generated interface versions keep their Move layout
+/// while accepting the scalar JSON form used by TAP APIs and tests.
+#[derive(Clone, Debug)]
+pub struct InterfaceVersionSerde {
+    pub inner: u64,
+}
+
+impl<'de> Deserialize<'de> for InterfaceVersionSerde {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        crate::types::serde_parsers::deserialize_tap_u64_value(deserializer)
+            .map(|inner| Self { inner })
+    }
+}
+
+impl Serialize for InterfaceVersionSerde {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u64(self.inner)
+    }
+}
+
+impl From<InterfaceVersionSerde>
+    for crate::types::generated::interface_types::version::InterfaceVersion
+{
+    fn from(value: InterfaceVersionSerde) -> Self {
+        Self { inner: value.inner }
+    }
+}
+
+impl From<crate::types::generated::interface_types::version::InterfaceVersion>
+    for InterfaceVersionSerde
+{
+    fn from(value: crate::types::generated::interface_types::version::InterfaceVersion) -> Self {
+        Self { inner: value.inner }
+    }
+}
+
+impl Clone for crate::types::generated::sui_framework_types::object::UID {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+        }
+    }
+}
+
+impl<T0, T1> Clone for crate::types::generated::sui_framework_types::vec_map::Entry<T0, T1>
+where
+    T0: Clone,
+    T1: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            key: self.key.clone(),
+            value: self.value.clone(),
+        }
+    }
+}
+
+impl<T0, T1> Clone for crate::types::generated::sui_framework_types::vec_map::VecMap<T0, T1>
+where
+    T0: Clone,
+    T1: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            contents: self.contents.clone(),
+        }
+    }
+}
+
+impl<K, V> Clone for crate::types::generated::sui_framework_types::table::Table<K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            size: self.size,
+            phantom_t0: PhantomData,
+            phantom_t1: PhantomData,
+        }
+    }
+}
+
+impl<K, V> crate::types::generated::sui_framework_types::table::Table<K, V> {
     pub fn new(id: sui::types::Address, size: u64) -> Self {
         Self {
-            id,
+            id: sui_address_to_uid(id),
             size,
-            _marker: PhantomData,
+            phantom_t0: PhantomData,
+            phantom_t1: PhantomData,
         }
+    }
+
+    pub fn id(&self) -> sui::types::Address {
+        self.id.id.bytes
     }
 
     pub fn size(&self) -> usize {
@@ -362,102 +532,6 @@ impl<'de> Deserialize<'de> for SuiBalance {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
-pub struct ID {
-    pub bytes: sui::types::Address,
-}
-
-impl<'de> Deserialize<'de> for ID {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct IdRepr {
-            bytes: sui::types::Address,
-        }
-
-        if !deserializer.is_human_readable() {
-            return IdRepr::deserialize(deserializer).map(|value| Self { bytes: value.bytes });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        if let Some(bytes) =
-            super::move_json::parse_address_value(&value).map_err(serde::de::Error::custom)?
-        {
-            return Ok(Self { bytes });
-        }
-
-        serde_json::from_value::<IdRepr>(value)
-            .map(|value| Self { bytes: value.bytes })
-            .map_err(serde::de::Error::custom)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct UID {
-    pub id: ID,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Bag {
-    pub id: UID,
-    pub size: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ObjectBag {
-    pub id: UID,
-    pub size: u64,
-}
-
-pub struct PriorityQueue<T> {
-    _marker: PhantomData<T>,
-}
-
-impl<T> Clone for PriorityQueue<T> {
-    fn clone(&self) -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T> fmt::Debug for PriorityQueue<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PriorityQueue").finish()
-    }
-}
-
-impl<T> PartialEq for PriorityQueue<T> {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl<T> Eq for PriorityQueue<T> {}
-
-impl<T> Serialize for PriorityQueue<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        ().serialize(serializer)
-    }
-}
-
-impl<'de, T> Deserialize<'de> for PriorityQueue<T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        <()>::deserialize(deserializer)?;
-        Ok(Self {
-            _marker: PhantomData,
-        })
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MoveString {
     pub bytes: Vec<u8>,
@@ -564,6 +638,11 @@ impl<'de, T0, T1, T2> Deserialize<'de> for Ignored<T0, T1, T2> {
     where
         D: serde::Deserializer<'de>,
     {
+        if !deserializer.is_human_readable() {
+            return Err(serde::de::Error::custom(
+                "cannot BCS deserialize an ignored Move field without its layout",
+            ));
+        }
         <()>::deserialize(deserializer)?;
         Ok(Self {
             _marker: PhantomData,
@@ -623,77 +702,6 @@ impl fmt::Display for ID {
     }
 }
 
-impl MoveType for ID {
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(struct_tag("0x2", "object", "ID", vec![])))
-    }
-}
-
-impl MoveStruct for ID {
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag("0x2", "object", "ID", vec![])
-    }
-}
-
-impl MoveType for UID {
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl MoveStruct for UID {
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag("0x2", "object", "UID", vec![])
-    }
-}
-
-impl MoveType for Bag {
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl MoveStruct for Bag {
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag("0x2", "bag", "Bag", vec![])
-    }
-}
-
-impl MoveType for ObjectBag {
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl MoveStruct for ObjectBag {
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag("0x2", "object_bag", "ObjectBag", vec![])
-    }
-}
-
-impl<T> MoveType for PriorityQueue<T>
-where
-    T: MoveType,
-{
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl<T> MoveStruct for PriorityQueue<T>
-where
-    T: MoveType,
-{
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag(
-            "0x2",
-            "priority_queue",
-            "PriorityQueue",
-            vec![T::type_tag_static()],
-        )
-    }
-}
-
 impl MoveType for MoveString {
     fn type_tag_static() -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
@@ -724,49 +732,6 @@ where
     }
 }
 
-impl<T> MoveType for MoveVecSet<T>
-where
-    T: MoveType,
-{
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl<T> MoveStruct for MoveVecSet<T>
-where
-    T: MoveType,
-{
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag("0x2", "vec_set", "VecSet", vec![T::type_tag_static()])
-    }
-}
-
-impl<K, V> MoveType for MoveTable<K, V>
-where
-    K: MoveType + fmt::Debug + PartialEq + Eq,
-    V: MoveType + fmt::Debug + PartialEq + Eq,
-{
-    fn type_tag_static() -> sui::types::TypeTag {
-        sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
-    }
-}
-
-impl<K, V> MoveStruct for MoveTable<K, V>
-where
-    K: MoveType + fmt::Debug + PartialEq + Eq,
-    V: MoveType + fmt::Debug + PartialEq + Eq,
-{
-    fn struct_tag_static() -> sui::types::StructTag {
-        struct_tag(
-            "0x2",
-            "table",
-            "Table",
-            vec![K::type_tag_static(), V::type_tag_static()],
-        )
-    }
-}
-
 impl MoveType for TypeName {
     fn type_tag_static() -> sui::types::TypeTag {
         sui::types::TypeTag::Struct(Box::new(Self::struct_tag_static()))
@@ -788,26 +753,16 @@ impl<T0, T1, T2> MoveType for Ignored<T0, T1, T2> {
 impl<T0, T1, T2> HasCopy for Ignored<T0, T1, T2> {}
 impl<T0, T1, T2> HasDrop for Ignored<T0, T1, T2> {}
 impl<T0, T1, T2> HasStore for Ignored<T0, T1, T2> {}
-impl HasCopy for ID {}
-impl HasDrop for ID {}
-impl HasStore for ID {}
-impl HasStore for UID {}
-impl HasKey for Bag {}
-impl HasStore for Bag {}
-impl HasKey for ObjectBag {}
-impl HasStore for ObjectBag {}
-impl<T: MoveType> HasStore for PriorityQueue<T> {}
+impl<T0, T1> HasCopy for crate::types::generated::sui_framework_types::vec_map::VecMap<T0, T1> where
+    Self: Clone
+{
+}
 impl HasCopy for MoveString {}
 impl HasDrop for MoveString {}
 impl HasStore for MoveString {}
 impl<T: MoveType> HasStore for MoveOption<T> {}
 impl<T: MoveType + Clone> HasCopy for MoveOption<T> {}
 impl<T: MoveType> HasDrop for MoveOption<T> {}
-impl<T: MoveType> HasStore for MoveVecSet<T> {}
-impl<T: MoveType + Clone> HasCopy for MoveVecSet<T> {}
-impl<T: MoveType> HasDrop for MoveVecSet<T> {}
-impl<K, V> HasKey for MoveTable<K, V> {}
-impl<K, V> HasStore for MoveTable<K, V> {}
 impl HasCopy for TypeName {}
 impl HasDrop for TypeName {}
 impl HasStore for TypeName {}
@@ -841,8 +796,14 @@ mod tests {
         }
     }
 
-    fn uid(value: &'static str) -> UID {
-        UID { id: id(value) }
+    fn generated_uid(
+        value: &'static str,
+    ) -> crate::types::generated::sui_framework_types::object::UID {
+        crate::types::generated::sui_framework_types::object::UID {
+            id: crate::types::generated::sui_framework_types::object::ID {
+                bytes: address(value),
+            },
+        }
     }
 
     #[test]
@@ -862,6 +823,17 @@ mod tests {
 
         let bytes = bcs::to_bytes(&value).unwrap();
         assert_eq!(bcs::from_bytes::<MoveString>(&bytes).unwrap(), value);
+    }
+
+    #[test]
+    fn type_name_deserializes_sui_json_string() {
+        let parsed: TypeName =
+            serde_json::from_value(json!("0xa5::scheduler::QueueGeneratorWitness")).unwrap();
+
+        assert_eq!(
+            parsed,
+            TypeName::new("0xa5::scheduler::QueueGeneratorWitness")
+        );
     }
 
     #[test]
@@ -887,22 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn priority_queue_and_ignored_are_unit_shims_for_serde_and_equality() {
-        let queue = PriorityQueue::<ID> {
-            _marker: PhantomData,
-        };
-        let other_queue = queue.clone();
-        assert_eq!(format!("{queue:?}"), "PriorityQueue");
-        assert_eq!(queue, other_queue);
-        assert_eq!(serde_json::to_value(&queue).unwrap(), json!(null));
-        let decoded_queue: PriorityQueue<ID> = serde_json::from_value(json!(null)).unwrap();
-        assert_eq!(decoded_queue, queue);
-        let queue_bytes = bcs::to_bytes(&queue).unwrap();
-        assert_eq!(
-            bcs::from_bytes::<PriorityQueue<ID>>(&queue_bytes).unwrap(),
-            queue
-        );
-
+    fn ignored_is_a_json_only_unit_shim() {
         let ignored = Ignored::<ID, UID, MoveString> {
             _marker: PhantomData,
         };
@@ -914,9 +871,94 @@ mod tests {
             serde_json::from_value(json!(null)).unwrap();
         assert_eq!(decoded_ignored, ignored);
         let ignored_bytes = bcs::to_bytes(&ignored).unwrap();
+        assert!(bcs::from_bytes::<Ignored<ID, UID, MoveString>>(&ignored_bytes).is_err());
+    }
+
+    #[test]
+    fn generated_framework_types_consume_bcs_layout_bytes() {
+        use crate::types::generated::sui_framework_types::{
+            balance,
+            object_table,
+            sui as sui_module,
+            table_vec,
+            vec_map,
+        };
+
+        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+        struct BalanceThenSentinel {
+            balance: balance::Balance<sui_module::SUI>,
+            sentinel: u8,
+        }
+
+        let balance = BalanceThenSentinel {
+            balance: balance::Balance {
+                value: 42,
+                phantom_t0: PhantomData,
+            },
+            sentinel: 7,
+        };
+        let balance_bytes = bcs::to_bytes(&balance).unwrap();
         assert_eq!(
-            bcs::from_bytes::<Ignored<ID, UID, MoveString>>(&ignored_bytes).unwrap(),
-            ignored
+            bcs::from_bytes::<BalanceThenSentinel>(&balance_bytes).unwrap(),
+            balance
+        );
+
+        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+        struct VecMapThenSentinel {
+            map: vec_map::VecMap<u8, u64>,
+            sentinel: u8,
+        }
+
+        let map = VecMapThenSentinel {
+            map: vec_map::VecMap {
+                contents: vec![vec_map::Entry { key: 1, value: 9 }],
+            },
+            sentinel: 8,
+        };
+        let map_bytes = bcs::to_bytes(&map).unwrap();
+        assert_eq!(
+            bcs::from_bytes::<VecMapThenSentinel>(&map_bytes).unwrap(),
+            map
+        );
+
+        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+        struct ObjectTableThenSentinel {
+            table: object_table::ObjectTable<ID, UID>,
+            sentinel: u8,
+        }
+
+        let object_table = ObjectTableThenSentinel {
+            table: object_table::ObjectTable {
+                id: generated_uid("0x456"),
+                size: 3,
+                phantom_t0: PhantomData,
+                phantom_t1: PhantomData,
+            },
+            sentinel: 9,
+        };
+        let object_table_bytes = bcs::to_bytes(&object_table).unwrap();
+        assert_eq!(
+            bcs::from_bytes::<ObjectTableThenSentinel>(&object_table_bytes).unwrap(),
+            object_table
+        );
+
+        #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+        struct TableVecThenSentinel {
+            table_vec: table_vec::TableVec<u64>,
+            sentinel: u8,
+        }
+
+        let table_vec = TableVecThenSentinel {
+            table_vec: table_vec::TableVec {
+                contents: MoveTable::new(address("0x789"), 4),
+                phantom_t0: PhantomData,
+            },
+            sentinel: 10,
+        };
+        let table_vec_bytes = bcs::to_bytes(&table_vec).unwrap();
+        assert_eq!(
+            bcs::from_bytes::<TableVecThenSentinel>(&table_vec_bytes).unwrap(),
+            table_vec
         );
     }
 
@@ -977,11 +1019,11 @@ mod tests {
     #[test]
     fn generated_support_structs_round_trip_through_serde() {
         let bag = Bag {
-            id: uid("0x456"),
+            id: generated_uid("0x456"),
             size: 9,
         };
         let object_bag = ObjectBag {
-            id: uid("0x789"),
+            id: generated_uid("0x789"),
             size: 11,
         };
 

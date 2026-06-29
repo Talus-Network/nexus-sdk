@@ -11,7 +11,7 @@ use {
             },
         },
         sui::types::Address,
-        types::{DataStorage, NexusData, RuntimeVertex, Storable, StorageKind, TypeName},
+        types::{NexusData, RuntimeVertex, StorageKind, TypeName},
     },
     anyhow::{anyhow, bail},
     serde::{Deserialize, Serialize},
@@ -107,7 +107,7 @@ pub async fn derive_onchain_request_body_sha256(
 
 pub fn canonical_output_payload_sha256(
     output_variant: &str,
-    output_ports_data: &HashMap<String, DataStorage>,
+    output_ports_data: &HashMap<String, NexusData>,
 ) -> anyhow::Result<[u8; 32]> {
     let mut bytes = bcs::to_bytes(&output_variant.as_bytes().to_vec())?;
     let mut port_names = output_ports_data.keys().cloned().collect::<Vec<_>>();
@@ -127,7 +127,7 @@ pub fn canonical_output_payload_sha256(
 
 pub fn registered_key_payload_sha256(
     output_variant: &str,
-    output_ports_data: &HashMap<String, DataStorage>,
+    output_ports_data: &HashMap<String, NexusData>,
 ) -> anyhow::Result<[u8; 32]> {
     if output_variant == ERR_EVAL_VARIANT {
         return Ok(hash_bytes(&terminal_err_eval_reason_bytes(
@@ -139,7 +139,7 @@ pub fn registered_key_payload_sha256(
     canonical_output_payload_sha256(output_variant, output_ports_data)
 }
 
-pub fn canonical_nexus_data_wire(value: &DataStorage) -> anyhow::Result<CanonicalNexusDataWire> {
+pub fn canonical_nexus_data_wire(value: &NexusData) -> anyhow::Result<CanonicalNexusDataWire> {
     let storage = match value.storage_kind() {
         StorageKind::Inline => INLINE_STORAGE_TAG.to_vec(),
         StorageKind::Walrus => WALRUS_STORAGE_TAG.to_vec(),
@@ -155,7 +155,7 @@ pub fn canonical_nexus_data_wire(value: &DataStorage) -> anyhow::Result<Canonica
                 .map(String::into_bytes)
                 .collect(),
         ),
-        other => (serde_json::to_string(other)?.into_bytes(), Vec::new()),
+        other => (serde_json::to_string(&other)?.into_bytes(), Vec::new()),
     };
 
     Ok(CanonicalNexusDataWire { storage, one, many })
@@ -176,7 +176,7 @@ pub fn encode_registered_key_transcript(
     leader_cap_id: Address,
     transcript: &crate::signed_http::v1::engine::SignedInvokeTranscriptV1,
     output_variant: &str,
-    output_ports_data: &HashMap<String, DataStorage>,
+    output_ports_data: &HashMap<String, NexusData>,
 ) -> anyhow::Result<Vec<u8>> {
     let payload_sha256 = registered_key_payload_sha256(output_variant, output_ports_data)?;
     let outcome = if output_variant == ERR_EVAL_VARIANT {
@@ -281,7 +281,7 @@ fn hash_bytes(bytes: &[u8]) -> [u8; 32] {
 
 fn terminal_err_eval_reason_bytes(
     output_variant: &str,
-    output_ports_data: &HashMap<String, DataStorage>,
+    output_ports_data: &HashMap<String, NexusData>,
 ) -> anyhow::Result<Vec<u8>> {
     if output_variant != ERR_EVAL_VARIANT {
         bail!("expected terminal err_eval output variant, got {output_variant}");
@@ -290,7 +290,8 @@ fn terminal_err_eval_reason_bytes(
     let reason = output_ports_data
         .get("reason")
         .ok_or_else(|| anyhow!("missing reason port in terminal err_eval output"))?;
-    let Some(reason) = reason.as_json().as_str() else {
+    let reason_json = reason.as_json();
+    let Some(reason) = reason_json.as_str() else {
         bail!("terminal err_eval reason must be a JSON string");
     };
     Ok(reason.as_bytes().to_vec())
@@ -304,7 +305,7 @@ mod tests {
         serde_json::json,
     };
 
-    fn inline_data(value: serde_json::Value) -> DataStorage {
+    fn inline_data(value: serde_json::Value) -> NexusData {
         NexusData::new_inline(value).commit_inline_plain()
     }
 

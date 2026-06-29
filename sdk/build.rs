@@ -83,7 +83,7 @@ fn render_generated_bindings() {
 fn should_render_types_package(package: &str) -> bool {
     matches!(
         package,
-        "interface" | "primitives" | "registry" | "scheduler" | "workflow"
+        "interface" | "primitives" | "registry" | "scheduler" | "sui_framework" | "workflow"
     )
 }
 
@@ -175,7 +175,7 @@ fn render_types_package(
         );
     }
 
-    add_stdlib_external_types(&mut opts);
+    add_move_std_compat_external_types(&mut opts);
 
     adapt_rendered_types(package, render_package(normalized, &opts))
 }
@@ -190,6 +190,18 @@ fn adapt_rendered_types(package: &str, code: String) -> String {
             .replace(
                 "pub struct AgentVertexAuthorizationTemplate {\n        pub skill_id: u64,",
                 "pub struct AgentVertexAuthorizationTemplate {\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_u64_value\")]\n        pub skill_id: u64,",
+            )
+            .replace(
+                "pub struct InterfaceVersion {\n        pub inner: u64,\n    }",
+                "#[serde(from = \"crate::types::generated_support::InterfaceVersionSerde\", into = \"crate::types::generated_support::InterfaceVersionSerde\")]\n    pub struct InterfaceVersion {\n        pub inner: u64,\n    }",
+            )
+            .replace(
+                "pub struct SkillRequirement {\n        pub input_commitment: Vec<u8>,",
+                "pub struct SkillRequirement {\n        #[serde(alias = \"input_schema_commitment\")]\n        pub input_commitment: Vec<u8>,",
+            )
+            .replace(
+                "pub struct RequestScheduledExecution<T0> {\n        pub request: T0,\n        pub priority: u64,\n        pub request_ms: u64,\n        pub start_ms: u64,\n        pub deadline_ms: u64,",
+                "pub struct RequestScheduledExecution<T0> {\n        pub request: T0,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub priority: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub request_ms: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub start_ms: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub deadline_ms: u64,",
             )
             .replace(
                 "pub mode: VerifierMode,",
@@ -209,23 +221,78 @@ fn adapt_rendered_types(package: &str, code: String) -> String {
             ),
         "primitives" => code
             .replace(
+                "        sm::__private::serde::Serialize,\n        sm::__private::serde::Deserialize,\n    )]\n    #[serde(crate = \"sui_move::__private::serde\")]\n    pub enum Symbol {",
+                "    )]\n    pub enum Symbol {",
+            )
+            .replace(
                 "pub struct TransitionConfigKey<T0, T1> {",
                 "#[serde(bound(\n        serialize = \"T0: sm::__private::serde::Serialize, T1: sm::__private::serde::Serialize\",\n        deserialize = \"T0: sm::__private::serde::de::DeserializeOwned, T1: sm::__private::serde::Deserialize<'de>\"\n    ))]\n    pub struct TransitionConfigKey<T0, T1> {",
             )
             .replace(
                 "pub struct TransitionKey<T0, T1> {",
                 "#[serde(bound(\n        serialize = \"T0: sm::__private::serde::Serialize, T1: sm::__private::serde::Serialize\",\n        deserialize = \"T0: sm::__private::serde::de::DeserializeOwned, T1: sm::__private::serde::Deserialize<'de>\"\n    ))]\n    pub struct TransitionKey<T0, T1> {",
+            )
+            .replace(
+                "pub struct NexusData {\n        pub storage: Vec<u8>,\n        pub one: Vec<u8>,\n        pub many: Vec<Vec<u8>>,",
+                "pub struct NexusData {\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_byte_vector\")]\n        pub storage: Vec<u8>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_byte_vector\")]\n        pub one: Vec<u8>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_byte_vector_vec\")]\n        pub many: Vec<Vec<u8>>,",
+            ),
+        "scheduler" => code
+            .replace(
+                "        sm::__private::serde::Serialize,\n        sm::__private::serde::Deserialize,\n    )]\n    #[serde(crate = \"sui_move::__private::serde\")]\n    pub enum State {",
+                "        sm::__private::serde::Serialize,\n    )]\n    pub enum State {",
+            )
+            .replace(
+                "pub struct Occurrence {\n        pub start_time_ms: u64,\n        pub deadline_ms: crate::types::MoveOption<u64>,\n        pub priority_fee_per_gas_unit: u64,",
+                "pub struct Occurrence {\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub start_time_ms: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub deadline_ms: crate::types::MoveOption<u64>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub priority_fee_per_gas_unit: u64,",
+            )
+            .replace(
+                "pub struct PeriodicGeneratorState {\n        pub active: crate::types::MoveOption<Occurrence>,\n        pub next_start_ms: crate::types::MoveOption<u64>,\n        pub period_ms: u64,\n        pub deadline_offset_ms: crate::types::MoveOption<u64>,\n        pub max_iterations: crate::types::MoveOption<u64>,\n        pub generated: u64,\n        pub last_emitted_start_ms: crate::types::MoveOption<u64>,\n        pub priority_fee_per_gas_unit: u64,",
+                "pub struct PeriodicGeneratorState {\n        pub active: crate::types::MoveOption<Occurrence>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub next_start_ms: crate::types::MoveOption<u64>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub period_ms: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub deadline_offset_ms: crate::types::MoveOption<u64>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub max_iterations: crate::types::MoveOption<u64>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub generated: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub last_emitted_start_ms: crate::types::MoveOption<u64>,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub priority_fee_per_gas_unit: u64,",
+            )
+            .replace(
+                "pub struct QueueEntry {\n        pub occurrence: Occurrence,\n        pub sequence: u64,\n        pub request_ms: u64,",
+                "pub struct QueueEntry {\n        pub occurrence: Occurrence,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub sequence: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub request_ms: u64,",
+            )
+            .replace(
+                "pub struct QueueGeneratorState {\n        pub pending: crate::types::generated::sui_framework_types::priority_queue::PriorityQueue<\n            QueueEntry,\n        >,\n        pub len: u64,\n        pub next_sequence: u64,",
+                "pub struct QueueGeneratorState {\n        pub pending: crate::types::generated::sui_framework_types::priority_queue::PriorityQueue<\n            QueueEntry,\n        >,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub len: u64,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_sui_u64\", serialize_with = \"crate::types::serde_parsers::serialize_sui_u64\")]\n        pub next_sequence: u64,",
             ),
         "registry" => code.replace(
             "Leader,\n        >",
             "crate::types::generated_support::Ignored,\n        >",
         ),
+        "sui_framework" => code
+            .replace(
+                "pub struct ID {\n        pub bytes: sm::prelude::Address,\n    }",
+                "#[serde(from = \"crate::types::generated_support::ObjectIdSerde\", into = \"crate::types::generated_support::ObjectIdSerde\")]\n    pub struct ID {\n        pub bytes: sm::prelude::Address,\n    }",
+            )
+            .replace(
+                "module = \"vec_map\",\n        abilities = \"store, copy, drop\",",
+                "module = \"vec_map\",\n        abilities = \"store, drop\",",
+            )
+            .replace(
+                "pub struct LinkedTable<T0, T1> {",
+                "#[serde(bound(\n        serialize = \"T0: sm::__private::serde::Serialize\",\n        deserialize = \"T0: sm::__private::serde::de::DeserializeOwned\"\n    ))]\n    pub struct LinkedTable<T0, T1> {",
+            )
+            .replace(
+                "pub struct Node<T0, T1> {",
+                "#[serde(bound(\n        serialize = \"T0: sm::__private::serde::Serialize, T1: sm::__private::serde::Serialize\",\n        deserialize = \"T0: sm::__private::serde::de::DeserializeOwned, T1: sm::__private::serde::de::DeserializeOwned\"\n    ))]\n    pub struct Node<T0, T1> {",
+            ),
+        "workflow" => code
+            .replace(
+            "pub struct RequestWalkExecutionEvent {\n        pub dag: crate::types::generated::sui_framework_types::object::ID,\n        pub execution: crate::types::generated::sui_framework_types::object::ID,\n        pub invoker: sm::prelude::Address,\n        pub walk_index: u64,\n        pub next_vertex: crate::types::generated::interface_types::graph::RuntimeVertex,\n        pub evaluations: crate::types::generated::sui_framework_types::object::ID,\n        pub agent_id: crate::types::generated::sui_framework_types::object::ID,\n        pub skill_id: u64,",
+            "pub struct RequestWalkExecutionEvent {\n        pub dag: crate::types::generated::sui_framework_types::object::ID,\n        pub execution: crate::types::generated::sui_framework_types::object::ID,\n        pub invoker: sm::prelude::Address,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_u64_value\")]\n        pub walk_index: u64,\n        pub next_vertex: crate::types::generated::interface_types::graph::RuntimeVertex,\n        pub evaluations: crate::types::generated::sui_framework_types::object::ID,\n        pub agent_id: crate::types::generated::sui_framework_types::object::ID,\n        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_tap_u64_value\")]\n        pub skill_id: u64,",
+            )
+            .replace(
+                "        pub scheduled_occurrence_index: crate::types::MoveOption<u64>,",
+                "        #[serde(deserialize_with = \"crate::types::serde_parsers::deserialize_move_option_sui_u64\")]\n        pub scheduled_occurrence_index: crate::types::MoveOption<u64>,",
+            ),
         _ => code,
     }
 }
 
-fn add_stdlib_external_types(opts: &mut RenderOptions) {
-    for type_name in ["0x1::ascii::String", "0x1::string::String", "0x2::url::Url"] {
+fn add_move_std_compat_external_types(opts: &mut RenderOptions) {
+    for type_name in ["0x1::ascii::String", "0x1::string::String"] {
         opts.add_external_type(
             sui_move_codegen::ir::TypeName::parse(type_name).expect("valid Move type"),
             "crate::types::generated_support::MoveString",
@@ -236,63 +303,6 @@ fn add_stdlib_external_types(opts: &mut RenderOptions) {
     for (type_name, rust_path, is_key) in [
         ("0x1::option::Option", "crate::types::MoveOption", false),
         ("0x1::type_name::TypeName", "crate::types::TypeName", false),
-        (
-            "0x2::object::ID",
-            "crate::types::generated_support::ID",
-            false,
-        ),
-        (
-            "0x2::object::UID",
-            "crate::types::generated_support::UID",
-            true,
-        ),
-        (
-            "0x2::bag::Bag",
-            "crate::types::generated_support::Bag",
-            true,
-        ),
-        (
-            "0x2::object_bag::ObjectBag",
-            "crate::types::generated_support::ObjectBag",
-            true,
-        ),
-        (
-            "0x2::object_table::ObjectTable",
-            "crate::types::generated_support::Ignored",
-            true,
-        ),
-        (
-            "0x2::linked_table::LinkedTable",
-            "crate::types::generated_support::Ignored",
-            true,
-        ),
-        (
-            "0x2::priority_queue::PriorityQueue",
-            "crate::types::generated_support::PriorityQueue",
-            true,
-        ),
-        ("0x2::table::Table", "crate::types::MoveTable", true),
-        (
-            "0x2::table_vec::TableVec",
-            "crate::types::generated_support::Ignored",
-            true,
-        ),
-        (
-            "0x2::vec_map::VecMap",
-            "crate::types::generated_support::Ignored",
-            false,
-        ),
-        ("0x2::vec_set::VecSet", "crate::types::MoveVecSet", false),
-        (
-            "0x2::balance::Balance",
-            "crate::types::generated_support::Ignored",
-            false,
-        ),
-        (
-            "0x2::sui::SUI",
-            "crate::types::generated_support::Ignored",
-            false,
-        ),
     ] {
         opts.add_external_type(
             sui_move_codegen::ir::TypeName::parse(type_name).expect("valid Move type"),
@@ -302,11 +312,15 @@ fn add_stdlib_external_types(opts: &mut RenderOptions) {
     }
 }
 
-fn filter_types_package(_package: &str, normalized: &NormalizedPackage) -> NormalizedPackage {
+fn filter_types_package(package: &str, normalized: &NormalizedPackage) -> NormalizedPackage {
     let modules = normalized
         .modules
         .iter()
         .filter_map(|(module_name, module)| {
+            if !should_render_type_module(package, module_name) {
+                return None;
+            }
+
             let datatypes = module.datatypes.clone();
             if datatypes.is_empty() {
                 return None;
@@ -328,6 +342,29 @@ fn filter_types_package(_package: &str, normalized: &NormalizedPackage) -> Norma
         version: normalized.version,
         modules,
     }
+}
+
+fn should_render_type_module(package: &str, module: &str) -> bool {
+    if package != "sui_framework" {
+        return true;
+    }
+
+    matches!(
+        module,
+        "bag"
+            | "balance"
+            | "linked_table"
+            | "object"
+            | "object_bag"
+            | "object_table"
+            | "priority_queue"
+            | "sui"
+            | "table"
+            | "table_vec"
+            | "url"
+            | "vec_map"
+            | "vec_set"
+    )
 }
 
 fn strip_root_reexports(code: &str) -> String {

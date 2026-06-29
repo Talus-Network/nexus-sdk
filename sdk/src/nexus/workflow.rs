@@ -49,12 +49,12 @@ use {
             AgentId,
             AgentRegistry,
             Dag as JsonDag,
-            DataStorage,
             DefaultDagExecutorRecord,
             ExecutionPayment,
             ExecutionPaymentVertexLock,
             FailureEvidenceKind,
             MoveOption,
+            NexusData,
             PortsData,
             RuntimeVertex,
             SkillDagBinding,
@@ -305,7 +305,7 @@ pub enum WorkflowExecutionTerminalState {
 #[derive(Clone, Debug)]
 pub struct ResolvedEndState {
     pub event: EndStateReachedEvent,
-    pub resolved_ports_to_data: HashMap<String, DataStorage>,
+    pub resolved_ports_to_data: HashMap<String, NexusData>,
 }
 
 #[derive(Clone, Debug)]
@@ -361,13 +361,13 @@ fn object_argument_from_metadata(
 
 fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
-        NexusEventKind::WalkAdvanced(e) => Some(e.execution),
-        NexusEventKind::WalkFailed(e) => Some(e.execution),
-        NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution),
-        NexusEventKind::WalkAborted(e) => Some(e.execution),
-        NexusEventKind::WalkCancelled(e) => Some(e.execution),
-        NexusEventKind::EndStateReached(e) => Some(e.execution),
-        NexusEventKind::ExecutionFinished(e) => Some(e.execution),
+        NexusEventKind::WalkAdvanced(e) => Some(e.execution.clone().into()),
+        NexusEventKind::WalkFailed(e) => Some(e.execution.clone().into()),
+        NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution.clone().into()),
+        NexusEventKind::WalkAborted(e) => Some(e.execution.clone().into()),
+        NexusEventKind::WalkCancelled(e) => Some(e.execution.clone().into()),
+        NexusEventKind::EndStateReached(e) => Some(e.execution.clone().into()),
+        NexusEventKind::ExecutionFinished(e) => Some(e.execution.clone().into()),
         _ => None,
     }
 }
@@ -407,7 +407,8 @@ async fn build_execution_completion_result(
                         NexusError::Storage(anyhow!(
                             "Failed to fetch output data for execution '{dag_execution_id}': {e}"
                         ))
-                    })?;
+                    })?
+                    .into_map();
 
                 end_states.push(ResolvedEndState {
                     event: end_state.clone(),
@@ -844,13 +845,19 @@ impl WorkflowActions {
             payment_max_budget: options.payment_max_budget,
         };
 
+        let transaction_input_data = input_data
+            .clone()
+            .into_iter()
+            .map(|(vertex, data)| (vertex, data.into_map()))
+            .collect();
+
         if let Err(e) = dag::execute_default_agent_dag(
             &mut tx,
             nexus_objects,
             &dag.object_ref(),
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-            &input_data,
+            &transaction_input_data,
             &agent_execution,
             &tools_gas,
         ) {
@@ -1029,6 +1036,12 @@ impl WorkflowActions {
             payment_max_budget: options.payment_max_budget,
         };
 
+        let transaction_input_data = input_data
+            .clone()
+            .into_iter()
+            .map(|(vertex, data)| (vertex, data.into_map()))
+            .collect();
+
         if let Err(e) = dag::execute_agent_dag(
             &mut tx,
             nexus_objects,
@@ -1037,7 +1050,7 @@ impl WorkflowActions {
                 .map_err(NexusError::TransactionBuilding)?,
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-            &input_data,
+            &transaction_input_data,
             &agent_execution,
             &tools_gas,
         ) {
@@ -1780,6 +1793,7 @@ mod tests {
                 DefaultDagExecutorFieldKey,
                 DefaultDagExecutorValue,
                 InterfaceVersion,
+                MoveString,
                 MoveTable,
                 NexusData,
                 PostFailureAction,
@@ -1789,7 +1803,6 @@ mod tests {
                 SkillRecord,
                 SkillRequirements,
                 SkillSchedulePolicy,
-                Storable,
                 TypeName,
                 VerifierConfig,
                 VerifierMode,
@@ -1849,6 +1862,45 @@ mod tests {
             storage: b"inline".to_vec(),
             one: one.into(),
             many: vec![],
+        }
+    }
+
+    fn generated_id(
+        bytes: sui::types::Address,
+    ) -> crate::types::generated::sui_framework_types::object::ID {
+        crate::types::sui_address_to_id(bytes)
+    }
+
+    fn output_variant(
+        name: &str,
+    ) -> crate::types::generated::interface_types::graph::OutputVariant {
+        crate::types::generated::interface_types::graph::OutputVariant {
+            name: MoveString::from(name),
+        }
+    }
+
+    fn generated_ports_data(
+        entries: Vec<(&str, serde_json::Value)>,
+    ) -> crate::types::generated::sui_framework_types::vec_map::VecMap<
+        crate::types::generated::interface_types::graph::OutputPort,
+        crate::types::generated::primitives_types::data::NexusData,
+    > {
+        crate::types::generated::sui_framework_types::vec_map::VecMap {
+            contents: entries
+                .into_iter()
+                .map(
+                    |(name, value)| crate::types::generated::sui_framework_types::vec_map::Entry {
+                        key: crate::types::generated::interface_types::graph::OutputPort {
+                            name: MoveString::from(name),
+                        },
+                        value: crate::types::generated::primitives_types::data::NexusData {
+                            storage: b"inline".to_vec(),
+                            one: serde_json::to_vec(&value).expect("inline JSON encodes"),
+                            many: vec![],
+                        },
+                    },
+                )
+                .collect(),
         }
     }
 
@@ -2363,7 +2415,7 @@ mod tests {
         };
 
         let requirements = SkillRequirements {
-            input_schema_commitment: vec![1],
+            input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -2381,7 +2433,7 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::runtime_selected(),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceVersion(1),
+                current_interface_revision: InterfaceVersion::new(1),
                 scheduled_task_count: 0,
             }],
             default_executor: Some(DefaultDagExecutor {
@@ -2543,7 +2595,7 @@ mod tests {
         let agent_ref =
             sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
         let requirements = SkillRequirements {
-            input_schema_commitment: vec![1],
+            input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
@@ -2561,7 +2613,7 @@ mod tests {
                 active: true,
                 dag_binding: SkillDagBinding::pinned(*dag_ref.object_id()),
                 requirements: requirements.clone(),
-                current_interface_revision: InterfaceVersion(1),
+                current_interface_revision: InterfaceVersion::new(1),
                 scheduled_task_count: 0,
             }],
             default_executor: None,
@@ -2711,29 +2763,29 @@ mod tests {
         );
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             walk_index: 0,
             vertex: RuntimeVertex::Plain {
                 vertex: TypeName::new("initial").into(),
             },
-            variant: TypeName::new("ok"),
-            variant_ports_to_data: PortsData::from_map(HashMap::new()),
+            variant: output_variant("ok"),
+            variant_ports_to_data: generated_ports_data(vec![]),
         });
 
         let end_state_reached_event = NexusEventKind::EndStateReached(EndStateReachedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             walk_index: 0,
             vertex: RuntimeVertex::Plain {
                 vertex: TypeName::new("initial").into(),
             },
-            variant: TypeName::new("ok"),
-            variant_ports_to_data: PortsData::from_map(HashMap::new()),
+            variant: output_variant("ok"),
+            variant_ports_to_data: generated_ports_data(vec![]),
         });
         let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             has_any_walk_failed: false,
             has_any_walk_succeeded: true,
             was_aborted: false,
@@ -2871,40 +2923,37 @@ mod tests {
         );
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             walk_index: 0,
             vertex: RuntimeVertex::plain("initial"),
-            variant: TypeName::new("ok"),
-            variant_ports_to_data: PortsData::from_map(HashMap::new()),
+            variant: output_variant("ok"),
+            variant_ports_to_data: generated_ports_data(vec![]),
         });
         let terminal_err_eval_event =
             NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
-                dag: dag_object_id,
-                execution: execution_object_id,
+                dag: generated_id(dag_object_id),
+                execution: generated_id(execution_object_id),
                 walk_index: 1,
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: Some(PostFailureAction::Terminate),
-                reason: "tool failed".to_string(),
+                outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                reason: MoveString::from("tool failed"),
                 err_eval_hash: vec![9, 8, 7],
                 duplicate: false,
             });
         let end_state_reached_event = NexusEventKind::EndStateReached(EndStateReachedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             walk_index: 0,
             vertex: RuntimeVertex::plain("final"),
-            variant: TypeName::new("ok"),
-            variant_ports_to_data: PortsData::from_map(HashMap::from([(
-                "answer".to_string(),
-                NexusData::new_inline(json!(42)),
-            )])),
+            variant: output_variant("ok"),
+            variant_ports_to_data: generated_ports_data(vec![("answer", json!(42))]),
         });
         let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
-            dag: dag_object_id,
-            execution: execution_object_id,
+            dag: generated_id(dag_object_id),
+            execution: generated_id(execution_object_id),
             has_any_walk_failed: true,
             has_any_walk_succeeded: true,
             was_aborted: false,
@@ -3012,14 +3061,14 @@ mod tests {
     fn test_event_execution_id_supports_terminal_err_eval_recorded() {
         let execution = sui::types::Address::TWO;
         let event = NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
-            dag: sui::types::Address::ZERO,
-            execution,
+            dag: generated_id(sui::types::Address::ZERO),
+            execution: generated_id(execution),
             walk_index: 2,
             vertex: RuntimeVertex::plain("failable"),
             leader: sui::types::Address::THREE,
             failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-            outcome: Some(PostFailureAction::Terminate),
-            reason: "timeout".to_string(),
+            outcome: MoveOption(Some(PostFailureAction::Terminate)),
+            reason: MoveString::from("timeout"),
             err_eval_hash: vec![4, 5, 6],
             duplicate: true,
         });
@@ -3030,8 +3079,8 @@ mod tests {
     #[test]
     fn test_terminal_state_from_execution_finished() {
         let success = ExecutionFinishedEvent {
-            dag: sui::types::Address::ZERO,
-            execution: sui::types::Address::TWO,
+            dag: generated_id(sui::types::Address::ZERO),
+            execution: generated_id(sui::types::Address::TWO),
             has_any_walk_failed: false,
             has_any_walk_succeeded: true,
             was_aborted: false,
@@ -3051,7 +3100,7 @@ mod tests {
             has_any_walk_failed: false,
             has_any_walk_succeeded: false,
             was_aborted: false,
-            ..success
+            ..success.clone()
         };
 
         assert_eq!(
@@ -3080,14 +3129,14 @@ mod tests {
                 id: (sui::types::Digest::ZERO, 0),
                 generics: vec![],
                 data: NexusEventKind::TerminalErrEvalRecorded(TerminalErrEvalRecordedEvent {
-                    dag: sui::types::Address::ZERO,
-                    execution,
+                    dag: generated_id(sui::types::Address::ZERO),
+                    execution: generated_id(execution),
                     walk_index: 1,
                     vertex: RuntimeVertex::plain("failable"),
                     leader: sui::types::Address::THREE,
                     failure_class: WorkflowFailureClass::TerminalToolFailure,
-                    outcome: Some(PostFailureAction::Terminate),
-                    reason: "tool failed".to_string(),
+                    outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                    reason: MoveString::from("tool failed"),
                     err_eval_hash: vec![1, 2, 3],
                     duplicate: false,
                 }),
@@ -3097,15 +3146,12 @@ mod tests {
                 id: (sui::types::Digest::ZERO, 1),
                 generics: vec![],
                 data: NexusEventKind::EndStateReached(EndStateReachedEvent {
-                    dag: sui::types::Address::ZERO,
-                    execution,
+                    dag: generated_id(sui::types::Address::ZERO),
+                    execution: generated_id(execution),
                     walk_index: 0,
                     vertex: RuntimeVertex::plain("final"),
-                    variant: TypeName::new("ok"),
-                    variant_ports_to_data: PortsData::from_map(HashMap::from([(
-                        "answer".to_string(),
-                        NexusData::new_inline(json!(42)),
-                    )])),
+                    variant: output_variant("ok"),
+                    variant_ports_to_data: generated_ports_data(vec![("answer", json!(42))]),
                 }),
                 distribution: None,
             },
@@ -3113,8 +3159,8 @@ mod tests {
                 id: (sui::types::Digest::ZERO, 2),
                 generics: vec![],
                 data: NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
-                    dag: sui::types::Address::ZERO,
-                    execution,
+                    dag: generated_id(sui::types::Address::ZERO),
+                    execution: generated_id(execution),
                     has_any_walk_failed: true,
                     has_any_walk_succeeded: true,
                     was_aborted: false,
@@ -3143,7 +3189,7 @@ mod tests {
                 .get("answer")
                 .expect("answer port")
                 .as_json(),
-            &json!(42)
+            json!(42)
         );
     }
 
@@ -3193,7 +3239,7 @@ mod tests {
                 execution_id,
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: crate::types::InterfaceVersion(7),
+                interface_revision: crate::types::InterfaceVersion::new(7),
                 payment_policy: crate::types::SkillPaymentPolicy::UserFunded,
                 source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),
@@ -3312,7 +3358,7 @@ mod tests {
                 execution_id: *execution_ref.object_id(),
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(7),
+                interface_revision: InterfaceVersion::new(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
                 source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),
@@ -3476,7 +3522,7 @@ mod tests {
                 execution_id: *execution_ref.object_id(),
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceVersion(7),
+                interface_revision: InterfaceVersion::new(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
                 source_kind: crate::types::ExecutionPaymentSourceKind::UserFunded {
                     user: sui::types::Address::from_static("0x1"),

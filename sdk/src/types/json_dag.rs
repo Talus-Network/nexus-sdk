@@ -130,23 +130,61 @@ pub struct Edge {
     pub to: ToPort,
     /// The kind of the edge. This is used to determine how the edge is processed in the workflow.
     /// Defaults to [`EdgeKind::Normal`].
-    #[serde(default)]
+    #[serde(
+        default = "default_edge_kind",
+        deserialize_with = "deserialize_edge_kind"
+    )]
     pub kind: EdgeKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EdgeKind {
-    #[default]
-    Normal,
-    /// For-each and collect control edges.
-    ForEach,
-    Collect,
-    /// Do-while and break control edges.
-    DoWhile,
-    Break,
-    /// Provide static values to loops from outside the loop body.
-    Static,
+pub type EdgeKind = crate::types::generated::interface_types::graph::EdgeKind;
+
+fn default_edge_kind() -> EdgeKind {
+    EdgeKind::Normal
+}
+
+fn deserialize_edge_kind<'de, D>(deserializer: D) -> Result<EdgeKind, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    parse_edge_kind_value(value).map_err(serde::de::Error::custom)
+}
+
+fn parse_edge_kind_value(value: serde_json::Value) -> Result<EdgeKind, String> {
+    match value {
+        serde_json::Value::String(name) => edge_kind_from_name(&name),
+        serde_json::Value::Object(mut object) => {
+            if let Some(name) = object
+                .remove("@variant")
+                .or_else(|| object.remove("_variant_name"))
+                .or_else(|| object.remove("variant"))
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+            {
+                return edge_kind_from_name(&name);
+            }
+
+            if object.len() == 1 {
+                let name = object.keys().next().expect("object has one key");
+                return edge_kind_from_name(name);
+            }
+
+            serde_json::from_value(serde_json::Value::Object(object)).map_err(|err| err.to_string())
+        }
+        value => serde_json::from_value(value).map_err(|err| err.to_string()),
+    }
+}
+
+fn edge_kind_from_name(name: &str) -> Result<EdgeKind, String> {
+    match name {
+        "normal" | "Normal" => Ok(EdgeKind::Normal),
+        "for_each" | "ForEach" => Ok(EdgeKind::ForEach),
+        "collect" | "Collect" => Ok(EdgeKind::Collect),
+        "do_while" | "DoWhile" => Ok(EdgeKind::DoWhile),
+        "break" | "Break" => Ok(EdgeKind::Break),
+        "static" | "Static" => Ok(EdgeKind::Static),
+        _ => Err(format!("unknown edge kind `{name}`")),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -300,5 +338,87 @@ mod tests {
                 method: "demo_verifier_v1".into(),
             })
         );
+    }
+
+    #[test]
+    fn edge_kind_config_uses_generated_graph_edge_kind() {
+        use crate::types::generated::interface_types::graph::EdgeKind as GeneratedEdgeKind;
+
+        let edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "producer",
+                    "output_variant": "ok",
+                    "output_port": "items"
+                },
+                "to": {
+                    "vertex": "consumer",
+                    "input_port": "item"
+                },
+                "kind": "for_each"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(edge.kind, GeneratedEdgeKind::ForEach);
+
+        let bytes = bcs::to_bytes(&edge.kind).unwrap();
+        assert_eq!(
+            bcs::from_bytes::<GeneratedEdgeKind>(&bytes).unwrap(),
+            GeneratedEdgeKind::ForEach
+        );
+    }
+
+    #[test]
+    fn edge_kind_config_accepts_generated_spellings_and_defaults() {
+        let pascal_case_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "loop",
+                    "output_variant": "ok",
+                    "output_port": "next"
+                },
+                "to": {
+                    "vertex": "loop",
+                    "input_port": "continue"
+                },
+                "kind": "DoWhile"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(pascal_case_edge.kind, EdgeKind::DoWhile);
+
+        let wrapper_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "loop",
+                    "output_variant": "ok",
+                    "output_port": "next"
+                },
+                "to": {
+                    "vertex": "loop",
+                    "input_port": "item"
+                },
+                "kind": { "@variant": "Collect" }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(wrapper_edge.kind, EdgeKind::Collect);
+
+        let default_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "producer",
+                    "output_variant": "ok",
+                    "output_port": "result"
+                },
+                "to": {
+                    "vertex": "consumer",
+                    "input_port": "input"
+                }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(default_edge.kind, EdgeKind::Normal);
     }
 }

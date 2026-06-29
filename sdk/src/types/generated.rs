@@ -42,6 +42,17 @@ pub mod scheduler_types {
     include!(concat!(env!("OUT_DIR"), "/scheduler_types.rs"));
 }
 
+pub mod sui_framework_types {
+    #![allow(
+        clippy::all,
+        dead_code,
+        non_camel_case_types,
+        private_interfaces,
+        unused_imports
+    )]
+    include!(concat!(env!("OUT_DIR"), "/sui_framework_types.rs"));
+}
+
 pub mod workflow_types {
     #![allow(
         clippy::all,

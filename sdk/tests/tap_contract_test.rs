@@ -52,6 +52,18 @@ fn object_ref(id: &str, version: u64, digest_byte: u8) -> sui::types::ObjectRefe
     )
 }
 
+fn generated_id(
+    address: sui::types::Address,
+) -> nexus_sdk::types::generated::sui_framework_types::object::ID {
+    nexus_sdk::types::sui_address_to_id(address)
+}
+
+fn generated_interface_version(
+    inner: u64,
+) -> nexus_sdk::types::generated::interface_types::version::InterfaceVersion {
+    nexus_sdk::types::generated::interface_types::version::InterfaceVersion { inner }
+}
+
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
         workflow_pkg_id: addr("0x1"),
@@ -77,13 +89,10 @@ fn nexus_objects() -> NexusObjects {
 
 fn requirements() -> SkillRequirements {
     SkillRequirements {
-        input_schema_commitment: vec![1],
+        input_commitment: vec![1],
         payment_policy: SkillPaymentPolicy::UserFunded,
         schedule_policy: SkillSchedulePolicy::default(),
-        fixed_tools: vec![FixedTool {
-            tool_registry_id: addr("0x6"),
-            tool_fqn: "demo::tool::run".to_string(),
-        }],
+        fixed_tools: vec![FixedTool::new(addr("0x6"), "demo::tool::run")],
     }
 }
 
@@ -92,7 +101,7 @@ fn skill_revision(revision: u64) -> SkillRevisionRecord {
         key: SkillRevisionKey {
             agent_id: addr("0xa1"),
             skill_id: 177,
-            interface_revision: InterfaceVersion(revision),
+            interface_revision: InterfaceVersion::new(revision),
         },
         requirements: requirements(),
     }
@@ -106,7 +115,7 @@ fn skill(agent_id: sui::types::Address, skill_id: u64, active_revision: u64) -> 
         active: true,
         dag_binding: SkillDagBinding::pinned(addr("0x94")),
         requirements: requirements(),
-        current_interface_revision: InterfaceVersion(active_revision),
+        current_interface_revision: InterfaceVersion::new(active_revision),
         scheduled_task_count: 0,
     }
 }
@@ -196,7 +205,7 @@ fn active_skill_revision_resolution_uses_skill_current_revision_pointer() {
     let resolved = resolve_active_tap_skill_revision(&records, &skills, addr("0xa1"), 177)
         .expect("one active skill_revision projection");
 
-    assert_eq!(resolved.key.interface_revision, InterfaceVersion(1));
+    assert_eq!(resolved.key.interface_revision, InterfaceVersion::new(1));
 
     let duplicate = vec![skill_revision(1), skill_revision(1)];
     assert!(matches!(
@@ -213,7 +222,7 @@ fn registry_recovery_projects_current_skill_revision_as_endpoint() {
     let active = registry
         .active_skill_revision_record(addr("0xa1"), 177)
         .expect("active registry skill_revision projection");
-    assert_eq!(active.key.interface_revision, InterfaceVersion(2));
+    assert_eq!(active.key.interface_revision, InterfaceVersion::new(2));
     assert_eq!(active.requirements, requirements());
 
     let records = registry
@@ -225,16 +234,19 @@ fn registry_recovery_projects_current_skill_revision_as_endpoint() {
         .skill_revision_record(SkillRevisionKey {
             agent_id: addr("0xa1"),
             skill_id: 177,
-            interface_revision: InterfaceVersion(2),
+            interface_revision: InterfaceVersion::new(2),
         })
         .expect("current projected skill_revision");
-    assert_eq!(pinned.key.interface_revision, InterfaceVersion(2));
+    assert_eq!(pinned.key.interface_revision, InterfaceVersion::new(2));
 
     let skill_bytes = bcs::to_bytes(&registry.skills[0]).expect("stored skill BCS");
     let stored_skill: SkillRecord = bcs::from_bytes(&skill_bytes).expect("stored skill decodes");
     assert_eq!(stored_skill.agent_id, None);
     assert_eq!(stored_skill.skill_id, None);
-    assert_eq!(stored_skill.current_interface_revision, InterfaceVersion(2));
+    assert_eq!(
+        stored_skill.current_interface_revision,
+        InterfaceVersion::new(2)
+    );
 }
 
 #[test]
@@ -252,17 +264,17 @@ fn nexus_objects_carries_agent_registry_metadata() {
 
 fn request_walk_event() -> RequestWalkExecutionEvent {
     RequestWalkExecutionEvent {
-        dag: addr("0x51"),
-        execution: addr("0x52"),
+        dag: generated_id(addr("0x51")),
+        execution: generated_id(addr("0x52")),
         invoker: addr("0x53"),
         walk_index: 0,
         next_vertex: RuntimeVertex::plain("entry"),
-        evaluations: addr("0x54"),
-        agent_id: addr("0xa1"),
+        evaluations: generated_id(addr("0x54")),
+        agent_id: generated_id(addr("0xa1")),
         skill_id: 177,
-        interface_version: InterfaceVersion(7),
-        scheduled_task_id: None,
-        scheduled_occurrence_index: None,
+        interface_version: generated_interface_version(7),
+        scheduled_task_id: nexus_sdk::types::MoveOption(None),
+        scheduled_occurrence_index: nexus_sdk::types::MoveOption(None),
     }
 }
 
@@ -276,7 +288,7 @@ fn request_walk_context_uses_required_agent_fields() {
 
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
-    assert_eq!(context.interface_revision, InterfaceVersion(7));
+    assert_eq!(context.interface_revision, InterfaceVersion::new(7));
     assert_eq!(context.scheduled_task_id, None);
     assert_eq!(context.scheduled_occurrence_index, None);
 }
@@ -307,7 +319,7 @@ fn request_walk_context_deserializes_move_option_fields() {
 
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
-    assert_eq!(context.interface_revision, InterfaceVersion(7));
+    assert_eq!(context.interface_revision, InterfaceVersion::new(7));
     assert_eq!(context.scheduled_task_id, Some(addr("0x66")));
     assert_eq!(context.scheduled_occurrence_index, Some(3));
 }
@@ -318,14 +330,14 @@ fn publish_artifact_preserves_skill_contract_without_endpoint_digest() {
         name: "weather".to_string(),
         dag_path: PathBuf::from("dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceVersion(3),
+        interface_revision: InterfaceVersion::new(3),
     };
 
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, addr("0x24"))
         .expect("valid artifact");
     assert_eq!(artifact.skill_name, "weather");
     assert_eq!(artifact.dag_id, addr("0x24"));
-    assert_eq!(artifact.interface_revision, InterfaceVersion(3));
+    assert_eq!(artifact.interface_revision, InterfaceVersion::new(3));
     assert_eq!(artifact.requirements, config.requirements);
 
     let value = serde_json::to_value(&artifact).expect("artifact json");
@@ -384,7 +396,7 @@ fn tap_execution_payment_model_matches_live_object_shape() {
     assert_eq!(payment.skill_revision_key().skill_id, 221);
     assert_eq!(
         payment.skill_revision_key().interface_revision,
-        InterfaceVersion(7)
+        InterfaceVersion::new(7)
     );
     assert_eq!(
         payment.payment_policy,
@@ -542,7 +554,7 @@ fn transaction_builders_select_tap_functions() {
         agent,
         addr("0xd1"),
         b"demo".to_vec(),
-        requirements.input_schema_commitment,
+        requirements.input_commitment,
         requirements.payment_policy,
         requirements.schedule_policy,
     )
@@ -586,7 +598,7 @@ fn update_skill_compatibility_builds_dag_and_policy_calls() {
         SkillSchedulePolicy {
             recurrence: RecurrenceKind::Recursive {
                 min_interval_ms: 5000,
-                max_occurrences: Some(3),
+                max_occurrences: nexus_sdk::types::MoveOption(Some(3)),
             },
             allow_recursive: true,
         },
@@ -615,7 +627,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
         name: "demo_agent".to_string(),
         dag_path: PathBuf::from("demo-dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceVersion(1),
+        interface_revision: InterfaceVersion::new(1),
     };
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
         .expect("publish artifact");
@@ -632,7 +644,7 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
         agent_object,
         artifact.dag_id,
         artifact.skill_name.as_bytes().to_vec(),
-        artifact.requirements.input_schema_commitment.clone(),
+        artifact.requirements.input_commitment.clone(),
         artifact.requirements.payment_policy.clone(),
         artifact.requirements.schedule_policy.clone(),
     )
@@ -715,7 +727,7 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
         name: "demo_agent".to_string(),
         dag_path: PathBuf::from("demo-dag.json"),
         requirements: requirements(),
-        interface_revision: InterfaceVersion(1),
+        interface_revision: InterfaceVersion::new(1),
     };
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
         .expect("publish artifact");

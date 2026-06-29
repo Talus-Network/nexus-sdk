@@ -41,7 +41,9 @@ pub(crate) fn schedule_policy_from_cli(
         "once" => RecurrenceKind::Once,
         "recursive" => RecurrenceKind::Recursive {
             min_interval_ms,
-            max_occurrences: (max_occurrences != 0).then_some(max_occurrences),
+            max_occurrences: nexus_sdk::types::MoveOption(
+                (max_occurrences != 0).then_some(max_occurrences),
+            ),
         },
         other => {
             return Err(NexusCliError::Any(anyhow!(
@@ -165,7 +167,7 @@ mod tests {
             SkillSchedulePolicy {
                 recurrence: RecurrenceKind::Recursive {
                     min_interval_ms: 50,
-                    max_occurrences: None,
+                    max_occurrences: nexus_sdk::types::MoveOption(None),
                 },
                 allow_recursive: true,
             }
