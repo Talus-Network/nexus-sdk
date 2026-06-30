@@ -42,4 +42,6 @@ Docs:
 
 - [Tool Development Guidelines](tool-development.md)
 - [Nexus Toolkit Rust](toolkit-rust.md)
+- [Offchain Tool Development Guide](guides/offchain-tool-development.md)
+- [Onchain Tool Development Guide](guides/onchain-tool-development.md)
 - [Tool Communication (HTTPS + Signed HTTP)](guides/tool-communication.md)
