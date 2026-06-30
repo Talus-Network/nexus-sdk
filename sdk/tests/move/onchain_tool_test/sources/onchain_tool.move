@@ -1,5 +1,6 @@
 module onchain_tool::onchain_tool;
 
+use onchain_tool::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
@@ -69,17 +70,21 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 /// - If increase_with = 0, the execution should return an error output variant.
 /// - If increase_with > 100, the counter is increased and returns the LargeIncrement variant.
 ///
-/// We also need to return output data from the onchain tool execution.
-/// We can do this in various ways, one being by simply returning the data directly
-/// from the execute function call. When we do this, we need to consume this output
-/// data for the next call, so we make it a hot potato that is being consumed in submit_on_chain_tool_eval_for_walk.
-public fun execute(
-    worksheet: &mut ProofOfUID,
+/// The production Nexus ABI finalizes output through an owned OnchainToolResult
+/// argument and does not return values from execute.
+entry fun execute(
+    worksheet: ProofOfUID,
+    result: OnchainToolResult,
     counter: &mut RandomCounter,
     increase_with: u64,
     _ctx: &mut TxContext,
 ) {
     let old_count = counter.count;
+    let ProofOfUID { id } = worksheet;
+    object::delete(id);
+    onchain_tool_result::delete_for_testing(result);
+    let _ = old_count;
+    let _ = increase_with;
 }
 
 // === Getters ===
