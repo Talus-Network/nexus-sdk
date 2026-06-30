@@ -420,7 +420,6 @@ pub fn new_invoker_funded_agent_task(
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -438,7 +437,6 @@ pub fn new_invoker_funded_agent_task(
         tx,
         objects,
         agent_id,
-        dag_id,
         priority_fee_per_gas_unit,
         entry_group,
         input_data,
@@ -477,7 +475,6 @@ pub fn new_agent_funded_task(
     registry: sui::tx::Argument,
     agent: sui::tx::Argument,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -494,7 +491,6 @@ pub fn new_agent_funded_task(
         tx,
         objects,
         agent_id,
-        dag_id,
         priority_fee_per_gas_unit,
         entry_group,
         input_data,
@@ -669,7 +665,6 @@ fn scheduled_agent_execution_config_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     agent_id: AgentId,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &std::collections::HashMap<
@@ -686,7 +681,6 @@ fn scheduled_agent_execution_config_arg(
         interface::Graph::entry_group_from_str(tx, objects.interface_pkg_id, entry_group)?;
     let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, objects, input_data)?;
     let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
-    let selected_dag = selected_dag.or(Some(dag_id));
     agent_execution_config_arg(
         tx,
         objects,
@@ -1001,7 +995,6 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xa"),
-            sui::types::Address::from_static("0xd"),
             11,
             "default",
             &std::collections::HashMap::new(),
@@ -1059,7 +1052,6 @@ mod tests {
             registry,
             agent,
             sui::types::Address::from_static("0xa"),
-            sui::types::Address::from_static("0xd"),
             11,
             "default",
             &std::collections::HashMap::new(),
@@ -1090,6 +1082,84 @@ mod tests {
             scheduler::Scheduler::NEW_INVOKER_FUNDED_AGENT_TASK.module
         );
         assert_eq!(call.arguments.len(), 9);
+    }
+
+    fn selected_dag_option_constructor_for_agent_task(
+        selected_dag: Option<sui::types::Address>,
+    ) -> sui::types::Identifier {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let metadata = tx.pure(&1_u64);
+        let constraints = tx.pure(&2_u64);
+        let execution = tx.pure(&3_u64);
+        let registry = tx.pure(&4_u64);
+        let agent = tx.pure(&5_u64);
+
+        new_agent_funded_task(
+            &mut tx,
+            &objects,
+            metadata,
+            constraints,
+            execution,
+            registry,
+            agent,
+            sui::types::Address::from_static("0xa"),
+            11,
+            "default",
+            &std::collections::HashMap::new(),
+            7,
+            selected_dag,
+            50,
+            25,
+            vec![],
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let agent_config_call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .find(|call| {
+                call.package == objects.interface_pkg_id
+                    && call.module
+                        == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.module
+                    && call.function
+                        == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
+            })
+            .expect("agent execution config constructor call");
+        let selected_dag_arg = agent_config_call
+            .arguments
+            .get(6)
+            .expect("selected_dag argument");
+        let sui::types::Argument::Result(option_call_index) = selected_dag_arg else {
+            panic!("expected selected_dag option result, got {selected_dag_arg:?}");
+        };
+        let option_call = inspector.move_call(*option_call_index as usize);
+        assert_eq!(option_call.package, move_std::PACKAGE_ID);
+        assert_eq!(option_call.module, move_std::Option::NONE.module);
+        option_call.function.clone()
+    }
+
+    #[test]
+    fn scheduled_agent_execution_config_preserves_absent_selected_dag_for_pinned_skills() {
+        assert_eq!(
+            selected_dag_option_constructor_for_agent_task(None),
+            move_std::Option::NONE.name,
+        );
+    }
+
+    #[test]
+    fn scheduled_agent_execution_config_preserves_explicit_selected_dag_for_runtime_skills() {
+        assert_eq!(
+            selected_dag_option_constructor_for_agent_task(Some(sui::types::Address::from_static(
+                "0xd",
+            ))),
+            move_std::Option::SOME.name,
+        );
     }
 
     #[test]

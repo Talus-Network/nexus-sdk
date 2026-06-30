@@ -356,6 +356,12 @@ pub(crate) enum TapCommand {
         )]
         entry_group: String,
         #[arg(
+            long = "dag-id",
+            help = "Optional DAG selection for runtime-selected skills. Pinned skills validate this against their pinned DAG when provided.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_id: Option<sui::types::Address>,
+        #[arg(
             long = "input-json",
             short = 'i',
             help = "Initial DAG input data as a JSON object.",
@@ -751,6 +757,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             agent_id,
             skill_id,
             entry_group,
+            dag_id,
             input_json,
             remote,
             metadata,
@@ -776,6 +783,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 agent_id,
                 skill_id,
                 entry_group,
+                dag_id,
                 input_json,
                 remote,
                 metadata,

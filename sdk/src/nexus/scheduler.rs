@@ -290,7 +290,7 @@ impl SchedulerActions {
                     occurrence_budget,
                     selected_dag,
                     authorization_templates,
-                }) => crate::nexus::tap::AgentTaskPayment::AddressFunded {
+                }) => crate::nexus::tap::AgentTaskPayment::UserFunded {
                     prepay_amount,
                     refund_recipient,
                     occurrence_budget,
@@ -320,7 +320,6 @@ impl SchedulerActions {
                 .client
                 .tap()
                 .create_agent_task(crate::nexus::tap::CreateAgentTaskParams {
-                    dag_id,
                     entry_group,
                     input_data,
                     metadata,
@@ -351,12 +350,12 @@ impl SchedulerActions {
             scheduler_tx::new_agent_execution_policy(
                 &mut tx,
                 objects,
-                dag_id,
                 execution_priority_fee_per_gas_unit,
                 entry_group.as_str(),
                 &input_data,
                 agent_id,
                 skill_id,
+                Some(dag_id),
             )
             .map_err(NexusError::TransactionBuilding)?
         } else {
@@ -1092,7 +1091,7 @@ pub(crate) fn extract_task_id(
         })
 }
 
-fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEventKind> {
+pub(crate) fn extract_occurrence_event(response: &ExecutedTransaction) -> Option<NexusEventKind> {
     response.events.iter().find_map(|event| match &event.data {
         NexusEventKind::RequestScheduledOccurrence(_) => Some(event.data.clone()),
         NexusEventKind::OccurrenceScheduled(_) => Some(event.data.clone()),

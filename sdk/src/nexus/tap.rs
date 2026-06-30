@@ -134,7 +134,6 @@ pub struct GetSkillRequirementsResult {
 
 /// Parameters required to create an explicit-agent scheduled task.
 pub struct CreateAgentTaskParams {
-    pub dag_id: sui::types::Address,
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, NexusData>>,
     pub metadata: Vec<(String, String)>,
@@ -164,7 +163,7 @@ pub struct SetAgentTaskStateResult {
 
 #[derive(Clone, Debug)]
 pub enum AgentTaskPayment {
-    AddressFunded {
+    UserFunded {
         prepay_amount: u64,
         refund_recipient: Option<sui::types::Address>,
         occurrence_budget: u64,
@@ -805,7 +804,6 @@ impl TapActions {
         params: CreateAgentTaskParams,
     ) -> Result<crate::nexus::scheduler::CreateTaskResult, NexusError> {
         let CreateAgentTaskParams {
-            dag_id,
             entry_group,
             input_data,
             metadata,
@@ -834,15 +832,19 @@ impl TapActions {
         let constraints_arg =
             scheduler_tx::new_constraints_policy(&mut tx, objects, generator.into())
                 .map_err(NexusError::TransactionBuilding)?;
+        let execution_selected_dag = match &payment {
+            AgentTaskPayment::UserFunded { selected_dag, .. }
+            | AgentTaskPayment::AgentVault { selected_dag, .. } => *selected_dag,
+        };
         let execution_arg = scheduler_tx::new_agent_execution_policy(
             &mut tx,
             objects,
-            dag_id,
             execution_priority_fee_per_gas_unit,
             entry_group.as_str(),
             &input_data,
             agent_id,
             skill_id,
+            execution_selected_dag,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let registry = tx.object(sui::tx::ObjectInput::shared(
@@ -858,7 +860,7 @@ impl TapActions {
             .map_err(NexusError::Rpc)?;
 
         let (task, prepay_amount, occurrence_budget) = match payment {
-            AgentTaskPayment::AddressFunded {
+            AgentTaskPayment::UserFunded {
                 prepay_amount,
                 refund_recipient,
                 occurrence_budget,
@@ -887,7 +889,6 @@ impl TapActions {
                     registry,
                     agent,
                     agent_id,
-                    dag_id,
                     execution_priority_fee_per_gas_unit,
                     entry_group.as_str(),
                     &input_data,
@@ -918,7 +919,6 @@ impl TapActions {
                     registry,
                     agent,
                     agent_id,
-                    dag_id,
                     execution_priority_fee_per_gas_unit,
                     entry_group.as_str(),
                     &input_data,
@@ -952,13 +952,37 @@ impl TapActions {
 
         let mut initial_schedule_result = None;
         if let Some(schedule) = initial_schedule_request {
-            let scheduler = self.client.scheduler();
-            let task_object = scheduler.fetch_task(task_id).await?;
-            initial_schedule_result = Some(
-                scheduler
-                    .enqueue_occurrence(&task_object, schedule, address)
-                    .await?,
-            );
+            if schedule.start_ms.is_some() {
+                return Err(NexusError::Configuration(
+                    "agent-owned TAP scheduled tasks support relative initial occurrences; use --schedule-start-offset-ms"
+                        .into(),
+                ));
+            }
+            let task_object = self.client.scheduler().fetch_task(task_id).await?;
+            let fresh_agent_ref = self
+                .client
+                .crawler()
+                .get_object_metadata(agent_id)
+                .await
+                .map_err(NexusError::Rpc)?;
+            let agent_input = agent_input_from_metadata(&fresh_agent_ref)
+                .map_err(NexusError::TransactionBuilding)?;
+            let mut schedule_tx = sui::tx::TransactionBuilder::new();
+            scheduler_tx::add_occurrence_relative_for_agent_task(
+                &mut schedule_tx,
+                objects,
+                &task_object.object_ref(),
+                agent_input,
+                schedule.start_offset_ms.expect("validated start offset"),
+                schedule.deadline_offset_ms,
+                schedule.priority_fee_per_gas_unit,
+            )
+            .map_err(NexusError::TransactionBuilding)?;
+            let schedule_response = self.submit_tap_transaction(schedule_tx, address).await?;
+            initial_schedule_result = Some(crate::nexus::scheduler::ScheduleExecutionResult {
+                tx_digest: schedule_response.digest,
+                event: crate::nexus::scheduler::extract_occurrence_event(&schedule_response),
+            });
         }
 
         Ok(crate::nexus::scheduler::CreateTaskResult {
