@@ -5,7 +5,7 @@
 
 use {
     crate::{
-        types::{PostFailureAction, StorageKind, VerifierConfig},
+        types::{interface::graph::EdgeKind, PostFailureAction, StorageKind, VerifierConfig},
         ToolFqn,
     },
     serde::{Deserialize, Deserializer},
@@ -136,8 +136,6 @@ pub struct Edge {
     )]
     pub kind: EdgeKind,
 }
-
-pub type EdgeKind = crate::types::generated::interface_types::graph::EdgeKind;
 
 fn default_edge_kind() -> EdgeKind {
     EdgeKind::Normal
@@ -341,8 +339,8 @@ mod tests {
     }
 
     #[test]
-    fn edge_kind_config_uses_generated_graph_edge_kind() {
-        use crate::types::generated::interface_types::graph::EdgeKind as GeneratedEdgeKind;
+    fn edge_kind_config_uses_graph_edge_kind() {
+        use crate::types::interface::graph::EdgeKind as DirectEdgeKind;
 
         let edge: Edge = serde_json::from_str(
             r#"{
@@ -360,17 +358,17 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(edge.kind, GeneratedEdgeKind::ForEach);
+        assert_eq!(edge.kind, DirectEdgeKind::ForEach);
 
         let bytes = bcs::to_bytes(&edge.kind).unwrap();
         assert_eq!(
-            bcs::from_bytes::<GeneratedEdgeKind>(&bytes).unwrap(),
-            GeneratedEdgeKind::ForEach
+            bcs::from_bytes::<DirectEdgeKind>(&bytes).unwrap(),
+            DirectEdgeKind::ForEach
         );
     }
 
     #[test]
-    fn edge_kind_config_accepts_generated_spellings_and_defaults() {
+    fn edge_kind_config_accepts_move_spellings_and_defaults() {
         let pascal_case_edge: Edge = serde_json::from_str(
             r#"{
                 "from": {

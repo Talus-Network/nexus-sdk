@@ -2,11 +2,9 @@
 
 use {
     crate::types::{
-        generated::{
-            interface_types::graph::{InputPort, OutputPort},
-            primitives_types::data::NexusData,
-            sui_framework_types::vec_map::{Entry as GeneratedEntry, VecMap as GeneratedVecMap},
-        },
+        interface::graph::{InputPort, OutputPort},
+        primitives::data::NexusData,
+        sui_framework::vec_map::{Entry as VecMapEntry, VecMap as MoveVecMap},
         MoveString,
         StorageConf,
     },
@@ -14,8 +12,8 @@ use {
     std::collections::HashMap,
 };
 
-pub type PortsData = GeneratedVecMap<InputPort, NexusData>;
-pub type OutputPortsData = GeneratedVecMap<OutputPort, NexusData>;
+pub type PortsData = MoveVecMap<InputPort, NexusData>;
+pub type OutputPortsData = MoveVecMap<OutputPort, NexusData>;
 
 impl PortsData {
     pub fn into_map(self) -> HashMap<String, NexusData> {
@@ -29,7 +27,7 @@ impl PortsData {
         Self {
             contents: values
                 .into_iter()
-                .map(|(key, value)| GeneratedEntry {
+                .map(|(key, value)| VecMapEntry {
                     key: InputPort {
                         name: MoveString::from(key),
                     },
@@ -47,7 +45,7 @@ impl PortsData {
                     .value
                     .commit(&storage_conf)
                     .await
-                    .map(|value| GeneratedEntry {
+                    .map(|value| VecMapEntry {
                         key: entry.key,
                         value,
                     })
@@ -67,7 +65,7 @@ impl PortsData {
                     .value
                     .fetch(&storage_conf)
                     .await
-                    .map(|value| GeneratedEntry {
+                    .map(|value| VecMapEntry {
                         key: entry.key,
                         value,
                     })
@@ -96,7 +94,7 @@ impl OutputPortsData {
                     .value
                     .commit(&storage_conf)
                     .await
-                    .map(|value| GeneratedEntry {
+                    .map(|value| VecMapEntry {
                         key: entry.key,
                         value,
                     })
@@ -116,7 +114,7 @@ impl OutputPortsData {
                     .value
                     .fetch(&storage_conf)
                     .await
-                    .map(|value| GeneratedEntry {
+                    .map(|value| VecMapEntry {
                         key: entry.key,
                         value,
                     })
@@ -236,7 +234,7 @@ mod tests {
     #[tokio::test]
     async fn test_output_ports_data_fetch_all_success() {
         let ports_data = OutputPortsData {
-            contents: vec![GeneratedEntry {
+            contents: vec![VecMapEntry {
                 key: OutputPort {
                     name: MoveString::from("output1"),
                 },

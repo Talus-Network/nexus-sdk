@@ -1,11 +1,11 @@
 use {
     super::*,
+    crate::tap::tap_output::payment_refill_result_json,
     nexus_sdk::nexus::tap::{
         fetch_execution_payment,
         AccomplishExecutionPaymentParams,
         RefillExecutionPaymentFromAgentVaultParams,
         RefillExecutionPaymentParams,
-        RefillExecutionPaymentResult,
     },
     std::time::Duration,
 };
@@ -248,21 +248,6 @@ async fn refill_payment(
     json_output(&payment_refill_result_json(&result))
 }
 
-fn payment_refill_result_json(result: &RefillExecutionPaymentResult) -> serde_json::Value {
-    json!({
-        "function": if result.agent_id.is_some() {
-            "refill_tap_execution_payment_from_agent_vault"
-        } else {
-            "refill_tap_execution_payment"
-        },
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "execution_id": result.execution_id,
-        "agent_id": result.agent_id,
-        "amount": result.amount,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use {super::*, std::ffi::OsString};
@@ -310,50 +295,5 @@ mod tests {
             error.to_string().contains("No Talus agent alias"),
             "unexpected error: {error}"
         );
-    }
-
-    #[test]
-    fn payment_refill_result_json_marks_coin_refill_function() {
-        let result = RefillExecutionPaymentResult {
-            tx_digest: sui::types::Digest::default(),
-            tx_checkpoint: 5,
-            execution_id: sui::types::Address::from_static("0xe"),
-            agent_id: None,
-            amount: 123,
-        };
-
-        let json = payment_refill_result_json(&result);
-
-        assert_eq!(json["function"], "refill_tap_execution_payment");
-        assert_eq!(json["tx_checkpoint"], 5);
-        assert_eq!(
-            json["execution_id"],
-            sui::types::Address::from_static("0xe").to_string()
-        );
-        assert_eq!(json["agent_id"], serde_json::Value::Null);
-        assert_eq!(json["amount"], 123);
-    }
-
-    #[test]
-    fn payment_refill_result_json_marks_agent_vault_refill_function() {
-        let result = RefillExecutionPaymentResult {
-            tx_digest: sui::types::Digest::default(),
-            tx_checkpoint: 8,
-            execution_id: sui::types::Address::from_static("0xe"),
-            agent_id: Some(sui::types::Address::from_static("0xa")),
-            amount: 456,
-        };
-
-        let json = payment_refill_result_json(&result);
-
-        assert_eq!(
-            json["function"],
-            "refill_tap_execution_payment_from_agent_vault"
-        );
-        assert_eq!(
-            json["agent_id"],
-            sui::types::Address::from_static("0xa").to_string()
-        );
-        assert_eq!(json["amount"], 456);
     }
 }

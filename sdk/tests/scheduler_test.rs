@@ -6,8 +6,8 @@ use {
         types::{
             deserialize_sui_option_u64,
             deserialize_sui_u64,
-            PolicySymbol,
-            TaskState,
+            primitives::policy::Symbol as PolicySymbol,
+            scheduler::scheduler::State as TaskState,
             TypeName,
         },
     },
@@ -30,7 +30,7 @@ fn policy_symbol_supports_pos0_fallback_shape() {
 }
 
 #[test]
-fn task_state_uses_generated_enum_deserialization() {
+fn task_state_uses_move_enum_deserialization() {
     let paused: TaskState =
         serde_json::from_value(json!("Paused")).expect("deserialize TaskState from string");
     assert_eq!(paused, TaskState::Paused);

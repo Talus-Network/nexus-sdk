@@ -3,7 +3,7 @@ use {
     crate::types::AgentId,
     nexus_sdk::{
         nexus::client::NexusClient,
-        types::{RecurrenceKind, SkillSchedulePolicy},
+        types::interface::agent::{SkillRecurrenceKind, SkillSchedulePolicy},
     },
 };
 
@@ -38,8 +38,8 @@ pub(crate) fn schedule_policy_from_cli(
     allow_recursive: bool,
 ) -> AnyResult<SkillSchedulePolicy, NexusCliError> {
     let recurrence = match recurrence_kind {
-        "once" => RecurrenceKind::Once,
-        "recursive" => RecurrenceKind::Recursive {
+        "once" => SkillRecurrenceKind::Once,
+        "recursive" => SkillRecurrenceKind::Recursive {
             min_interval_ms,
             max_occurrences: nexus_sdk::types::MoveOption(
                 (max_occurrences != 0).then_some(max_occurrences),
@@ -158,14 +158,14 @@ mod tests {
         assert_eq!(
             schedule_policy_from_cli("once", 50, 3, false).unwrap(),
             SkillSchedulePolicy {
-                recurrence: RecurrenceKind::Once,
+                recurrence: SkillRecurrenceKind::Once,
                 allow_recursive: false,
             }
         );
         assert_eq!(
             schedule_policy_from_cli("recursive", 50, 0, true).unwrap(),
             SkillSchedulePolicy {
-                recurrence: RecurrenceKind::Recursive {
+                recurrence: SkillRecurrenceKind::Recursive {
                     min_interval_ms: 50,
                     max_occurrences: nexus_sdk::types::MoveOption(None),
                 },

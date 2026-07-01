@@ -81,25 +81,20 @@ impl<'de> Deserialize<'de> for TypeName {
     }
 }
 
-pub type Bag = crate::types::generated::sui_framework_types::bag::Bag;
-pub type ObjectBag = crate::types::generated::sui_framework_types::object_bag::ObjectBag;
-pub type PriorityQueue<T> =
-    crate::types::generated::sui_framework_types::priority_queue::PriorityQueue<T>;
-pub type MoveTable<K, V> = crate::types::generated::sui_framework_types::table::Table<K, V>;
-pub type MoveVecSet<T> = crate::types::generated::sui_framework_types::vec_set::VecSet<T>;
-pub type ID = crate::types::generated::sui_framework_types::object::ID;
-pub type UID = crate::types::generated::sui_framework_types::object::UID;
+pub type Bag = crate::types::sui_framework::bag::Bag;
+pub type ObjectBag = crate::types::sui_framework::object_bag::ObjectBag;
+pub type PriorityQueue<T> = crate::types::sui_framework::priority_queue::PriorityQueue<T>;
+pub type MoveTable<K, V> = crate::types::sui_framework::table::Table<K, V>;
+pub type MoveVecSet<T> = crate::types::sui_framework::vec_set::VecSet<T>;
+pub type ID = crate::types::sui_framework::object::ID;
+pub type UID = crate::types::sui_framework::object::UID;
 
-pub fn sui_address_to_id(
-    bytes: sui::types::Address,
-) -> crate::types::generated::sui_framework_types::object::ID {
-    crate::types::generated::sui_framework_types::object::ID { bytes }
+pub fn sui_address_to_id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
+    crate::types::sui_framework::object::ID { bytes }
 }
 
-pub fn sui_address_to_uid(
-    bytes: sui::types::Address,
-) -> crate::types::generated::sui_framework_types::object::UID {
-    crate::types::generated::sui_framework_types::object::UID {
+pub fn sui_address_to_uid(bytes: sui::types::Address) -> crate::types::sui_framework::object::UID {
+    crate::types::sui_framework::object::UID {
         id: sui_address_to_id(bytes),
     }
 }
@@ -138,15 +133,31 @@ impl<'de> Deserialize<'de> for ObjectIdSerde {
     }
 }
 
-impl From<ObjectIdSerde> for crate::types::generated::sui_framework_types::object::ID {
+impl From<ObjectIdSerde> for crate::types::sui_framework::object::ID {
     fn from(value: ObjectIdSerde) -> Self {
         sui_address_to_id(value.bytes)
     }
 }
 
-impl From<crate::types::generated::sui_framework_types::object::ID> for ObjectIdSerde {
-    fn from(value: crate::types::generated::sui_framework_types::object::ID) -> Self {
+impl From<ObjectIdSerde> for crate::types::sui_framework::object::UID {
+    fn from(value: ObjectIdSerde) -> Self {
+        Self {
+            id: sui_address_to_id(value.bytes),
+        }
+    }
+}
+
+impl From<crate::types::sui_framework::object::ID> for ObjectIdSerde {
+    fn from(value: crate::types::sui_framework::object::ID) -> Self {
         Self { bytes: value.bytes }
+    }
+}
+
+impl From<crate::types::sui_framework::object::UID> for ObjectIdSerde {
+    fn from(value: crate::types::sui_framework::object::UID) -> Self {
+        Self {
+            bytes: value.id.bytes,
+        }
     }
 }
 
@@ -176,23 +187,19 @@ impl Serialize for InterfaceVersionSerde {
     }
 }
 
-impl From<InterfaceVersionSerde>
-    for crate::types::generated::interface_types::version::InterfaceVersion
-{
+impl From<InterfaceVersionSerde> for crate::types::interface::version::InterfaceVersion {
     fn from(value: InterfaceVersionSerde) -> Self {
         Self { inner: value.inner }
     }
 }
 
-impl From<crate::types::generated::interface_types::version::InterfaceVersion>
-    for InterfaceVersionSerde
-{
-    fn from(value: crate::types::generated::interface_types::version::InterfaceVersion) -> Self {
+impl From<crate::types::interface::version::InterfaceVersion> for InterfaceVersionSerde {
+    fn from(value: crate::types::interface::version::InterfaceVersion) -> Self {
         Self { inner: value.inner }
     }
 }
 
-impl Clone for crate::types::generated::sui_framework_types::object::UID {
+impl Clone for crate::types::sui_framework::object::UID {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
@@ -200,7 +207,7 @@ impl Clone for crate::types::generated::sui_framework_types::object::UID {
     }
 }
 
-impl<T0, T1> Clone for crate::types::generated::sui_framework_types::vec_map::Entry<T0, T1>
+impl<T0, T1> Clone for crate::types::sui_framework::vec_map::Entry<T0, T1>
 where
     T0: Clone,
     T1: Clone,
@@ -213,7 +220,7 @@ where
     }
 }
 
-impl<T0, T1> Clone for crate::types::generated::sui_framework_types::vec_map::VecMap<T0, T1>
+impl<T0, T1> Clone for crate::types::sui_framework::vec_map::VecMap<T0, T1>
 where
     T0: Clone,
     T1: Clone,
@@ -225,7 +232,16 @@ where
     }
 }
 
-impl<K, V> Clone for crate::types::generated::sui_framework_types::table::Table<K, V> {
+impl<T0> Clone for crate::types::sui_framework::balance::Balance<T0> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value,
+            phantom_t0: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V> Clone for crate::types::sui_framework::table::Table<K, V> {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
@@ -236,7 +252,7 @@ impl<K, V> Clone for crate::types::generated::sui_framework_types::table::Table<
     }
 }
 
-impl<K, V> crate::types::generated::sui_framework_types::table::Table<K, V> {
+impl<K, V> crate::types::sui_framework::table::Table<K, V> {
     pub fn new(id: sui::types::Address, size: u64) -> Self {
         Self {
             id: sui_address_to_uid(id),
@@ -495,43 +511,6 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct SuiBalance {
-    pub value: u64,
-}
-
-impl<'de> Deserialize<'de> for SuiBalance {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            struct RawBalance {
-                value: u64,
-            }
-
-            return RawBalance::deserialize(deserializer).map(|balance| Self {
-                value: balance.value,
-            });
-        }
-
-        let value =
-            super::move_json::strip_fields_owned(serde_json::Value::deserialize(deserializer)?);
-        if let Some(parsed) = super::move_json::parse_u64_value(&value).map_err(D::Error::custom)? {
-            return Ok(Self { value: parsed });
-        }
-
-        let parsed = value
-            .as_object()
-            .and_then(|object| object.get("value"))
-            .and_then(|value| super::move_json::parse_u64_value(value).ok().flatten())
-            .ok_or_else(|| D::Error::custom("missing SUI balance value"))?;
-
-        Ok(Self { value: parsed })
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct MoveString {
     pub bytes: Vec<u8>,
@@ -753,10 +732,7 @@ impl<T0, T1, T2> MoveType for Ignored<T0, T1, T2> {
 impl<T0, T1, T2> HasCopy for Ignored<T0, T1, T2> {}
 impl<T0, T1, T2> HasDrop for Ignored<T0, T1, T2> {}
 impl<T0, T1, T2> HasStore for Ignored<T0, T1, T2> {}
-impl<T0, T1> HasCopy for crate::types::generated::sui_framework_types::vec_map::VecMap<T0, T1> where
-    Self: Clone
-{
-}
+impl<T0, T1> HasCopy for crate::types::sui_framework::vec_map::VecMap<T0, T1> where Self: Clone {}
 impl HasCopy for MoveString {}
 impl HasDrop for MoveString {}
 impl HasStore for MoveString {}
@@ -796,11 +772,9 @@ mod tests {
         }
     }
 
-    fn generated_uid(
-        value: &'static str,
-    ) -> crate::types::generated::sui_framework_types::object::UID {
-        crate::types::generated::sui_framework_types::object::UID {
-            id: crate::types::generated::sui_framework_types::object::ID {
+    fn uid_for_test(value: &'static str) -> crate::types::sui_framework::object::UID {
+        crate::types::sui_framework::object::UID {
+            id: crate::types::sui_framework::object::ID {
                 bytes: address(value),
             },
         }
@@ -875,8 +849,8 @@ mod tests {
     }
 
     #[test]
-    fn generated_framework_types_consume_bcs_layout_bytes() {
-        use crate::types::generated::sui_framework_types::{
+    fn framework_types_consume_bcs_layout_bytes() {
+        use crate::types::sui_framework::{
             balance,
             object_table,
             sui as sui_module,
@@ -929,7 +903,7 @@ mod tests {
 
         let object_table = ObjectTableThenSentinel {
             table: object_table::ObjectTable {
-                id: generated_uid("0x456"),
+                id: uid_for_test("0x456"),
                 size: 3,
                 phantom_t0: PhantomData,
                 phantom_t1: PhantomData,
@@ -963,7 +937,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_support_move_tags_match_sui_framework_types() {
+    fn support_move_tags_match_sui_framework_types() {
         fn assert_struct_type<T>()
         where
             T: MoveStruct + MoveType,
@@ -1017,13 +991,13 @@ mod tests {
     }
 
     #[test]
-    fn generated_support_structs_round_trip_through_serde() {
+    fn support_structs_round_trip_through_serde() {
         let bag = Bag {
-            id: generated_uid("0x456"),
+            id: uid_for_test("0x456"),
             size: 9,
         };
         let object_bag = ObjectBag {
-            id: generated_uid("0x789"),
+            id: uid_for_test("0x789"),
             size: 11,
         };
 

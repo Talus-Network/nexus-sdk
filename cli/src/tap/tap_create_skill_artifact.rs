@@ -3,12 +3,13 @@ use {
     nexus_sdk::{
         nexus::{models::Dag, workflow::fetch_dag_vertices_bcs},
         types::{
+            interface::{
+                agent::{FixedTool, SkillRequirement},
+                payment::SkillPaymentPolicy,
+                version::InterfaceVersion,
+            },
             tap_input_commitment_from_dag_inputs,
             validate_requirements,
-            FixedTool,
-            InterfaceVersion,
-            SkillPaymentPolicy,
-            SkillRequirements,
         },
     },
 };
@@ -34,12 +35,12 @@ pub(crate) async fn create_skill_artifact(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Creating TAP skill publish artifact for '{skill_name}'");
 
-    let input_schema_commitment = fetch_input_schema_commitment(dag_id).await?;
+    let input_commitment = fetch_input_commitment(dag_id).await?;
     let artifact = build_artifact(
         skill_name,
         dag_id,
         interface_revision,
-        input_schema_commitment,
+        input_commitment,
         payment_mode,
         agent_funded_max_budget,
         recurrence_kind,
@@ -92,7 +93,7 @@ fn build_artifact(
         .map(parse_fixed_tool)
         .collect::<AnyResult<Vec<_>, _>>()?;
 
-    let requirements = SkillRequirements {
+    let requirements = SkillRequirement {
         input_commitment,
         payment_policy,
         schedule_policy,
@@ -108,9 +109,7 @@ fn build_artifact(
     })
 }
 
-async fn fetch_input_schema_commitment(
-    dag_id: sui::types::Address,
-) -> AnyResult<Vec<u8>, NexusCliError> {
+async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8>, NexusCliError> {
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
     let dag = crawler.get_object::<Dag>(dag_id).await.map_err(|error| {

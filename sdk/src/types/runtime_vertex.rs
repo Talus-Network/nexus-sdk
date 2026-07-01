@@ -1,11 +1,7 @@
 //! SDK helpers for generated `nexus_interface::graph::RuntimeVertex`.
 
-pub use crate::types::generated::interface_types::graph::RuntimeVertex;
-use crate::types::{
-    generated::interface_types::graph::Vertex,
-    generated_support::MoveString,
-    TypeName,
-};
+pub use crate::types::interface::graph::RuntimeVertex;
+use crate::types::{interface::graph::Vertex, move_binding_support::MoveString, TypeName};
 
 impl RuntimeVertex {
     pub fn plain(vertex: &str) -> Self {
@@ -88,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn type_name_conversions_create_generated_vertices() {
+    fn type_name_conversions_create_move_vertices() {
         let owned_name = TypeName::new("owned");
         let borrowed_name = TypeName::new("borrowed");
 

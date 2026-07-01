@@ -9,7 +9,7 @@ use crate::{
     idents::ModuleAndNameIdent,
     sui,
     types::{
-        EdgeKind,
+        interface::graph::EdgeKind,
         FailureEvidenceKind,
         PostFailureAction,
         RuntimeVertex,

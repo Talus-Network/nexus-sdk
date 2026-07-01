@@ -17,7 +17,7 @@ use {
             GeneratorKind,
             OccurrenceRequest,
         },
-        types::{PolicySymbol, StorageConf},
+        types::{primitives::policy::Symbol, StorageConf},
     },
     std::collections::HashMap,
 };
@@ -191,9 +191,9 @@ fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     }
 }
 
-fn describe_generator(symbol: &PolicySymbol) -> String {
+fn describe_generator(symbol: &Symbol) -> String {
     match symbol {
-        PolicySymbol::Witness { pos0 } => pos0.name.clone(),
-        PolicySymbol::Uid { pos0 } => pos0.bytes.to_string(),
+        Symbol::Witness { pos0 } => pos0.name.clone(),
+        Symbol::Uid { pos0 } => pos0.bytes.to_string(),
     }
 }

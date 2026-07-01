@@ -9,17 +9,17 @@ use {
             deserialize_move_option_field,
             deserialize_move_option_sui_u64_field,
             deserialize_sui_u64,
+            interface::version::InterfaceVersion,
             parse_runtime_vertex_value,
             parse_string_value,
             parse_u64_value,
             strip_fields_owned,
             AgentId,
-            InterfaceVersion,
             MoveOption,
             MoveVecSet,
             NexusData,
             SkillId,
-            SkillRevisionKey,
+            SkillRevisionLookupKey,
             TypeName,
             VerifierConfig,
             VerifierMode,
@@ -88,8 +88,8 @@ pub struct DagExecution {
 }
 
 impl DagExecution {
-    pub fn skill_revision_key(&self) -> Option<SkillRevisionKey> {
-        Some(SkillRevisionKey {
+    pub fn skill_revision_key(&self) -> Option<SkillRevisionLookupKey> {
+        Some(SkillRevisionLookupKey {
             agent_id: self.agent_id,
             skill_id: self.skill_id,
             interface_revision: self.interface_version,
@@ -628,7 +628,7 @@ pub struct DagOutputVariantPort {
 mod tests {
     use {
         super::*,
-        crate::{events::RequestWalkContext, fqn, types::InterfaceVersion},
+        crate::{events::RequestWalkContext, fqn, types::interface::version::InterfaceVersion},
         serde_json::json,
         std::str::FromStr,
     };

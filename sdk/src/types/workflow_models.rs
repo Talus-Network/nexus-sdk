@@ -1,5 +1,5 @@
-pub use crate::types::generated::{
-    interface_types::{
+pub use crate::types::{
+    interface::{
         graph::PostFailureAction,
         verifier::{
             ExternalVerifierSubmitEvidence,
@@ -19,7 +19,7 @@ pub use crate::types::generated::{
             VerifierMode,
         },
     },
-    workflow_types::execution_failure::WorkflowFailureClass,
+    workflow::execution_failure::WorkflowFailureClass,
 };
 use {
     crate::{sui, types::SharedObjectRef},
@@ -121,8 +121,8 @@ mod tests {
         crate::types::{MoveOption, PublishedMoveEnum},
     };
 
-    fn id(bytes: sui::types::Address) -> crate::types::generated::sui_framework_types::object::ID {
-        crate::types::generated_support::sui_address_to_id(bytes)
+    fn id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
+        crate::types::move_binding_support::sui_address_to_id(bytes)
     }
 
     #[test]

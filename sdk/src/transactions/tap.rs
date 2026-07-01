@@ -2,15 +2,14 @@ use crate::{
     idents::{interface, move_std, registry::AgentRegistry, scheduler, sui_framework},
     sui,
     types::{
+        interface::{
+            agent::{FixedTool, SkillRecurrenceKind, SkillSchedulePolicy},
+            payment::{ScheduledOccurrenceFinalState, SkillPaymentPolicy},
+        },
         AgentId,
         AgentVertexAuthorizationTemplate,
-        FixedTool,
         NexusObjects,
-        RecurrenceKind,
-        ScheduledOccurrenceFinalState,
         SkillId,
-        SkillPaymentPolicy,
-        SkillSchedulePolicy,
     },
 };
 
@@ -523,13 +522,13 @@ fn schedule_policy_arg(
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::tx::Argument> {
     let recurrence = match &schedule_policy.recurrence {
-        RecurrenceKind::Once => tap_interface_call(
+        SkillRecurrenceKind::Once => tap_interface_call(
             tx,
             objects,
             crate::idents::interface::Agent::RECURRENCE_ONCE,
             vec![],
         ),
-        RecurrenceKind::Recursive {
+        SkillRecurrenceKind::Recursive {
             min_interval_ms,
             max_occurrences,
         } => {

@@ -175,7 +175,7 @@ refetches the IR.
    framework packages, and runs the generator binary:
 
    ```bash
-   just sdk regenerate-idents
+   just sdk rebind
    ```
 
    Or invoke the binary directly:

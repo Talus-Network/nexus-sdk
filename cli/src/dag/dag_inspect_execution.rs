@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn test_terminal_err_eval_trace_entry() {
         let event = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
                 dag: sui_address_to_id(sui::types::Address::ZERO),
                 execution: sui_address_to_id(sui::types::Address::TWO),
                 walk_index: 5,
@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_terminal_err_eval_duplicate_suffix() {
         let duplicate = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
                 dag: sui_address_to_id(sui::types::Address::ZERO),
                 execution: sui_address_to_id(sui::types::Address::TWO),
                 walk_index: 0,
@@ -305,7 +305,7 @@ mod tests {
         );
 
         let first = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
                 duplicate: false,
                 ..match &duplicate {
                     NexusEventKind::TerminalErrEvalRecorded(event) => event.clone(),

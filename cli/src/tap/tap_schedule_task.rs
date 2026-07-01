@@ -6,7 +6,7 @@ use {
             scheduler::{CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest},
             tap::fetch_configured_active_tap_skill_execution_target,
         },
-        types::{SkillDagBinding, StorageConf},
+        types::{interface::agent::SkillDagBinding, StorageConf},
     },
     std::collections::HashMap,
 };
@@ -70,7 +70,7 @@ pub(crate) async fn schedule_tap_task(
     let (dag_id, runtime_selected_dag) = resolve_scheduled_tap_dag_selection(
         agent_id,
         skill_id,
-        target.data.skill.dag_binding,
+        target.data.skill.dag_binding().clone(),
         selected_dag,
     )?;
 

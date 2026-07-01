@@ -8,7 +8,6 @@ use {
         idents::primitives,
         sui,
         types::{
-            generated::workflow_types,
             normalize_json_string,
             parse_address_value,
             parse_bool_value,
@@ -17,6 +16,7 @@ use {
             parse_runtime_vertex_value,
             parse_string_value,
             parse_u64_value,
+            workflow,
             NexusObjects,
         },
     },
@@ -93,21 +93,24 @@ impl FromSuiGrpcEvent for NexusEvent {
 /// Parse a nested Move-JSON payload into a full terminal `_err_eval` event.
 pub fn parse_terminal_err_eval_recorded_event_value(
     value: serde_json::Value,
-) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedEvent>> {
+) -> anyhow::Result<Option<crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent>>
+{
     parse_nested_event_value(value, try_parse_terminal_err_eval_recorded_event)
 }
 
 /// Parse a nested Move-JSON payload into submission-failure evidence.
 pub fn parse_submission_failure_evidence_recorded_event(
     value: serde_json::Value,
-) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceRecordedEvent>> {
+) -> anyhow::Result<
+    Option<crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent>,
+> {
     parse_nested_event_value(value, try_parse_submission_failure_evidence_recorded_event)
 }
 
 /// Parse a nested Move-JSON payload into a verification-verdict event.
 pub fn parse_verification_verdict_event(
     value: serde_json::Value,
-) -> anyhow::Result<Option<crate::events::VerificationVerdictEvent>> {
+) -> anyhow::Result<Option<crate::types::workflow::execution_events::VerificationVerdictEvent>> {
     parse_nested_event_value(value, try_parse_verification_verdict_event)
 }
 
@@ -222,7 +225,8 @@ pub(crate) fn parse_nested_event_value<T>(
 
 fn try_parse_terminal_err_eval_recorded_event(
     value: &serde_json::Value,
-) -> anyhow::Result<Option<crate::events::TerminalErrEvalRecordedEvent>> {
+) -> anyhow::Result<Option<crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent>>
+{
     let serde_json::Value::Object(object) = value else {
         return Ok(None);
     };
@@ -244,9 +248,8 @@ fn try_parse_terminal_err_eval_recorded_event(
         }
     }
 
-    let Some(raw) = parse_generated_event::<
-        workflow_types::execution_events::TerminalErrEvalRecordedEvent,
-    >(value)?
+    let Some(raw) =
+        parse_move_event::<workflow::execution_events::TerminalErrEvalRecordedEvent>(value)?
     else {
         return Ok(None);
     };
@@ -256,7 +259,9 @@ fn try_parse_terminal_err_eval_recorded_event(
 
 fn try_parse_submission_failure_evidence_recorded_event(
     value: &serde_json::Value,
-) -> anyhow::Result<Option<crate::events::SubmissionFailureEvidenceRecordedEvent>> {
+) -> anyhow::Result<
+    Option<crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent>,
+> {
     let serde_json::Value::Object(object) = value else {
         return Ok(None);
     };
@@ -284,8 +289,8 @@ fn try_parse_submission_failure_evidence_recorded_event(
     }
 
     let value = event_value_with_default_dag(value);
-    let Some(raw) = parse_generated_event::<
-        workflow_types::execution_events::SubmissionFailureEvidenceRecordedEvent,
+    let Some(raw) = parse_move_event::<
+        workflow::execution_events::SubmissionFailureEvidenceRecordedEvent,
     >(&value)?
     else {
         return Ok(None);
@@ -306,7 +311,7 @@ fn event_value_with_default_dag(value: &serde_json::Value) -> serde_json::Value 
 
 fn try_parse_verification_verdict_event(
     value: &serde_json::Value,
-) -> anyhow::Result<Option<crate::events::VerificationVerdictEvent>> {
+) -> anyhow::Result<Option<crate::types::workflow::execution_events::VerificationVerdictEvent>> {
     let serde_json::Value::Object(object) = value else {
         return Ok(None);
     };
@@ -335,9 +340,8 @@ fn try_parse_verification_verdict_event(
     }
 
     let value = event_value_with_default_dag(value);
-    let Some(raw) = parse_generated_event::<
-        workflow_types::execution_events::VerificationVerdictEvent,
-    >(&value)?
+    let Some(raw) =
+        parse_move_event::<workflow::execution_events::VerificationVerdictEvent>(&value)?
     else {
         return Ok(None);
     };
@@ -351,31 +355,31 @@ trait IntoPublicEvent {
     fn into_public(self) -> Self::Public;
 }
 
-impl IntoPublicEvent for workflow_types::execution_events::TerminalErrEvalRecordedEvent {
-    type Public = crate::events::TerminalErrEvalRecordedEvent;
+impl IntoPublicEvent for workflow::execution_events::TerminalErrEvalRecordedEvent {
+    type Public = crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent;
 
     fn into_public(self) -> Self::Public {
         self
     }
 }
 
-impl IntoPublicEvent for workflow_types::execution_events::SubmissionFailureEvidenceRecordedEvent {
-    type Public = crate::events::SubmissionFailureEvidenceRecordedEvent;
+impl IntoPublicEvent for workflow::execution_events::SubmissionFailureEvidenceRecordedEvent {
+    type Public = crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent;
 
     fn into_public(self) -> Self::Public {
         self
     }
 }
 
-impl IntoPublicEvent for workflow_types::execution_events::VerificationVerdictEvent {
-    type Public = crate::events::VerificationVerdictEvent;
+impl IntoPublicEvent for workflow::execution_events::VerificationVerdictEvent {
+    type Public = crate::types::workflow::execution_events::VerificationVerdictEvent;
 
     fn into_public(self) -> Self::Public {
         self
     }
 }
 
-fn parse_generated_event<T>(value: &serde_json::Value) -> anyhow::Result<Option<T>>
+fn parse_move_event<T>(value: &serde_json::Value) -> anyhow::Result<Option<T>>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -386,14 +390,14 @@ where
     let normalized = serde_json::Value::Object(
         object
             .iter()
-            .map(|(key, value)| Ok((key.clone(), normalize_generated_event_field(key, value)?)))
+            .map(|(key, value)| Ok((key.clone(), normalize_move_event_field(key, value)?)))
             .collect::<anyhow::Result<_>>()?,
     );
 
     Ok(Some(serde_json::from_value(normalized)?))
 }
 
-fn normalize_generated_event_field(
+fn normalize_move_event_field(
     key: &str,
     value: &serde_json::Value,
 ) -> anyhow::Result<serde_json::Value> {
@@ -533,37 +537,32 @@ fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool
 }
 
 #[cfg(all(test, feature = "test_utils"))]
-mod generated_tests {
+mod direct_event_tests {
     use {
         super::*,
         crate::{
-            events::{
-                parse_bcs,
-                DAGCreatedEvent,
-                NexusEventKind,
-                RequestWalkExecutionEvent,
-                TerminalErrEvalRecordedEvent,
-                *,
-            },
+            events::{parse_bcs, NexusEventKind},
             idents::primitives,
             sui,
             test_utils::sui_mocks,
             types::{
-                generated::{
-                    interface_types::{
-                        agent as generated_agent,
-                        payment as generated_payment,
-                        scheduled_request,
-                        version,
-                    },
-                    sui_framework_types::{
-                        object::ID,
-                        vec_map::{Entry as GeneratedEntry, VecMap as GeneratedVecMap},
-                    },
+                interface::{
+                    agent::{self as agent_types, *},
+                    dag::*,
+                    payment::{self as payment_types, *},
+                    scheduled_request,
+                    version,
                 },
+                primitives::policy::Symbol as PolicySymbol,
+                registry::{agent_registry::*, leader::*, leader_cap::*, tool_registry::*},
+                scheduler::scheduler::*,
+                sui_framework::{
+                    object::ID,
+                    vec_map::{Entry as VecMapEntry, VecMap as MoveVecMap},
+                },
+                workflow::{execution_events::*, gas::*},
                 MoveOption,
                 MoveString,
-                PolicySymbol,
                 PostFailureAction,
                 RuntimeVertex,
                 TypeName,
@@ -573,6 +572,9 @@ mod generated_tests {
         serde::Serialize,
         serde_json::json,
     };
+
+    type RequestScheduledOccurrenceEvent =
+        scheduled_request::RequestScheduledExecution<OccurrenceScheduledEvent>;
 
     #[derive(Serialize)]
     struct Wrapper<T> {
@@ -596,7 +598,7 @@ mod generated_tests {
         sui::types::Address::from([byte; 32])
     }
 
-    fn iface_version(inner: u64) -> version::InterfaceVersion {
+    fn interface_version(inner: u64) -> version::InterfaceVersion {
         version::InterfaceVersion { inner }
     }
 
@@ -604,34 +606,34 @@ mod generated_tests {
         PolicySymbol::witness(TypeName::new("0xa5::scheduler::QueueGeneratorWitness"))
     }
 
-    fn skill_dag_binding() -> generated_agent::SkillDagBinding {
-        generated_agent::SkillDagBinding::Pinned { dag_id: addr(0xd1) }
+    fn skill_dag_binding() -> agent_types::SkillDagBinding {
+        agent_types::SkillDagBinding::Pinned { dag_id: addr(0xd1) }
     }
 
-    fn skill_requirements() -> generated_agent::SkillRequirement {
-        generated_agent::SkillRequirement {
+    fn skill_requirements() -> agent_types::SkillRequirement {
+        agent_types::SkillRequirement {
             input_commitment: vec![1, 2, 3],
-            payment_policy: generated_payment::SkillPaymentPolicy::UserFunded,
-            schedule_policy: generated_agent::SkillSchedulePolicy {
-                recurrence: generated_agent::SkillRecurrenceKind::Once,
+            payment_policy: payment_types::SkillPaymentPolicy::UserFunded,
+            schedule_policy: agent_types::SkillSchedulePolicy {
+                recurrence: agent_types::SkillRecurrenceKind::Once,
                 allow_recursive: false,
             },
             fixed_tools: vec![],
         }
     }
 
-    fn payment_source() -> generated_payment::PaymentSourceKind {
-        generated_payment::PaymentSourceKind::UserFunded { user: addr(0xf0) }
+    fn payment_source() -> payment_types::PaymentSourceKind {
+        payment_types::PaymentSourceKind::UserFunded { user: addr(0xf0) }
     }
 
-    fn empty_ports_data() -> GeneratedVecMap<
-        crate::types::generated::interface_types::graph::OutputPort,
-        crate::types::generated::primitives_types::data::NexusData,
+    fn empty_ports_data() -> MoveVecMap<
+        crate::types::interface::graph::OutputPort,
+        crate::types::primitives::data::NexusData,
     > {
-        GeneratedVecMap { contents: vec![] }
+        MoveVecMap { contents: vec![] }
     }
 
-    fn assert_generated_event_parses<T>(
+    fn assert_move_event_parses<T>(
         objects: &crate::types::NexusObjects,
         event_name: &str,
         inner: sui::types::StructTag,
@@ -711,7 +713,7 @@ mod generated_tests {
     }
 
     #[test]
-    fn parse_bcs_uses_generated_dag_created_event() {
+    fn parse_bcs_uses_direct_dag_created_event() {
         let dag = id(sui::types::Address::from_static("0xabc"));
         let bytes = bcs::to_bytes(&Wrapper {
             event: DAGCreatedEvent { dag: dag.clone() },
@@ -727,7 +729,7 @@ mod generated_tests {
     }
 
     #[test]
-    fn parse_bcs_uses_generated_request_walk_event() {
+    fn parse_bcs_uses_direct_request_walk_event() {
         let agent_id = id(sui::types::Address::from_static("0x1"));
         let bytes = bcs::to_bytes(&Wrapper {
             event: RequestWalkExecutionEvent {
@@ -776,7 +778,7 @@ mod generated_tests {
             evaluations: id(addr(0xb3)),
             agent_id: id(addr(0xb4)),
             skill_id: 13,
-            interface_version: iface_version(14),
+            interface_version: interface_version(14),
             scheduled_task_id: MoveOption(None),
             scheduled_occurrence_index: MoveOption(None),
         };
@@ -834,7 +836,7 @@ mod generated_tests {
     }
 
     #[test]
-    fn nested_terminal_err_eval_json_parses_generated_event() {
+    fn nested_terminal_err_eval_json_parses_direct_event() {
         let parsed = parse_terminal_err_eval_recorded_event_value(json!({
             "event": {
                 "fields": {
@@ -928,7 +930,7 @@ mod generated_tests {
                 evaluations: id(addr(0xb3)),
                 agent_id: id(addr(0xb4)),
                 skill_id: 13,
-                interface_version: iface_version(14),
+                interface_version: interface_version(14),
                 scheduled_task_id: MoveOption(None),
                 scheduled_occurrence_index: MoveOption(None),
             },
@@ -1050,7 +1052,7 @@ mod generated_tests {
                 evaluations: id(addr(0xa8)),
                 agent_id: id(addr(0xa9)),
                 skill_id: 10,
-                interface_version: iface_version(11),
+                interface_version: interface_version(11),
                 scheduled_task_id: MoveOption(None),
                 scheduled_occurrence_index: MoveOption(None),
             },
@@ -1087,7 +1089,7 @@ mod generated_tests {
     }
 
     #[test]
-    fn generated_event_wrappers_parse_for_every_exposed_event_kind() {
+    fn direct_event_wrappers_parse_for_every_exposed_event_kind() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut parsed = 0usize;
 
@@ -1110,7 +1112,7 @@ mod generated_tests {
                 )
             }};
             ($name:expr, $tag:expr, $event:expr) => {{
-                assert_generated_event_parses(&objects, $name, $tag, $event, $name, parsed as u64);
+                assert_move_event_parses(&objects, $name, $tag, $event, $name, parsed as u64);
                 parsed += 1;
             }};
         }
@@ -1149,7 +1151,7 @@ mod generated_tests {
                 evaluations: id(addr(0x07)),
                 agent_id: id(addr(0x08)),
                 skill_id: 9,
-                interface_version: iface_version(10),
+                interface_version: interface_version(10),
                 scheduled_task_id: MoveOption(Some(id(addr(0x0b)))),
                 scheduled_occurrence_index: MoveOption(Some(12)),
             }
@@ -1178,7 +1180,7 @@ mod generated_tests {
             SkillContractRevisionedEvent {
                 agent_id: id(addr(0x11)),
                 skill_id: 18,
-                current_interface_revision: iface_version(19),
+                current_interface_revision: interface_version(19),
                 dag_binding: skill_dag_binding(),
                 requirements: skill_requirements(),
             }
@@ -1198,7 +1200,7 @@ mod generated_tests {
                 execution_id: addr(0x13),
                 agent_id: id(addr(0x14)),
                 skill_id: 21,
-                interface_revision: iface_version(22),
+                interface_revision: interface_version(22),
                 payment_id: addr(0x15),
             }
         );
@@ -1223,8 +1225,8 @@ mod generated_tests {
                 execution_id: addr(0x1a),
                 agent_id: id(addr(0x1b)),
                 skill_id: 25,
-                interface_revision: iface_version(26),
-                payment_policy: generated_payment::SkillPaymentPolicy::UserFunded,
+                interface_revision: interface_version(26),
+                payment_policy: payment_types::SkillPaymentPolicy::UserFunded,
                 source_kind: payment_source(),
                 max_budget: 27,
                 locked_budget: 28,
@@ -1251,7 +1253,7 @@ mod generated_tests {
                 execution_id: addr(0x21),
                 payment_id: addr(0x22),
                 agent_id: id(addr(0x23)),
-                final_state: generated_payment::ExecutionPaymentFinalState::Accomplished,
+                final_state: payment_types::ExecutionPaymentFinalState::Accomplished,
             }
         );
         check!(
@@ -1263,7 +1265,7 @@ mod generated_tests {
                 reserve_id: addr(0x26),
                 agent_id: id(addr(0x27)),
                 skill_id: 30,
-                interface_version: iface_version(31),
+                interface_version: interface_version(31),
                 source_kind: payment_source(),
                 prepaid_amount: 32,
                 occurrence_budget: 33,
@@ -1278,7 +1280,7 @@ mod generated_tests {
                 execution_id: addr(0x29),
                 agent_id: id(addr(0x2a)),
                 skill_id: 34,
-                interface_revision: iface_version(35),
+                interface_revision: interface_version(35),
                 amount: 36,
                 consumed_total: 37,
             }
@@ -1291,7 +1293,7 @@ mod generated_tests {
                 payment_id: addr(0x2c),
                 agent_id: id(addr(0x2d)),
                 skill_id: 38,
-                interface_revision: iface_version(39),
+                interface_revision: interface_version(39),
             }
         );
         check!(
@@ -1302,7 +1304,7 @@ mod generated_tests {
                 payment_id: addr(0x2f),
                 agent_id: id(addr(0x30)),
                 skill_id: 40,
-                interface_revision: iface_version(41),
+                interface_revision: interface_version(41),
                 refund_reason: b"refund".to_vec(),
             }
         );
@@ -1343,7 +1345,7 @@ mod generated_tests {
                 reserve_id: addr(0x37),
                 agent_id: id(addr(0x38)),
                 skill_id: 42,
-                interface_version: iface_version(43),
+                interface_version: interface_version(43),
                 source_kind: payment_source(),
                 refill_amount: 44,
                 occurrence_budget: 45,
@@ -1361,7 +1363,7 @@ mod generated_tests {
                 payment_id: addr(0x3c),
                 agent_id: id(addr(0x3d)),
                 skill_id: 48,
-                interface_version: iface_version(49),
+                interface_version: interface_version(49),
                 source_kind: payment_source(),
                 budget: 50,
                 remaining_funds: 51,
@@ -1375,7 +1377,7 @@ mod generated_tests {
                 reserve_id: addr(0x3f),
                 agent_id: id(addr(0x40)),
                 skill_id: 52,
-                interface_version: iface_version(53),
+                interface_version: interface_version(53),
                 source_kind: payment_source(),
                 refunded_amount: 54,
                 remaining_funds: 55,
@@ -1392,8 +1394,8 @@ mod generated_tests {
                 payment_id: addr(0x44),
                 agent_id: id(addr(0x45)),
                 skill_id: 57,
-                interface_version: iface_version(58),
-                final_state: generated_payment::ScheduledOccurrenceFinalState::Accomplished,
+                interface_version: interface_version(58),
+                final_state: payment_types::ScheduledOccurrenceFinalState::Accomplished,
                 remaining_funds: 59,
             }
         );
@@ -1434,7 +1436,7 @@ mod generated_tests {
                 execution: id(addr(0x4c)),
                 walk_index: 61,
                 vertex: RuntimeVertex::plain("advanced"),
-                variant: crate::types::generated::interface_types::graph::OutputVariant {
+                variant: crate::types::interface::graph::OutputVariant {
                     name: MoveString::from("ok"),
                 },
                 variant_ports_to_data: empty_ports_data(),
@@ -1476,18 +1478,22 @@ mod generated_tests {
                 walk_index: 64,
                 vertex: RuntimeVertex::plain("verified"),
                 leader: addr(0x54),
-                submission_kind: crate::types::generated::interface_types::verifier::VerificationSubmissionKind::Success,
-                failure_evidence_kind: crate::types::generated::interface_types::verifier::FailureEvidenceKind::ToolEvidence,
-                leader_verifier_mode: crate::types::generated::interface_types::verifier::VerifierMode::LeaderRegisteredKey,
+                submission_kind:
+                    crate::types::interface::verifier::VerificationSubmissionKind::Success,
+                failure_evidence_kind:
+                    crate::types::interface::verifier::FailureEvidenceKind::ToolEvidence,
+                leader_verifier_mode:
+                    crate::types::interface::verifier::VerifierMode::LeaderRegisteredKey,
                 leader_verifier_method: MoveString::from("leader"),
-                tool_verifier_mode: crate::types::generated::interface_types::verifier::VerifierMode::ToolVerifierContract,
+                tool_verifier_mode:
+                    crate::types::interface::verifier::VerifierMode::ToolVerifierContract,
                 tool_verifier_method: MoveString::from("tool"),
                 checked_leader_kid: MoveOption(Some(65)),
                 checked_tool_kid: MoveOption(Some(66)),
                 payload_or_reason_hash: vec![4, 5],
                 checked_identity: vec![6, 7],
                 verdict_reference: vec![8, 9],
-                verdict: crate::types::generated::interface_types::verifier::VerificationVerdict::Accepted,
+                verdict: crate::types::interface::verifier::VerificationVerdict::Accepted,
             }
         );
         check!(
@@ -1518,15 +1524,15 @@ mod generated_tests {
                 execution: id(addr(0x5a)),
                 walk_index: 69,
                 vertex: RuntimeVertex::plain("end"),
-                variant: crate::types::generated::interface_types::graph::OutputVariant {
+                variant: crate::types::interface::graph::OutputVariant {
                     name: MoveString::from("ok"),
                 },
-                variant_ports_to_data: GeneratedVecMap {
-                    contents: vec![GeneratedEntry {
-                        key: crate::types::generated::interface_types::graph::OutputPort {
+                variant_ports_to_data: MoveVecMap {
+                    contents: vec![VecMapEntry {
+                        key: crate::types::interface::graph::OutputPort {
                             name: MoveString::from("answer"),
                         },
-                        value: crate::types::generated::primitives_types::data::NexusData {
+                        value: crate::types::primitives::data::NexusData {
                             storage: b"inline".to_vec(),
                             one: serde_json::to_vec(&json!(42)).unwrap(),
                             many: vec![],

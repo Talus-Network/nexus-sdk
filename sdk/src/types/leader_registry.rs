@@ -2,20 +2,20 @@
 
 #[cfg(test)]
 use super::{MoveOption, MoveTable, MoveVecSet, TypeName};
-pub use crate::types::generated::registry_types::leader::{CapabilityManger, LeaderRegistry};
+pub use crate::types::registry::leader::{CapabilityManger, LeaderRegistry};
 use {
     crate::{
         sui,
         types::{
-            generated::{primitives_types, registry_types},
-            generated_support::{sui_address_to_id, sui_address_to_uid},
+            move_binding_support::{sui_address_to_id, sui_address_to_uid},
+            primitives,
+            registry,
         },
     },
     anyhow::Context,
 };
 
-type LeaderCapIssuer =
-    primitives_types::owner_cap::CloneableOwnerCap<registry_types::leader_cap::OverNetwork>;
+type LeaderCapIssuer = primitives::owner_cap::CloneableOwnerCap<registry::leader_cap::OverNetwork>;
 
 impl LeaderRegistry {
     /// Decode a published `LeaderRegistry` object.
@@ -101,7 +101,7 @@ fn leader_cap_issuer_from_parts(
     LeaderCapIssuer {
         id: sui_address_to_uid(id),
         what_for: sui_address_to_id(what_for),
-        inner: primitives_types::owner_cap::OwnerCap {
+        inner: primitives::owner_cap::OwnerCap {
             unique: sui_address_to_id(unique),
             phantom_t0: std::marker::PhantomData,
         },
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn capability_manger_clone_preserves_nested_generated_owner_cap() {
+    fn capability_manger_clone_preserves_nested_owner_cap() {
         let registry_id = sui::types::Address::from_static("0x10");
         let network_id = sui::types::Address::from_static("0x20");
         let leader = sui::types::Address::from_static("0x30");

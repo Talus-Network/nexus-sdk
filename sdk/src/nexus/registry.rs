@@ -5,7 +5,7 @@ use {
         nexus::crawler::{prost_value_to_json_value, Crawler},
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
         types::{
-            generated::registry_types,
+            registry,
             ExternalVerifierRuntimeCall,
             LeaderRegistry,
             SharedObjectRef,
@@ -124,12 +124,12 @@ pub async fn fetch_external_verifier_runtime_metadata(
     verifier: VerifierConfig,
 ) -> anyhow::Result<ExternalVerifierRuntimeMetadata> {
     let registry = crawler
-        .get_object_contents_bcs::<registry_types::verifier_registry::VerifierRegistry>(
+        .get_object_contents_bcs::<registry::verifier_registry::VerifierRegistry>(
             *registry_ref.object_id(),
         )
         .await?;
     let mut methods = crawler
-        .get_dynamic_fields_bcs::<String, registry_types::verifier_registry::VerifierMethodRecord>(
+        .get_dynamic_fields_bcs::<String, registry::verifier_registry::VerifierMethodRecord>(
             registry.data.methods.id(),
             registry.data.methods.size(),
         )
@@ -182,10 +182,10 @@ pub async fn fetch_external_verifier_runtime_metadata(
     }
 
     let witness_id: sui::types::Address = match record.implementation {
-        registry_types::verifier_registry::VerifierImplementation::ExternalV1 {
-            witness, ..
-        } => witness.into(),
-        registry_types::verifier_registry::VerifierImplementation::BuiltIn { .. } => {
+        registry::verifier_registry::VerifierImplementation::ExternalV1 { witness, .. } => {
+            witness.into()
+        }
+        registry::verifier_registry::VerifierImplementation::BuiltIn { .. } => {
             bail!(
                 "Verifier method '{}' is not an external verifier contract",
                 verifier.method.as_str()

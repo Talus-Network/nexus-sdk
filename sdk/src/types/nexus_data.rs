@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_inline_nexus_data_sers_and_desers() {
+    fn inline_nexus_data_sers_and_desers() {
         let data = json!({"key": "value"});
         let nexus_data = NexusData::new_inline(data.clone());
         let data_bytes = serde_json::to_vec(&data).unwrap();
@@ -421,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_nexus_data_deserializes_encoded_byte_fields() {
+    fn nexus_data_deserializes_encoded_byte_fields() {
         let deserialized: NexusData = serde_json::from_value(json!({
             "storage": "aW5saW5l",
             "one": "eyJyZXN0YXJ0LWFuZC13aXBlIjp0cnVlfQ==",
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_walrus_nexus_data_sers_and_desers() {
+    fn walrus_nexus_data_sers_and_desers() {
         let data = json!({"key": "value"});
         let nexus_data = NexusData::new_walrus(data.clone());
         let data_bytes = serde_json::to_vec(&data).unwrap();

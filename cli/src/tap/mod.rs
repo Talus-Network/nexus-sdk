@@ -47,7 +47,7 @@ use {
                 fetch_execution_payment_history,
                 AgentTaskStateAction,
                 CreateAgentResult,
-                GetSkillRequirementsResult,
+                GetSkillRequirementResult,
                 PublishSkillResult,
                 RegisterSkillResult,
                 TapPackagePublishOptions,
@@ -56,8 +56,8 @@ use {
             workflow::AgentDagExecuteOptions,
         },
         types::{
+            interface::payment::ExecutionPaymentReceipt,
             Dag as JsonDag,
-            ExecutionPaymentReceipt,
             SkillConfig,
             SkillId,
             TapPublishArtifact,
@@ -254,7 +254,7 @@ pub(crate) enum TapCommand {
     )]
     Payments(PaymentsCommand),
     #[command(subcommand, about = "Settle or abort active TAP executions.")]
-    Execution(SettleCommand),
+    Execution(ExecutionCommand),
     #[command(subcommand, about = "Inspect the agent registry.")]
     Registry(RegistryCommand),
     #[command(subcommand, about = "Inspect the standard TAP default agent metadata.")]
@@ -632,7 +632,7 @@ pub(crate) enum PaymentsCommand {
 }
 
 #[derive(Subcommand)]
-pub(crate) enum SettleCommand {
+pub(crate) enum ExecutionCommand {
     #[command(about = "Permissionlessly settle one committed result walk after it is eligible.")]
     Settle {
         #[arg(
@@ -828,11 +828,10 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
-        nexus_sdk::types::{
-            InterfaceVersion,
-            SkillPaymentPolicy,
-            SkillRequirements,
-            SkillSchedulePolicy,
+        nexus_sdk::types::interface::{
+            agent::{SkillRequirement, SkillSchedulePolicy},
+            payment::SkillPaymentPolicy,
+            version::InterfaceVersion,
         },
         std::ffi::OsString,
     };
@@ -885,7 +884,7 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
@@ -1080,7 +1079,7 @@ mod tests {
             "unexpected error: {refill_vault_error}"
         );
 
-        let execution_settle_error = handle(TapCommand::Execution(SettleCommand::Settle {
+        let execution_settle_error = handle(TapCommand::Execution(ExecutionCommand::Settle {
             execution_id: sui::types::Address::from_static("0xee"),
             walk_index: 0,
             gas: gas_args(),
@@ -1094,7 +1093,7 @@ mod tests {
             "unexpected error: {execution_settle_error}"
         );
 
-        let execution_abort_error = handle(TapCommand::Execution(SettleCommand::Abort {
+        let execution_abort_error = handle(TapCommand::Execution(ExecutionCommand::Abort {
             execution_id: sui::types::Address::from_static("0xee"),
             gas: gas_args(),
         }))
@@ -1217,7 +1216,7 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
@@ -1236,7 +1235,9 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 current_interface_revision: InterfaceVersion::new(3),
-                dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
+                dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+                    artifact.dag_id,
+                ),
                 requirements: artifact.requirements.clone(),
             },
         );
@@ -1252,7 +1253,7 @@ mod tests {
         let config = SkillConfig {
             name: "bad".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
@@ -1562,7 +1563,7 @@ public struct WeatherSkill has drop {}
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),

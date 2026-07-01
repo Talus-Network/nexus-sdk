@@ -16,16 +16,16 @@ use {
                 AccomplishExecutionPaymentResult,
                 BindAgentSkillResult,
                 DepositAgentVaultResult,
+                RefillExecutionPaymentResult,
                 WaitForPaymentResult,
             },
-            workflow::ExecuteResult,
+            workflow::{AbortExecutionResult, CommittedToolResultSettlementResult, ExecuteResult},
         },
         types::{
+            interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
             AgentId,
-            AgentPaymentVault,
-            AgentRegistry,
+            AgentRegistrySnapshot,
             DefaultDagExecutorRecord,
-            ExecutionPayment,
             SkillConfig,
         },
     },
@@ -162,24 +162,14 @@ pub(crate) fn agent_execute_result_json(
     })
 }
 
-pub(crate) fn requirements_result_json(result: &GetSkillRequirementsResult) -> serde_json::Value {
+pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> serde_json::Value {
     json!({
         "function": nexus_sdk::idents::registry::AgentRegistry::GET_SKILL_REQUIREMENTS.name.to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
         "active_skill_revision_key": result.active_skill_revision_key,
-        "requirements": requirements_json(&result.requirements),
+        "requirements": result.requirements,
     })
-}
-
-fn requirements_json(requirements: &nexus_sdk::types::SkillRequirements) -> serde_json::Value {
-    let mut value = serde_json::to_value(requirements).unwrap_or_else(|_| json!({}));
-    if let Some(object) = value.as_object_mut() {
-        if let Some(input_commitment) = object.remove("input_commitment") {
-            object.insert("input_schema_commitment".to_string(), input_commitment);
-        }
-    }
-    value
 }
 
 pub(crate) fn schedule_task_result_json(
@@ -208,15 +198,38 @@ pub(crate) fn schedule_task_result_json(
     })
 }
 
+pub(crate) fn execution_settle_result_json(
+    result: &CommittedToolResultSettlementResult,
+) -> serde_json::Value {
+    json!({
+        "function": "settle_committed_tool_result_for_walk",
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "dag_id": result.dag_id,
+        "execution_id": result.dag_execution_id,
+        "walk_index": result.walk_index,
+    })
+}
+
+pub(crate) fn execution_abort_result_json(result: &AbortExecutionResult) -> serde_json::Value {
+    json!({
+        "function": "abort_expired_execution",
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "dag_id": result.dag_id,
+        "execution_id": result.dag_execution_id,
+    })
+}
+
 // ============================================================================
 // Payments: show, wait, list
 // ============================================================================
 
 pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json::Value {
     json!({
-        "payment_id": payment.id,
+        "payment_id": payment.payment_id(),
         "execution_id": payment.execution_id,
-        "agent_id": payment.agent_id,
+        "agent_id": payment.agent_id.bytes,
         "skill_id": payment.skill_id,
         "interface_revision": payment.interface_revision,
         "payment_policy": payment.payment_policy,
@@ -277,11 +290,28 @@ pub(crate) fn payment_resolve_result_json(
     })
 }
 
+pub(crate) fn payment_refill_result_json(
+    result: &RefillExecutionPaymentResult,
+) -> serde_json::Value {
+    json!({
+        "function": if result.agent_id.is_some() {
+            "refill_tap_execution_payment_from_agent_vault"
+        } else {
+            "refill_tap_execution_payment"
+        },
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "execution_id": result.execution_id,
+        "agent_id": result.agent_id,
+        "amount": result.amount,
+    })
+}
+
 // ============================================================================
 // Registry + default-agent inspection
 // ============================================================================
 
-pub(crate) fn registry_show_result_json(registry: &AgentRegistry) -> serde_json::Value {
+pub(crate) fn registry_show_result_json(registry: &AgentRegistrySnapshot) -> serde_json::Value {
     json!({
         "id": registry.id,
         "default_executor": registry.default_executor,
@@ -294,8 +324,8 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
     json!({
         "agent_id": record.target.agent_id,
         "skill_id": record.target.skill_id,
-        "dag_binding": record.skill.dag_binding,
-        "dag_id": record.skill.dag_binding.pinned_dag_id(),
+        "dag_binding": record.skill.dag_binding(),
+        "dag_id": record.skill.dag_binding().pinned_dag_id(),
         "interface_revision": record.skill_revision.key.interface_revision,
         "requirements": record.skill_revision.requirements,
     })
@@ -312,9 +342,9 @@ pub(crate) fn vault_balance_result_json(
     json!({
         "agent_id": agent_id,
         "vault_id": vault.object_id,
-        "available_balance": vault.data.available_balance,
+        "available_balance": vault.data.available_balance_value(),
         "locked_amount": vault.data.locked_amount,
-        "unlocked_balance": vault.data.available_balance.saturating_sub(vault.data.locked_amount),
+        "unlocked_balance": vault.data.unlocked_balance_value(),
     })
 }
 
@@ -366,15 +396,16 @@ mod tests {
                 workflow::{PublishResult, TapExecutionSubmitMetadata},
             },
             types::{
-                DefaultDagExecutor,
-                InterfaceVersion,
-                SkillDagBinding,
-                SkillPaymentPolicy,
-                SkillRecord,
-                SkillRequirements,
-                SkillRevisionKey,
-                SkillRevisionRecord,
-                SkillSchedulePolicy,
+                interface::{
+                    agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
+                    payment::{ExecutionPaymentFinalState, SkillPaymentPolicy},
+                    version::InterfaceVersion,
+                },
+                registry::agent_registry::SkillRecord,
+                DefaultDagExecutorTarget,
+                SkillRecordContext,
+                SkillRevisionContext,
+                SkillRevisionLookupKey,
             },
         },
     };
@@ -385,7 +416,7 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
@@ -399,28 +430,33 @@ mod tests {
 
     fn fixture_payment(accomplished: bool, refunded: bool) -> ExecutionPayment {
         let final_state = if accomplished {
-            nexus_sdk::types::ExecutionPaymentFinalState::Accomplished
+            ExecutionPaymentFinalState::Accomplished
         } else if refunded {
-            nexus_sdk::types::ExecutionPaymentFinalState::Refunded
+            ExecutionPaymentFinalState::Refunded
         } else {
-            nexus_sdk::types::ExecutionPaymentFinalState::Pending
+            ExecutionPaymentFinalState::Pending
         };
 
         ExecutionPayment {
-            id: sui::types::Address::from_static("0xaa"),
+            id: nexus_sdk::types::sui_address_to_uid(sui::types::Address::from_static("0xaa")),
             execution_id: sui::types::Address::from_static("0xbb"),
-            agent_id: sui::types::Address::from_static("0xcc"),
+            agent_id: nexus_sdk::types::sui_address_to_id(sui::types::Address::from_static("0xcc")),
             skill_id: 11,
             interface_revision: InterfaceVersion::new(2),
-            payment_policy: nexus_sdk::types::SkillPaymentPolicy::UserFunded,
-            source_kind: nexus_sdk::types::ExecutionPaymentSourceKind::UserFunded {
-                user: sui::types::Address::from_static("0xee"),
-            },
+            payment_policy: nexus_sdk::types::interface::payment::SkillPaymentPolicy::UserFunded,
+            source_kind: nexus_sdk::types::interface::payment::PaymentSourceKind::user_funded(
+                sui::types::Address::from_static("0xee"),
+            ),
             max_budget: 1_000,
             locked_budget: 0,
-            funds: nexus_sdk::types::SuiBalance { value: 1_000 },
+            funds: nexus_sdk::types::sui_framework::balance::Balance {
+                value: 1_000,
+                phantom_t0: std::marker::PhantomData,
+            },
             consumed: 0,
-            tool_cost_snapshot: nexus_sdk::types::PaymentVecMap { contents: vec![] },
+            tool_cost_snapshot: nexus_sdk::types::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
             accomplished,
             refunded,
             final_state,
@@ -530,7 +566,9 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa1"),
             skill_id: 7,
             current_interface_revision: InterfaceVersion::new(2),
-            dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
+            dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+                artifact.dag_id,
+            ),
             requirements: artifact.requirements.clone(),
         };
         let json = update_skill_result_json(&artifact, &result);
@@ -552,7 +590,7 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 dag_id: sui::types::Address::from_static("0xd"),
-                skill_revision_key: SkillRevisionKey {
+                skill_revision_key: SkillRevisionLookupKey {
                     agent_id: sui::types::Address::from_static("0xa"),
                     skill_id: 11,
                     interface_revision: InterfaceVersion::new(3),
@@ -583,18 +621,18 @@ mod tests {
     }
 
     #[test]
-    fn tap_requirements_json_helper_exposes_live_state() {
-        let requirements = SkillRequirements {
+    fn tap_requirements_result_json_exposes_live_state() {
+        let requirements = SkillRequirement {
             input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
 
-        let requirements_output = requirements_result_json(&GetSkillRequirementsResult {
+        let requirements_output = requirements_result_json(&GetSkillRequirementResult {
             agent_id: sui::types::Address::from_static("0xa"),
             skill_id: 11,
-            active_skill_revision_key: SkillRevisionKey {
+            active_skill_revision_key: SkillRevisionLookupKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 interface_revision: InterfaceVersion::new(3),
@@ -606,7 +644,7 @@ mod tests {
             serde_json::json!(3)
         );
         assert_eq!(
-            requirements_output["requirements"]["input_schema_commitment"],
+            requirements_output["requirements"]["input_commitment"],
             serde_json::json!([1])
         );
     }
@@ -719,35 +757,130 @@ mod tests {
         );
     }
 
+    #[test]
+    fn payment_refill_result_json_marks_coin_refill_function() {
+        let result = RefillExecutionPaymentResult {
+            tx_digest: sui::types::Digest::default(),
+            tx_checkpoint: 5,
+            execution_id: sui::types::Address::from_static("0xe"),
+            agent_id: None,
+            amount: 123,
+        };
+
+        let json = payment_refill_result_json(&result);
+
+        assert_eq!(json["function"], "refill_tap_execution_payment");
+        assert_eq!(json["tx_checkpoint"], 5);
+        assert_eq!(
+            json["execution_id"],
+            sui::types::Address::from_static("0xe").to_string()
+        );
+        assert_eq!(json["agent_id"], serde_json::Value::Null);
+        assert_eq!(json["amount"], 123);
+    }
+
+    #[test]
+    fn payment_refill_result_json_marks_agent_vault_refill_function() {
+        let result = RefillExecutionPaymentResult {
+            tx_digest: sui::types::Digest::default(),
+            tx_checkpoint: 8,
+            execution_id: sui::types::Address::from_static("0xe"),
+            agent_id: Some(sui::types::Address::from_static("0xa")),
+            amount: 456,
+        };
+
+        let json = payment_refill_result_json(&result);
+
+        assert_eq!(
+            json["function"],
+            "refill_tap_execution_payment_from_agent_vault"
+        );
+        assert_eq!(
+            json["agent_id"],
+            sui::types::Address::from_static("0xa").to_string()
+        );
+        assert_eq!(json["amount"], 456);
+    }
+
+    #[test]
+    fn execution_settle_result_json_includes_stable_fields() {
+        let result = CommittedToolResultSettlementResult {
+            tx_digest: sui::types::Digest::default(),
+            tx_checkpoint: 7,
+            dag_id: sui::types::Address::from_static("0xda6"),
+            dag_execution_id: sui::types::Address::from_static("0xe"),
+            walk_index: 3,
+        };
+
+        let json = execution_settle_result_json(&result);
+
+        assert_eq!(json["function"], "settle_committed_tool_result_for_walk");
+        assert_eq!(json["tx_checkpoint"], 7);
+        assert_eq!(
+            json["dag_id"],
+            sui::types::Address::from_static("0xda6").to_string()
+        );
+        assert_eq!(
+            json["execution_id"],
+            sui::types::Address::from_static("0xe").to_string()
+        );
+        assert_eq!(json["walk_index"], 3);
+    }
+
+    #[test]
+    fn execution_abort_result_json_includes_stable_fields() {
+        let result = AbortExecutionResult {
+            tx_digest: sui::types::Digest::default(),
+            tx_checkpoint: 9,
+            dag_id: sui::types::Address::from_static("0xda6"),
+            dag_execution_id: sui::types::Address::from_static("0xe"),
+        };
+
+        let json = execution_abort_result_json(&result);
+
+        assert_eq!(json["function"], "abort_expired_execution");
+        assert_eq!(json["tx_checkpoint"], 9);
+        assert_eq!(
+            json["dag_id"],
+            sui::types::Address::from_static("0xda6").to_string()
+        );
+        assert_eq!(
+            json["execution_id"],
+            sui::types::Address::from_static("0xe").to_string()
+        );
+    }
+
     // ---- registry + default-agent inspection ----
 
     #[test]
     fn default_agent_result_json_keeps_flat_agent_schema() {
         let agent_id = sui::types::Address::from_static("0xad");
         let dag_id = sui::types::Address::from_static("0xd");
-        let requirements = SkillRequirements {
+        let requirements = SkillRequirement {
             input_commitment: vec![1, 2, 3],
             payment_policy: SkillPaymentPolicy::default(),
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         };
         let record = DefaultDagExecutorRecord {
-            target: DefaultDagExecutor {
+            target: DefaultDagExecutorTarget {
                 agent_id,
                 skill_id: 7,
             },
-            skill: SkillRecord {
-                agent_id: Some(agent_id),
-                skill_id: Some(7),
-                description: b"default agent".to_vec(),
-                active: true,
-                dag_binding: SkillDagBinding::pinned(dag_id),
-                requirements: requirements.clone(),
-                current_interface_revision: InterfaceVersion::new(3),
-                scheduled_task_count: 0,
+            skill: SkillRecordContext {
+                agent_id,
+                skill_id: 7,
+                record: SkillRecord {
+                    description: b"default agent".to_vec(),
+                    active: true,
+                    dag_binding: SkillDagBinding::pinned(dag_id),
+                    requirements: requirements.clone(),
+                    current_interface_revision: InterfaceVersion::new(3),
+                    scheduled_task_count: 0,
+                },
             },
-            skill_revision: SkillRevisionRecord {
-                key: SkillRevisionKey {
+            skill_revision: SkillRevisionContext {
+                key: SkillRevisionLookupKey {
                     agent_id,
                     skill_id: 7,
                     interface_revision: InterfaceVersion::new(3),
@@ -818,7 +951,7 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
+            requirements: SkillRequirement {
                 input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),

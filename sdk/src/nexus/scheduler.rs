@@ -13,11 +13,10 @@ use {
         sui,
         transactions::scheduler as scheduler_tx,
         types::{
-            generated::{
-                interface_types::{agent as generated_agent, graph as generated_graph},
-                scheduler_types::scheduler::{PeriodicGeneratorState, QueueGeneratorState},
-                sui_framework_types::vec_map as generated_vec_map,
-            },
+            interface::{agent as agent_move, graph as graph_move},
+            primitives::policy::Symbol as PolicySymbol,
+            scheduler::scheduler::{PeriodicGeneratorState, QueueGeneratorState},
+            sui_framework::vec_map,
             AgentExecutionConfig,
             AgentId,
             AgentVertexAuthorizationTemplate,
@@ -26,7 +25,6 @@ use {
             MoveOption,
             NexusData,
             NexusObjects,
-            PolicySymbol,
             SkillId,
             Task,
             TransitionConfigKey,
@@ -937,36 +935,34 @@ fn decode_agent_execution_config(
     match serde_json::from_value::<MoveFields<AgentExecutionConfig>>(value.clone()) {
         Ok(MoveFields(config)) => Ok(config),
         Err(public_err) => {
-            let MoveFields(config): MoveFields<generated_agent::AgentExecutionConfig> =
-                serde_json::from_value(value.clone()).map_err(|generated_err| {
-                    anyhow!("decode {label}: {public_err}; generated layout: {generated_err}")
+            let MoveFields(config): MoveFields<agent_move::AgentExecutionConfig> =
+                serde_json::from_value(value.clone()).map_err(|move_layout_err| {
+                    anyhow!("decode {label}: {public_err}; Move layout: {move_layout_err}")
                 })?;
-            Ok(agent_execution_config_from_generated(config))
+            Ok(agent_execution_config_from_move(config))
         }
     }
 }
 
-fn agent_execution_config_from_generated(
-    config: generated_agent::AgentExecutionConfig,
+fn agent_execution_config_from_move(
+    config: agent_move::AgentExecutionConfig,
 ) -> AgentExecutionConfig {
     AgentExecutionConfig {
-        selection: execution_selection_from_generated(config.selection),
+        selection: execution_selection_from_move(config.selection),
         network: config.network.bytes,
         entry_group: crate::types::SchedulerEntryGroup {
             name: String::from(config.entry_group.name),
         },
-        inputs: generated_inputs_from_vec_map(config.inputs),
+        inputs: move_inputs_from_vec_map(config.inputs),
         invoker: config.invoker,
         priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
         authorization_templates: config.authorization_templates,
     }
 }
 
-fn execution_selection_from_generated(
-    selection: generated_agent::ExecutionSelection,
-) -> ExecutionSelection {
+fn execution_selection_from_move(selection: agent_move::ExecutionSelection) -> ExecutionSelection {
     match selection {
-        generated_agent::ExecutionSelection::AgentSkill {
+        agent_move::ExecutionSelection::AgentSkill {
             agent_id,
             skill_id,
             selected_dag,
@@ -975,7 +971,7 @@ fn execution_selection_from_generated(
             skill_id,
             selected_dag: MoveOption(selected_dag.0.map(|dag_id| dag_id.bytes)),
         },
-        generated_agent::ExecutionSelection::DefaultAgent { dag_id } => {
+        agent_move::ExecutionSelection::DefaultAgent { dag_id } => {
             ExecutionSelection::DefaultAgent {
                 dag_id: dag_id.bytes,
             }
@@ -983,11 +979,8 @@ fn execution_selection_from_generated(
     }
 }
 
-fn generated_inputs_from_vec_map(
-    inputs: generated_vec_map::VecMap<
-        generated_graph::Vertex,
-        generated_vec_map::VecMap<generated_graph::InputPort, NexusData>,
-    >,
+fn move_inputs_from_vec_map(
+    inputs: vec_map::VecMap<graph_move::Vertex, vec_map::VecMap<graph_move::InputPort, NexusData>>,
 ) -> Map<TypeName, Map<crate::nexus::models::DagInputPort, NexusData>> {
     inputs
         .contents
@@ -995,14 +988,14 @@ fn generated_inputs_from_vec_map(
         .map(|entry| {
             (
                 TypeName::from(String::from(entry.key.name)),
-                generated_input_ports_from_vec_map(entry.value),
+                move_input_ports_from_vec_map(entry.value),
             )
         })
         .collect()
 }
 
-fn generated_input_ports_from_vec_map(
-    inputs: generated_vec_map::VecMap<generated_graph::InputPort, NexusData>,
+fn move_input_ports_from_vec_map(
+    inputs: vec_map::VecMap<graph_move::InputPort, NexusData>,
 ) -> Map<crate::nexus::models::DagInputPort, NexusData> {
     inputs
         .contents
@@ -1169,13 +1162,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            events::{
-                NexusEvent,
-                NexusEventKind,
-                OccurrenceScheduledEvent,
-                RequestScheduledOccurrenceEvent,
-                ScheduledSkillExecutionCreatedEvent,
-            },
+            events::{NexusEvent, NexusEventKind},
             nexus::{
                 client::NexusClient,
                 crawler::{Bag, Map, ObjectBag, TableVec},
@@ -1185,15 +1172,18 @@ mod tests {
             sui,
             test_utils::{nexus_mocks, sui_mocks},
             types::{
-                generated::{
-                    scheduler_types::scheduler::{
-                        Occurrence as GeneratedSchedulerOccurrence,
-                        PeriodicGeneratorState as GeneratedPeriodicGeneratorState,
-                        QueueEntry as GeneratedSchedulerQueueEntry,
-                        QueueGeneratorState as GeneratedQueueGeneratorState,
-                    },
-                    sui_framework_types::priority_queue::PriorityQueue,
+                interface::scheduled_request,
+                primitives::policy::Symbol as PolicySymbol,
+                scheduler::scheduler::{
+                    Occurrence,
+                    OccurrenceScheduledEvent,
+                    PeriodicGeneratorState,
+                    QueueEntry,
+                    QueueGeneratorState,
+                    ScheduledSkillExecutionCreatedEvent,
+                    State as TaskState,
                 },
+                sui_framework::priority_queue::PriorityQueue,
                 ConfiguredAutomaton,
                 ConstraintsData,
                 DeterministicAutomaton,
@@ -1203,8 +1193,6 @@ mod tests {
                 NexusData,
                 NexusObjects,
                 Policy,
-                PolicySymbol,
-                TaskState,
                 TransitionConfigKey,
                 TransitionKey,
                 TypeName,
@@ -1214,6 +1202,9 @@ mod tests {
         serde::Serialize,
         serde_json::json,
     };
+
+    type RequestScheduledOccurrenceEvent =
+        scheduled_request::RequestScheduledExecution<OccurrenceScheduledEvent>;
 
     fn dummy_executed_transaction(events: Vec<NexusEvent>) -> ExecutedTransaction {
         let mut rng = thread_rng();
@@ -1289,7 +1280,7 @@ mod tests {
             owner,
             agent_id: sui::types::Address::from_static("0xa11ce"),
             skill_id: 7,
-            interface_version: crate::types::InterfaceVersion::new(1),
+            interface_version: crate::types::interface::version::InterfaceVersion::new(1),
             metadata,
             constraints,
             execution,
@@ -1311,9 +1302,7 @@ mod tests {
         generator_symbol(scheduler_pkg_id, "QueueGeneratorWitness")
     }
 
-    fn generated_id(
-        bytes: sui::types::Address,
-    ) -> crate::types::generated::sui_framework_types::object::ID {
+    fn object_id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
         crate::types::sui_address_to_id(bytes)
     }
 
@@ -1324,25 +1313,25 @@ mod tests {
         generator: GeneratorKind,
         wrapped: bool,
     ) -> (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value) {
-        let occurrence = GeneratedSchedulerOccurrence {
+        let occurrence = Occurrence {
             start_time_ms,
             deadline_ms: MoveOption(None),
             priority_fee_per_gas_unit: 0,
             generator: symbol.clone(),
         };
         let inner = match generator {
-            GeneratorKind::Queue => serde_json::to_value(GeneratedQueueGeneratorState {
+            GeneratorKind::Queue => serde_json::to_value(QueueGeneratorState {
                 pending: PriorityQueue { entries: vec![] },
                 len: 0,
                 next_sequence: 1,
-                active: MoveOption(Some(GeneratedSchedulerQueueEntry {
+                active: MoveOption(Some(QueueEntry {
                     occurrence,
                     sequence: 0,
                     request_ms: start_time_ms,
                 })),
             })
-            .expect("generated queue state serializes"),
-            GeneratorKind::Periodic => serde_json::to_value(GeneratedPeriodicGeneratorState {
+            .expect("queue state serializes"),
+            GeneratorKind::Periodic => serde_json::to_value(PeriodicGeneratorState {
                 active: MoveOption(Some(occurrence)),
                 next_start_ms: MoveOption(Some(start_time_ms + 1)),
                 period_ms: 1,
@@ -1352,7 +1341,7 @@ mod tests {
                 last_emitted_start_ms: MoveOption(Some(start_time_ms)),
                 priority_fee_per_gas_unit: 0,
             })
-            .expect("generated periodic state serializes"),
+            .expect("periodic state serializes"),
         };
 
         let value = if wrapped {
@@ -1620,7 +1609,7 @@ mod tests {
     }
 
     #[test]
-    fn scheduled_execution_config_decodes_generated_move_config_shape() {
+    fn scheduled_execution_config_decodes_move_config_shape() {
         let objects = sui_mocks::mock_nexus_objects();
         let dag_id = sui::types::Address::from_static("0xd");
         let invoker = sui::types::Address::from_static("0x1");
@@ -1631,22 +1620,22 @@ mod tests {
                 .qualified_name(objects.workflow_pkg_id),
         ));
         let input_value = NexusData::new_inline(json!({ "amount": 7 }));
-        let generated_config = generated_agent::AgentExecutionConfig {
-            selection: generated_agent::ExecutionSelection::DefaultAgent {
+        let move_config = agent_move::AgentExecutionConfig {
+            selection: agent_move::ExecutionSelection::DefaultAgent {
                 dag_id: crate::types::sui_address_to_id(dag_id),
             },
             network: crate::types::sui_address_to_id(objects.network_id),
-            entry_group: generated_graph::EntryGroup {
+            entry_group: graph_move::EntryGroup {
                 name: crate::types::MoveString::from("default"),
             },
-            inputs: generated_vec_map::VecMap {
-                contents: vec![generated_vec_map::Entry {
-                    key: generated_graph::Vertex {
+            inputs: vec_map::VecMap {
+                contents: vec![vec_map::Entry {
+                    key: graph_move::Vertex {
                         name: crate::types::MoveString::from("source"),
                     },
-                    value: generated_vec_map::VecMap {
-                        contents: vec![generated_vec_map::Entry {
-                            key: generated_graph::InputPort {
+                    value: vec_map::VecMap {
+                        contents: vec![vec_map::Entry {
+                            key: graph_move::InputPort {
                                 name: crate::types::MoveString::from("amount"),
                             },
                             value: input_value.clone(),
@@ -1668,7 +1657,7 @@ mod tests {
                     },
                     config: TypeName::from(config_name),
                 },
-                json!({ "fields": serde_json::to_value(generated_config).unwrap() }),
+                json!({ "fields": serde_json::to_value(move_config).unwrap() }),
             )],
             &objects,
         )
@@ -1753,7 +1742,7 @@ mod tests {
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
-                task: generated_id(task_id),
+                task: object_id(task_id),
                 owner,
             }),
         )];
@@ -1838,7 +1827,7 @@ mod tests {
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
-                task: generated_id(task_id),
+                task: object_id(task_id),
                 owner,
             }),
         )];
@@ -1871,7 +1860,7 @@ mod tests {
         let scheduled_event =
             NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
                 request: OccurrenceScheduledEvent {
-                    task: generated_id(task_id),
+                    task: object_id(task_id),
                     generator: queue_generator.clone(),
                 },
                 priority: 10,
@@ -1938,7 +1927,7 @@ mod tests {
         assert!(matches!(
             schedule.event,
             Some(NexusEventKind::RequestScheduledOccurrence(env))
-                if env.request.task == generated_id(task_id) && env.priority == 10 && env.start_ms == 200
+                if env.request.task == object_id(task_id) && env.priority == 10 && env.start_ms == 200
         ));
         assert_eq!(
             result.tap_payment,
@@ -2015,7 +2004,7 @@ mod tests {
             nexus_objects.primitives_pkg_id,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
-                task: generated_id(task_id),
+                task: object_id(task_id),
                 owner,
             }),
         )];
@@ -2289,7 +2278,7 @@ mod tests {
 
         let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
-            task: generated_id(task_id),
+            task: object_id(task_id),
             generator: generator.clone(),
         });
 
@@ -2361,7 +2350,7 @@ mod tests {
 
         let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
-            task: generated_id(task_id),
+            task: object_id(task_id),
             generator: generator.clone(),
         });
 
@@ -2545,7 +2534,7 @@ mod tests {
             id: (sui::types::Digest::generate(&mut rng), 0),
             generics: vec![],
             data: NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
-                task: generated_id(sui::types::Address::generate(&mut rng)),
+                task: object_id(sui::types::Address::generate(&mut rng)),
                 generator: PolicySymbol::uid(workflow_pkg),
             }),
             distribution: None,
@@ -2564,7 +2553,7 @@ mod tests {
         let scheduled =
             NexusEventKind::RequestScheduledOccurrence(RequestScheduledOccurrenceEvent {
                 request: OccurrenceScheduledEvent {
-                    task: generated_id(task_id),
+                    task: object_id(task_id),
                     generator: PolicySymbol::uid(workflow_pkg),
                 },
                 priority: 1,
@@ -2588,7 +2577,7 @@ mod tests {
             id: (sui::types::Digest::generate(&mut rng), 0),
             generics: vec![],
             data: NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
-                task: generated_id(task_id),
+                task: object_id(task_id),
                 generator: PolicySymbol::uid(workflow_pkg),
             }),
             distribution: None,

@@ -1,9 +1,9 @@
 //! [`NexusObjects`] struct is holding the Nexus object IDs and refs that are
 //! generated during Nexus package deployment.
 #[cfg(not(feature = "sui_idents"))]
-use super::DefaultDagExecutor;
+use super::DefaultDagExecutorTarget;
 #[cfg(feature = "sui_idents")]
-use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
+use super::{primitives::policy::Symbol as PolicySymbol, DefaultDagExecutorTarget, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(all(test, feature = "sui_idents"))]
@@ -31,7 +31,7 @@ pub struct NexusObjects {
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub agent_registry: sui::types::ObjectReference,
-    pub default_dag_executor: DefaultDagExecutor,
+    pub default_dag_executor: DefaultDagExecutorTarget,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -307,7 +307,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            default_dag_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: sui::types::Address::generate(&mut rng),
                 skill_id: 1,
             },

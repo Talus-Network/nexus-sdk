@@ -1,7 +1,7 @@
 //! SDK helpers for generated `nexus_primitives::shared_object::SharedObjectRef`.
 
-pub use crate::types::generated::primitives_types::shared_object::SharedObjectRef;
-use crate::{sui, types::generated::sui_framework_types::object::ID};
+pub use crate::types::primitives::shared_object::SharedObjectRef;
+use crate::{sui, types::sui_framework::object::ID};
 
 impl SharedObjectRef {
     /// Create a new immutable shared object reference.

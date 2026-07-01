@@ -1,8 +1,8 @@
 mod derive;
-pub mod generated;
-mod generated_support;
+include!("generated.rs");
 mod json_dag;
 mod leader_registry;
+mod move_binding_support;
 mod move_json;
 mod network_auth;
 mod nexus_data;
@@ -10,7 +10,7 @@ mod nexus_objects;
 mod payment;
 mod ports_data;
 mod runtime_vertex;
-mod scheduler;
+mod scheduler_models;
 mod secret;
 mod secret_value;
 mod serde_parsers;
@@ -19,11 +19,11 @@ mod storage_kind;
 mod tap;
 mod tool;
 mod tool_meta;
-mod workflow;
+mod workflow_models;
 
 pub use {
-    crate::types::generated::{
-        interface_types::{
+    crate::types::{
+        interface::{
             authorization::{
                 AgentSkillAuthorization,
                 AgentVertexAuthorization,
@@ -33,23 +33,22 @@ pub use {
             },
             v1::InterfacePackageConfig,
         },
-        primitives_types::{
+        primitives::{
             authorization::{CloneableProvenValue, Grant, ProvenValue},
             data::NexusData,
         },
     },
     derive::*,
-    generated_support::*,
     json_dag::*,
     leader_registry::*,
+    move_binding_support::*,
     move_json::*,
     network_auth::*,
     nexus_data::*,
     nexus_objects::NexusObjects,
-    payment::*,
     ports_data::PortsData,
     runtime_vertex::RuntimeVertex,
-    scheduler::*,
+    scheduler_models::*,
     secret::Secret,
     secret_value::SecretValue,
     serde_parsers::*,
@@ -58,7 +57,7 @@ pub use {
     tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
-    workflow::{
+    workflow_models::{
         AuthenticatedOffchainRequestEvidence,
         AuthenticatedOffchainVerifierEvidence,
         ExecutionTerminalRecord,

@@ -1,4 +1,4 @@
-pub mod interface_types {
+pub mod interface {
     #![allow(
         clippy::all,
         dead_code,
@@ -9,7 +9,7 @@ pub mod interface_types {
     include!(concat!(env!("OUT_DIR"), "/interface_types.rs"));
 }
 
-pub mod primitives_types {
+pub mod primitives {
     #![allow(
         clippy::all,
         dead_code,
@@ -20,7 +20,7 @@ pub mod primitives_types {
     include!(concat!(env!("OUT_DIR"), "/primitives_types.rs"));
 }
 
-pub mod registry_types {
+pub mod registry {
     #![allow(
         clippy::all,
         dead_code,
@@ -31,7 +31,7 @@ pub mod registry_types {
     include!(concat!(env!("OUT_DIR"), "/registry_types.rs"));
 }
 
-pub mod scheduler_types {
+pub mod scheduler {
     #![allow(
         clippy::all,
         dead_code,
@@ -42,7 +42,7 @@ pub mod scheduler_types {
     include!(concat!(env!("OUT_DIR"), "/scheduler_types.rs"));
 }
 
-pub mod sui_framework_types {
+pub mod sui_framework {
     #![allow(
         clippy::all,
         dead_code,
@@ -53,7 +53,7 @@ pub mod sui_framework_types {
     include!(concat!(env!("OUT_DIR"), "/sui_framework_types.rs"));
 }
 
-pub mod workflow_types {
+pub mod workflow {
     #![allow(
         clippy::all,
         dead_code,

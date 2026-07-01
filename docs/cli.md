@@ -747,9 +747,9 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-task --agent-id <OBJECT_ID> --skill-id <U64> --payment-source <address-funded|agent-vault> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--input-json <JSON>] [--entry-group <NAME>] [--remote <VERTEX.PORT,...>] [--metadata <KEY=VALUE>] [--refund-recipient <ADDRESS>] [--schedule-start-ms <MS>|--schedule-start-offset-ms <MS>] [--schedule-deadline-offset-ms <MS>] [--schedule-priority-fee-per-gas-unit <AMOUNT>] [--generator <queue|periodic>]`**
+**`nexus tap schedule-task --agent-id <OBJECT_ID> --skill-id <U64> --payment-source <address-funded|agent-vault> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--dag-id <OBJECT_ID>] [--input-json <JSON>] [--entry-group <NAME>] [--remote <VERTEX.PORT,...>] [--metadata <KEY=VALUE>] [--refund-recipient <ADDRESS>] [--schedule-start-ms <MS>|--schedule-start-offset-ms <MS>] [--schedule-deadline-offset-ms <MS>] [--schedule-priority-fee-per-gas-unit <AMOUNT>] [--generator <queue|periodic>]`**
 
-Creates a scheduler task for a registered TAP agent skill and attaches TAP payment components in the same transaction. Use `--payment-source address-funded` to split `--prepay-amount` from the signer gas coin, or `--payment-source agent-vault` after funding the agent vault. JSON output includes one `task_id` plus a `tap_payment` block with agent id, skill id, prepay amount, and occurrence budget.
+Creates a scheduler task for a registered TAP agent skill and attaches TAP payment components in the same transaction. Use `--payment-source address-funded` to split `--prepay-amount` from the signer gas coin, or `--payment-source agent-vault` after funding the agent vault. Pinned skills infer their pinned DAG; if `--dag-id` is provided for a pinned skill, the CLI validates that it matches the pinned DAG. Runtime-DAG-selected skills require `--dag-id` so the scheduler can create the task against the selected DAG. JSON output includes one `task_id` plus a `tap_payment` block with agent id, skill id, DAG id, prepay amount, and occurrence budget.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

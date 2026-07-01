@@ -1,16 +1,11 @@
 //! Public SDK helpers for generated `nexus_registry::network_auth` Move types.
 
 #[cfg(test)]
-use super::{generated_support::sui_address_to_uid, MoveOption};
-pub use crate::types::generated::registry_types::network_auth::{
-    IdentityKey,
-    KeyBinding,
-    KeyRecord,
-    NetworkAuth,
-};
+use super::{move_binding_support::sui_address_to_uid, MoveOption};
+pub use crate::types::registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth};
 use {
-    super::generated_support::MoveString,
-    crate::{sui, types::generated::sui_framework_types::object::ID},
+    super::move_binding_support::MoveString,
+    crate::{sui, types::sui_framework::object::ID},
 };
 
 impl IdentityKey {
@@ -139,7 +134,7 @@ mod tests {
     use {super::*, bcs};
 
     #[test]
-    fn identity_key_helpers_use_generated_move_shape() {
+    fn identity_key_helpers_use_move_shape() {
         let mut rng = rand::thread_rng();
         let address = sui::types::Address::generate(&mut rng);
 
@@ -187,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn key_record_and_network_auth_helpers_use_generated_move_shape() {
+    fn key_record_and_network_auth_helpers_use_move_shape() {
         let mut rng = rand::thread_rng();
         let id = sui::types::Address::generate(&mut rng);
         let first_leader = sui::types::Address::generate(&mut rng);

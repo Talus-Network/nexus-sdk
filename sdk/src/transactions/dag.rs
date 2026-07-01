@@ -661,7 +661,7 @@ fn prepare_offchain_tool_result_bytes(
 fn prepare_nexus_data(
     tx: &mut sui::tx::TransactionBuilder,
     primitives_pkg_id: sui::types::Address,
-    value: &crate::types::generated::primitives_types::data::NexusData,
+    value: &crate::types::primitives::data::NexusData,
 ) -> anyhow::Result<sui::tx::Argument> {
     let element_type = sui::types::TypeTag::Vector(Box::new(sui::types::TypeTag::U8));
     let storage_kind = match value.storage.as_slice() {
@@ -1726,24 +1726,6 @@ pub fn emit_payment_ready_walk_requests(
     );
 }
 
-pub fn committed_tool_result_settlement_status_raw(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    execution: sui::tx::Argument,
-    walk_index: u64,
-) -> sui::tx::Argument {
-    let walk_index = tx.pure(&walk_index);
-
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::Execution::COMMITTED_TOOL_RESULT_SETTLEMENT_STATUS_RAW.module,
-            workflow::Execution::COMMITTED_TOOL_RESULT_SETTLEMENT_STATUS_RAW.name,
-        ),
-        vec![execution, walk_index],
-    )
-}
-
 /// PTB template for creating a new DAG default value.
 pub fn create_default_value(
     tx: &mut sui::tx::TransactionBuilder,
@@ -2432,8 +2414,8 @@ mod tests {
             fqn,
             test_utils::sui_mocks,
             types::{
+                interface::graph::EdgeKind,
                 Data,
-                EdgeKind,
                 FromPort,
                 PostFailureAction,
                 ToPort,
@@ -2575,15 +2557,13 @@ mod tests {
         RuntimeVertex::plain("vertex1")
     }
 
-    fn generated_id(
-        bytes: sui::types::Address,
-    ) -> crate::types::generated::sui_framework_types::object::ID {
+    fn object_id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
         crate::types::sui_address_to_id(bytes)
     }
 
-    fn generated_nexus_data(
+    fn move_nexus_data(
         value: crate::types::NexusData,
-    ) -> crate::types::generated::primitives_types::data::NexusData {
+    ) -> crate::types::primitives::data::NexusData {
         bcs::from_bytes(&bcs::to_bytes(&value).expect("SDK NexusData should encode"))
             .expect("generated NexusData should decode")
     }
@@ -2607,7 +2587,7 @@ mod tests {
             output_variant: "ok".into(),
             output_ports_data: vec![crate::types::PreparedToolOutputPort {
                 port: "result".into(),
-                data: generated_nexus_data(crate::types::NexusData::new_inline(
+                data: move_nexus_data(crate::types::NexusData::new_inline(
                     serde_json::json!({ "value": 7 }),
                 )),
             }],
@@ -2641,11 +2621,11 @@ mod tests {
             payload_or_reason_hash: vec![1, 2, 3],
             transport_proof: vec![4, 5, 6],
             request: crate::types::OffchainRequestEvidence {
-                execution: generated_id(sui_mocks::mock_sui_address()),
+                execution: object_id(sui_mocks::mock_sui_address()),
                 walk_index: 9,
                 vertex: "vertex1".into(),
                 tool_fqn: "xyz.test.tool@1".into(),
-                leader_cap_id: generated_id(sui_mocks::mock_sui_address()),
+                leader_cap_id: object_id(sui_mocks::mock_sui_address()),
                 request_hash: vec![7, 8],
                 request_signature: vec![9, 10],
             },
@@ -2678,7 +2658,7 @@ mod tests {
             output_variant: "_err_eval".into(),
             output_ports_data: vec![crate::types::PreparedToolOutputPort {
                 port: "reason".into(),
-                data: generated_nexus_data(crate::types::NexusData::new_inline(serde_json::json!(
+                data: move_nexus_data(crate::types::NexusData::new_inline(serde_json::json!(
                     "failed"
                 ))),
             }],
@@ -2692,7 +2672,7 @@ mod tests {
             output_variant: "ok".into(),
             output_ports_data: vec![crate::types::PreparedToolOutputPort {
                 port: "result".into(),
-                data: generated_nexus_data(crate::types::NexusData::new_walrus(serde_json::json!(
+                data: move_nexus_data(crate::types::NexusData::new_walrus(serde_json::json!(
                     std::iter::repeat_n(blob_id, 1000).collect::<Vec<_>>()
                 ))),
             }],
@@ -3691,30 +3671,6 @@ mod tests {
         );
         assert_eq!(call.arguments.len(), 3);
         inspector.expect_u64(&call.arguments[2], 333);
-    }
-
-    #[test]
-    fn test_committed_tool_result_settlement_status_raw_builds_execution_view_call() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let execution = tx.pure(&0u64);
-
-        committed_tool_result_settlement_status_raw(&mut tx, &objects, execution, 19);
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(inspector.commands().len() - 1);
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::Execution::COMMITTED_TOOL_RESULT_SETTLEMENT_STATUS_RAW.module
-        );
-        assert_eq!(
-            call.function,
-            workflow::Execution::COMMITTED_TOOL_RESULT_SETTLEMENT_STATUS_RAW.name
-        );
-        assert_eq!(call.arguments.len(), 2);
-        inspector.expect_u64(&call.arguments[1], 19);
     }
 
     #[test]

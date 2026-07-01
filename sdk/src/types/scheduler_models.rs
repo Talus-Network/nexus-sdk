@@ -2,9 +2,12 @@
 //! It provides a way to serialize and deserialize the task and any helper structures.
 use {
     super::{
+        interface::version::InterfaceVersion,
+        primitives::policy::Symbol as PolicySymbol,
+        scheduler::scheduler::State as TaskState,
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         strip_fields_owned,
-        tap::{AgentId, InterfaceVersion, SkillId},
+        tap::{AgentId, SkillId},
         AgentVertexAuthorizationTemplate,
         MoveOption,
         TypeName,
@@ -19,9 +22,6 @@ use {
     },
     serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
-
-pub type TaskState = crate::types::generated::scheduler_types::scheduler::State;
-pub type PolicySymbol = crate::types::generated::primitives_types::policy::Symbol;
 
 impl<'de> Deserialize<'de> for TaskState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -326,7 +326,7 @@ impl<'de> Deserialize<'de> for PolicySymbol {
             #[derive(Deserialize)]
             enum Standard {
                 Witness(TypeName),
-                Uid(crate::types::generated::sui_framework_types::object::ID),
+                Uid(crate::types::sui_framework::object::ID),
             }
 
             return match Standard::deserialize(deserializer)? {
@@ -398,7 +398,7 @@ impl Serialize for PolicySymbol {
             #[derive(Serialize)]
             enum Standard<'a> {
                 Witness(&'a TypeName),
-                Uid(&'a crate::types::generated::sui_framework_types::object::ID),
+                Uid(&'a crate::types::sui_framework::object::ID),
             }
 
             return match self {
@@ -441,7 +441,7 @@ impl PolicySymbol {
 
     pub fn uid(uid: sui::types::Address) -> Self {
         Self::Uid {
-            pos0: crate::types::generated_support::sui_address_to_id(uid),
+            pos0: crate::types::move_binding_support::sui_address_to_id(uid),
         }
     }
 
@@ -690,7 +690,7 @@ mod tests {
             authorization_templates: vec![AgentVertexAuthorizationTemplate {
                 skill_id: 2,
                 vertex: "cap_first".into(),
-                recipient_id: crate::types::generated_support::sui_address_to_id(recipient_id),
+                recipient_id: crate::types::move_binding_support::sui_address_to_id(recipient_id),
             }],
         };
 
