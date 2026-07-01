@@ -597,8 +597,7 @@ fn prepare_offchain_tool_result_bytes(
     objects: &NexusObjects,
     result: &crate::types::PreparedToolOutput,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let output_variant =
-        move_std::Ascii::ascii_string_from_str(tx, result.output_variant.as_str())?;
+    let output_variant = move_std::Ascii::str_to_argument(tx, result.output_variant.as_str())?;
     let port_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
         objects.interface_pkg_id,
         interface::Verifier::PREPARED_TOOL_OUTPUT_PORT.module,
@@ -617,7 +616,7 @@ fn prepare_offchain_tool_result_bytes(
     );
 
     for output_port in &result.output_ports_data {
-        let port = move_std::Ascii::ascii_string_from_str(tx, output_port.port.as_str())?;
+        let port = move_std::Ascii::str_to_argument(tx, output_port.port.as_str())?;
         let data = prepare_nexus_data(tx, objects.primitives_pkg_id, &output_port.data)?;
         let output_port = tx.move_call(
             sui::tx::Function::new(
@@ -859,7 +858,7 @@ fn prepare_verifier_contract_result(
     objects: &NexusObjects,
     result: &crate::types::VerifierContractResult,
 ) -> anyhow::Result<sui::tx::Argument> {
-    let method = move_std::Ascii::ascii_string_from_str(tx, &result.method)?;
+    let method = move_std::Ascii::str_to_argument(tx, &result.method)?;
     let decision = prepare_verifier_decision(tx, objects.interface_pkg_id, result.decision.clone());
     let submission_kind =
         prepare_submission_kind(tx, objects.interface_pkg_id, result.submission_kind.clone());
@@ -952,7 +951,7 @@ fn prepare_authenticated_offchain_request_evidence(
     request: &AuthenticatedOffchainRequestEvidence,
 ) -> anyhow::Result<sui::tx::Argument> {
     let walk_index = tx.pure(&request.walk_index);
-    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &request.tool_fqn)?;
+    let tool_fqn = move_std::Ascii::str_to_argument(tx, &request.tool_fqn)?;
     let request_hash = tx.pure(&request.request_hash);
     let request_signature = tx.pure(&request.request_signature);
 
@@ -981,8 +980,8 @@ fn prepare_raw_offchain_request_evidence_for_preflight(
 ) -> anyhow::Result<sui::tx::Argument> {
     let execution = sui_framework::Object::id_from_object_id(tx, request.execution.clone().into())?;
     let walk_index = tx.pure(&request.walk_index);
-    let vertex = move_std::Ascii::ascii_string_from_str(tx, &request.vertex)?;
-    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &request.tool_fqn)?;
+    let vertex = move_std::Ascii::str_to_argument(tx, &request.vertex)?;
+    let tool_fqn = move_std::Ascii::str_to_argument(tx, &request.tool_fqn)?;
     let leader_cap_id =
         sui_framework::Object::id_from_object_id(tx, request.leader_cap_id.clone().into())?;
     let request_hash = tx.pure(&request.request_hash);

@@ -626,6 +626,7 @@ pub(crate) fn default_agent_execution_config_arg(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn agent_execution_config_arg(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -701,7 +702,7 @@ fn fixed_tool_arg(
 ) -> anyhow::Result<sui::tx::Argument> {
     let tool_registry_id =
         sui_framework::Object::id_from_object_id(tx, fixed_tool.tool_registry_address())?;
-    let tool_fqn = move_std::Ascii::ascii_string_from_str(tx, &fixed_tool.tool_fqn_string())?;
+    let tool_fqn = move_std::Ascii::str_to_argument(tx, &fixed_tool.tool_fqn_string())?;
 
     Ok(tap_interface_call(
         tx,
@@ -754,7 +755,7 @@ fn scheduled_vertex_authorization_template_arg(
     template: &AgentVertexAuthorizationTemplate,
 ) -> anyhow::Result<sui::tx::Argument> {
     let skill_id = tx.pure(&template.skill_id);
-    let vertex = move_std::Ascii::ascii_string_from_str(tx, &template.vertex)?;
+    let vertex = move_std::Ascii::str_to_argument(tx, &template.vertex)?;
     let recipient_id =
         sui_framework::Object::id_from_object_id(tx, template.recipient_id.clone().into())?;
     Ok(tap_interface_call(

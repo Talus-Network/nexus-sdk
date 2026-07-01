@@ -51,7 +51,7 @@ impl Option {
 
 impl Ascii {
     /// Convert a string to a Move ASCII string.
-    pub fn ascii_string_from_str<T: AsRef<str>>(
+    pub fn str_to_argument<T: AsRef<str>>(
         tx: &mut sui::tx::TransactionBuilder,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
