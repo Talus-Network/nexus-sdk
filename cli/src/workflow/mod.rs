@@ -80,7 +80,7 @@ mod tests {
         assert_matches::assert_matches,
         mockito::{Server, ServerGuard},
         nexus_sdk::{
-            types::{DataStorage, Storable, StorageConf},
+            types::{StorageConf, StorageKind},
             walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
         },
         serde_json::json,
@@ -123,14 +123,15 @@ mod tests {
             .commit_all(&storage_conf)
             .await
             .expect("commit_all failed");
+        let vertex = vertex.into_map();
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        assert_matches!(port1, DataStorage::Inline(_));
-        assert_eq!(port1.as_json(), &json!("value1"));
+        assert_eq!(port1.storage_kind(), StorageKind::Inline);
+        assert_eq!(port1.as_json(), json!("value1"));
 
-        assert_matches!(port2, DataStorage::Inline(_));
-        assert_eq!(port2.as_json(), &json!("value2"));
+        assert_eq!(port2.storage_kind(), StorageKind::Inline);
+        assert_eq!(port2.as_json(), json!("value2"));
     }
 
     #[tokio::test]
@@ -176,11 +177,12 @@ mod tests {
             .commit_all(&storage_conf)
             .await
             .expect("commit_all failed");
+        let vertex = vertex.into_map();
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        assert_matches!(port1, DataStorage::Walrus(_));
-        assert_matches!(port2, DataStorage::Inline(_));
+        assert_eq!(port1.storage_kind(), StorageKind::Walrus);
+        assert_eq!(port2.storage_kind(), StorageKind::Inline);
 
         mock_put.assert_async().await;
     }

@@ -15,6 +15,7 @@ mod tap_requirements;
 mod tap_scaffold;
 mod tap_schedule_task;
 mod tap_scheduled_task;
+mod tap_settle;
 mod tap_update_skill;
 mod tap_validate_skill;
 mod tap_vault;
@@ -46,7 +47,7 @@ use {
                 fetch_execution_payment_history,
                 AgentTaskStateAction,
                 CreateAgentResult,
-                GetSkillRequirementsResult,
+                GetSkillRequirementResult,
                 PublishSkillResult,
                 RegisterSkillResult,
                 TapPackagePublishOptions,
@@ -55,8 +56,8 @@ use {
             workflow::AgentDagExecuteOptions,
         },
         types::{
+            interface::payment::ExecutionPaymentReceipt,
             Dag as JsonDag,
-            ExecutionPaymentReceipt,
             SkillConfig,
             SkillId,
             TapPublishArtifact,
@@ -112,6 +113,7 @@ use {
     tap_scaffold::scaffold_tap_skill,
     tap_schedule_task::{schedule_tap_task, TapTaskPaymentSourceArg},
     tap_scheduled_task::set_agent_task_state,
+    tap_settle::handle_execution_command,
     tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill},
     tap_vault::handle_vault_command,
@@ -251,6 +253,8 @@ pub(crate) enum TapCommand {
         about = "Inspect standard TAP execution payments and history."
     )]
     Payments(PaymentsCommand),
+    #[command(subcommand, about = "Settle or abort active TAP executions.")]
+    Execution(ExecutionCommand),
     #[command(subcommand, about = "Inspect the agent registry.")]
     Registry(RegistryCommand),
     #[command(subcommand, about = "Inspect the standard TAP default agent metadata.")]
@@ -351,6 +355,12 @@ pub(crate) enum TapCommand {
             default_value = DEFAULT_ENTRY_GROUP,
         )]
         entry_group: String,
+        #[arg(
+            long = "dag-id",
+            help = "Optional DAG selection for runtime-selected skills. Pinned skills validate this against their pinned DAG when provided.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_id: Option<sui::types::Address>,
         #[arg(
             long = "input-json",
             short = 'i',
@@ -591,6 +601,62 @@ pub(crate) enum PaymentsCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+    #[command(
+        about = "Refill a live TAP execution payment. Uses a coin top-up by default, or the agent vault when `--alias`/`--agent-id` is supplied."
+    )]
+    Refill {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID whose TAP payment should be refilled.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[arg(long, help = "MIST amount to add to the execution payment.")]
+        amount: u64,
+        #[arg(
+            long,
+            help = "Local agent alias whose vault funds the refill.",
+            value_name = "NAME",
+            conflicts_with = "agent_id"
+        )]
+        alias: Option<String>,
+        #[arg(
+            long,
+            help = "Talus agent object ID whose vault funds the refill.",
+            value_name = "OBJECT_ID"
+        )]
+        agent_id: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ExecutionCommand {
+    #[command(about = "Permissionlessly settle one committed result walk after it is eligible.")]
+    Settle {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID to settle.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[arg(long = "walk-index", help = "Committed-result walk index to settle.")]
+        walk_index: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Permissionlessly abort an expired TAP DAG execution.")]
+    Abort {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID to abort.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
@@ -652,6 +718,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
         TapCommand::Agent(command) => handle_agent_command(command).await,
         TapCommand::Vault(command) => handle_vault_command(command).await,
         TapCommand::Payments(command) => handle_payments_command(command).await,
+        TapCommand::Execution(command) => handle_execution_command(command).await,
         TapCommand::Registry(RegistryCommand::Show) => show_registry().await,
         TapCommand::DefaultAgent(DefaultAgentCommand::Show) => show_default_agent().await,
         TapCommand::Bind { artifact, gas } => {
@@ -690,6 +757,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             agent_id,
             skill_id,
             entry_group,
+            dag_id,
             input_json,
             remote,
             metadata,
@@ -715,6 +783,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 agent_id,
                 skill_id,
                 entry_group,
+                dag_id,
                 input_json,
                 remote,
                 metadata,
@@ -759,11 +828,10 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
-        nexus_sdk::types::{
-            InterfaceRevision,
-            SkillPaymentPolicy,
-            SkillRequirements,
-            SkillSchedulePolicy,
+        nexus_sdk::types::interface::{
+            agent::{SkillRequirement, SkillSchedulePolicy},
+            payment::SkillPaymentPolicy,
+            version::InterfaceVersion,
         },
         std::ffi::OsString,
     };
@@ -816,13 +884,13 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+            requirements: SkillRequirement {
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -979,6 +1047,65 @@ mod tests {
             "unexpected error: {resolve_vault_error}"
         );
 
+        let refill_error = handle(TapCommand::Payments(PaymentsCommand::Refill {
+            execution_id: sui::types::Address::from_static("0xee"),
+            amount: 100,
+            alias: None,
+            agent_id: None,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments refill dispatch reaches missing RPC");
+        assert!(
+            refill_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {refill_error}"
+        );
+
+        let refill_vault_error = handle(TapCommand::Payments(PaymentsCommand::Refill {
+            execution_id: sui::types::Address::from_static("0xee"),
+            amount: 100,
+            alias: Some("missing".to_string()),
+            agent_id: None,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("payments refill --alias resolves before RPC");
+        assert!(
+            refill_vault_error
+                .to_string()
+                .contains("No Talus agent alias"),
+            "unexpected error: {refill_vault_error}"
+        );
+
+        let execution_settle_error = handle(TapCommand::Execution(ExecutionCommand::Settle {
+            execution_id: sui::types::Address::from_static("0xee"),
+            walk_index: 0,
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("execution settle dispatch reaches missing RPC");
+        assert!(
+            execution_settle_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {execution_settle_error}"
+        );
+
+        let execution_abort_error = handle(TapCommand::Execution(ExecutionCommand::Abort {
+            execution_id: sui::types::Address::from_static("0xee"),
+            gas: gas_args(),
+        }))
+        .await
+        .expect_err("execution abort dispatch reaches missing RPC");
+        assert!(
+            execution_abort_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {execution_abort_error}"
+        );
+
         let default_agent_error = handle(TapCommand::DefaultAgent(DefaultAgentCommand::Show))
             .await
             .expect_err("default-agent dispatch reaches missing RPC");
@@ -1050,7 +1177,7 @@ mod tests {
             .await
             .expect("generated config validates");
         assert_eq!(config.name, "weather skill");
-        assert_eq!(config.interface_revision, InterfaceRevision(1));
+        assert_eq!(config.interface_revision, InterfaceVersion::new(1));
     }
 
     #[tokio::test]
@@ -1089,13 +1216,13 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+            requirements: SkillRequirement {
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))
@@ -1107,8 +1234,10 @@ mod tests {
                 tx_checkpoint: 42,
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                current_interface_revision: InterfaceRevision(3),
-                dag_binding: nexus_sdk::types::SkillDagBinding::pinned(artifact.dag_id),
+                current_interface_revision: InterfaceVersion::new(3),
+                dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+                    artifact.dag_id,
+                ),
                 requirements: artifact.requirements.clone(),
             },
         );
@@ -1124,13 +1253,13 @@ mod tests {
         let config = SkillConfig {
             name: "bad".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+            requirements: SkillRequirement {
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let config_path = tempdir.join("skill.tap.json");
         tokio::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
@@ -1434,13 +1563,13 @@ public struct WeatherSkill has drop {}
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: SkillRequirements {
-                input_schema_commitment: vec![1],
+            requirements: SkillRequirement {
+                input_commitment: vec![1],
                 payment_policy: SkillPaymentPolicy::default(),
                 schedule_policy: SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))

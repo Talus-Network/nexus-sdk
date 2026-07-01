@@ -6,7 +6,7 @@ use {
             scheduler::{CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest},
             tap::fetch_configured_active_tap_skill_execution_target,
         },
-        types::{SkillDagBinding, StorageConf},
+        types::{interface::agent::SkillDagBinding, StorageConf},
     },
     std::collections::HashMap,
 };
@@ -22,6 +22,7 @@ pub(crate) async fn schedule_tap_task(
     agent_id: sui::types::Address,
     skill_id: u64,
     entry_group: String,
+    selected_dag: Option<sui::types::Address>,
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
     metadata: Vec<String>,
@@ -66,14 +67,12 @@ pub(crate) async fn schedule_tap_task(
     )
     .await
     .map_err(NexusCliError::Any)?;
-    let dag_id = match target.data.skill.dag_binding {
-        SkillDagBinding::Pinned { dag_id } => dag_id,
-        SkillDagBinding::RuntimeSelected => {
-            return Err(NexusCliError::Any(anyhow!(
-                "active TAP skill for agent '{agent_id}' skill '{skill_id}' is runtime-DAG selected; expected a pinned DAG binding"
-            )));
-        }
-    };
+    let (dag_id, runtime_selected_dag) = resolve_scheduled_tap_dag_selection(
+        agent_id,
+        skill_id,
+        target.data.skill.dag_binding().clone(),
+        selected_dag,
+    )?;
 
     let metadata_pairs = helpers::parse_metadata(&metadata)?;
     let input_json = input_json.take().unwrap_or_else(|| serde_json::json!({}));
@@ -92,7 +91,7 @@ pub(crate) async fn schedule_tap_task(
                 testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
             ))
         })?;
-        input_data.insert(vertex, committed);
+        input_data.insert(vertex, committed.into_map());
     }
 
     let schedule_requested = schedule_start_ms.is_some()
@@ -125,13 +124,13 @@ pub(crate) async fn schedule_tap_task(
             prepay_amount,
             refund_recipient,
             occurrence_budget,
-            selected_dag: Some(dag_id),
+            selected_dag: runtime_selected_dag,
             authorization_templates: Vec::new(),
         },
         TapTaskPaymentSourceArg::AgentFunded => CreateTaskTapPayment::AgentFunded {
             prepay_amount,
             occurrence_budget,
-            selected_dag: Some(dag_id),
+            selected_dag: runtime_selected_dag,
             authorization_templates: Vec::new(),
         },
     };
@@ -165,6 +164,34 @@ pub(crate) async fn schedule_tap_task(
     ))
 }
 
+fn resolve_scheduled_tap_dag_selection(
+    agent_id: sui::types::Address,
+    skill_id: u64,
+    binding: SkillDagBinding,
+    selected_dag: Option<sui::types::Address>,
+) -> AnyResult<(sui::types::Address, Option<sui::types::Address>), NexusCliError> {
+    match binding {
+        SkillDagBinding::Pinned { dag_id } => {
+            if let Some(selected_dag) = selected_dag {
+                if selected_dag != dag_id {
+                    return Err(NexusCliError::Any(anyhow!(
+                        "selected DAG '{selected_dag}' does not match pinned DAG '{dag_id}' for agent '{agent_id}' skill '{skill_id}'"
+                    )));
+                }
+            }
+            Ok((dag_id, None))
+        }
+        SkillDagBinding::RuntimeSelected => {
+            let Some(selected_dag) = selected_dag else {
+                return Err(NexusCliError::Any(anyhow!(
+                    "active TAP skill for agent '{agent_id}' skill '{skill_id}' is runtime-DAG selected; provide --dag-id"
+                )));
+            };
+            Ok((selected_dag, Some(selected_dag)))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +202,7 @@ mod tests {
             sui::types::Address::from_static("0xa"),
             7,
             DEFAULT_ENTRY_GROUP.to_string(),
+            None,
             None,
             Vec::new(),
             Vec::new(),
@@ -198,5 +226,84 @@ mod tests {
             err.to_string().contains("--refund-recipient"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn pinned_skill_uses_pinned_dag_when_selection_is_absent() {
+        let pinned = sui::types::Address::from_static("0xd");
+        let (dag_id, runtime_selection) = resolve_scheduled_tap_dag_selection(
+            sui::types::Address::from_static("0xa"),
+            7,
+            SkillDagBinding::Pinned { dag_id: pinned },
+            None,
+        )
+        .expect("pinned skill resolves without explicit dag");
+
+        assert_eq!(dag_id, pinned);
+        assert_eq!(runtime_selection, None);
+    }
+
+    #[test]
+    fn pinned_skill_accepts_matching_explicit_dag_without_runtime_selection() {
+        let pinned = sui::types::Address::from_static("0xd");
+        let (dag_id, runtime_selection) = resolve_scheduled_tap_dag_selection(
+            sui::types::Address::from_static("0xa"),
+            7,
+            SkillDagBinding::Pinned { dag_id: pinned },
+            Some(pinned),
+        )
+        .expect("matching pinned dag resolves");
+
+        assert_eq!(dag_id, pinned);
+        assert_eq!(runtime_selection, None);
+    }
+
+    #[test]
+    fn pinned_skill_rejects_mismatched_explicit_dag() {
+        let err = resolve_scheduled_tap_dag_selection(
+            sui::types::Address::from_static("0xa"),
+            7,
+            SkillDagBinding::Pinned {
+                dag_id: sui::types::Address::from_static("0xd"),
+            },
+            Some(sui::types::Address::from_static("0xe")),
+        )
+        .expect_err("mismatched dag should fail locally");
+
+        assert!(
+            err.to_string().contains("does not match pinned DAG"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn runtime_selected_skill_requires_explicit_dag() {
+        let err = resolve_scheduled_tap_dag_selection(
+            sui::types::Address::from_static("0xa"),
+            7,
+            SkillDagBinding::RuntimeSelected,
+            None,
+        )
+        .expect_err("runtime-selected skill should require dag");
+
+        assert!(
+            err.to_string().contains("provide --dag-id"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn runtime_selected_skill_passes_explicit_dag_to_execution_config() {
+        let selected = sui::types::Address::from_static("0xd");
+        let (dag_id, runtime_selection) = resolve_scheduled_tap_dag_selection(
+            sui::types::Address::from_static("0xa"),
+            7,
+            SkillDagBinding::RuntimeSelected,
+            Some(selected),
+        )
+        .expect("runtime-selected dag resolves");
+
+        assert_eq!(dag_id, selected);
+        assert_eq!(runtime_selection, Some(selected));
     }
 }

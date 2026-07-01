@@ -1,78 +1,82 @@
-mod authorization;
 mod derive;
-mod interface_package_config;
-mod interface_version;
+include!("generated.rs");
 mod json_dag;
 mod leader_registry;
-mod move_collections;
+mod move_binding_support;
 mod move_json;
 mod network_auth;
 mod nexus_data;
-mod nexus_data_parser;
 mod nexus_objects;
 mod payment;
 mod ports_data;
 mod runtime_vertex;
-mod scheduler;
+mod scheduler_models;
 mod secret;
 mod secret_value;
 mod serde_parsers;
 mod shared_object_ref;
 mod storage_kind;
-mod sui_balance;
 mod tap;
 mod tool;
 mod tool_meta;
-mod type_name;
-mod workflow;
+mod workflow_models;
 
 pub use {
-    authorization::*,
+    crate::types::{
+        interface::{
+            authorization::{
+                AgentSkillAuthorization,
+                AgentVertexAuthorization,
+                AgentVertexAuthorizationContext,
+                AgentVertexAuthorizationTemplate,
+                AuthorizationTrigger,
+            },
+            v1::InterfacePackageConfig,
+        },
+        primitives::{
+            authorization::{CloneableProvenValue, Grant, ProvenValue},
+            data::NexusData,
+        },
+    },
     derive::*,
-    interface_package_config::InterfacePackageConfig,
-    interface_version::*,
     json_dag::*,
     leader_registry::*,
-    move_collections::*,
+    move_binding_support::*,
     move_json::*,
     network_auth::*,
     nexus_data::*,
     nexus_objects::NexusObjects,
-    payment::*,
     ports_data::PortsData,
     runtime_vertex::RuntimeVertex,
-    scheduler::*,
+    scheduler_models::*,
     secret::Secret,
     secret_value::SecretValue,
     serde_parsers::*,
     shared_object_ref::SharedObjectRef,
     storage_kind::StorageKind,
-    sui_balance::SuiBalance,
     tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
-    type_name::TypeName,
-    workflow::{
-        AuthenticatedOffchainRequestEvidenceV1,
-        AuthenticatedOffchainVerifierEvidenceV1,
+    workflow_models::{
+        AuthenticatedOffchainRequestEvidence,
+        AuthenticatedOffchainVerifierEvidence,
         ExecutionTerminalRecord,
-        ExternalVerifierRuntimeCallV1,
-        ExternalVerifierSubmitEvidenceV1,
+        ExternalVerifierRuntimeCall,
+        ExternalVerifierSubmitEvidence,
         FailureEvidenceKind,
         OffChainToolResultAuxiliary,
-        OffChainVerifierProofV1,
-        OffchainRequestEvidenceV1,
-        OffchainResponseEvidenceV1,
-        OffchainVerifierEvidenceV1,
+        OffChainVerifierProof,
+        OffchainRequestEvidence,
+        OffchainResponseEvidence,
+        OffchainVerifierEvidence,
         PostFailureAction,
-        PreparedToolOutputPortV1,
-        PreparedToolOutputV1,
+        PreparedToolOutput,
+        PreparedToolOutputPort,
         VerificationSubmissionKind,
-        VerificationSubmissionRole,
         VerificationVerdict,
         VerifierConfig,
-        VerifierContractResultV1,
-        VerifierDecisionV1,
+        VerifierContractResult,
+        VerifierDecision,
         VerifierMode,
         WorkflowFailureClass,
     },

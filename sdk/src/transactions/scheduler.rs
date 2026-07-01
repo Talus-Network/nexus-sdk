@@ -3,7 +3,7 @@ use {
         idents::{interface, move_std, primitives, scheduler, sui_framework, workflow},
         sui,
         transactions::{self, agent_input::AgentInput},
-        types::{AgentId, DataStorage, NexusObjects, SkillId, Storable, StorageKind},
+        types::{AgentId, NexusData, NexusObjects, SkillId, StorageKind},
     },
     serde::{Deserialize, Serialize},
     std::collections::{HashMap, HashSet},
@@ -316,7 +316,7 @@ pub fn new_execution_policy(
     dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -403,12 +403,12 @@ pub fn new_execution_policy(
 pub fn new_agent_execution_policy(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    dag_id: sui::types::Address,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_id: AgentId,
     skill_id: SkillId,
+    selected_dag: Option<sui::types::Address>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let symbol_type =
         primitives::into_type_tag(objects.primitives_pkg_id, primitives::Policy::SYMBOL);
@@ -483,7 +483,7 @@ pub fn new_agent_execution_policy(
         with_vertex_inputs,
         priority_fee_per_gas_unit,
         skill_id,
-        Some(dag_id),
+        selected_dag,
         &[],
     )?;
 
@@ -495,7 +495,7 @@ pub fn new_agent_execution_policy(
 pub(crate) fn build_inputs_vec_map(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
-    input_data: &HashMap<String, HashMap<String, DataStorage>>,
+    input_data: &HashMap<String, HashMap<String, NexusData>>,
 ) -> anyhow::Result<sui::tx::Argument> {
     let inner_vec_map_type = vec![
         interface::into_type_tag(objects.interface_pkg_id, interface::Graph::INPUT_PORT),
@@ -550,12 +550,12 @@ pub(crate) fn build_inputs_vec_map(
                 StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
                 StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
                     tx,
                     objects.primitives_pkg_id,
-                    value.as_json(),
+                    &value.as_json(),
                 )?,
             };
 
@@ -775,6 +775,50 @@ pub fn add_occurrence_relative_for_task(
         ),
         vec![
             task,
+            start_offset_ms,
+            deadline_offset_ms,
+            priority_fee_per_gas_unit,
+            leader_registry,
+            clock,
+        ],
+    ))
+}
+
+/// PTB template to enqueue a new occurrence for an agent-owned task relative to the current clock time.
+pub fn add_occurrence_relative_for_agent_task(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+    start_offset_ms: u64,
+    deadline_offset_ms: Option<u64>,
+    priority_fee_per_gas_unit: u64,
+) -> anyhow::Result<sui::tx::Argument> {
+    let task = shared_task_arg(tx, task)?;
+    let agent = agent.immutable_argument(tx)?;
+    let start_offset_ms = tx.pure(&start_offset_ms);
+    let deadline_offset_ms = tx.pure(&deadline_offset_ms);
+    let priority_fee_per_gas_unit = tx.pure(&priority_fee_per_gas_unit);
+    let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+        *objects.leader_registry.object_id(),
+        objects.leader_registry.version(),
+        false,
+    ));
+    let clock = tx.object(sui::tx::ObjectInput::shared(
+        sui_framework::CLOCK_OBJECT_ID,
+        1,
+        false,
+    ));
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.scheduler_pkg_id,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_AGENT_TASK.module,
+            scheduler::Scheduler::ADD_OCCURRENCE_RELATIVE_FOR_AGENT_TASK.name,
+        ),
+        vec![
+            task,
+            agent,
             start_offset_ms,
             deadline_offset_ms,
             priority_fee_per_gas_unit,
@@ -1196,12 +1240,7 @@ pub fn execute_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
-    let [execution, ticket] = results.to_nested(2)[..] else {
-        return Err(anyhow::anyhow!(
-            "Failed to receive execution and ticket arguments"
-        ));
-    };
+    let execution = results;
 
     let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
@@ -1216,16 +1255,16 @@ pub fn execute_scheduled_occurrence(
         .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
-    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
+    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution);
 
-    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::start_execution()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::START_EXECUTION.module,
+            workflow::ExecutionEntries::START_EXECUTION.name,
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![dag, execution, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -1341,12 +1380,7 @@ pub fn execute_registered_scheduled_occurrence(
         clock,
     )?;
 
-    // `execution: DAGExecution`, `ticket: RequestWalkExecution`
-    let [execution, ticket] = results.to_nested(2)[..] else {
-        return Err(anyhow::anyhow!(
-            "Failed to receive execution and ticket arguments"
-        ));
-    };
+    let execution = results;
 
     let gas_service = tx.object(sui::tx::ObjectInput::shared(
         *objects.gas_service.object_id(),
@@ -1361,16 +1395,16 @@ pub fn execute_registered_scheduled_occurrence(
         .map(|(address, version)| tx.object(sui::tx::ObjectInput::shared(*address, *version, true)))
         .collect();
 
-    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution, ticket);
+    transactions::dag::lock_payment_state_for_tools(tx, objects, tools_gas, dag, execution);
 
-    // `nexus_workflow::execution_entries::request_network_to_execute_walks()`
+    // `nexus_workflow::execution_entries::start_execution()`
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.module,
-            workflow::ExecutionEntries::REQUEST_NETWORK_TO_EXECUTE_WALKS.name,
+            workflow::ExecutionEntries::START_EXECUTION.module,
+            workflow::ExecutionEntries::START_EXECUTION.name,
         ),
-        vec![dag, execution, ticket, leader_registry, clock],
+        vec![dag, execution, leader_registry, clock],
     );
 
     // `DAGExecution`
@@ -1563,6 +1597,71 @@ mod tests {
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         assert_eq!(inspector.commands().len(), 2);
+    }
+
+    fn selected_dag_option_constructor_for_agent_execution_policy(
+        selected_dag: Option<sui::types::Address>,
+    ) -> sui::types::Identifier {
+        let objects = sui_mocks::mock_nexus_objects();
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        new_agent_execution_policy(
+            &mut tx,
+            &objects,
+            11,
+            "default",
+            &HashMap::new(),
+            sui::types::Address::from_static("0xa"),
+            7,
+            selected_dag,
+        )
+        .expect("ptb construction succeeds");
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let agent_config_call = inspector
+            .commands()
+            .iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .find(|call| {
+                call.package == objects.interface_pkg_id
+                    && call.module
+                        == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.module
+                    && call.function
+                        == crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
+            })
+            .expect("agent execution config constructor call");
+        let selected_dag_arg = agent_config_call
+            .arguments
+            .get(6)
+            .expect("selected_dag argument");
+        let sui::types::Argument::Result(option_call_index) = selected_dag_arg else {
+            panic!("expected selected_dag option result, got {selected_dag_arg:?}");
+        };
+        let option_call = inspector.move_call(*option_call_index as usize);
+        assert_eq!(option_call.package, move_std::PACKAGE_ID);
+        assert_eq!(option_call.module, move_std::Option::NONE.module);
+        option_call.function.clone()
+    }
+
+    #[test]
+    fn new_agent_execution_policy_preserves_absent_selected_dag_for_pinned_skills() {
+        assert_eq!(
+            selected_dag_option_constructor_for_agent_execution_policy(None),
+            move_std::Option::NONE.name,
+        );
+    }
+
+    #[test]
+    fn new_agent_execution_policy_preserves_explicit_selected_dag_for_runtime_skills() {
+        assert_eq!(
+            selected_dag_option_constructor_for_agent_execution_policy(Some(
+                sui::types::Address::from_static("0xd"),
+            )),
+            move_std::Option::SOME.name,
+        );
     }
 
     #[test]
@@ -2253,6 +2352,16 @@ mod tests {
         inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
         inspector.expect_clock(&tap_call.arguments[5]);
 
+        let lock_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.workflow_pkg_id
+                    && call.module == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module
+                    && call.function == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name
+            })
+            .expect("tool payment lock call");
+        assert_eq!(lock_call.arguments.len(), 3);
+
         let finish_call = calls
             .iter()
             .find(|call| {
@@ -2343,6 +2452,16 @@ mod tests {
         inspector.expect_shared_object(&tap_call.arguments[3], &task, true);
         inspector.expect_shared_object(&tap_call.arguments[4], &leader_cap, false);
         inspector.expect_clock(&tap_call.arguments[5]);
+
+        let lock_call = calls
+            .iter()
+            .find(|call| {
+                call.package == objects.workflow_pkg_id
+                    && call.module == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.module
+                    && call.function == workflow::Gas::LOCK_PAYMENT_STATE_FOR_TOOL.name
+            })
+            .expect("tool payment lock call");
+        assert_eq!(lock_call.arguments.len(), 3);
 
         let finish_call = calls
             .iter()

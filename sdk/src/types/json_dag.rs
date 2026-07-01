@@ -5,10 +5,10 @@
 
 use {
     crate::{
-        types::{PostFailureAction, StorageKind, VerifierConfig},
+        types::{interface::graph::EdgeKind, PostFailureAction, StorageKind, VerifierConfig},
         ToolFqn,
     },
-    serde::Deserialize,
+    serde::{Deserialize, Deserializer},
 };
 
 /// Name of the default entry group.
@@ -25,6 +25,7 @@ pub struct Dag {
     pub default_values: Option<Vec<DefaultValue>>,
     /// Default post-failure action for the entire DAG. Can be overridden per vertex.
     /// Determines whether the DAG continues execution or terminates when a vertex fails.
+    #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     pub post_failure_action: Option<PostFailureAction>,
     /// Configuration for verifying leader requests. Can be overridden per vertex.
     pub leader_verifier: Option<VerifierConfig>,
@@ -60,11 +61,37 @@ pub struct Vertex {
     /// Entry ports for this vertex that require input data from the user.
     pub entry_ports: Option<Vec<EntryPort>>,
     /// Override the DAG-level post-failure action for this specific vertex.
+    #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     pub post_failure_action: Option<PostFailureAction>,
     /// Override the DAG-level leader verifier for this specific vertex.
     pub leader_verifier: Option<VerifierConfig>,
     /// Override the DAG-level tool verifier for this specific vertex.
     pub tool_verifier: Option<VerifierConfig>,
+}
+
+fn deserialize_post_failure_action_option<'de, D>(
+    deserializer: D,
+) -> Result<Option<PostFailureAction>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let Some(value) = Option::<serde_json::Value>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+
+    if let Some(text) = value.as_str() {
+        return match text {
+            "continue" => Ok(Some(PostFailureAction::TransientContinue)),
+            "terminate" => Ok(Some(PostFailureAction::Terminate)),
+            _ => serde_json::from_value(value)
+                .map(Some)
+                .map_err(serde::de::Error::custom),
+        };
+    }
+
+    serde_json::from_value(value)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -103,23 +130,59 @@ pub struct Edge {
     pub to: ToPort,
     /// The kind of the edge. This is used to determine how the edge is processed in the workflow.
     /// Defaults to [`EdgeKind::Normal`].
-    #[serde(default)]
+    #[serde(
+        default = "default_edge_kind",
+        deserialize_with = "deserialize_edge_kind"
+    )]
     pub kind: EdgeKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EdgeKind {
-    #[default]
-    Normal,
-    /// For-each and collect control edges.
-    ForEach,
-    Collect,
-    /// Do-while and break control edges.
-    DoWhile,
-    Break,
-    /// Provide static values to loops from outside the loop body.
-    Static,
+fn default_edge_kind() -> EdgeKind {
+    EdgeKind::Normal
+}
+
+fn deserialize_edge_kind<'de, D>(deserializer: D) -> Result<EdgeKind, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    parse_edge_kind_value(value).map_err(serde::de::Error::custom)
+}
+
+fn parse_edge_kind_value(value: serde_json::Value) -> Result<EdgeKind, String> {
+    match value {
+        serde_json::Value::String(name) => edge_kind_from_name(&name),
+        serde_json::Value::Object(mut object) => {
+            if let Some(name) = object
+                .remove("@variant")
+                .or_else(|| object.remove("_variant_name"))
+                .or_else(|| object.remove("variant"))
+                .and_then(|value| value.as_str().map(ToOwned::to_owned))
+            {
+                return edge_kind_from_name(&name);
+            }
+
+            if object.len() == 1 {
+                let name = object.keys().next().expect("object has one key");
+                return edge_kind_from_name(name);
+            }
+
+            serde_json::from_value(serde_json::Value::Object(object)).map_err(|err| err.to_string())
+        }
+        value => serde_json::from_value(value).map_err(|err| err.to_string()),
+    }
+}
+
+fn edge_kind_from_name(name: &str) -> Result<EdgeKind, String> {
+    match name {
+        "normal" | "Normal" => Ok(EdgeKind::Normal),
+        "for_each" | "ForEach" => Ok(EdgeKind::ForEach),
+        "collect" | "Collect" => Ok(EdgeKind::Collect),
+        "do_while" | "DoWhile" => Ok(EdgeKind::DoWhile),
+        "break" | "Break" => Ok(EdgeKind::Break),
+        "static" | "Static" => Ok(EdgeKind::Static),
+        _ => Err(format!("unknown edge kind `{name}`")),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -148,12 +211,12 @@ mod tests {
     fn test_dag_deserialize_post_failure_action() {
         let dag: Dag = serde_json::from_str(
             r#"{
-                "post_failure_action": "continue",
+                "post_failure_action": "TransientContinue",
                 "vertices": [
                     {
                         "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
                         "name": "root",
-                        "post_failure_action": "terminate"
+                        "post_failure_action": "Terminate"
                     }
                 ],
                 "edges": []
@@ -169,6 +232,58 @@ mod tests {
             dag.vertices[0].post_failure_action,
             Some(PostFailureAction::Terminate)
         );
+    }
+
+    #[test]
+    fn test_dag_deserialize_post_failure_action_aliases_and_null() {
+        let dag: Dag = serde_json::from_str(
+            r#"{
+                "post_failure_action": "continue",
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root",
+                        "post_failure_action": "terminate"
+                    },
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@2" },
+                        "name": "optional",
+                        "post_failure_action": null
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            dag.post_failure_action,
+            Some(PostFailureAction::TransientContinue)
+        );
+        assert_eq!(
+            dag.vertices[0].post_failure_action,
+            Some(PostFailureAction::Terminate)
+        );
+        assert_eq!(dag.vertices[1].post_failure_action, None);
+    }
+
+    #[test]
+    fn test_dag_deserialize_post_failure_action_rejects_unknown_json_value() {
+        let error = serde_json::from_str::<Dag>(
+            r#"{
+                "post_failure_action": { "invalid": true },
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root"
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(!error.to_string().is_empty());
     }
 
     #[test]
@@ -194,12 +309,12 @@ mod tests {
     fn test_dag_deserialize_verifier_config() {
         let dag: Dag = serde_json::from_str(
             r#"{
-                "leader_verifier": { "mode": "leader_registered_key", "method": "signed_http_v1" },
+                "leader_verifier": { "mode": "LeaderRegisteredKey", "method": "signed_http_v1" },
                 "vertices": [
                     {
                         "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
                         "name": "root",
-                        "tool_verifier": { "mode": "tool_verifier_contract", "method": "demo_verifier_v1" }
+                        "tool_verifier": { "mode": "ToolVerifierContract", "method": "demo_verifier_v1" }
                     }
                 ],
                 "edges": []
@@ -211,15 +326,97 @@ mod tests {
             dag.leader_verifier,
             Some(VerifierConfig {
                 mode: VerifierMode::LeaderRegisteredKey,
-                method: "signed_http_v1".to_string(),
+                method: "signed_http_v1".into(),
             })
         );
         assert_eq!(
             dag.vertices[0].tool_verifier,
             Some(VerifierConfig {
                 mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".to_string(),
+                method: "demo_verifier_v1".into(),
             })
         );
+    }
+
+    #[test]
+    fn edge_kind_config_uses_graph_edge_kind() {
+        use crate::types::interface::graph::EdgeKind as DirectEdgeKind;
+
+        let edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "producer",
+                    "output_variant": "ok",
+                    "output_port": "items"
+                },
+                "to": {
+                    "vertex": "consumer",
+                    "input_port": "item"
+                },
+                "kind": "for_each"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(edge.kind, DirectEdgeKind::ForEach);
+
+        let bytes = bcs::to_bytes(&edge.kind).unwrap();
+        assert_eq!(
+            bcs::from_bytes::<DirectEdgeKind>(&bytes).unwrap(),
+            DirectEdgeKind::ForEach
+        );
+    }
+
+    #[test]
+    fn edge_kind_config_accepts_move_spellings_and_defaults() {
+        let pascal_case_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "loop",
+                    "output_variant": "ok",
+                    "output_port": "next"
+                },
+                "to": {
+                    "vertex": "loop",
+                    "input_port": "continue"
+                },
+                "kind": "DoWhile"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(pascal_case_edge.kind, EdgeKind::DoWhile);
+
+        let wrapper_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "loop",
+                    "output_variant": "ok",
+                    "output_port": "next"
+                },
+                "to": {
+                    "vertex": "loop",
+                    "input_port": "item"
+                },
+                "kind": { "@variant": "Collect" }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(wrapper_edge.kind, EdgeKind::Collect);
+
+        let default_edge: Edge = serde_json::from_str(
+            r#"{
+                "from": {
+                    "vertex": "producer",
+                    "output_variant": "ok",
+                    "output_port": "result"
+                },
+                "to": {
+                    "vertex": "consumer",
+                    "input_port": "input"
+                }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(default_edge.kind, EdgeKind::Normal);
     }
 }

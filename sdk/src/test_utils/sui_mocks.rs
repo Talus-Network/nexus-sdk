@@ -1,6 +1,6 @@
 use crate::{
     sui,
-    types::{DefaultDagExecutor, NexusObjects},
+    types::{DefaultDagExecutorTarget, NexusObjects},
 };
 
 /// Create a new [`sui::types::ObjectReference`] with random values.
@@ -47,7 +47,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
         agent_registry: mock_sui_object_ref(),
-        default_dag_executor: DefaultDagExecutor {
+        default_dag_executor: DefaultDagExecutorTarget {
             agent_id: sui::types::Address::generate(&mut rng),
             skill_id: 1,
         },
@@ -95,7 +95,7 @@ pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::type
 pub mod grpc {
     use {
         super::*,
-        crate::events::NexusEventKind,
+        crate::{events::NexusEventKind, idents::primitives},
         mockall::mock,
         serde::Serialize,
         std::time::SystemTime,
@@ -912,20 +912,31 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
-                    let (event_pkg_id, event_module) = match event {
-                        NexusEventKind::DAGCreated(_) => (objects.interface_pkg_id, "dag"),
-                        _ => (objects.workflow_pkg_id, "execution"),
+                    let (event_pkg_id, event_module, event_name) = match event {
+                        NexusEventKind::DAGCreated(_) => {
+                            (objects.interface_pkg_id, "dag", event.name())
+                        }
+                        NexusEventKind::WalkAdvanced(_)
+                        | NexusEventKind::EndStateReached(_)
+                        | NexusEventKind::ExecutionFinished(_)
+                        | NexusEventKind::TerminalErrEvalRecorded(_) => {
+                            (objects.workflow_pkg_id, "execution_events", event.name())
+                        }
+                        _ => panic!("Unsupported event type for mock event serialization"),
                     };
                     let t = format!(
-                        "{}::event::EventWrapper<{}::dag::{}>",
+                        "{}::{}::{}<{}::{}::{}>",
                         objects.primitives_pkg_id,
+                        primitives::Event::EVENT_WRAPPER.module,
+                        primitives::Event::EVENT_WRAPPER.name,
                         event_pkg_id,
-                        event.name()
+                        event_module,
+                        event_name
                     );
 
                     let mut grpc_event = sui::grpc::Event::default();
                     grpc_event.set_package_id(event_pkg_id);
-                    grpc_event.set_module(event_module.to_string());
+                    grpc_event.set_module(primitives::Event::EVENT_WRAPPER.module.to_string());
                     grpc_event.set_sender(sui::types::Address::ZERO);
                     grpc_event.set_event_type(t);
                     grpc_event.set_contents(match event {
@@ -941,7 +952,10 @@ pub mod grpc {
                         NexusEventKind::DAGCreated(e) => {
                             bcs::to_bytes(&Wrapper { event: e }).unwrap()
                         }
-                        _ => panic!("Unsupported event type for BCS serialization"),
+                        NexusEventKind::TerminalErrEvalRecorded(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        _ => unreachable!("unsupported event type rejected before serialization"),
                     });
                     events.push(grpc_event);
                 }

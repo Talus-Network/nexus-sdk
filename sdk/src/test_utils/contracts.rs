@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::sui_framework,
+        idents::{publish_dependency_ids_or_framework_defaults, sui_framework},
         nexus::signer::{ExecutedTransaction, Signer},
         sui,
         test_utils::sui_mocks,
@@ -131,11 +131,12 @@ pub async fn publish_move_package_with_overrides(
 
     let upgrade_cap = tx.publish(
         package.get_package_bytes(with_unpublished_deps),
-        package
-            .get_dependency_storage_package_ids()
-            .iter()
-            .map(|id| id.to_string().parse().unwrap())
-            .collect(),
+        publish_dependency_ids_or_framework_defaults(
+            package
+                .get_dependency_storage_package_ids()
+                .iter()
+                .map(|id| id.to_string().parse().unwrap()),
+        ),
     );
     let address =
         sui_framework::Address::address_from_type(&mut tx, addr).expect("Failed to get address.");

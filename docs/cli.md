@@ -493,8 +493,8 @@ A typical lifecycle looks like:
 1. `tap create-skill-artifact` — build the same portable skill artifact locally when the DAG and TAP package were published by another flow.
 1. `tap create-agent` (or `tap bind` to do create+register in one PTB) — get an on-chain agent identity.
 1. `tap register-skill` and `tap update-skill` — bind the skill to the agent and move future executions to a new current skill revision when the DAG or policies change.
-1. `tap execute` / `tap schedule` — run the skill once or schedule recurring/queued executions.
-1. `tap registry show`, `tap default-agent show`, `tap requirements`, `tap payments show`/`wait`, `tap vault balance`, and `tap payments list` — inspect on-chain state and drive settlement.
+1. `tap execute` / `tap schedule-task` — run the skill once or schedule recurring/queued executions.
+1. `tap registry show`, `tap default-agent show`, `tap requirements`, `tap payments show`/`wait`, `tap vault balance`, `tap payments list`, and `tap execution settle` — inspect on-chain state and drive settlement.
 
 All commands accept `--json` for stable machine-readable output.
 
@@ -679,6 +679,42 @@ JSON output includes a `function` marker (`accomplish_tap_execution_payment` or 
 This command requires that a wallet is connected to the CLI...
 {% endhint %}
 
+---
+
+**`nexus tap payments refill --execution-id <OBJECT_ID> --amount <MIST> [--alias <NAME> | --agent-id <OBJECT_ID>]`**
+
+Refills a live or settlement-blocked TAP execution payment. With no agent supplied, the command splits `--amount` from the transaction gas coin and calls `refill_tap_execution_payment`. With `--alias` or `--agent-id`, the command resolves a mutable agent object and calls `refill_tap_execution_payment_from_agent_vault`.
+
+JSON output includes a `function` marker (`refill_tap_execution_payment` or `refill_tap_execution_payment_from_agent_vault`), the `execution_id`, optional `agent_id`, `amount`, and transaction `digest`/`tx_checkpoint`. After a refill for settlement shortfall, call `nexus tap execution settle --execution-id <OBJECT_ID> --walk-index <U64>` to retry permissionless settlement.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas. Agent-vault refill additionally requires mutable custody of the supplied agent object.
+{% endhint %}
+
+---
+
+**`nexus tap execution settle --execution-id <OBJECT_ID> --walk-index <U64>`**
+
+Permissionlessly settles one committed-result walk after the on-chain settlement rules allow it. This command calls `settle_committed_tool_result_for_walk` and does not submit leader gas-charge claims; leader-authenticated settlement remains SDK-only.
+
+JSON output includes the `function`, `dag_id`, `execution_id`, `walk_index`, and transaction `digest`/`tx_checkpoint`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
+**`nexus tap execution abort --execution-id <OBJECT_ID>`**
+
+Permissionlessly aborts an expired TAP DAG execution through the current workflow settlement abort entry. This is distinct from `nexus dag abort-expired-execution`, which still discovers and submits a ToolGas-assisted abort candidate.
+
+JSON output includes the `function`, `dag_id`, `execution_id`, and transaction `digest`/`tx_checkpoint`.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
 #### Execution and scheduling
 
 ---
@@ -711,9 +747,9 @@ This command requires that a wallet is connected to the CLI...
 
 ---
 
-**`nexus tap schedule-task --agent-id <OBJECT_ID> --skill-id <U64> --payment-source <address-funded|agent-vault> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--input-json <JSON>] [--entry-group <NAME>] [--remote <VERTEX.PORT,...>] [--metadata <KEY=VALUE>] [--refund-recipient <ADDRESS>] [--schedule-start-ms <MS>|--schedule-start-offset-ms <MS>] [--schedule-deadline-offset-ms <MS>] [--schedule-priority-fee-per-gas-unit <AMOUNT>] [--generator <queue|periodic>]`**
+**`nexus tap schedule-task --agent-id <OBJECT_ID> --skill-id <U64> --payment-source <address-funded|agent-vault> --prepay-amount <AMOUNT> --occurrence-budget <AMOUNT> [--dag-id <OBJECT_ID>] [--input-json <JSON>] [--entry-group <NAME>] [--remote <VERTEX.PORT,...>] [--metadata <KEY=VALUE>] [--refund-recipient <ADDRESS>] [--schedule-start-ms <MS>|--schedule-start-offset-ms <MS>] [--schedule-deadline-offset-ms <MS>] [--schedule-priority-fee-per-gas-unit <AMOUNT>] [--generator <queue|periodic>]`**
 
-Creates a scheduler task for a registered TAP agent skill and attaches TAP payment components in the same transaction. Use `--payment-source address-funded` to split `--prepay-amount` from the signer gas coin, or `--payment-source agent-vault` after funding the agent vault. JSON output includes one `task_id` plus a `tap_payment` block with agent id, skill id, prepay amount, and occurrence budget.
+Creates a scheduler task for a registered TAP agent skill and attaches TAP payment components in the same transaction. Use `--payment-source address-funded` to split `--prepay-amount` from the signer gas coin, or `--payment-source agent-vault` after funding the agent vault. Pinned skills infer their pinned DAG; if `--dag-id` is provided for a pinned skill, the CLI validates that it matches the pinned DAG. Runtime-DAG-selected skills require `--dag-id` so the scheduler can create the task against the selected DAG. JSON output includes one `task_id` plus a `tap_payment` block with agent id, skill id, DAG id, prepay amount, and occurrence budget.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI...

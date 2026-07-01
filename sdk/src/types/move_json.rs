@@ -1,10 +1,16 @@
 use {
     crate::{
         sui,
-        types::{ExecutionTerminalRecord, RuntimeVertex, TypeName, WorkflowFailureClass},
+        types::{
+            ExecutionTerminalRecord,
+            PublishedMoveEnum,
+            RuntimeVertex,
+            TypeName,
+            WorkflowFailureClass,
+        },
     },
     anyhow::anyhow,
-    serde::{de::DeserializeOwned, ser::SerializeSeq, Deserialize, Serialize},
+    serde::de::DeserializeOwned,
 };
 
 /// Unwrap Sui's Move-JSON `{ fields: { ... } }` wrapper when present.
@@ -20,221 +26,6 @@ pub fn strip_fields_owned(value: serde_json::Value) -> serde_json::Value {
             serde_json::Value::Object(object)
         }
         None => serde_json::Value::Object(object),
-    }
-}
-
-/// Deserialize a Move struct value, tolerating the `{ fields: ... }` wrapper.
-#[derive(Clone, Debug)]
-pub struct MoveFields<T>(pub T);
-
-impl<'de, T> Deserialize<'de> for MoveFields<T>
-where
-    T: DeserializeOwned,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            return T::deserialize(deserializer).map(Self);
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        let value = strip_fields_owned(value);
-        serde_json::from_value::<T>(value)
-            .map(Self)
-            .map_err(serde::de::Error::custom)
-    }
-}
-
-/// Deserialize `0x1::option::Option<T>`.
-///
-/// accepted:
-/// - `{ vec: [] | [T] }` (Move stdlib option layout),
-/// - `{ some: T }` / `{ none: ... }`,
-/// - `null`,
-/// - and a best-effort fallback treating the value as `T`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct MoveOption<T>(pub Option<T>);
-
-impl<T> From<Option<T>> for MoveOption<T> {
-    fn from(value: Option<T>) -> Self {
-        Self(value)
-    }
-}
-
-impl<T> Serialize for MoveOption<T>
-where
-    T: Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if serializer.is_human_readable() {
-            return self.0.serialize(serializer);
-        }
-
-        let mut seq = serializer.serialize_seq(Some(usize::from(self.0.is_some())))?;
-        if let Some(value) = &self.0 {
-            seq.serialize_element(value)?;
-        }
-        seq.end()
-    }
-}
-
-fn deserialize_move_option_inner<T, E>(value: serde_json::Value) -> Result<T, E>
-where
-    T: DeserializeOwned,
-    E: serde::de::Error,
-{
-    let value = strip_fields_owned(value);
-    match serde_json::from_value::<T>(value.clone()) {
-        Ok(parsed) => Ok(parsed),
-        Err(original) => {
-            if let serde_json::Value::Object(object) = &value {
-                for key in ["value", "inner"] {
-                    if let Some(inner) = object.get(key) {
-                        match deserialize_move_option_inner::<T, E>(inner.clone()) {
-                            Ok(parsed) => return Ok(parsed),
-                            Err(_) => continue,
-                        }
-                    }
-                }
-            }
-
-            if let Some(bytes) = parse_byte_vector_value(&value).map_err(E::custom)? {
-                let bytes = bytes
-                    .into_iter()
-                    .map(serde_json::Value::from)
-                    .collect::<Vec<_>>();
-                return serde_json::from_value::<T>(serde_json::Value::Array(bytes))
-                    .map_err(E::custom);
-            }
-
-            Err(E::custom(original))
-        }
-    }
-}
-
-impl<'de, T> Deserialize<'de> for MoveOption<T>
-where
-    T: DeserializeOwned,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // In BCS, Move `Option<T>` is a single-field struct containing a `vector<T>`.
-        if !deserializer.is_human_readable() {
-            let mut vec = Vec::<T>::deserialize(deserializer)?;
-            return Ok(Self(vec.drain(..).next()));
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        let value = strip_fields_owned(value);
-
-        match value {
-            serde_json::Value::Null => Ok(Self(None)),
-            serde_json::Value::Array(mut vec) => {
-                if vec.is_empty() {
-                    return Ok(Self(None));
-                }
-
-                let direct = serde_json::Value::Array(vec.clone());
-                if let Ok(parsed) = deserialize_move_option_inner::<T, D::Error>(direct) {
-                    return Ok(Self(Some(parsed)));
-                }
-
-                Ok(Self(
-                    vec.drain(..)
-                        .next()
-                        .map(deserialize_move_option_inner::<T, D::Error>)
-                        .transpose()
-                        .map_err(serde::de::Error::custom)?,
-                ))
-            }
-            serde_json::Value::Object(mut object) => {
-                if let Some(vec) = object.remove("vec").or_else(|| object.remove("Vec")) {
-                    let vec = strip_fields_owned(vec)
-                        .as_array()
-                        .cloned()
-                        .unwrap_or_default();
-                    let mut vec = vec;
-                    return Ok(Self(
-                        vec.drain(..)
-                            .next()
-                            .map(deserialize_move_option_inner::<T, D::Error>)
-                            .transpose()?,
-                    ));
-                }
-
-                if let Some(inner) = object.remove("some").or_else(|| object.remove("Some")) {
-                    let inner = deserialize_move_option_inner::<T, D::Error>(inner)?;
-                    return Ok(Self(Some(inner)));
-                }
-
-                if object.contains_key("none") || object.contains_key("None") {
-                    return Ok(Self(None));
-                }
-
-                // Fallback: treat as `T` directly.
-                deserialize_move_option_inner::<T, D::Error>(serde_json::Value::Object(object))
-                    .map(Some)
-                    .map(Self)
-            }
-            other => deserialize_move_option_inner::<T, D::Error>(other)
-                .map(Some)
-                .map(Self),
-        }
-    }
-}
-
-/// Deserialize a published Move enum value by extracting its variant tag and
-/// delegating to `T`'s existing string-based enum deserializer.
-#[derive(Clone, Debug)]
-pub struct PublishedMoveEnum<T>(pub T);
-
-fn published_move_variant_name_owned(value: serde_json::Value) -> Result<String, String> {
-    let value = strip_fields_owned(value);
-
-    match value {
-        serde_json::Value::String(name) => Ok(name),
-        serde_json::Value::Object(mut object) => object
-            .remove("_variant_name")
-            .or_else(|| object.remove("@variant"))
-            .or_else(|| object.remove("variant"))
-            .and_then(|value| value.as_str().map(ToOwned::to_owned))
-            .or_else(|| {
-                if object.len() == 1 {
-                    object.keys().next().cloned()
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| "missing published Move enum variant tag".to_string()),
-        other => Err(format!("unexpected published Move enum value: {other}")),
-    }
-}
-
-impl<'de, T> Deserialize<'de> for PublishedMoveEnum<T>
-where
-    T: DeserializeOwned,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            return T::deserialize(deserializer).map(Self);
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        let variant = published_move_variant_name_owned(value).map_err(serde::de::Error::custom)?;
-
-        serde_json::from_value::<T>(serde_json::Value::String(variant))
-            .map(Self)
-            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -467,7 +258,9 @@ pub fn parse_runtime_vertex_value(
 
             let vertex = parse_type_name_value(vertex)?
                 .ok_or_else(|| anyhow!("Could not parse plain runtime vertex name: {vertex}"))?;
-            Ok(Some(RuntimeVertex::Plain { vertex }))
+            Ok(Some(RuntimeVertex::Plain {
+                vertex: vertex.into(),
+            }))
         }
         "WithIterator" | "with_iterator" => {
             let Some(vertex) = object.get("vertex") else {
@@ -488,7 +281,7 @@ pub fn parse_runtime_vertex_value(
                 .ok_or_else(|| anyhow!("Could not parse runtime vertex out_of: {out_of}"))?;
 
             Ok(Some(RuntimeVertex::WithIterator {
-                vertex,
+                vertex: vertex.into(),
                 iteration,
                 out_of,
             }))
@@ -600,6 +393,7 @@ fn parse_variant_name(value: &serde_json::Value) -> Option<String> {
 mod tests {
     use {
         super::*,
+        crate::types::{MoveFields, MoveOption},
         serde::{Deserialize, Serialize},
         serde_json::json,
     };
@@ -714,7 +508,7 @@ mod tests {
                     }
                 }
             },
-            "failure_class": "terminal_submission_failure"
+            "failure_class": "TerminalSubmissionFailure"
         }))
         .expect("plain execution terminal record should parse");
 

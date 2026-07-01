@@ -1,6 +1,6 @@
 {
-  "storage_id": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
-  "original_id": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+  "storage_id": "0xa1",
+  "original_id": "0xa1",
   "version": 1,
   "modules": {
     "authorization": {
@@ -8,7 +8,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "authorization",
             "name": "CloneableProvenValue"
           },
@@ -83,7 +83,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "authorization",
             "name": "Grant"
           },
@@ -112,7 +112,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -130,7 +130,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "authorization",
             "name": "ProvenValue"
           },
@@ -210,14 +210,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "ProvenValue"
                       },
@@ -260,14 +260,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -310,11 +310,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "CloneableProvenValue"
                   },
@@ -331,7 +331,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -359,14 +359,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -420,14 +420,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "CloneableProvenValue"
                       },
@@ -462,11 +462,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -496,7 +496,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -514,7 +514,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
@@ -524,7 +524,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "Grant"
                 },
@@ -552,14 +552,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -602,7 +602,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -620,13 +620,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "recipient",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -643,7 +643,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "Grant"
                 },
@@ -671,11 +671,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "Grant"
                   },
@@ -692,7 +692,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -720,14 +720,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -781,14 +781,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "Grant"
                       },
@@ -821,14 +821,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "authorization",
                         "name": "ProvenValue"
                       },
@@ -879,11 +879,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -914,11 +914,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "ProvenValue"
                   },
@@ -931,7 +931,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "recipient",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -970,11 +970,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "authorization",
                     "name": "CloneableProvenValue"
                   },
@@ -1005,7 +1005,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1023,7 +1023,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
@@ -1033,7 +1033,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -1061,7 +1061,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1079,7 +1079,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
@@ -1089,7 +1089,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "CloneableProvenValue"
                 },
@@ -1117,7 +1117,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1135,13 +1135,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "recipient",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -1158,7 +1158,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "CloneableProvenValue"
                 },
@@ -1183,7 +1183,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "by",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1201,13 +1201,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "value",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "recipient",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -1224,7 +1224,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "authorization",
                   "name": "ProvenValue"
                 },
@@ -1244,7 +1244,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "automaton",
             "name": "ConfiguredAutomaton"
           },
@@ -1295,7 +1295,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1316,7 +1316,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "automaton",
             "name": "DeterministicAutomaton"
           },
@@ -1436,7 +1436,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "automaton",
             "name": "TransitionConfigKey"
           },
@@ -1474,7 +1474,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "TransitionKey"
                       },
@@ -1509,7 +1509,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "automaton",
             "name": "TransitionKey"
           },
@@ -1588,7 +1588,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "states",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1610,7 +1610,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "accepting",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1632,7 +1632,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1689,14 +1689,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1714,7 +1714,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "word",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1764,14 +1764,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1789,17 +1789,17 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "accepting",
               "ty": "Bool"
             },
             {
-              "name": "arg3",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1821,7 +1821,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -1867,14 +1867,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -1892,13 +1892,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
             },
             {
-              "name": "arg2",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1948,14 +1948,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2019,14 +2019,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2051,7 +2051,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -2093,14 +2093,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2125,7 +2125,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -2173,14 +2173,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2198,7 +2198,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -2245,14 +2245,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2270,13 +2270,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -2323,14 +2323,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2348,7 +2348,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -2395,14 +2395,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -2420,13 +2420,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -2467,7 +2467,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "states",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2489,7 +2489,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "alphabet",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2511,7 +2511,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2544,7 +2544,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -2612,14 +2612,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2637,7 +2637,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2648,7 +2648,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2689,14 +2689,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2714,11 +2714,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state_index",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol_index",
               "ty": "U64"
             }
           ],
@@ -2741,7 +2741,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "rows",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -2795,14 +2795,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "dfa",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2820,7 +2820,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2849,7 +2849,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "states",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2897,14 +2897,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "dfa",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -2922,7 +2922,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2951,7 +2951,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "alphabet",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -2999,14 +2999,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3024,7 +3024,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3055,7 +3055,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "states",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3077,7 +3077,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3116,14 +3116,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3141,7 +3141,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3172,7 +3172,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "alphabet",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3194,7 +3194,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3233,14 +3233,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3258,11 +3258,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "start",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "word",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3318,14 +3318,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3343,7 +3343,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -3369,7 +3369,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "items",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3391,7 +3391,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "target",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3441,14 +3441,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3466,7 +3466,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3505,7 +3505,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "states",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3522,7 +3522,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "alphabet",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3539,13 +3539,13 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "start",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg3",
+              "name": "accepting",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3562,7 +3562,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "transitions",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3590,7 +3590,7 @@
               }
             },
             {
-              "name": "arg5",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3612,7 +3612,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "automaton",
                   "name": "DeterministicAutomaton"
                 },
@@ -3652,11 +3652,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "dfa",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -3672,7 +3672,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3694,7 +3694,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "automaton",
                   "name": "ConfiguredAutomaton"
                 },
@@ -3740,14 +3740,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3765,13 +3765,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
             },
             {
-              "name": "arg2",
+              "name": "config",
               "ty": {
                 "TypeParameter": 2
               }
@@ -3809,14 +3809,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "configured",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -3834,19 +3834,19 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
             },
             {
-              "name": "arg3",
+              "name": "config",
               "ty": {
                 "TypeParameter": 2
               }
@@ -3878,14 +3878,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3903,7 +3903,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "word",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3955,14 +3955,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -3980,7 +3980,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -3991,7 +3991,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "word",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4043,14 +4043,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4068,7 +4068,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4079,7 +4079,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "accepting",
               "ty": "Bool"
             }
           ],
@@ -4109,14 +4109,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4134,7 +4134,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4145,7 +4145,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4156,7 +4156,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "next",
               "ty": {
                 "TypeParameter": 0
               }
@@ -4188,14 +4188,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4213,15 +4213,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state_index",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol_index",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "next_index",
               "ty": "U64"
             }
           ],
@@ -4251,13 +4251,13 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "state",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -4267,7 +4267,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -4307,14 +4307,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4360,14 +4360,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4415,14 +4415,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4440,7 +4440,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "index",
               "ty": "U64"
             }
           ],
@@ -4474,14 +4474,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4499,7 +4499,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "index",
               "ty": "U64"
             }
           ],
@@ -4533,14 +4533,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4604,14 +4604,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "DeterministicAutomaton"
                       },
@@ -4629,7 +4629,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4683,11 +4683,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "transition",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "automaton",
                     "name": "TransitionKey"
                   },
@@ -4707,7 +4707,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "automaton",
                   "name": "TransitionConfigKey"
                 },
@@ -4747,7 +4747,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "symbol",
               "ty": {
                 "TypeParameter": 1
               }
@@ -4757,7 +4757,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "automaton",
                   "name": "TransitionKey"
                 },
@@ -4786,7 +4786,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4797,7 +4797,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": "U64"
             }
           ],
@@ -4812,7 +4812,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4823,7 +4823,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4854,7 +4854,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4865,7 +4865,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4905,7 +4905,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4916,7 +4916,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4947,7 +4947,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4958,7 +4958,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -4989,7 +4989,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5000,7 +5000,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -5031,7 +5031,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5042,7 +5042,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "offset",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -5075,7 +5075,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "data",
             "name": "DataTypeHint"
           },
@@ -5121,7 +5121,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "data",
             "name": "NexusData"
           },
@@ -5165,7 +5165,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "data",
             "name": "TypedNexusData"
           },
@@ -5186,7 +5186,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -5200,7 +5200,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -5221,11 +5221,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5238,7 +5238,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5254,11 +5254,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5271,7 +5271,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5287,11 +5287,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5304,7 +5304,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5320,11 +5320,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5337,7 +5337,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5353,11 +5353,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5370,7 +5370,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5386,12 +5386,12 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "vec",
               "ty": {
                 "Vector": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "data",
                       "name": "NexusData"
                     },
@@ -5405,7 +5405,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5421,7 +5421,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "value",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5445,7 +5445,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "value",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5469,14 +5469,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "typed",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -5491,7 +5491,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5507,7 +5507,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "value",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5518,14 +5518,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "type_hint",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "DataTypeHint"
                       },
@@ -5549,7 +5549,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "many",
               "ty": {
                 "Vector": {
                   "Vector": "U8"
@@ -5561,7 +5561,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5577,7 +5577,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "one",
               "ty": {
                 "Vector": "U8"
               }
@@ -5587,7 +5587,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5603,11 +5603,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "data",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5621,7 +5621,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5638,14 +5638,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "NexusData"
                       },
@@ -5680,7 +5680,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "reason_bytes",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -5725,7 +5725,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5744,7 +5744,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5763,7 +5763,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5782,7 +5782,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5801,7 +5801,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "DataTypeHint"
                 },
@@ -5817,7 +5817,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "keys",
               "ty": {
                 "Vector": {
                   "Vector": "U8"
@@ -5829,7 +5829,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5845,7 +5845,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "key",
               "ty": {
                 "Vector": "U8"
               }
@@ -5855,7 +5855,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
                 },
@@ -5871,11 +5871,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "NexusData"
                   },
@@ -5884,11 +5884,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "type_hint",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "DataTypeHint"
                   },
@@ -5901,7 +5901,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "data",
                   "name": "TypedNexusData"
                 },
@@ -5917,7 +5917,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "distributed_event",
             "name": "DistributedEventWrapper"
           },
@@ -6007,14 +6007,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -6048,21 +6048,21 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "event",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg1",
+              "name": "deadline_ms",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "requested_at_ms",
               "ty": "U64"
             },
             {
-              "name": "arg3",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -6075,7 +6075,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "leaders",
               "ty": {
                 "Vector": {
                   "Datatype": {
@@ -6107,14 +6107,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -6155,14 +6155,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -6212,14 +6212,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -6253,14 +6253,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "distributed_event",
                         "name": "DistributedEventWrapper"
                       },
@@ -6295,7 +6295,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "event",
             "name": "EventWrapper"
           },
@@ -6342,7 +6342,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "event",
               "ty": {
                 "TypeParameter": 0
               }
@@ -6365,14 +6365,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "wrapper",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "event",
                         "name": "EventWrapper"
                       },
@@ -6405,7 +6405,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "owner_cap",
             "name": "CloneableOwnerCap"
           },
@@ -6458,7 +6458,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -6476,7 +6476,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "owner_cap",
             "name": "OwnerCap"
           },
@@ -6527,14 +6527,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6556,7 +6556,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "owner_cap",
                       "name": "OwnerCap"
                     },
@@ -6583,14 +6583,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "cap",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6605,7 +6605,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -6627,7 +6627,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -6652,14 +6652,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "cap",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6674,11 +6674,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "receiver",
               "ty": "Address"
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -6710,14 +6710,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "cap",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6732,11 +6732,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "n",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -6759,7 +6759,7 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -6785,11 +6785,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "owner_cap",
                     "name": "CloneableOwnerCap"
                   },
@@ -6816,14 +6816,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "OwnerCap"
                       },
@@ -6869,14 +6869,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6891,7 +6891,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "what",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -6918,14 +6918,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -6940,7 +6940,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "what_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -6971,13 +6971,13 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "witness",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg1",
+              "name": "what_for",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -6995,7 +6995,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -7017,7 +7017,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -7044,7 +7044,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "object",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7055,7 +7055,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "its_uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7073,7 +7073,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -7095,7 +7095,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "owner_cap",
                   "name": "CloneableOwnerCap"
                 },
@@ -7120,7 +7120,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "_",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7131,7 +7131,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -7153,7 +7153,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "owner_cap",
                   "name": "OwnerCap"
                 },
@@ -7178,14 +7178,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "owner_cap",
                         "name": "CloneableOwnerCap"
                       },
@@ -7220,7 +7220,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "policy",
             "name": "Policy"
           },
@@ -7261,7 +7261,7 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "automaton",
                         "name": "ConfiguredAutomaton"
                       },
@@ -7270,7 +7270,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -7299,7 +7299,7 @@
         },
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "policy",
             "name": "Symbol"
           },
@@ -7374,14 +7374,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7396,15 +7396,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "accepting",
               "ty": "Bool"
             },
             {
-              "name": "arg3",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7424,7 +7424,7 @@
               }
             },
             {
-              "name": "arg4",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -7460,14 +7460,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7482,11 +7482,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7495,7 +7495,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7533,14 +7533,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7555,7 +7555,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7573,7 +7573,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7617,14 +7617,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7639,7 +7639,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "transitions",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7677,14 +7677,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7699,11 +7699,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -7728,14 +7728,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7750,7 +7750,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7790,14 +7790,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7812,7 +7812,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "witness",
               "ty": {
                 "TypeParameter": 0
               }
@@ -7846,14 +7846,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7899,14 +7899,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7921,7 +7921,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -7970,14 +7970,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -7992,11 +7992,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8036,14 +8036,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8058,11 +8058,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8108,14 +8108,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8161,14 +8161,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8183,7 +8183,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8238,14 +8238,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8260,7 +8260,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             }
           ],
@@ -8295,14 +8295,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8317,11 +8317,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8376,14 +8376,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8398,7 +8398,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             }
           ],
@@ -8433,14 +8433,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8455,11 +8455,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8508,14 +8508,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8530,15 +8530,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8578,14 +8578,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8600,15 +8600,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -8642,14 +8642,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8671,7 +8671,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "ConfiguredAutomaton"
                     },
@@ -8680,7 +8680,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                            "address": "0xa1",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8701,7 +8701,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "alphabet",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8716,7 +8716,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -8730,14 +8730,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -8766,14 +8766,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8795,7 +8795,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -8804,7 +8804,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                            "address": "0xa1",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8832,14 +8832,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8861,7 +8861,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -8870,7 +8870,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                            "address": "0xa1",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -8898,14 +8898,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8945,14 +8945,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -8992,14 +8992,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9021,7 +9021,7 @@
                 "inner": {
                   "Datatype": {
                     "type_name": {
-                      "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                      "address": "0xa1",
                       "module": "automaton",
                       "name": "DeterministicAutomaton"
                     },
@@ -9030,7 +9030,7 @@
                       {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                            "address": "0xa1",
                             "module": "policy",
                             "name": "Symbol"
                           },
@@ -9058,14 +9058,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9080,7 +9080,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -9105,14 +9105,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9127,11 +9127,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -9156,14 +9156,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9178,14 +9178,14 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -9220,14 +9220,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9242,7 +9242,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -9290,14 +9290,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9336,14 +9336,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9376,14 +9376,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9430,14 +9430,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9463,11 +9463,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "step_count",
               "ty": "U64"
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -9507,7 +9507,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "sequence",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -9522,7 +9522,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9536,7 +9536,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "alphabet",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -9551,7 +9551,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9565,7 +9565,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -9623,11 +9623,11 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "dfa",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "automaton",
                     "name": "DeterministicAutomaton"
                   },
@@ -9636,7 +9636,7 @@
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                          "address": "0xa1",
                           "module": "policy",
                           "name": "Symbol"
                         },
@@ -9648,13 +9648,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "data",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -9676,7 +9676,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -9703,7 +9703,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "sequence",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -9718,7 +9718,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -9732,13 +9732,13 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "data",
               "ty": {
                 "TypeParameter": 0
               }
             },
             {
-              "name": "arg2",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -9760,7 +9760,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Policy"
                 },
@@ -9799,14 +9799,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9821,7 +9821,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "config",
               "ty": {
                 "TypeParameter": 2
               }
@@ -9855,14 +9855,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9877,11 +9877,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "config",
               "ty": {
                 "TypeParameter": 2
               }
@@ -9909,14 +9909,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9931,11 +9931,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -9944,7 +9944,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "config",
               "ty": {
                 "TypeParameter": 1
               }
@@ -9972,14 +9972,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -9994,15 +9994,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -10011,7 +10011,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "config",
               "ty": {
                 "TypeParameter": 1
               }
@@ -10039,14 +10039,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10061,7 +10061,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10079,7 +10079,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "config",
               "ty": {
                 "TypeParameter": 1
               }
@@ -10107,14 +10107,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10129,11 +10129,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10151,7 +10151,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "config",
               "ty": {
                 "TypeParameter": 1
               }
@@ -10173,14 +10173,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10211,14 +10211,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10233,11 +10233,11 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "accepting",
               "ty": "Bool"
             }
           ],
@@ -10257,14 +10257,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10279,15 +10279,15 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "state",
               "ty": "U64"
             },
             {
-              "name": "arg2",
+              "name": "symbol",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "policy",
                     "name": "Symbol"
                   },
@@ -10296,7 +10296,7 @@
               }
             },
             {
-              "name": "arg3",
+              "name": "next",
               "ty": "U64"
             }
           ],
@@ -10316,14 +10316,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10356,14 +10356,14 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "policy",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Policy"
                       },
@@ -10389,7 +10389,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10411,7 +10411,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10427,7 +10427,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "sequence",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10442,7 +10442,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "policy",
                               "name": "Symbol"
                             },
@@ -10456,7 +10456,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "ctx",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -10486,7 +10486,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "policy",
                         "name": "Symbol"
                       },
@@ -10515,7 +10515,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10531,7 +10531,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "name",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -10548,7 +10548,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "policy",
                   "name": "Symbol"
                 },
@@ -10564,7 +10564,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "proof_of_uid",
             "name": "ProofOfUID"
           },
@@ -10655,11 +10655,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "proof_of_uid",
                     "name": "ProofOfUID"
                   },
@@ -10668,7 +10668,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10720,14 +10720,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10758,14 +10758,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10776,7 +10776,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "of_uid",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -10800,14 +10800,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10818,7 +10818,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "of_uid",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -10831,7 +10831,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "data",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10853,7 +10853,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10875,7 +10875,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -10898,7 +10898,7 @@
           ],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10916,7 +10916,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "o",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10931,7 +10931,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "proof_of_uid",
                   "name": "ProofOfUID"
                 },
@@ -10947,14 +10947,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -10965,7 +10965,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "of_uid",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -11002,14 +11002,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11020,7 +11020,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -11047,14 +11047,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11065,7 +11065,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -11083,7 +11083,7 @@
               }
             },
             {
-              "name": "arg2",
+              "name": "data",
               "ty": {
                 "Vector": "U8"
               }
@@ -11098,14 +11098,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11155,14 +11155,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11184,14 +11184,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11233,14 +11233,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "proof_of_uid",
                         "name": "ProofOfUID"
                       },
@@ -11251,7 +11251,7 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "uid",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -11278,7 +11278,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "shared_object",
             "name": "SharedObjectRef"
           },
@@ -11325,14 +11325,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "shared_object",
                         "name": "SharedObjectRef"
                       },
@@ -11363,7 +11363,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -11380,7 +11380,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "shared_object",
                   "name": "SharedObjectRef"
                 },
@@ -11396,7 +11396,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -11413,7 +11413,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "shared_object",
                   "name": "SharedObjectRef"
                 },
@@ -11429,14 +11429,14 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "shared_object",
                         "name": "SharedObjectRef"
                       },
@@ -11458,7 +11458,7 @@
       "datatypes": [
         {
           "type_name": {
-            "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+            "address": "0xa1",
             "module": "tagged_output",
             "name": "TaggedOutput"
           },
@@ -11495,7 +11495,7 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                              "address": "0xa1",
                               "module": "data",
                               "name": "TypedNexusData"
                             },
@@ -11519,11 +11519,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -11550,7 +11550,7 @@
                   {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                        "address": "0xa1",
                         "module": "data",
                         "name": "TypedNexusData"
                       },
@@ -11569,7 +11569,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "tag",
               "ty": {
                 "Vector": "U8"
               }
@@ -11579,7 +11579,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
                 },
@@ -11595,11 +11595,11 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "arg0",
+              "name": "self",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "tagged_output",
                     "name": "TaggedOutput"
                   },
@@ -11608,17 +11608,17 @@
               }
             },
             {
-              "name": "arg1",
+              "name": "name",
               "ty": {
                 "Vector": "U8"
               }
             },
             {
-              "name": "arg2",
+              "name": "value",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                    "address": "0xa1",
                     "module": "data",
                     "name": "TypedNexusData"
                   },
@@ -11631,7 +11631,7 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x4c58beebff83d0619ef3e62206ec83157191450e9f6622d35dce3930d849ec55",
+                  "address": "0xa1",
                   "module": "tagged_output",
                   "name": "TaggedOutput"
                 },

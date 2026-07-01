@@ -17,7 +17,7 @@ use {
             GeneratorKind,
             OccurrenceRequest,
         },
-        types::{PolicySymbol, StorageConf},
+        types::{primitives::policy::Symbol, StorageConf},
     },
     std::collections::HashMap,
 };
@@ -74,7 +74,7 @@ pub(crate) async fn create_task(
                     testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
                 ))
             })?;
-        input_data.insert(vertex, committed);
+        input_data.insert(vertex, committed.into_map());
     }
 
     let schedule_requested = schedule_start_ms.is_some()
@@ -177,27 +177,23 @@ fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
         NexusEventKind::RequestScheduledOccurrence(env) => Some(format!(
             "task={} start_ms={} (generator={}, priority={})",
-            env.request.task,
+            env.request.task.bytes,
             env.start_ms,
             describe_generator(&env.request.generator),
             env.priority
         )),
-        NexusEventKind::RequestScheduledWalk(env) => Some(format!(
-            "walk for dag execution start_ms={} (priority={})",
-            env.start_ms, env.priority
-        )),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
-            e.task,
+            e.task.bytes,
             describe_generator(&e.generator)
         )),
         _ => None,
     }
 }
 
-fn describe_generator(symbol: &PolicySymbol) -> String {
+fn describe_generator(symbol: &Symbol) -> String {
     match symbol {
-        PolicySymbol::Witness(name) => name.name.clone(),
-        PolicySymbol::Uid(uid) => uid.to_string(),
+        Symbol::Witness { pos0 } => pos0.name.clone(),
+        Symbol::Uid { pos0 } => pos0.bytes.to_string(),
     }
 }
