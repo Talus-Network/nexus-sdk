@@ -88,8 +88,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `docs`
 
+#### Added
+
+- Generic offchain tool development guide (`guides/offchain-tool-development.md`) that builds a spot-price tool end to end against the current `nexus tool register offchain`/`validate offchain` CLI, replacing the LLM chat-prep example. Linked both tool guides from the docs index.
+
 #### Changed
 
+- Rewrote the onchain tool development guide for the current CLI (`nexus tool register onchain --package/--module/--tool-witness-id`) and the current `nexus tool new --template move` scaffold `execute` signature (with the `ProvenValue<AgentVertexAuthorization>` authorization parameter).
 - TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled task reserve flows.
 - Tool communication docs now cover registered-key leader verifier proof requirements for signed HTTP DAGs.
 

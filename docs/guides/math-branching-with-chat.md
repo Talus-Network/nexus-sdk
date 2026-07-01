@@ -15,7 +15,46 @@ Follow the [setup guide](setup.md) to get properly setup in case you haven't.
 
 Before you can connect our math operations to the chat completion tool, you need to understand a key challenge: type safety. The [LLM chat completion tool](../../tools/llm-openai-chat-completion/README.md)expects a `Message` struct as input, but the [math tool](../../tools/math/README.md) outputs numbers. You can't directly connect these without proper type conversion.
 
-This is where you need a custom tool to bridge this gap. You'll use the `xyz.taluslabs.llm.openai.chat-prep@1` tool that you developed in the [Build the Missing Tool guide][llm-openai-chat-prep-tool]. This tool converts numbers into the proper message format that the chat completion tool expects.
+This is where you need a custom *chat-prep* tool to bridge this gap: an offchain tool that converts a number into the message format the chat completion tool expects. Build and register it by following the [Offchain Tool Development Guide][offchain-tool-development] — the only change is the tool's `Input`/`Output` types and `invoke` logic:
+
+```rust
+/// Converts a number into a chat message.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct Input {
+    number: i64,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum Output {
+    Ok { message: Message },
+    Err { reason: String },
+}
+
+/// A message the chat completion tool understands.
+#[derive(Serialize, JsonSchema)]
+struct Message {
+    role: String,
+    value: String,
+}
+
+// In `impl NexusTool`:
+fn fqn() -> ToolFqn {
+    fqn!("xyz.taluslabs.llm.openai.chat-prep@1")
+}
+
+async fn invoke(&self, input: Self::Input) -> Self::Output {
+    Output::Ok {
+        message: Message {
+            role: "user".to_string(),
+            value: input.number.to_string(),
+        },
+    }
+}
+```
+
+Register it as `xyz.taluslabs.llm.openai.chat-prep@1`; the rest of this guide assumes it is available.
 
 ## Step 1: Adding the Required Tools
 
@@ -665,4 +704,4 @@ This extended DAG demonstrates how to combine mathematical computation with natu
 <!-- List of references -->
 
 [math-branching-entry-guide]: ./math-branching-dag-entry.md
-[llm-openai-chat-prep-tool]: ./llm-openai-chat-prep-tool.md
+[offchain-tool-development]: ./offchain-tool-development.md
