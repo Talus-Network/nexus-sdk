@@ -11,6 +11,8 @@ use crate::{idents::ModuleAndNameIdent, sui};
 pub const PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x2");
 /// The shared `Clock` object lives at the fixed address `0x6`.
 pub const CLOCK_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x6");
+/// The shared `Random` object lives at the fixed address `0x8`.
+pub const RANDOM_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x8");
 
 include!(concat!(env!("OUT_DIR"), "/idents_sui_framework.rs"));
 

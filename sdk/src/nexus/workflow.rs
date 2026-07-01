@@ -54,6 +54,7 @@ use {
             FailureEvidenceKind,
             MoveOption,
             NexusData,
+            NexusObjects,
             PortsData,
             RuntimeVertex,
             SkillId,
@@ -226,6 +227,73 @@ pub struct CommittedToolResultLeaderRecordView {
     pub recipient: sui::types::Address,
     pub commit_gas_charge: Option<u64>,
     pub settlement_gas_charge: Option<u64>,
+}
+
+pub use crate::types::primitives::onchain_tool_result::OnchainToolResult;
+type OnchainToolResultKey = crate::types::workflow::execution::OnchainToolResultKey;
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+struct ExecutionPaymentInsufficientSettlementFieldKey {}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+struct ExecutionPaymentInsufficientSettlementBcs {
+    walks: Vec<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct InsufficientSettlementMarkerView {
+    pub walks: Vec<u64>,
+}
+
+pub enum OnchainToolResultState {
+    NoResult,
+    Finalized {
+        result: OnchainToolResult,
+        object_ref: sui::types::ObjectReference,
+    },
+    Committed {
+        committed_result: CommittedToolResultView,
+    },
+    InsufficientSettlement {
+        committed_result: Option<CommittedToolResultView>,
+        marker: InsufficientSettlementMarkerView,
+    },
+    InvalidEmpty {
+        result_id: sui::types::Address,
+        object_ref: sui::types::ObjectReference,
+    },
+}
+
+impl OnchainToolResultState {
+    /// Return the fetched generated result and object metadata that let a
+    /// retrying leader skip execution and build the consume+settle transaction.
+    pub fn consume_ready_result(
+        &self,
+    ) -> Option<(&OnchainToolResult, &sui::types::ObjectReference)> {
+        match self {
+            Self::Finalized { result, object_ref } => Some((result, object_ref)),
+            Self::NoResult
+            | Self::Committed { .. }
+            | Self::InsufficientSettlement { .. }
+            | Self::InvalidEmpty { .. } => None,
+        }
+    }
+
+    /// Build the mutable shared-object input expected by
+    /// `consume_on_chain_tool_result_for_walk`.
+    pub fn consume_object_input(&self) -> Option<sui::tx::ObjectInput> {
+        self.consume_ready_result().map(|(_, object_ref)| {
+            sui::tx::ObjectInput::shared(*object_ref.object_id(), object_ref.version(), true)
+        })
+    }
+}
+
+fn onchain_tool_result_is_finalized(result: &OnchainToolResult) -> bool {
+    result.finalized
+        && result.tag.0.is_some()
+        && result.named_payload.0.is_some()
+        && result.finalize_tx_digest.0.is_some()
+        && result.finalize_recipient.0.is_some()
 }
 
 impl From<CommittedToolResultBcs> for CommittedToolResultView {
@@ -482,16 +550,99 @@ pub async fn fetch_dag_vertices_bcs(
 /// Returns `Ok(None)` when `CommittedToolResultKey { walk_index }` is absent.
 pub async fn fetch_committed_tool_result_for_walk(
     crawler: &Crawler,
+    nexus_objects: &NexusObjects,
     execution_id: sui::types::Address,
     walk_index: u64,
 ) -> anyhow::Result<Option<CommittedToolResultView>> {
+    let expected_value_types = committed_tool_result_value_types(nexus_objects);
     crawler
-        .get_optional_dynamic_field_bcs::<CommittedToolResultKey, CommittedToolResultBcs>(
+        .get_optional_dynamic_field_bcs_matching_value_type::<
+            CommittedToolResultKey,
+            CommittedToolResultBcs,
+        >(
             execution_id,
             CommittedToolResultKey { walk_index },
+            &expected_value_types,
         )
         .await
         .map(|value| value.map(CommittedToolResultView::from))
+}
+
+pub async fn fetch_onchain_tool_result_state_for_walk(
+    crawler: &Crawler,
+    nexus_objects: &NexusObjects,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+) -> anyhow::Result<OnchainToolResultState> {
+    let committed_result =
+        fetch_committed_tool_result_for_walk(crawler, nexus_objects, execution_id, walk_index)
+            .await?;
+    let insufficient_settlement = crawler
+        .get_optional_dynamic_field_bcs::<
+            ExecutionPaymentInsufficientSettlementFieldKey,
+            ExecutionPaymentInsufficientSettlementBcs,
+        >(execution_id, ExecutionPaymentInsufficientSettlementFieldKey {})
+        .await?;
+
+    if let Some(marker) = insufficient_settlement {
+        if marker.walks.contains(&walk_index) {
+            return Ok(OnchainToolResultState::InsufficientSettlement {
+                committed_result,
+                marker: InsufficientSettlementMarkerView {
+                    walks: marker.walks,
+                },
+            });
+        }
+    }
+
+    if let Some(committed_result) = committed_result {
+        return Ok(OnchainToolResultState::Committed { committed_result });
+    }
+
+    let result_id = crawler
+        .get_optional_dynamic_field_bcs::<OnchainToolResultKey, crate::types::ID>(
+            execution_id,
+            OnchainToolResultKey { walk_index },
+        )
+        .await?;
+    let Some(result_id) = result_id else {
+        return Ok(OnchainToolResultState::NoResult);
+    };
+
+    let result_id = result_id.bytes;
+    let result_response = crawler
+        .get_object_contents_bcs::<OnchainToolResult>(result_id)
+        .await?;
+    let object_ref = result_response.object_ref();
+    let result = result_response.data;
+
+    if onchain_tool_result_is_finalized(&result) {
+        Ok(OnchainToolResultState::Finalized { result, object_ref })
+    } else {
+        Ok(OnchainToolResultState::InvalidEmpty {
+            result_id,
+            object_ref,
+        })
+    }
+}
+
+fn committed_tool_result_value_types(nexus_objects: &NexusObjects) -> Vec<String> {
+    let mut value_types = vec![committed_tool_result_value_type(
+        nexus_objects.workflow_type_origin_pkg_id(),
+    )];
+    let current = committed_tool_result_value_type(nexus_objects.workflow_pkg_id);
+    if !value_types.contains(&current) {
+        value_types.push(current);
+    }
+    value_types
+}
+
+fn committed_tool_result_value_type(workflow_pkg_id: sui::types::Address) -> String {
+    format!(
+        "{workflow_pkg_id}::{}::{}",
+        workflow::Execution::COMMITTED_TOOL_RESULT.module,
+        workflow::Execution::COMMITTED_TOOL_RESULT.name
+    )
 }
 
 pub async fn fetch_dag_default_values_bcs<T>(
@@ -1876,6 +2027,40 @@ mod tests {
         }
     }
 
+    fn dynamic_field_struct_tag() -> sui::types::StructTag {
+        sui::types::StructTag::new(
+            sui::types::Address::TWO,
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![],
+        )
+    }
+
+    fn onchain_tool_result_bcs(
+        result_id: sui::types::Address,
+        execution_id: sui::types::Address,
+        finalized: bool,
+    ) -> OnchainToolResult {
+        OnchainToolResult {
+            id: crate::types::sui_address_to_uid(result_id),
+            execution_id: object_id(execution_id),
+            finalized,
+            stamps: MoveOption(
+                finalized
+                    .then_some(crate::types::sui_framework::vec_map::VecMap { contents: vec![] }),
+            ),
+            tag: MoveOption(finalized.then_some(b"ok".to_vec())),
+            named_payload: MoveOption(
+                finalized
+                    .then_some(crate::types::sui_framework::vec_map::VecMap { contents: vec![] }),
+            ),
+            finalize_tx_digest: MoveOption(finalized.then_some(vec![1, 2, 3])),
+            finalize_recipient: MoveOption(
+                finalized.then_some(sui::types::Address::from_static("0x45")),
+            ),
+        }
+    }
+
     async fn crawler_from_mocks(
         ledger_service_mock: sui_mocks::grpc::MockLedgerService,
         state_service_mock: sui_mocks::grpc::MockStateService,
@@ -1902,10 +2087,48 @@ mod tests {
             state_service_mock,
         )
         .await;
+        let nexus_objects = sui_mocks::mock_nexus_objects();
 
-        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("fetch should succeed");
+        let result =
+            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("fetch should succeed");
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_committed_tool_result_for_walk_ignores_same_shape_foreign_field() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf9"));
+        let field_id = *field_ref.object_id();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut same_shape_foreign = sui::grpc::DynamicField::default();
+                same_shape_foreign.set_field_id(field_id.to_string());
+                same_shape_foreign.set_name(
+                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
+                        .expect("committed key bcs"),
+                );
+                same_shape_foreign.set_value_type("0xbad::execution::ForeignCommittedToolResult");
+                response.set_dynamic_fields(vec![same_shape_foreign]);
+                Ok(tonic::Response::new(response))
+            });
+
+        ledger_service_mock.expect_get_object().times(0);
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let result =
+            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("foreign same-shape field should not block lookup");
 
         assert!(result.is_none());
     }
@@ -1917,6 +2140,9 @@ mod tests {
         let field_id = *field_ref.object_id();
         let primary_leader = sui::types::Address::from_static("0xa1");
         let secondary_leader = sui::types::Address::from_static("0xa2");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let committed_value_type =
+            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
         let committed = committed_tool_result_bcs(
             RuntimeVertex::plain("retryable"),
             primary_leader,
@@ -1949,6 +2175,7 @@ mod tests {
                     bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
+                wanted.set_value_type(committed_value_type.clone());
                 response.set_dynamic_fields(vec![unrelated, wanted]);
                 Ok(tonic::Response::new(response))
             });
@@ -1967,10 +2194,11 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("fetch should succeed")
-            .expect("committed result should exist");
+        let result =
+            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("fetch should succeed")
+                .expect("committed result should exist");
 
         assert_eq!(result.expected_vertex, RuntimeVertex::plain("retryable"));
         assert_eq!(
@@ -1989,6 +2217,9 @@ mod tests {
         let field_id = *field_ref.object_id();
         let primary_leader = sui::types::Address::from_static("0xa1");
         let secondary_leader = sui::types::Address::from_static("0xa2");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let committed_value_type =
+            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
         let mut committed = committed_tool_result_bcs(
             RuntimeVertex::plain("retryable"),
             primary_leader,
@@ -2021,6 +2252,7 @@ mod tests {
                     bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
+                wanted.set_value_type(committed_value_type.clone());
                 response.set_dynamic_fields(vec![wanted]);
                 Ok(tonic::Response::new(response))
             });
@@ -2039,10 +2271,11 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("fetch should ignore raw output payload bytes")
-            .expect("committed result should exist");
+        let result =
+            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("fetch should ignore raw output payload bytes")
+                .expect("committed result should exist");
 
         assert_eq!(result.expected_vertex, RuntimeVertex::plain("retryable"));
         assert_eq!(
@@ -2052,6 +2285,271 @@ mod tests {
         assert_eq!(result.secondary_failure_evidence_kind, None);
         assert!(result.leader_record(primary_leader).is_some());
         assert!(result.leader_record(secondary_leader).is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_onchain_tool_result_state_returns_committed_before_no_result() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf1"));
+        let field_id = *field_ref.object_id();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let committed_value_type =
+            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
+        let committed = committed_tool_result_bcs(
+            RuntimeVertex::plain("done"),
+            sui::types::Address::from_static("0xa1"),
+            sui::types::Address::from_static("0xa2"),
+            None,
+            None,
+        );
+        let field_value = DynamicFieldValueBcs {
+            id: *field_ref.object_id(),
+            name: CommittedToolResultKey { walk_index: 7 },
+            value: committed,
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut wanted = sui::grpc::DynamicField::default();
+                wanted.set_field_id(field_id.to_string());
+                wanted.set_name(
+                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
+                        .expect("committed key bcs"),
+                );
+                wanted.set_value_type(committed_value_type.clone());
+                response.set_dynamic_fields(vec![wanted]);
+                Ok(tonic::Response::new(response))
+            });
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            field_ref.clone(),
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&field_value).expect("field value bcs"),
+            dynamic_field_struct_tag(),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let state =
+            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("state fetch should succeed");
+
+        assert!(matches!(state, OnchainToolResultState::Committed { .. }));
+    }
+
+    #[tokio::test]
+    async fn fetch_onchain_tool_result_state_decodes_finalized_result() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xbeef");
+        let result_ref = sui_mocks::object_ref_for_id(result_id);
+        let result_version = result_ref.version();
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
+        let field_value = DynamicFieldValueBcs {
+            id: *field_ref.object_id(),
+            name: OnchainToolResultKey { walk_index: 7 },
+            value: object_id(result_id),
+        };
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
+            &mut state_service_mock,
+            vec![(
+                OnchainToolResultKey { walk_index: 7 },
+                *field_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            field_ref.clone(),
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&field_value).expect("field value bcs"),
+            dynamic_field_struct_tag(),
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&onchain_tool_result_bcs(result_id, execution_id, true))
+                .expect("result bcs"),
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0xa1"),
+                sui::types::Identifier::from_static("onchain_tool_result"),
+                sui::types::Identifier::from_static("OnchainToolResult"),
+                vec![],
+            ),
+        );
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let state =
+            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("state fetch should succeed");
+
+        let (consume_ready, consume_ref) = state
+            .consume_ready_result()
+            .expect("finalized result should be consume-ready");
+        assert_eq!(consume_ready.id.id.bytes, result_id);
+        assert_eq!(consume_ready.execution_id.bytes, execution_id);
+        assert_eq!(consume_ref.object_id(), &result_id);
+        let mut tx = sui::tx::TransactionBuilder::new();
+        tx.object(
+            state
+                .consume_object_input()
+                .expect("finalized result should expose consume input"),
+        );
+        let tx = sui_mocks::mock_finish_transaction(tx);
+        let sui::types::TransactionKind::ProgrammableTransaction(
+            sui::types::ProgrammableTransaction { inputs, .. },
+        ) = tx.kind
+        else {
+            panic!("expected programmable transaction");
+        };
+        let shared = inputs
+            .iter()
+            .find_map(|input| match input {
+                sui::types::Input::Shared(shared) if shared.object_id() == result_id => {
+                    Some(shared)
+                }
+                _ => None,
+            })
+            .expect("expected consume object input to be shared");
+        assert_eq!(shared.object_id(), result_id);
+        assert_eq!(shared.version(), result_version);
+        assert!(shared.mutability().is_mutable());
+
+        let OnchainToolResultState::Finalized { result, object_ref } = state else {
+            panic!("expected finalized state");
+        };
+        assert_eq!(result.id.id.bytes, result_id);
+        assert_eq!(result.execution_id.bytes, execution_id);
+        assert_eq!(result.tag.0, Some(b"ok".to_vec()));
+        assert_eq!(result.finalize_tx_digest.0, Some(vec![1, 2, 3]));
+        assert_eq!(object_ref.object_id(), &result_id);
+    }
+
+    #[tokio::test]
+    async fn fetch_onchain_tool_result_state_surfaces_empty_as_invalid() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let result_id = sui::types::Address::from_static("0xbeef");
+        let result_ref = sui_mocks::object_ref_for_id(result_id);
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
+        let field_value = DynamicFieldValueBcs {
+            id: *field_ref.object_id(),
+            name: OnchainToolResultKey { walk_index: 7 },
+            value: object_id(result_id),
+        };
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
+            &mut state_service_mock,
+            vec![(
+                OnchainToolResultKey { walk_index: 7 },
+                *field_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            field_ref,
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&field_value).expect("field value bcs"),
+            dynamic_field_struct_tag(),
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&onchain_tool_result_bcs(result_id, execution_id, false))
+                .expect("result bcs"),
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0xa1"),
+                sui::types::Identifier::from_static("onchain_tool_result"),
+                sui::types::Identifier::from_static("OnchainToolResult"),
+                vec![],
+            ),
+        );
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let state =
+            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("state fetch should succeed");
+
+        assert!(state.consume_ready_result().is_none());
+        assert!(state.consume_object_input().is_none());
+        assert!(matches!(
+            state,
+            OnchainToolResultState::InvalidEmpty { result_id: id, .. } if id == result_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn fetch_onchain_tool_result_state_surfaces_insufficient_settlement_marker() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let marker_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
+        let field_value = DynamicFieldValueBcs {
+            id: *marker_ref.object_id(),
+            name: ExecutionPaymentInsufficientSettlementFieldKey {},
+            value: ExecutionPaymentInsufficientSettlementBcs { walks: vec![7] },
+        };
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![(
+                ExecutionPaymentInsufficientSettlementFieldKey {},
+                *marker_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            marker_ref,
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&field_value).expect("field value bcs"),
+            dynamic_field_struct_tag(),
+        );
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let state =
+            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
+                .await
+                .expect("state fetch should succeed");
+
+        assert!(matches!(
+            state,
+            OnchainToolResultState::InsufficientSettlement { marker, .. }
+                if marker.walks == vec![7]
+        ));
     }
 
     fn offchain_vertex_node_bcs(

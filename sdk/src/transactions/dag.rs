@@ -38,26 +38,9 @@ use {
     },
 };
 
-const TERMINAL_ERR_EVAL_VARIANT: &str = "_err_eval";
-const TERMINAL_ERR_EVAL_REASON_PORT: &str = "reason";
 const VECTOR_APPEND: sui::types::Identifier = sui::types::Identifier::from_static("append");
 const MAX_PURE_INPUT_BYTES: usize = 16_384;
 const MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS: usize = 64;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PreparedToolOutput {
-    pub output_variant: String,
-    pub output_ports_data: HashMap<String, NexusData>,
-}
-
-impl PreparedToolOutput {
-    pub fn terminal_err_eval(reason: NexusData) -> Self {
-        Self {
-            output_variant: TERMINAL_ERR_EVAL_VARIANT.to_string(),
-            output_ports_data: HashMap::from([(TERMINAL_ERR_EVAL_REASON_PORT.to_string(), reason)]),
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentDagExecuteInput {
@@ -535,63 +518,6 @@ pub fn create_failure_evidence_kind(
     )
 }
 
-fn prepare_tool_output(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    prepared: &PreparedToolOutput,
-) -> anyhow::Result<(sui::tx::Argument, sui::tx::Argument)> {
-    let output_variant = interface::Graph::output_variant_from_str(
-        tx,
-        objects.interface_pkg_id,
-        &prepared.output_variant,
-    )?;
-
-    let map_generics = vec![
-        interface::into_type_tag(objects.interface_pkg_id, interface::Graph::OUTPUT_PORT),
-        primitives::into_type_tag(objects.primitives_pkg_id, primitives::Data::NEXUS_DATA),
-    ];
-
-    let output_ports_data = tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::VecMap::EMPTY.module,
-            sui_framework::VecMap::EMPTY.name,
-        )
-        .with_type_args(map_generics.clone()),
-        vec![],
-    );
-
-    for (output_port, dag_data) in &prepared.output_ports_data {
-        let output_port =
-            interface::Graph::output_port_from_str(tx, objects.interface_pkg_id, output_port)?;
-
-        let value = match dag_data.storage_kind() {
-            StorageKind::Inline => primitives::Data::nexus_data_inline_from_json(
-                tx,
-                objects.primitives_pkg_id,
-                &dag_data.as_json(),
-            )?,
-            StorageKind::Walrus => primitives::Data::nexus_data_walrus_from_json(
-                tx,
-                objects.primitives_pkg_id,
-                &dag_data.as_json(),
-            )?,
-        };
-
-        tx.move_call(
-            sui::tx::Function::new(
-                sui_framework::PACKAGE_ID,
-                sui_framework::VecMap::INSERT.module,
-                sui_framework::VecMap::INSERT.name,
-            )
-            .with_type_args(map_generics.clone()),
-            vec![output_ports_data, output_port, value],
-        );
-    }
-
-    Ok((output_variant, output_ports_data))
-}
-
 fn prepare_offchain_tool_result_bytes(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -759,42 +685,6 @@ fn prepare_move_option_vec_u8(
     value: &Option<Vec<u8>>,
 ) -> sui::tx::Argument {
     tx.pure(value)
-}
-
-fn prepare_move_option_failure_evidence_kind(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    value: Option<&FailureEvidenceKind>,
-) -> sui::tx::Argument {
-    match value {
-        Some(value) => {
-            let kind = create_failure_evidence_kind(tx, objects, value);
-            tx.move_call(
-                sui::tx::Function::new(
-                    move_std::PACKAGE_ID,
-                    move_std::Option::SOME.module,
-                    move_std::Option::SOME.name,
-                )
-                .with_type_args(vec![workflow::into_type_tag(
-                    objects.interface_pkg_id,
-                    interface::Verifier::FAILURE_EVIDENCE_KIND,
-                )]),
-                vec![kind],
-            )
-        }
-        None => tx.move_call(
-            sui::tx::Function::new(
-                move_std::PACKAGE_ID,
-                move_std::Option::NONE.module,
-                move_std::Option::NONE.name,
-            )
-            .with_type_args(vec![workflow::into_type_tag(
-                objects.interface_pkg_id,
-                interface::Verifier::FAILURE_EVIDENCE_KIND,
-            )]),
-            vec![],
-        ),
-    }
 }
 
 fn prepare_submission_kind(
@@ -1479,139 +1369,94 @@ pub fn release_vertex_authorization_for_onchain_walk(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn commit_on_chain_tool_result_for_walk_v1(
+pub fn create_on_chain_tool_result_for_walk(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
     dag: sui::tx::Argument,
     execution: sui::tx::Argument,
-    tool_registry: sui::tx::Argument,
     worksheet: sui::tx::Argument,
     leader_cap: sui::tx::Argument,
     leader_registry: sui::tx::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
-    prepared_output: &PreparedToolOutput,
-    failure_evidence_kind: Option<&FailureEvidenceKind>,
-    submitted_failure_reason: Option<Vec<u8>>,
+) -> anyhow::Result<sui::tx::Argument> {
+    let walk_index = tx.pure(&walk_index);
+    let expected_vertex =
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
+
+    Ok(tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::ExecutionSubmission::CREATE_ON_CHAIN_TOOL_RESULT_FOR_WALK.module,
+            workflow::ExecutionSubmission::CREATE_ON_CHAIN_TOOL_RESULT_FOR_WALK.name,
+        ),
+        vec![
+            dag,
+            execution,
+            worksheet,
+            leader_cap,
+            leader_registry,
+            walk_index,
+            expected_vertex,
+        ],
+    ))
+}
+
+pub fn framework_random_object(tx: &mut sui::tx::TransactionBuilder) -> sui::tx::Argument {
+    tx.object(sui::tx::ObjectInput::shared(
+        sui_framework::RANDOM_OBJECT_ID,
+        1,
+        false,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn consume_on_chain_tool_result_for_walk(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    result: sui::tx::Argument,
+    leader_cap: sui::tx::Argument,
+    leader_registry: sui::tx::Argument,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
+    commit_gas_charge: u64,
+    settlement_gas_charge: u64,
+    clock: sui::tx::Argument,
 ) -> anyhow::Result<()> {
     let walk_index = tx.pure(&walk_index);
     let expected_vertex =
         interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
-    let (output_variant, output_ports_data) = prepare_tool_output(tx, objects, prepared_output)?;
-    let failure_evidence_kind =
-        prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
-    let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
     let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+    let commit_gas_charge = tx.pure(&commit_gas_charge);
+    let settlement_gas_charge = tx.pure(&settlement_gas_charge);
 
     tx.move_call(
         sui::tx::Function::new(
             objects.workflow_pkg_id,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
+            workflow::ExecutionSubmission::CONSUME_ON_CHAIN_TOOL_RESULT_FOR_WALK.module,
+            workflow::ExecutionSubmission::CONSUME_ON_CHAIN_TOOL_RESULT_FOR_WALK.name,
         ),
         vec![
             dag,
             execution,
             tool_registry,
-            worksheet,
+            result,
             leader_cap,
             leader_registry,
             walk_index,
             expected_vertex,
-            output_variant,
-            output_ports_data,
-            failure_evidence_kind,
-            submitted_failure_reason,
             tool_witness_id,
+            commit_gas_charge,
+            settlement_gas_charge,
+            clock,
         ],
     );
 
     Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn commit_on_chain_tool_result_for_walk_v1_with_args(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    dag: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    tool_registry: sui::tx::Argument,
-    worksheet: sui::tx::Argument,
-    leader_cap: sui::tx::Argument,
-    leader_registry: sui::tx::Argument,
-    walk_index: u64,
-    expected_vertex: sui::tx::Argument,
-    output_variant: sui::tx::Argument,
-    output_ports_data: sui::tx::Argument,
-    failure_evidence_kind: Option<&FailureEvidenceKind>,
-    submitted_failure_reason: Option<Vec<u8>>,
-    tool_witness_id: sui::types::Address,
-) -> anyhow::Result<()> {
-    let walk_index = tx.pure(&walk_index);
-    let failure_evidence_kind =
-        prepare_move_option_failure_evidence_kind(tx, objects, failure_evidence_kind);
-    let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason);
-    let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
-
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.workflow_pkg_id,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name,
-        ),
-        vec![
-            dag,
-            execution,
-            tool_registry,
-            worksheet,
-            leader_cap,
-            leader_registry,
-            walk_index,
-            expected_vertex,
-            output_variant,
-            output_ports_data,
-            failure_evidence_kind,
-            submitted_failure_reason,
-            tool_witness_id,
-        ],
-    );
-
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn commit_on_chain_terminal_err_eval_for_walk(
-    tx: &mut sui::tx::TransactionBuilder,
-    objects: &NexusObjects,
-    dag: sui::tx::Argument,
-    execution: sui::tx::Argument,
-    tool_registry: sui::tx::Argument,
-    worksheet: sui::tx::Argument,
-    leader_cap: sui::tx::Argument,
-    leader_registry: sui::tx::Argument,
-    walk_index: u64,
-    expected_vertex: &RuntimeVertex,
-    reason: NexusData,
-    failure_evidence_kind: &FailureEvidenceKind,
-    tool_witness_id: Option<sui::types::Address>,
-) -> anyhow::Result<()> {
-    commit_on_chain_tool_result_for_walk_v1(
-        tx,
-        objects,
-        dag,
-        execution,
-        tool_registry,
-        worksheet,
-        leader_cap,
-        leader_registry,
-        walk_index,
-        expected_vertex,
-        &PreparedToolOutput::terminal_err_eval(reason),
-        Some(failure_evidence_kind),
-        None,
-        tool_witness_id.unwrap_or(sui::types::Address::ZERO),
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2567,20 +2412,6 @@ mod tests {
             .expect("generated NexusData should decode")
     }
 
-    fn mock_prepared_tool_output() -> PreparedToolOutput {
-        PreparedToolOutput {
-            output_variant: "ok".to_string(),
-            output_ports_data: HashMap::from([(
-                "result".to_string(),
-                NexusData::try_from(serde_json::json!({
-                    "kind": "inline",
-                    "data": { "value": 7 }
-                }))
-                .expect("inline data storage"),
-            )]),
-        }
-    }
-
     fn mock_offchain_success_result() -> crate::types::PreparedToolOutput {
         crate::types::PreparedToolOutput {
             output_variant: "ok".into(),
@@ -2690,27 +2521,6 @@ mod tests {
         let mut objects = sui_mocks::mock_nexus_objects();
         objects.verifier_registry = sui_mocks::mock_sui_object_ref();
         objects
-    }
-
-    #[test]
-    fn test_prepared_tool_output_terminal_err_eval_shape() {
-        let reason = NexusData::try_from(serde_json::json!({
-            "kind": "inline",
-            "data": "tool failed"
-        }))
-        .expect("inline terminal reason");
-        let expected_reason = reason.as_json().clone();
-
-        let prepared = PreparedToolOutput::terminal_err_eval(reason);
-
-        assert_eq!(prepared.output_variant, "_err_eval");
-        assert_eq!(prepared.output_ports_data.len(), 1);
-        let reason = prepared
-            .output_ports_data
-            .get("reason")
-            .expect("terminal reason port should be present");
-        assert_eq!(reason.storage_kind(), StorageKind::Inline);
-        assert_eq!(reason.as_json(), expected_reason);
     }
 
     #[test]
@@ -3407,45 +3217,111 @@ mod tests {
     }
 
     #[test]
-    fn test_commit_on_chain_tool_result_for_walk_v1() {
+    fn test_create_on_chain_tool_result_for_walk_uses_current_move_signature() {
         let objects = sui_mocks::mock_nexus_objects();
-        let witness = sui_mocks::mock_sui_address();
         let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-        let __ph_2 = tx.pure(&2u64);
-        let __ph_3 = tx.pure(&3u64);
-        let __ph_4 = tx.pure(&4u64);
-        let __ph_5 = tx.pure(&5u64);
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let worksheet = tx.pure(&2u64);
+        let leader_cap = tx.pure(&3u64);
+        let leader_registry = tx.pure(&4u64);
 
-        commit_on_chain_tool_result_for_walk_v1(
+        create_on_chain_tool_result_for_walk(
             &mut tx,
             &objects,
-            __ph_0,
-            __ph_1,
-            __ph_2,
-            __ph_3,
-            __ph_4,
-            __ph_5,
+            dag,
+            execution,
+            worksheet,
+            leader_cap,
+            leader_registry,
             9,
             &mock_runtime_vertex(),
-            &mock_prepared_tool_output(),
-            None,
-            None,
-            witness,
         )
         .unwrap();
 
         let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
         let call = inspector.move_call(inspector.commands().len() - 1);
 
-        assert_on_chain_submit_call_uses_sdk_move_values(
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionSubmission::CREATE_ON_CHAIN_TOOL_RESULT_FOR_WALK.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionSubmission::CREATE_ON_CHAIN_TOOL_RESULT_FOR_WALK.name
+        );
+        assert_eq!(call.arguments.len(), 7);
+        inspector.expect_u64(&call.arguments[5], 9);
+        assert!(matches!(call.arguments[6], sui::types::Argument::Result(_)));
+    }
+
+    #[test]
+    fn test_framework_random_object_uses_immutable_shared_random() {
+        let mut tx = sui::tx::TransactionBuilder::new();
+
+        framework_random_object(&mut tx);
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let random = inspector
+            .inputs()
+            .iter()
+            .find_map(|input| match input {
+                sui::types::Input::Shared(shared)
+                    if shared.object_id() == sui_framework::RANDOM_OBJECT_ID =>
+                {
+                    Some(shared)
+                }
+                _ => None,
+            })
+            .expect("expected shared random object input");
+        assert!(!random.mutability().is_mutable());
+    }
+
+    #[test]
+    fn test_consume_on_chain_tool_result_for_walk_uses_result_object_and_no_output_args() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let tool_registry = tx.pure(&2u64);
+        let result = tx.pure(&3u64);
+        let leader_cap = tx.pure(&4u64);
+        let leader_registry = tx.pure(&5u64);
+        let clock = tx.pure(&6u64);
+
+        consume_on_chain_tool_result_for_walk(
+            &mut tx,
+            &objects,
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_cap,
+            leader_registry,
+            9,
+            &mock_runtime_vertex(),
+            witness,
+            123,
+            45,
+            clock,
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_on_chain_consume_call_uses_sdk_move_values(
             &inspector,
             call,
             objects.workflow_pkg_id,
-            objects.interface_pkg_id,
             witness,
         );
+        assert_eq!(call.arguments.len(), 12);
+        inspector.expect_u64(&call.arguments[6], 9);
+        inspector.expect_u64(&call.arguments[9], 123);
+        inspector.expect_u64(&call.arguments[10], 45);
     }
 
     #[test]
@@ -3673,39 +3549,6 @@ mod tests {
     }
 
     #[test]
-    fn test_commit_on_chain_tool_result_for_walk_v1_with_args_constructs_move_values() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let witness = sui_mocks::mock_sui_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-        let __ph_2 = tx.pure(&2u64);
-        let __ph_3 = tx.pure(&3u64);
-        let __ph_4 = tx.pure(&4u64);
-        let __ph_5 = tx.pure(&5u64);
-        let __ph_6 = tx.pure(&6u64);
-        let __ph_7 = tx.pure(&7u64);
-        let __ph_8 = tx.pure(&8u64);
-
-        commit_on_chain_tool_result_for_walk_v1_with_args(
-            &mut tx, &objects, __ph_0, __ph_1, __ph_2, __ph_3, __ph_4, __ph_5, 9, __ph_6, __ph_7,
-            __ph_8, None, None, witness,
-        )
-        .unwrap();
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(inspector.commands().len() - 1);
-
-        assert_on_chain_submit_call_uses_sdk_move_values(
-            &inspector,
-            call,
-            objects.workflow_pkg_id,
-            objects.interface_pkg_id,
-            witness,
-        );
-    }
-
-    #[test]
     fn test_release_vertex_authorization_for_onchain_walk_uses_active_walk_args() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -3739,49 +3582,28 @@ mod tests {
         inspector.expect_u64(&call.arguments[4], 17);
     }
 
-    fn assert_on_chain_submit_call_uses_sdk_move_values(
+    fn assert_on_chain_consume_call_uses_sdk_move_values(
         inspector: &TxInspector,
         call: &sui::types::MoveCall,
         workflow_pkg_id: sui::types::Address,
-        interface_pkg_id: sui::types::Address,
         expected_tool_witness_id: sui::types::Address,
     ) {
         assert_eq!(call.package, workflow_pkg_id);
         assert_eq!(
             call.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
+            workflow::ExecutionSubmission::CONSUME_ON_CHAIN_TOOL_RESULT_FOR_WALK.module
         );
         assert_eq!(
             call.function,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
+            workflow::ExecutionSubmission::CONSUME_ON_CHAIN_TOOL_RESULT_FOR_WALK.name
         );
-        assert_eq!(call.arguments.len(), 13);
-        assert!(matches!(
-            call.arguments[10],
-            sui::types::Argument::Result(_)
-        ));
+        assert_eq!(call.arguments.len(), 12);
+        assert!(matches!(call.arguments[7], sui::types::Argument::Result(_)));
+        assert!(matches!(call.arguments[9], sui::types::Argument::Input(_)));
+        assert!(matches!(call.arguments[10], sui::types::Argument::Input(_)));
         assert!(matches!(call.arguments[11], sui::types::Argument::Input(_)));
-        assert!(matches!(
-            call.arguments[12],
-            sui::types::Argument::Result(_)
-        ));
 
-        let failure_option = match call.arguments[10] {
-            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
-            other => panic!("expected failure option to be a command result, got {other:?}"),
-        };
-        assert_eq!(failure_option.package, move_std::PACKAGE_ID);
-        assert_eq!(failure_option.module, move_std::Option::NONE.module);
-        assert_eq!(failure_option.function, move_std::Option::NONE.name);
-        assert_eq!(
-            failure_option.type_arguments,
-            vec![workflow::into_type_tag(
-                interface_pkg_id,
-                interface::Verifier::FAILURE_EVIDENCE_KIND
-            )]
-        );
-
-        let tool_witness_id = match call.arguments[12] {
+        let tool_witness_id = match call.arguments[8] {
             sui::types::Argument::Result(index) => inspector.move_call(index as usize),
             other => panic!("expected tool witness ID to be a command result, got {other:?}"),
         };
@@ -3791,207 +3613,6 @@ mod tests {
             sui_framework::Object::ID_FROM_ADDRESS.name
         );
         inspector.expect_address(&tool_witness_id.arguments[0], expected_tool_witness_id);
-    }
-
-    #[test]
-    fn test_commit_on_chain_tool_result_for_walk_v1_with_failure_evidence() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let tool_witness_id = sui_mocks::mock_sui_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-        let __ph_2 = tx.pure(&2u64);
-        let __ph_3 = tx.pure(&3u64);
-        let __ph_4 = tx.pure(&4u64);
-        let __ph_5 = tx.pure(&5u64);
-
-        commit_on_chain_tool_result_for_walk_v1(
-            &mut tx,
-            &objects,
-            __ph_0,
-            __ph_1,
-            __ph_2,
-            __ph_3,
-            __ph_4,
-            __ph_5,
-            11,
-            &mock_runtime_vertex(),
-            &mock_prepared_tool_output(),
-            Some(&FailureEvidenceKind::ToolEvidence),
-            Some(b"tool failed".to_vec()),
-            tool_witness_id,
-        )
-        .unwrap();
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(inspector.commands().len() - 1);
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
-        );
-        assert_eq!(
-            call.function,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
-        );
-        assert_eq!(call.arguments.len(), 13);
-        assert!(matches!(
-            call.arguments[10],
-            sui::types::Argument::Result(_)
-        ));
-        assert!(matches!(call.arguments[11], sui::types::Argument::Input(_)));
-        assert!(matches!(
-            call.arguments[12],
-            sui::types::Argument::Result(_)
-        ));
-    }
-
-    #[test]
-    fn test_commit_on_chain_terminal_err_eval_for_walk_defaults_zero_tool_witness_id() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-        let __ph_2 = tx.pure(&2u64);
-        let __ph_3 = tx.pure(&3u64);
-        let __ph_4 = tx.pure(&4u64);
-        let __ph_5 = tx.pure(&5u64);
-
-        commit_on_chain_terminal_err_eval_for_walk(
-            &mut tx,
-            &objects,
-            __ph_0,
-            __ph_1,
-            __ph_2,
-            __ph_3,
-            __ph_4,
-            __ph_5,
-            13,
-            &mock_runtime_vertex(),
-            NexusData::try_from(serde_json::json!({
-                "kind": "inline",
-                "data": "tool failed"
-            }))
-            .expect("inline reason"),
-            &FailureEvidenceKind::LeaderEvidence,
-            None,
-        )
-        .unwrap();
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(inspector.commands().len() - 1);
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
-        );
-        assert_eq!(
-            call.function,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
-        );
-        assert_eq!(call.arguments.len(), 13);
-        assert!(matches!(
-            call.arguments[10],
-            sui::types::Argument::Result(_)
-        ));
-        assert!(matches!(call.arguments[11], sui::types::Argument::Input(_)));
-        assert!(matches!(
-            call.arguments[12],
-            sui::types::Argument::Result(_)
-        ));
-    }
-
-    #[test]
-    fn test_commit_on_chain_terminal_err_eval_for_walk_builds_terminal_output_with_tool_witness_id()
-    {
-        let objects = sui_mocks::mock_nexus_objects();
-        let tool_witness_id = sui_mocks::mock_sui_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let __ph_0 = tx.pure(&0u64);
-        let __ph_1 = tx.pure(&1u64);
-        let __ph_2 = tx.pure(&2u64);
-        let __ph_3 = tx.pure(&3u64);
-        let __ph_4 = tx.pure(&4u64);
-        let __ph_5 = tx.pure(&5u64);
-
-        commit_on_chain_terminal_err_eval_for_walk(
-            &mut tx,
-            &objects,
-            __ph_0,
-            __ph_1,
-            __ph_2,
-            __ph_3,
-            __ph_4,
-            __ph_5,
-            13,
-            &mock_runtime_vertex(),
-            NexusData::try_from(serde_json::json!({
-                "kind": "inline",
-                "data": "tool failed"
-            }))
-            .expect("inline reason"),
-            &FailureEvidenceKind::LeaderEvidence,
-            Some(tool_witness_id),
-        )
-        .unwrap();
-
-        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
-        let call = inspector.move_call(inspector.commands().len() - 1);
-
-        assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(
-            call.module,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.module
-        );
-        assert_eq!(
-            call.function,
-            workflow::ExecutionSubmission::COMMIT_ON_CHAIN_TOOL_RESULT_FOR_WALK_V1.name
-        );
-        assert_eq!(call.arguments.len(), 13);
-        assert!(matches!(call.arguments[11], sui::types::Argument::Input(_)));
-        let sui::types::Argument::Result(tool_witness_id_index) = &call.arguments[12] else {
-            panic!("expected tool witness ID result argument");
-        };
-        let tool_witness_id_call = inspector.move_call(*tool_witness_id_index as usize);
-        assert_eq!(
-            tool_witness_id_call.module,
-            sui_framework::Object::ID_FROM_ADDRESS.module
-        );
-        assert_eq!(
-            tool_witness_id_call.function,
-            sui_framework::Object::ID_FROM_ADDRESS.name
-        );
-        inspector.expect_address(&tool_witness_id_call.arguments[0], tool_witness_id);
-
-        let sui::types::Argument::Result(output_variant_index) = &call.arguments[8] else {
-            panic!("expected output variant result argument");
-        };
-        let output_variant_call = inspector.move_call(*output_variant_index as usize);
-        assert_eq!(output_variant_call.package, objects.interface_pkg_id);
-        assert_eq!(
-            output_variant_call.module,
-            interface::Graph::OUTPUT_VARIANT_FROM_STRING.module
-        );
-        assert_eq!(
-            output_variant_call.function,
-            interface::Graph::OUTPUT_VARIANT_FROM_STRING.name
-        );
-        inspector.expect_ascii_string_result(&output_variant_call.arguments[0], "_err_eval");
-
-        let output_port_indices = inspector.move_call_indices_to(
-            objects.interface_pkg_id,
-            &interface::Graph::OUTPUT_PORT_FROM_STRING.module,
-            &interface::Graph::OUTPUT_PORT_FROM_STRING.name,
-        );
-        assert_eq!(
-            output_port_indices.len(),
-            1,
-            "terminal _err_eval should build one output port"
-        );
-        let output_port_call = inspector.move_call(output_port_indices[0]);
-        inspector.expect_ascii_string_result(&output_port_call.arguments[0], "reason");
     }
 
     #[test]

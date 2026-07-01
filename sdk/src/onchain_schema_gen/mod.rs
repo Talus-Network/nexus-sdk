@@ -15,6 +15,7 @@ pub use {
         convert_move_type_to_schema,
         is_agent_vertex_authorization_proof_param,
         is_hidden_internal_tool_param,
+        is_onchain_tool_result_param,
         is_tx_context_param,
     },
 };
