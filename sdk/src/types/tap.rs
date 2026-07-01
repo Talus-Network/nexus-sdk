@@ -179,6 +179,12 @@ fn deserialize_payment_mode_value(value: &serde_json::Value) -> Option<PaymentMo
     }
 }
 
+impl Default for SkillPaymentPolicy {
+    fn default() -> Self {
+        Self::UserFunded
+    }
+}
+
 impl SkillPaymentPolicy {
     pub fn user_funded() -> Self {
         Self::UserFunded
@@ -382,6 +388,17 @@ impl FixedTool {
 
     pub fn tool_fqn_string(&self) -> String {
         self.tool_fqn.clone().into()
+    }
+}
+
+impl Default for SkillRequirement {
+    fn default() -> Self {
+        Self {
+            input_commitment: Vec::new(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
+            fixed_tools: Vec::new(),
+        }
     }
 }
 
@@ -660,9 +677,21 @@ impl AgentPaymentVault {
     }
 }
 
+impl Default for DagExecutionPaymentFieldKey {
+    fn default() -> Self {
+        Self { dummy_field: false }
+    }
+}
+
 impl Hash for DagExecutionPaymentFieldKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.dummy_field.hash(state);
+    }
+}
+
+impl Default for AgentVaultFieldKey {
+    fn default() -> Self {
+        Self { dummy_field: false }
     }
 }
 
