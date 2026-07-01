@@ -143,6 +143,12 @@ impl DagExecutionWalk {
                 timeout_ms,
                 created_at,
                 ..
+            }
+            | Self::PendingSettlement {
+                next_vertex,
+                timeout_ms,
+                created_at,
+                ..
             } if clock_ms >= created_at.saturating_add(timeout_ms.saturating_mul(2)) => {
                 Some(next_vertex)
             }
