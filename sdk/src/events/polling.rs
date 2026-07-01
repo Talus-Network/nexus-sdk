@@ -744,9 +744,6 @@ impl EventPoller {
                         consecutive_failures += 1;
 
                         if consecutive_failures < self.transactions_batch_max_retries {
-                            // On fetch error, return the digests to the retry
-                            // queue and recreate the client so DNS lookups are
-                            // refreshed and stale connections are discarded.
                             retry_batches.push_front(digests);
                         } else {
                             tracing::error!(
