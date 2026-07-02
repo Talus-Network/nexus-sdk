@@ -4,44 +4,16 @@
       "vertex": "execute_first",
       "input_port": "2",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          34,
-          48,
-          120,
-          54,
-          34
-        ],
-        "many": []
+        "storage": "inline",
+        "data": "0x6"
       }
     },
     {
       "vertex": "execute_second",
       "input_port": "2",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          34,
-          48,
-          120,
-          54,
-          34
-        ],
-        "many": []
+        "storage": "inline",
+        "data": "0x6"
       }
     }
   ],
