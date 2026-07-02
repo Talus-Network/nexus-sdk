@@ -89,26 +89,17 @@ Sibling repos checked out next to this one (paths depend on local layout):
 
 ## Move binding
 
-The Move binding refresh is **not type-only**. It refreshes the committed normalized package IR for each Nexus Move package, and the identifier constants in `sdk/src/idents/<package>.rs` are one generated surface over that IR. The IR comes from on-chain Move package metadata using the sibling `move-binding` crate (`sui-move-codegen`) and covers module names, function names/signatures, datatype names/layout, and event/object shapes visible through normalized package metadata. This gives a single, regeneratable source of truth and catches drift: if a Move function, struct, enum, field, or signature is renamed or removed on-chain, regeneration updates the committed IR and the Rust call site should fail to compile instead of being patched by hand.
+The Move binding refresh is **not type-only**. It refreshes the committed normalized package IR for each Nexus Move package, and generated types/call builders in `sdk/src/move_bindings` are the SDK's Move ABI boundary. The IR comes from on-chain Move package metadata using the sibling `move-binding` crate (`sui-move-codegen`) and covers module names, function signatures, datatype names/layout, and event/object shapes visible through normalized package metadata. This gives a single, regeneratable source of truth and catches drift: if a Move function, struct, enum, field, or signature is renamed or removed on-chain, regeneration updates the committed IR and the Rust call site should fail to compile instead of being patched by hand.
 
 How the pipeline fits together:
 
-- **Refresh half (on demand through `just sdk rebind`)**: `sdk/src/bin/generate_binding.rs` (gated behind the `binding_codegen` feature) fetches each package's normalized IR (intermediate representation — `NormalizedPackage`) over gRPC via `sui_move_codegen::fetch_package` and writes it as committed JSON under `sdk/src/idents/generated/ir/<package>.json`. One file per package: `primitives`, `interface`, `registry`, `workflow`, `scheduler`, plus the framework packages `move_std` (`0x1`) and `sui_framework` (`0x2`).
-- **Offline half (every build)**: `sdk/build.rs` reads the committed IR and renders one `$OUT_DIR/idents_<package>.rs` per file — a `pub struct` per Move module with a SCREAMING_SNAKE `ModuleAndNameIdent` const per function and datatype. No network access; the rendered `.rs` is never committed.
-- **Wiring**: each `sdk/src/idents/<package>.rs` `include!`s its generated file
-  and adds the hand-written `TypeTag`/argument helpers (`vertex_from_str`,
-  `into_type_tag`, enum mappers, etc.) on top. Module-to-file mapping is by
-  package: `tap.rs` includes the `interface` package (its generated structs are
-  `Agent`, `Authorization`, `Payment`, `Verifier`, `Version`, …); `move_std.rs`
-  and `sui_framework.rs` keep the fixed framework addresses (`PACKAGE_ID`,
-  `CLOCK_OBJECT_ID`).
+- **Refresh half (on demand through `just sdk rebind`)**: `sdk/src/bin/regenerate_bindings.rs` (gated behind the `binding_codegen` feature) reads the Nexus package IDs from the published objects TOML, appends the framework packages `move_std` (`0x1`) and `sui_framework` (`0x2`), fetches each package's normalized IR (intermediate representation — `NormalizedPackage`) over gRPC via `sui_move_codegen::fetch_package`, and writes committed JSON under `sdk/src/move_bindings/ir/<package>.json`. One file per package: `primitives`, `interface`, `registry`, `workflow`, `scheduler`, `move_std`, and `sui_framework`.
+- **Offline half (every build)**: `sdk/build.rs` reads the committed JSON IR and renders generated Rust modules into `$OUT_DIR`. No network access; the rendered `.rs` is never committed.
+- **Wiring**: `sdk/src/move_bindings/mod.rs` includes the generated package modules and adds only SDK-owned domain conveniences on top, such as scoped package IDs, object-id derivation, and selected domain facades.
 
 Key invariants:
 
-- **Generated constants are address-free** (module + name only). The deployed
-  package id is supplied at call time from the runtime-injected `NexusObjects`,
-  so the same constant works across localnet/testnet/mainnet. Never bake a
-  package address into the generated output.
+- **Generated calls use scoped call packages and generated types use scoped type packages**. The deployed package ids are supplied from runtime-injected `NexusObjects`, and original package ids are used for type identity after upgrades. Never bake deployment-specific package addresses into hand-written SDK code.
 - **Generated structs follow the real on-chain layout**, which does not always
   match the old hand-written grouping. For example `tool_registry` lives in the
   `registry` package (`registry::ToolRegistry`, not `workflow`), and the
@@ -117,9 +108,7 @@ Key invariants:
   deliberately hand-maintained facade — it is a runtime-resolved view whose
   constants span the interface and registry packages, so it cannot map onto a
   single generated struct.
-- The constants only carry names; **correctness of which package a call targets
-  lives in the PTB builder**, which passes the right `*_pkg_id` from
-  `NexusObjects`.
+- PTB construction must flow through generated call targets and `sui-move-ptb`; production code should not manually build Move function identifiers, pure inputs, object inputs, or type tags.
 
 ### Regenerating the bindings
 
@@ -129,9 +118,9 @@ Run this after the on-chain Move in Nexus changes identifiers, signatures, funct
 just sdk rebind {your_path_to_nexus_contracts}
 ```
 
-The wrapper delegates to `sdk/bin/regenerate_bindings.sh`. Internally it validates the required `cargo`, `python3`, and `sui` tools; resolves the supplied Nexus `sui` directory; starts a fresh local Sui environment when one is not reachable; publishes the Nexus Move packages; reads the package ids from `bin/target/objects.localnet.toml`; appends the fixed framework packages `move_std=0x1` and `sui_framework=0x2`; runs the `generate_binding` binary with `binding_codegen`; validates the refreshed JSON under `sdk/src/idents/generated/ir/`; and finally runs `cargo +stable check --all-features --package nexus-sdk` unless `NEXUS_BINDING_SDK_CHECK=0` is set.
+The `just sdk rebind` recipe calls the `regenerate_bindings` Rust binary directly. It expects the Nexus packages to have already been published and reads package IDs from `bin/target/objects.localnet.toml`; it does not start Sui or publish packages.
 
-The committed artifact to review is the JSON diff under `sdk/src/idents/generated/ir/`. `sdk/build.rs` re-renders the Rust constants from that JSON during normal builds, so a dropped or renamed generated constant should be treated as an on-chain API move and fixed at the call site rather than patched by hand in generated output.
+The committed artifact to review is the JSON diff under `sdk/src/move_bindings/ir/`. `sdk/build.rs` re-renders generated bindings from that JSON during normal builds, so a dropped or renamed generated symbol should be treated as an on-chain API move and fixed at the call site rather than patched by hand in generated output.
 
 ## CLI conventions
 

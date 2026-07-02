@@ -48,21 +48,24 @@ pub(crate) fn scaffold_files(
     module_name: &str,
 ) -> AnyResult<Vec<(PathBuf, String)>> {
     let mut env = Environment::new();
-    env.add_template("move_toml", include_str!("templates/tap/Move.toml.jinja"))?;
+    env.add_template(
+        "move_toml",
+        include_str!("templates/tap_package/Move.toml.jinja"),
+    )?;
     env.add_template(
         "module_move",
-        include_str!("templates/tap/module.move.jinja"),
+        include_str!("templates/tap_package/module.move.jinja"),
     )?;
-    env.add_template("dag_json", include_str!("templates/tap/dag.json.jinja"))?;
+    env.add_template("dag_template", include_str!("templates/dag.json.jinja"))?;
     env.add_template(
-        "skill_tap_json",
-        include_str!("templates/tap/skill.tap.json.jinja"),
+        "skill_config",
+        include_str!("templates/skill_config.json.jinja"),
     )?;
 
     let move_toml = env.get_template("move_toml")?;
     let module_move = env.get_template("module_move")?;
-    let dag_json = env.get_template("dag_json")?;
-    let skill_tap_json = env.get_template("skill_tap_json")?;
+    let dag_template = env.get_template("dag_template")?;
+    let skill_config = env.get_template("skill_config")?;
     let witness = name.to_case(Case::Pascal);
 
     Ok(vec![
@@ -74,10 +77,10 @@ pub(crate) fn scaffold_files(
             PathBuf::from(format!("tap/sources/{module_name}.move")),
             module_move.render(context! { package_name, module_name, witness })?,
         ),
-        (PathBuf::from("dag.json"), dag_json.render(context! {})?),
+        (PathBuf::from("dag.json"), dag_template.render(context! {})?),
         (
             PathBuf::from("skill.tap.json"),
-            skill_tap_json.render(context! { name })?,
+            skill_config.render(context! { name })?,
         ),
     ])
 }

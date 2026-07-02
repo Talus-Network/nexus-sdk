@@ -1,0 +1,332 @@
+{
+  "storage_id": "0x1",
+  "original_id": "0x1",
+  "version": 1,
+  "modules": {
+    "ascii": {
+      "name": "ascii",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x1",
+            "module": "ascii",
+            "name": "Char"
+          },
+          "module": "ascii",
+          "name": "Char",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "byte",
+                  "position": 0,
+                  "ty": "U8"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x1",
+            "module": "ascii",
+            "name": "String"
+          },
+          "module": "ascii",
+          "name": "String",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "bytes",
+                  "position": 0,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "string",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "ascii",
+                  "name": "String"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "option": {
+      "name": "option",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x1",
+            "module": "option",
+            "name": "Option"
+          },
+          "module": "option",
+          "name": "Option",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "vec",
+                  "position": 0,
+                  "ty": {
+                    "Vector": {
+                      "TypeParameter": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "none",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "some",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "string": {
+      "name": "string",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x1",
+            "module": "string",
+            "name": "String"
+          },
+          "module": "string",
+          "name": "String",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "bytes",
+                  "position": 0,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "type_name": {
+      "name": "type_name",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x1",
+            "module": "type_name",
+            "name": "TypeName"
+          },
+          "module": "type_name",
+          "name": "TypeName",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "name",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "vector": {
+      "name": "vector",
+      "datatypes": [],
+      "functions": [
+        {
+          "name": "empty",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [],
+          "return_types": [
+            {
+              "Vector": {
+                "TypeParameter": 0
+              }
+            }
+          ]
+        },
+        {
+          "name": "push_back",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Vector": {
+                      "TypeParameter": 0
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    }
+  }
+}

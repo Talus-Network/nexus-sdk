@@ -4,16 +4,37 @@
       "vertex": "add_input_and_default",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": -3
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          45,
+          51
+        ],
+        "many": []
       }
     },
     {
       "vertex": "is_positive",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 0
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          48
+        ],
+        "many": []
       }
     }
   ],

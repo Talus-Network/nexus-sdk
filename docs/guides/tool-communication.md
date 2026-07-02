@@ -107,13 +107,13 @@ Signed HTTP verification happens after the TLS handshake. If you want to reduce 
 Signed HTTP uses three headers on every signed request/response:
 
 - `X-Nexus-Sig-V`: protocol version (currently `"1"`).
-- `X-Nexus-Sig-Input`: base64url (no padding) of the raw JSON “claims” bytes.
+- `X-Nexus-Sig-Input`: base64url (no padding) of the raw JSON claims bytes.
 - `X-Nexus-Sig`: base64url (no padding) of the 64-byte Ed25519 signature.
 
 The signature is computed over:
 
 - a protocol-specific **domain separator** (request vs response), and
-- the exact `sig_input` bytes (the JSON-encoded claims).
+- the request `sig_input` hash, or response binding fields derived from it.
 
 This avoids fragile “HTTP canonicalization” and keeps Tool schemas unchanged: the Tool input/output remains the normal HTTP body.
 

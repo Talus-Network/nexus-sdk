@@ -2,7 +2,39 @@ use {
     crate::{command_title, loading, prelude::*},
     nexus_sdk::types::ToolMeta,
     reqwest::StatusCode,
+    serde::Deserialize,
+    std::time::Duration,
 };
+
+#[derive(Deserialize)]
+struct ToolMetaDocument {
+    fqn: ToolFqn,
+    url: String,
+    description: String,
+    timeout: u64,
+    input_schema: serde_json::Value,
+    output_schema: serde_json::Value,
+}
+
+impl TryFrom<ToolMetaDocument> for ToolMeta {
+    type Error = serde_json::Error;
+
+    fn try_from(document: ToolMetaDocument) -> Result<Self, Self::Error> {
+        Ok(Self {
+            fqn: document.fqn,
+            url: document.url,
+            description: document.description,
+            timeout: Duration::from_millis(document.timeout),
+            input_schema: serde_json::to_vec(&document.input_schema)?,
+            output_schema: serde_json::to_vec(&document.output_schema)?,
+        })
+    }
+}
+
+pub(crate) fn parse_tool_meta_json(raw: &str) -> anyhow::Result<ToolMeta> {
+    let document = serde_json::from_str::<ToolMetaDocument>(raw)?;
+    Ok(ToolMeta::try_from(document)?)
+}
 
 /// Validate an off-chain tool based on the provided URL.
 pub(crate) async fn validate_off_chain_tool(
@@ -61,17 +93,27 @@ pub(crate) async fn validate_off_chain_tool(
         }
     };
 
-    let meta = match response.json::<ToolMeta>().await {
-        Ok(meta) => meta,
+    let meta_text = match response.text().await {
+        Ok(meta_text) => meta_text,
         Err(error) => {
             meta_handle.error();
 
             return Err(NexusCliError::Http(error));
         }
     };
+    let meta = match parse_tool_meta_json(&meta_text) {
+        Ok(meta) => meta,
+        Err(error) => {
+            meta_handle.error();
+
+            return Err(NexusCliError::Any(anyhow!(
+                "failed to parse tool meta JSON: {error}"
+            )));
+        }
+    };
 
     // Check that meta has a top-level `oneOf`.
-    if meta.output_schema["oneOf"].is_null() {
+    if !output_schema_has_top_level_one_of(&meta).map_err(NexusCliError::Any)? {
         meta_handle.error();
 
         return Err(NexusCliError::Any(anyhow!(
@@ -89,6 +131,11 @@ pub(crate) async fn validate_off_chain_tool(
 /// Validate an on-chain tool based on the provided ident.
 pub(crate) async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliError> {
     todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+}
+
+pub(crate) fn output_schema_has_top_level_one_of(meta: &ToolMeta) -> anyhow::Result<bool> {
+    let value = serde_json::from_slice::<serde_json::Value>(&meta.output_schema)?;
+    Ok(value.get("oneOf").is_some_and(|one_of| !one_of.is_null()))
 }
 
 #[cfg(test)]

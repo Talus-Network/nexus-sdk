@@ -4,8 +4,7 @@ use {
     crate::{
         config::Config,
         signed_http_warp::{handle_invoke, InvokeAuth},
-        NexusTool,
-        ToolkitRuntimeConfig,
+        NexusTool, ToolkitRuntimeConfig,
     },
     nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
     reqwest::Url,
@@ -14,9 +13,7 @@ use {
     warp::{
         filters::{host::Authority, path::FullPath},
         http::{HeaderMap, StatusCode},
-        Filter,
-        Rejection,
-        Reply,
+        Filter, Rejection, Reply,
     },
 };
 
@@ -513,19 +510,10 @@ mod tests {
         nexus_sdk::{
             fqn,
             signed_http::v1::wire::{
-                decode_signature_headers_v1,
-                encode_signature_headers_v1,
-                now_ms,
-                sha256,
-                sha256_hex,
-                sign_invoke_request_v1,
-                verify_invoke_response_v1,
-                InvokeRequestClaimsV1,
-                VerifyOptions,
-                HEADER_SIG,
-                HEADER_SIG_INPUT,
-                HEADER_SIG_VERSION,
-                SIG_VERSION_V1,
+                decode_signature_headers_v1, encode_signature_headers_v1, now_ms, sha256,
+                sha256_hex, sign_invoke_request_v1, verify_invoke_response_v1,
+                InvokeRequestClaimsV1, VerifyOptions, HEADER_SIG, HEADER_SIG_INPUT,
+                HEADER_SIG_VERSION, SIG_VERSION_V1,
             },
             ToolFqn,
         },

@@ -53,32 +53,73 @@
       "vertex": "add_1_to_element",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          49
+        ],
+        "many": []
       }
     },
     {
       "vertex": "add_1",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          49
+        ],
+        "many": []
       }
     },
     {
       "vertex": "add_2",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 2
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          50
+        ],
+        "many": []
       }
     },
     {
       "vertex": "until_11",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 11
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          49,
+          49
+        ],
+        "many": []
       }
     }
   ],

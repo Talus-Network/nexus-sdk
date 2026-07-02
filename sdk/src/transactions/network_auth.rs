@@ -1,682 +1,180 @@
 //! Programmable transaction builders for `nexus_registry::network_auth`.
 
-use crate::{
-    idents::{registry, sui_framework},
-    sui,
-    types::NexusObjects,
+use {
+    crate::{
+        move_bindings::{
+            registry::network_auth as network_auth_binding,
+            sui_framework::transfer as transfer_binding,
+        },
+        move_boundary, sui,
+        types::NexusObjects,
+    },
+    sui::types::{Argument, ProgrammableTransaction},
 };
+
+fn description_option(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    description: Option<Vec<u8>>,
+) -> anyhow::Result<Argument> {
+    let description = description
+        .as_ref()
+        .map(|description| tx.arg(description))
+        .transpose()?;
+    Ok(tx.option::<Vec<u8>>(description)?)
+}
+
+fn proof_for_offchain_tool(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tool: Argument,
+    owner_cap: Argument,
+) -> anyhow::Result<Argument> {
+    Ok(tx.call_target(
+        network_auth_binding::prove_offchain_tool_target,
+        vec![tool, owner_cap],
+    )?)
+}
+
+fn proof_for_leader(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    leader_cap: Argument,
+) -> anyhow::Result<Argument> {
+    Ok(tx.call_target(network_auth_binding::prove_leader_target, vec![leader_cap])?)
+}
+
+fn register_key(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    binding: Argument,
+    proof: Argument,
+    public_key: [u8; 32],
+    pop_signature: [u8; 64],
+) -> anyhow::Result<()> {
+    let public_key = tx.arg(&public_key.to_vec())?;
+    let signature = tx.arg(&pop_signature.to_vec())?;
+    let proof_of_key = tx.call_target(
+        network_auth_binding::new_proof_of_key_target,
+        vec![binding, proof, public_key, signature],
+    )?;
+    let clock = tx.clock()?;
+
+    tx.call_target(
+        network_auth_binding::register_key_target,
+        vec![binding, proof, proof_of_key, clock],
+    )?;
+    Ok(())
+}
+
+fn create_binding(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    proof: Argument,
+    description: Option<Vec<u8>>,
+) -> anyhow::Result<Argument> {
+    let objects = tx.objects();
+    let network_auth = tx.shared_object(&objects.network_auth, true)?;
+    let description = description_option(tx, description)?;
+
+    Ok(tx.call_target(
+        network_auth_binding::create_binding_target,
+        vec![network_auth, proof, description],
+    )?)
+}
+
+fn share_binding(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    binding: Argument,
+) -> anyhow::Result<()> {
+    tx.call_target(
+        transfer_binding::public_share_object_target::<network_auth_binding::KeyBinding>,
+        vec![binding],
+    )?;
+    Ok(())
+}
 
 /// Create a new off-chain tool key binding and register the first key.
 ///
 /// This is used when the binding object does not yet exist.
-///
-/// The created `KeyBinding` object is transferred to `sender`.
 #[allow(clippy::too_many_arguments)]
-pub fn create_tool_binding_and_register_key(
-    tx: &mut sui::tx::TransactionBuilder,
+pub(crate) fn create_tool_binding_and_register_key_ptb(
     objects: &NexusObjects,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
-) -> anyhow::Result<()> {
-    // `tool: &Tool`
-    let tool = tx.object(sui::tx::ObjectInput::shared(
-        *tool.object_id(),
-        tool.version(),
-        false,
-    ));
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let tool = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap_over_tool)?;
 
-    // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
-        *owner_cap_over_tool.object_id(),
-        owner_cap_over_tool.version(),
-        *owner_cap_over_tool.digest(),
-    ));
+        let proof_for_binding = proof_for_offchain_tool(tx, tool, owner_cap)?;
+        let binding = create_binding(tx, proof_for_binding, description)?;
 
-    // `proof: ProofOfIdentity`
-    let proof_for_binding = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-        ),
-        vec![tool, owner_cap],
-    );
-
-    // `registry: &mut NetworkAuth`
-    let network_auth = tx.object(sui::tx::ObjectInput::shared(
-        *objects.network_auth.object_id(),
-        objects.network_auth.version(),
-        true,
-    ));
-
-    // `description: Option<vector<u8>>`
-    let description = tx.pure(&description);
-
-    // `binding: KeyBinding`
-    let binding = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::CREATE_BINDING.module,
-            registry::NetworkAuth::CREATE_BINDING.name,
-        ),
-        vec![network_auth, proof_for_binding, description],
-    );
-
-    // Need a fresh proof for key registration (the previous one was consumed by create_binding).
-    let proof_for_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-        ),
-        vec![tool, owner_cap],
-    );
-
-    // `public_key: vector<u8>`
-    let public_key = tx.pure(&public_key.to_vec());
-
-    // `signature: vector<u8>`
-    let signature = tx.pure(&pop_signature.to_vec());
-
-    // `proof_of_key: ProofOfKey`
-    let proof_of_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-        ),
-        vec![binding, proof_for_key, public_key, signature],
-    );
-
-    // `clock: &Clock`
-    let clock = tx.object(sui::tx::ObjectInput::shared(
-        sui_framework::CLOCK_OBJECT_ID,
-        1,
-        false,
-    ));
-
-    // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::REGISTER_KEY.module,
-            registry::NetworkAuth::REGISTER_KEY.name,
-        ),
-        vec![binding, proof_for_key, proof_of_key, clock],
-    );
-
-    let key_binding_type =
-        registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-        )
-        .with_type_args(vec![key_binding_type]),
-        vec![binding],
-    );
-
-    Ok(())
+        let proof_for_key = proof_for_offchain_tool(tx, tool, owner_cap)?;
+        register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
+        share_binding(tx, binding)
+    })
 }
 
 /// Register a new key on an existing off-chain tool key binding.
 ///
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
-pub fn register_tool_key_on_existing_binding(
-    tx: &mut sui::tx::TransactionBuilder,
+pub(crate) fn register_tool_key_on_existing_binding_ptb(
     objects: &NexusObjects,
     binding: &sui::types::ObjectReference,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
-) -> anyhow::Result<()> {
-    // `binding: &mut KeyBinding` (shared object)
-    let binding = tx.object(sui::tx::ObjectInput::shared(
-        *binding.object_id(),
-        binding.version(),
-        true,
-    ));
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let binding = tx.shared_object(binding, true)?;
+        let tool = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap_over_tool)?;
 
-    // `tool: &Tool`
-    let tool = tx.object(sui::tx::ObjectInput::shared(
-        *tool.object_id(),
-        tool.version(),
-        false,
-    ));
-
-    // `owner_cap: &CloneableOwnerCap<OverTool>`
-    let owner_cap = tx.object(sui::tx::ObjectInput::owned(
-        *owner_cap_over_tool.object_id(),
-        owner_cap_over_tool.version(),
-        *owner_cap_over_tool.digest(),
-    ));
-
-    // `proof: ProofOfIdentity`
-    let proof = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-            registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name,
-        ),
-        vec![tool, owner_cap],
-    );
-
-    let public_key = tx.pure(&public_key.to_vec());
-    let signature = tx.pure(&pop_signature.to_vec());
-
-    let proof_of_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-        ),
-        vec![binding, proof, public_key, signature],
-    );
-
-    let clock = tx.object(sui::tx::ObjectInput::shared(
-        sui_framework::CLOCK_OBJECT_ID,
-        1,
-        false,
-    ));
-
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::REGISTER_KEY.module,
-            registry::NetworkAuth::REGISTER_KEY.name,
-        ),
-        vec![binding, proof, proof_of_key, clock],
-    );
-
-    Ok(())
+        let proof = proof_for_offchain_tool(tx, tool, owner_cap)?;
+        register_key(tx, binding, proof, public_key, pop_signature)
+    })
 }
 
 /// Create a new leader key binding and register the first key.
 ///
 /// This is used when the binding object does not yet exist.
-///
-/// The created `KeyBinding` object is transferred to `sender`.
 #[allow(clippy::too_many_arguments)]
-pub fn create_leader_binding_and_register_key(
-    tx: &mut sui::tx::TransactionBuilder,
+pub fn create_leader_binding_and_register_key_ptb(
     objects: &NexusObjects,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
-) -> anyhow::Result<()> {
-    // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
-        *leader_cap_over_network.object_id(),
-        leader_cap_over_network.version(),
-        false,
-    ));
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
-    // `proof: ProofOfIdentity`
-    let proof_for_binding = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_LEADER.module,
-            registry::NetworkAuth::PROVE_LEADER.name,
-        ),
-        vec![leader_cap],
-    );
+        let proof_for_binding = proof_for_leader(tx, leader_cap)?;
+        let binding = create_binding(tx, proof_for_binding, description)?;
 
-    // `registry: &mut NetworkAuth`
-    let network_auth = tx.object(sui::tx::ObjectInput::shared(
-        *objects.network_auth.object_id(),
-        objects.network_auth.version(),
-        true,
-    ));
-
-    // `description: Option<vector<u8>>`
-    let description = tx.pure(&description);
-
-    // `binding: KeyBinding`
-    let binding = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::CREATE_BINDING.module,
-            registry::NetworkAuth::CREATE_BINDING.name,
-        ),
-        vec![network_auth, proof_for_binding, description],
-    );
-
-    // Need a fresh proof for key registration (the previous one was consumed by create_binding).
-    let proof_for_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_LEADER.module,
-            registry::NetworkAuth::PROVE_LEADER.name,
-        ),
-        vec![leader_cap],
-    );
-
-    // `public_key: vector<u8>`
-    let public_key = tx.pure(&public_key.to_vec());
-    // `signature: vector<u8>`
-    let signature = tx.pure(&pop_signature.to_vec());
-
-    // `proof_of_key: ProofOfKey`
-    let proof_of_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-        ),
-        vec![binding, proof_for_key, public_key, signature],
-    );
-
-    // `clock: &Clock`
-    let clock = tx.object(sui::tx::ObjectInput::shared(
-        sui_framework::CLOCK_OBJECT_ID,
-        1,
-        false,
-    ));
-
-    // `nexus_registry::network_auth::register_key(binding, &proof, proof_of_key, clock)`
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::REGISTER_KEY.module,
-            registry::NetworkAuth::REGISTER_KEY.name,
-        ),
-        vec![binding, proof_for_key, proof_of_key, clock],
-    );
-
-    let key_binding_type =
-        registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-    tx.move_call(
-        sui::tx::Function::new(
-            sui_framework::PACKAGE_ID,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-            sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-        )
-        .with_type_args(vec![key_binding_type]),
-        vec![binding],
-    );
-
-    Ok(())
+        let proof_for_key = proof_for_leader(tx, leader_cap)?;
+        register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
+        share_binding(tx, binding)
+    })
 }
 
 /// Register a new key on an existing leader key binding.
 ///
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
-pub fn register_leader_key_on_existing_binding(
-    tx: &mut sui::tx::TransactionBuilder,
+pub fn register_leader_key_on_existing_binding_ptb(
     objects: &NexusObjects,
     binding: &sui::types::ObjectReference,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
-) -> anyhow::Result<()> {
-    // `binding: &mut KeyBinding` (shared object)
-    let binding = tx.object(sui::tx::ObjectInput::shared(
-        *binding.object_id(),
-        binding.version(),
-        true,
-    ));
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let binding = tx.shared_object(binding, true)?;
+        let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
-    // `leader_cap: &CloneableOwnerCap<OverNetwork>`
-    let leader_cap = tx.object(sui::tx::ObjectInput::shared(
-        *leader_cap_over_network.object_id(),
-        leader_cap_over_network.version(),
-        false,
-    ));
-
-    // `proof: ProofOfIdentity`
-    let proof = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::PROVE_LEADER.module,
-            registry::NetworkAuth::PROVE_LEADER.name,
-        ),
-        vec![leader_cap],
-    );
-
-    let public_key = tx.pure(&public_key.to_vec());
-    let signature = tx.pure(&pop_signature.to_vec());
-
-    let proof_of_key = tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-            registry::NetworkAuth::NEW_PROOF_OF_KEY.name,
-        ),
-        vec![binding, proof, public_key, signature],
-    );
-
-    let clock = tx.object(sui::tx::ObjectInput::shared(
-        sui_framework::CLOCK_OBJECT_ID,
-        1,
-        false,
-    ));
-
-    tx.move_call(
-        sui::tx::Function::new(
-            objects.registry_pkg_id,
-            registry::NetworkAuth::REGISTER_KEY.module,
-            registry::NetworkAuth::REGISTER_KEY.name,
-        ),
-        vec![binding, proof, proof_of_key, clock],
-    );
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use {super::*, crate::test_utils::sui_mocks};
-
-    fn count_move_calls(
-        commands: &[sui::types::Command],
-        pkg: sui::types::Address,
-        module: sui::types::Identifier,
-        function: sui::types::Identifier,
-    ) -> usize {
-        commands
-            .iter()
-            .filter(|cmd| {
-                matches!(
-                    cmd,
-                    sui::types::Command::MoveCall(call)
-                        if call.package == pkg
-                            && call.module == module
-                            && call.function == function
-                )
-            })
-            .count()
-    }
-
-    fn has_transfer(commands: &[sui::types::Command]) -> bool {
-        commands
-            .iter()
-            .any(|cmd| matches!(cmd, sui::types::Command::TransferObjects(_)))
-    }
-
-    fn count_public_share_object(
-        commands: &[sui::types::Command],
-        binding_type: sui::types::TypeTag,
-    ) -> usize {
-        commands
-            .iter()
-            .filter(|cmd| {
-                matches!(
-                    cmd,
-                    sui::types::Command::MoveCall(call)
-                        if call.package == sui_framework::PACKAGE_ID
-                            && call.module == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module
-                            && call.function == sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name
-                            && call.type_arguments.as_slice() == [binding_type.clone()]
-                )
-            })
-            .count()
-    }
-
-    #[test]
-    fn test_create_tool_binding_and_register_key_builds_calls() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let owner_cap = sui_mocks::mock_sui_object_ref();
-        let tool = sui_mocks::mock_sui_object_ref();
-        let public_key = [7u8; 32];
-        let pop_signature = [9u8; 64];
-        let description = Some(b"rotation-1".to_vec());
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        create_tool_binding_and_register_key(
-            &mut tx,
-            &objects,
-            &tool,
-            &owner_cap,
-            public_key,
-            pop_signature,
-            description,
-        )
-        .expect("Failed to build PTB for tool binding creation");
-
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
-        let binding_type =
-            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-
-        assert!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
-            ) >= 2
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::CREATE_BINDING.module,
-                registry::NetworkAuth::CREATE_BINDING.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::REGISTER_KEY.module,
-                registry::NetworkAuth::REGISTER_KEY.name
-            ),
-            1
-        );
-        assert_eq!(count_public_share_object(&commands, binding_type), 1);
-        assert!(!has_transfer(&commands));
-    }
-
-    #[test]
-    fn test_register_tool_key_on_existing_binding_builds_calls() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let binding = sui_mocks::mock_sui_object_ref();
-        let owner_cap = sui_mocks::mock_sui_object_ref();
-        let tool = sui_mocks::mock_sui_object_ref();
-        let public_key = [11u8; 32];
-        let pop_signature = [22u8; 64];
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        register_tool_key_on_existing_binding(
-            &mut tx,
-            &objects,
-            &binding,
-            &tool,
-            &owner_cap,
-            public_key,
-            pop_signature,
-        )
-        .expect("Failed to build PTB for tool key registration");
-
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
-
-        let binding_type =
-            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.module,
-                registry::NetworkAuth::PROVE_OFFCHAIN_TOOL.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::REGISTER_KEY.module,
-                registry::NetworkAuth::REGISTER_KEY.name
-            ),
-            1
-        );
-        assert_eq!(count_public_share_object(&commands, binding_type), 0);
-        assert!(!has_transfer(&commands));
-    }
-
-    #[test]
-    fn test_create_leader_binding_and_register_key_builds_calls() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let leader_cap = sui_mocks::mock_sui_object_ref();
-        let public_key = [5u8; 32];
-        let pop_signature = [6u8; 64];
-        let description = Some(b"leader-key".to_vec());
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        create_leader_binding_and_register_key(
-            &mut tx,
-            &objects,
-            &leader_cap,
-            public_key,
-            pop_signature,
-            description,
-        )
-        .expect("Failed to build PTB for leader binding creation");
-
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
-        let binding_type =
-            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-
-        assert!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::PROVE_LEADER.module,
-                registry::NetworkAuth::PROVE_LEADER.name
-            ) >= 2
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::CREATE_BINDING.module,
-                registry::NetworkAuth::CREATE_BINDING.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::REGISTER_KEY.module,
-                registry::NetworkAuth::REGISTER_KEY.name
-            ),
-            1
-        );
-        assert_eq!(count_public_share_object(&commands, binding_type), 1);
-        assert!(!has_transfer(&commands));
-    }
-
-    #[test]
-    fn test_register_leader_key_on_existing_binding_builds_calls() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let binding = sui_mocks::mock_sui_object_ref();
-        let leader_cap = sui_mocks::mock_sui_object_ref();
-        let public_key = [3u8; 32];
-        let pop_signature = [4u8; 64];
-
-        let mut tx = sui::tx::TransactionBuilder::new();
-        register_leader_key_on_existing_binding(
-            &mut tx,
-            &objects,
-            &binding,
-            &leader_cap,
-            public_key,
-            pop_signature,
-        )
-        .expect("Failed to build PTB for leader key registration");
-
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { commands, .. },
-        ) = tx.kind
-        else {
-            panic!("Expected a ProgrammableTransaction");
-        };
-
-        let binding_type =
-            registry::into_type_tag(objects.registry_pkg_id, registry::NetworkAuth::KEY_BINDING);
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::PROVE_LEADER.module,
-                registry::NetworkAuth::PROVE_LEADER.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.module,
-                registry::NetworkAuth::NEW_PROOF_OF_KEY.name
-            ),
-            1
-        );
-        assert_eq!(
-            count_move_calls(
-                &commands,
-                objects.registry_pkg_id,
-                registry::NetworkAuth::REGISTER_KEY.module,
-                registry::NetworkAuth::REGISTER_KEY.name
-            ),
-            1
-        );
-        assert_eq!(count_public_share_object(&commands, binding_type), 0);
-        assert!(!has_transfer(&commands));
-    }
+        let proof = proof_for_leader(tx, leader_cap)?;
+        register_key(tx, binding, proof, public_key, pop_signature)
+    })
 }

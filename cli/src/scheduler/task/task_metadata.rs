@@ -1,10 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        notify_success,
-        prelude::*,
-        scheduler::helpers,
+        command_title, display::json_output, notify_success, prelude::*, scheduler::helpers,
         sui::get_nexus_client,
     },
     serde_json::json,

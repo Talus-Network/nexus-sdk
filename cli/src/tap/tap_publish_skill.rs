@@ -1,7 +1,7 @@
 use {
     super::*,
     crate::tap::tap_validate_skill::{tap_package_path_for_config, validate_tap_package_manifest},
-    nexus_sdk::sui::build::Environment,
+    nexus_sdk::{dag::json::parse_dag_spec, sui::build::Environment},
 };
 
 /// Parse `<package_path>/Move.toml` and pick the `[environments]` entry whose
@@ -61,7 +61,7 @@ pub(crate) async fn publish_skill(
     let dag_text = tokio::fs::read_to_string(&dag_path)
         .await
         .map_err(NexusCliError::Io)?;
-    let dag: JsonDag = serde_json::from_str(&dag_text).map_err(|e| NexusCliError::Any(e.into()))?;
+    let dag = parse_dag_spec(&dag_text).map_err(|error| NexusCliError::Any(error.into()))?;
 
     command_title!("Publishing TAP skill");
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;

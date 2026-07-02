@@ -8,20 +8,24 @@ use {
             crawler::Crawler,
             error::NexusError,
             gas::GasActions,
-            models::Dag,
             scheduler::SchedulerActions,
             signer::{ExecutedTransaction, Signer},
-            workflow::{fetch_dag_vertices_bcs, WorkflowActions},
+            workflow::WorkflowActions,
         },
         sui,
-        types::{derive_tool_gas_id, derive_tool_id, NexusObjects},
+        types::NexusObjects,
         ToolFqn,
     },
-    std::{collections::HashSet, sync::Arc},
+    std::sync::Arc,
     tokio::{
         sync::{Mutex, Notify},
         time::Duration,
     },
+};
+#[cfg(feature = "walrus")]
+use {
+    crate::{move_bindings::interface::dag as dag_move, nexus::workflow::fetch_dag_vertices_bcs},
+    std::collections::HashSet,
 };
 
 /// [`Gas`] struct handles distributing gas coins for Nexus operations.
@@ -270,26 +274,26 @@ impl NexusClient {
         Arc::clone(&self.nexus_objects)
     }
 
-    /// Submit a transaction through this client's signer and gas pool.
-    pub(crate) async fn submit_transaction(
+    /// Submit a canonical programmable transaction through this client's signer and gas pool.
+    pub async fn submit_transaction(
         &self,
-        mut tx: sui::tx::TransactionBuilder,
+        tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
         let mut gas_coin = self.gas.acquire_gas_coin().await;
 
-        tx.set_sender(address);
-        tx.set_gas_budget(self.gas.get_budget());
-        tx.set_gas_price(self.reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
+        let tx = sui::types::Transaction {
+            kind: sui::types::TransactionKind::ProgrammableTransaction(tx),
+            sender: address,
+            gas_payment: sui::types::GasPayment {
+                objects: vec![gas_coin.clone()],
+                owner: address,
+                price: self.reference_gas_price,
+                budget: self.gas.get_budget(),
+            },
+            expiration: sui::types::TransactionExpiration::None,
+        };
 
-        let tx = tx
-            .try_build()
-            .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
         let signature = self.signer.sign_tx(&tx).await?;
         let response = self.signer.execute_tx(tx, signature, &mut gas_coin).await;
 
@@ -301,9 +305,10 @@ impl NexusClient {
 
     /// Fetch all [`ToolGas`] derived objects that are relevant to the provided
     /// DAG object ID.
+    #[cfg(feature = "walrus")]
     pub(crate) async fn fetch_tool_gas_for_dag(
         &self,
-        dag: &Dag,
+        dag: &dag_move::DAG,
     ) -> anyhow::Result<HashSet<(sui::types::Address, sui::types::Version)>, NexusError> {
         let crawler = self.crawler();
         let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
@@ -312,13 +317,14 @@ impl NexusClient {
             .await
             .map_err(NexusError::Rpc)?
             .into_iter()
-            .map(|(vertex, tool)| (vertex, tool.kind.tool_fqn().clone()))
-            .collect::<Vec<_>>();
+            .map(|(vertex, tool)| tool.kind.tool_fqn().map(|fqn| (vertex, fqn)))
+            .collect::<anyhow::Result<Vec<_>>>()
+            .map_err(NexusError::Parsing)?;
 
         // Derive `ToolGas` IDs and fetch them in bulk.
         let tool_gas_ids = vertices
             .iter()
-            .map(|(_, fqn)| derive_tool_gas_id(gas_service_object_id, fqn))
+            .map(|(_, fqn)| crate::move_bindings::derive_tool_gas_id(gas_service_object_id, fqn))
             .collect::<anyhow::Result<Vec<_>>>()
             .map_err(NexusError::Parsing)?;
 
@@ -341,8 +347,8 @@ impl NexusClient {
         let crawler = self.crawler();
         let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
 
-        let tool_id =
-            derive_tool_id(tool_registry_object_id, tool_fqn).map_err(NexusError::Parsing)?;
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
+            .map_err(NexusError::Parsing)?;
         let tool = crawler
             .get_object_metadata(tool_id)
             .await
@@ -360,7 +366,8 @@ impl NexusClient {
         let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
 
         let tool_gas_id =
-            derive_tool_gas_id(tool_registry_object_id, tool_fqn).map_err(NexusError::Parsing)?;
+            crate::move_bindings::derive_tool_gas_id(tool_registry_object_id, tool_fqn)
+                .map_err(NexusError::Parsing)?;
         let tool_gas = crawler
             .get_object_metadata(tool_gas_id)
             .await
@@ -630,18 +637,23 @@ mod tests {
         assert_eq!(client.reference_gas_price, 1000);
 
         let mut gas_coin = client.gas.acquire_gas_coin().await;
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        tx.set_sender(client.signer.get_active_address());
-        tx.set_gas_budget(1000);
-        tx.set_gas_price(1000);
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx.try_build().unwrap();
+        let sender = client.signer.get_active_address();
+        let tx = sui::types::Transaction {
+            kind: sui::types::TransactionKind::ProgrammableTransaction(
+                sui::types::ProgrammableTransaction {
+                    inputs: vec![],
+                    commands: vec![],
+                },
+            ),
+            sender,
+            gas_payment: sui::types::GasPayment {
+                objects: vec![gas_coin.clone()],
+                owner: sender,
+                price: 1000,
+                budget: 1000,
+            },
+            expiration: sui::types::TransactionExpiration::None,
+        };
         let signature = client.signer.sign_tx(&tx).await.unwrap();
 
         let response = client
@@ -654,5 +666,14 @@ mod tests {
 
         assert_eq!(gas_coin.version(), gas_coin_ref.version());
         assert_eq!(gas_coin.digest(), gas_coin_ref.digest());
+    }
+
+    #[allow(dead_code)]
+    async fn submit_transaction_accepts_canonical_ptb(
+        client: &NexusClient,
+        sender: sui::types::Address,
+        ptb: sui::types::ProgrammableTransaction,
+    ) {
+        let _ = client.submit_transaction(ptb, sender).await;
     }
 }

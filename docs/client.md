@@ -242,7 +242,7 @@ let input_data = HashMap::from([(
     "entry_vertex".to_string(),
     HashMap::from([(
         "input_port".to_string(),
-        NexusData::new_inline(serde_json::json!({"hello": "world"})).commit_inline_plain(),
+        NexusData::inline_json(serde_json::json!({"hello": "world"})).commit_inline_plain(),
     )]),
 )]);
 
@@ -299,7 +299,7 @@ let input_data = HashMap::from([(
     "entry_vertex".to_string(),
     HashMap::from([(
         "input_port".to_string(),
-        NexusData::new_inline(serde_json::json!({"hello": "world"})).commit_inline_plain(),
+        NexusData::inline_json(serde_json::json!({"hello": "world"})).commit_inline_plain(),
     )]),
 )]);
 

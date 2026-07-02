@@ -4,16 +4,9 @@ use {
     anyhow::Result,
     mockito::{Server, ServerGuard},
     nexus_sdk::walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo, WalrusClient},
-    serde::{Deserialize, Serialize},
     std::path::PathBuf,
     tempfile::tempdir,
 };
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct SampleData {
-    name: String,
-    value: i32,
-}
 
 const EPOCHS: u8 = 1;
 const TEST_CONTENT: &[u8] = b"Hello, World!";
@@ -93,21 +86,17 @@ async fn test_upload_file() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_upload_json() -> Result<()> {
+async fn test_upload_bytes() -> Result<()> {
     let (mut server, client) = setup_mock_server().await?;
 
-    // Create test data
-    let test_data = SampleData {
-        name: "Test".to_string(),
-        value: 10,
-    };
+    let test_data = b"raw payload".to_vec();
 
     // Setup mock response
     let mock_response = StorageInfo {
         newly_created: Some(NewlyCreated {
             blob_object: BlobObject {
-                blob_id: "json_blob_id".to_string(),
-                id: "json_object_id".to_string(),
+                blob_id: "bytes_blob_id".to_string(),
+                id: "bytes_object_id".to_string(),
                 storage: BlobStorage { end_epoch: 200 },
             },
         }),
@@ -125,14 +114,13 @@ async fn test_upload_json() -> Result<()> {
         .create_async()
         .await;
 
-    // Test upload_json
-    let storage_info = client.upload_json(&test_data, EPOCHS, None).await?;
+    let storage_info = client.upload_bytes(test_data, EPOCHS, None).await?;
 
     // Verify response
     assert!(storage_info.newly_created.is_some());
     let blob_object = storage_info.newly_created.unwrap().blob_object;
-    assert_eq!(blob_object.blob_id, "json_blob_id");
-    assert_eq!(blob_object.id, "json_object_id");
+    assert_eq!(blob_object.blob_id, "bytes_blob_id");
+    assert_eq!(blob_object.id, "bytes_object_id");
     assert_eq!(blob_object.storage.end_epoch, 200);
     assert!(storage_info.already_certified.is_none());
 
@@ -177,29 +165,21 @@ async fn test_download_file() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_read_json() -> Result<()> {
+async fn test_read_bytes() -> Result<()> {
     let (mut server, client) = setup_mock_server().await?;
 
-    // Create test data
-    let test_data = SampleData {
-        name: "Downloaded".to_string(),
-        value: 10,
-    };
+    let test_data = b"downloaded bytes".to_vec();
 
     let mock = server
-        .mock("GET", "/v1/blobs/json_blob_id")
+        .mock("GET", "/v1/blobs/bytes_blob_id")
         .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(serde_json::to_string(&test_data)?)
+        .with_body(test_data.clone())
         .create_async()
         .await;
 
-    // Test read_json
-    let result: SampleData = client.read_json("json_blob_id").await?;
+    let result = client.read_file("bytes_blob_id").await?;
 
-    // Verify the data was correctly parsed
-    assert_eq!(result.name, test_data.name);
-    assert_eq!(result.value, test_data.value);
+    assert_eq!(result, test_data);
 
     // Verify the request was made
     mock.assert_async().await;
@@ -278,7 +258,7 @@ async fn test_error_handling() -> Result<()> {
         .await;
 
     // Test error handling
-    let result = client.read_json::<SampleData>("error_blob_id").await;
+    let result = client.read_file("error_blob_id").await;
     assert!(result.is_err());
 
     // Verify the request was made

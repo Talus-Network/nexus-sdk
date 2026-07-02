@@ -1,16 +1,14 @@
 use {
     super::*,
     nexus_sdk::{
-        nexus::{models::Dag, workflow::fetch_dag_vertices_bcs},
-        types::{
-            interface::{
-                agent::{FixedTool, SkillRequirement},
-                payment::SkillPaymentPolicy,
-                version::InterfaceVersion,
-            },
-            tap_input_commitment_from_dag_inputs,
-            validate_requirements,
+        move_bindings::interface::{
+            agent::{FixedTool, SkillRequirement},
+            dag::DAG,
+            payment::SkillPaymentPolicy,
+            version::InterfaceVersion,
         },
+        nexus::workflow::fetch_dag_vertices_bcs,
+        types::{tap_input_commitment_from_dag_inputs, validate_requirements},
     },
 };
 
@@ -112,7 +110,7 @@ fn build_artifact(
 async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8>, NexusCliError> {
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
-    let dag = crawler.get_object::<Dag>(dag_id).await.map_err(|error| {
+    let dag = crawler.get_object::<DAG>(dag_id).await.map_err(|error| {
         NexusCliError::Any(anyhow!(
             "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
         ))
@@ -126,7 +124,7 @@ async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8
         })?;
     let input_pairs = vertices.iter().flat_map(|(vertex, info)| {
         info.input_ports
-            .inner()
+            .contents
             .iter()
             .map(move |port| (vertex.name.as_str(), port.name.as_str()))
     });

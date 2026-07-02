@@ -1,13 +1,7 @@
 use {
     crate::{
-        command_title,
-        dag::dag_inspect_execution::inspect_dag_execution,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        sui::*,
-        workflow,
+        command_title, dag::dag_inspect_execution::inspect_dag_execution, display::json_output,
+        loading, notify_success, prelude::*, sui::*, workflow,
     },
     anyhow::anyhow,
     nexus_sdk::{

@@ -1,36 +1,35 @@
-pub use crate::types::{
-    interface::{
-        graph::PostFailureAction,
-        verifier::{
-            ExternalVerifierSubmitEvidence,
-            FailureEvidenceKind,
-            OffChainToolResultAuxiliary,
-            OffChainVerifierProof,
-            OffchainRequestEvidence,
-            OffchainResponseEvidence,
-            OffchainVerifierEvidence,
-            PreparedToolOutput,
-            PreparedToolOutputPort,
-            VerificationSubmissionKind,
-            VerificationVerdict,
-            VerifierConfig,
-            VerifierContractResult,
-            VerifierDecision,
-            VerifierMode,
-        },
-    },
-    workflow::execution_failure::WorkflowFailureClass,
-};
 use {
-    crate::{sui, types::SharedObjectRef},
+    crate::{
+        move_bindings::{
+            interface::{
+                graph::RuntimeVertex,
+                verifier::{OffchainResponseEvidence, VerificationSubmissionKind},
+                version::InterfaceVersion,
+            },
+            primitives::shared_object::SharedObjectRef,
+            workflow::execution_failure::WorkflowFailureClass,
+        },
+        sui,
+        types::{AgentId, SkillId, SkillRevisionLookupKey},
+    },
     serde::{Deserialize, Serialize},
 };
 
-impl Default for VerifierConfig {
-    fn default() -> Self {
-        Self {
-            mode: VerifierMode::None,
-            method: "".into(),
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequestWalkContext {
+    pub agent_id: AgentId,
+    pub skill_id: SkillId,
+    pub interface_revision: InterfaceVersion,
+    pub scheduled_task_id: Option<sui::types::Address>,
+    pub scheduled_occurrence_index: Option<u64>,
+}
+
+impl RequestWalkContext {
+    pub fn skill_revision_key(&self) -> SkillRevisionLookupKey {
+        SkillRevisionLookupKey {
+            agent_id: self.agent_id,
+            skill_id: self.skill_id,
+            interface_revision: self.interface_revision,
         }
     }
 }
@@ -47,12 +46,6 @@ pub struct AuthenticatedOffchainRequestEvidence {
     pub request_signature: Vec<u8>,
 }
 
-impl AuthenticatedOffchainRequestEvidence {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
 /// Active verifier input consumed by SDK submit builders.
 ///
 /// Move constructs the full verifier request evidence from `DAGExecution`,
@@ -66,12 +59,6 @@ pub struct AuthenticatedOffchainVerifierEvidence {
     pub response: OffchainResponseEvidence,
 }
 
-impl AuthenticatedOffchainVerifierEvidence {
-    pub fn to_bcs_bytes(&self) -> bcs::Result<Vec<u8>> {
-        bcs::to_bytes(self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExternalVerifierRuntimeCall {
     pub package_address: sui::types::Address,
@@ -83,55 +70,38 @@ pub struct ExternalVerifierRuntimeCall {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionTerminalRecord {
-    pub vertex: crate::types::RuntimeVertex,
+    pub vertex: RuntimeVertex,
     pub failure_class: WorkflowFailureClass,
-}
-
-impl PostFailureAction {
-    pub const fn as_str(&self) -> &'static str {
-        match self {
-            Self::Terminate => "terminate",
-            Self::TransientContinue => "continue",
-        }
-    }
-}
-
-impl std::fmt::Display for PostFailureAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::fmt::Display for WorkflowFailureClass {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let value = match self {
-            Self::Retryable => "retryable",
-            Self::TerminalToolFailure => "terminal_tool_failure",
-            Self::TerminalSubmissionFailure => "terminal_submission_failure",
-        };
-
-        f.write_str(value)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::types::{MoveOption, PublishedMoveEnum},
+        crate::move_bindings::{
+            interface::{
+                graph::PostFailureAction,
+                verifier::{
+                    ExternalVerifierSubmitEvidence, FailureEvidenceKind,
+                    OffChainToolResultAuxiliary, OffChainVerifierProof, OffchainRequestEvidence,
+                    OffchainVerifierEvidence, VerificationVerdict, VerifierConfig,
+                    VerifierContractResult, VerifierDecision, VerifierMode,
+                },
+            },
+            move_std::option::Option as MoveOption,
+        },
     };
 
-    fn id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
-        crate::types::move_binding_support::sui_address_to_id(bytes)
+    fn id(bytes: sui::types::Address) -> crate::move_bindings::sui_framework::object::ID {
+        crate::move_bindings::sui_framework::object::ID::new(bytes)
     }
 
     #[test]
-    fn test_post_failure_action_serde() {
-        let action: PostFailureAction = serde_json::from_str("\"TransientContinue\"").unwrap();
-        assert_eq!(action, PostFailureAction::TransientContinue);
+    fn test_post_failure_action_bcs_roundtrip() {
+        let action = PostFailureAction::TransientContinue;
         assert_eq!(
-            serde_json::to_string(&PostFailureAction::Terminate).unwrap(),
-            "\"Terminate\""
+            bcs::from_bytes::<PostFailureAction>(&bcs::to_bytes(&action).unwrap()).unwrap(),
+            action
         );
     }
 
@@ -155,145 +125,49 @@ mod tests {
     }
 
     #[test]
-    fn test_workflow_failure_class_published_move_enum_serde() {
-        let wrapped: PublishedMoveEnum<WorkflowFailureClass> =
-            serde_json::from_str("{\"_variant_name\":\"TerminalToolFailure\"}").unwrap();
-        assert_eq!(wrapped.0, WorkflowFailureClass::TerminalToolFailure);
-
-        let string: PublishedMoveEnum<WorkflowFailureClass> =
-            serde_json::from_str("\"TerminalSubmissionFailure\"").unwrap();
-        assert_eq!(string.0, WorkflowFailureClass::TerminalSubmissionFailure);
-    }
-
-    #[test]
-    fn test_post_failure_action_published_move_enum_serde() {
-        let tagged: PublishedMoveEnum<PostFailureAction> =
-            serde_json::from_str("{\"@variant\":\"TransientContinue\"}").unwrap();
-        assert_eq!(tagged.0, PostFailureAction::TransientContinue);
-
-        let string: PublishedMoveEnum<PostFailureAction> =
-            serde_json::from_str("\"Terminate\"").unwrap();
-        assert_eq!(string.0, PostFailureAction::Terminate);
-    }
-
-    #[test]
-    fn test_verifier_mode_published_move_enum_serde() {
-        let tagged: PublishedMoveEnum<VerifierMode> =
-            serde_json::from_str("{\"@variant\":\"LeaderRegisteredKey\"}").unwrap();
-        assert_eq!(tagged.0, VerifierMode::LeaderRegisteredKey);
-
-        let string: PublishedMoveEnum<VerifierMode> =
-            serde_json::from_str("\"ToolVerifierContract\"").unwrap();
-        assert_eq!(string.0, VerifierMode::ToolVerifierContract);
-    }
-
-    #[test]
-    fn test_verifier_config_deserializes_plain_json() {
-        let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
-            "mode": "ToolVerifierContract",
-            "method": "demo_verifier_v1"
-        }))
-        .unwrap();
+    fn test_verifier_config_uses_generated_layout() {
+        let value = VerifierConfig {
+            mode: VerifierMode::ToolVerifierContract,
+            method: "demo_verifier_v1".into(),
+        };
 
         assert_eq!(
-            parsed,
-            VerifierConfig {
-                mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".into(),
-            }
+            bcs::from_bytes::<VerifierConfig>(&bcs::to_bytes(&value).unwrap()).unwrap(),
+            value
         );
     }
 
     #[test]
-    fn test_verifier_config_deserializes_move_json_enum_mode() {
-        let parsed: VerifierConfig = serde_json::from_value(serde_json::json!({
-            "mode": { "@variant": "ToolVerifierContract" },
-            "method": "demo_verifier_v1"
-        }))
-        .unwrap();
-
+    fn test_move_option_bcs_roundtrips_published_move_enum_payload() {
+        let value = MoveOption::from_option(Some(FailureEvidenceKind::ToolEvidence));
         assert_eq!(
-            parsed,
-            VerifierConfig {
-                mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".into(),
-            }
+            bcs::from_bytes::<MoveOption<FailureEvidenceKind>>(&bcs::to_bytes(&value).unwrap())
+                .unwrap(),
+            value
         );
     }
 
     #[test]
-    fn test_verification_verdict_published_move_enum_serde() {
-        let tagged: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("{\"_variant_name\":\"InvalidLeaderProof\"}").unwrap();
-        assert_eq!(tagged.0, VerificationVerdict::InvalidLeaderProof);
-
-        let accepted_tagged: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("{\"_variant_name\":\"Accepted\"}").unwrap();
-        assert_eq!(accepted_tagged.0, VerificationVerdict::Accepted);
-
-        let accepted_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"Accepted\"").unwrap();
-        assert_eq!(accepted_string.0, VerificationVerdict::Accepted);
-
-        let invalid_tool_proof_tagged: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("{\"@variant\":\"InvalidToolProof\"}").unwrap();
-        assert_eq!(
-            invalid_tool_proof_tagged.0,
-            VerificationVerdict::InvalidToolProof
-        );
-
-        let invalid_tool_proof_string: PublishedMoveEnum<VerificationVerdict> =
-            serde_json::from_str("\"InvalidToolProof\"").unwrap();
-        assert_eq!(
-            invalid_tool_proof_string.0,
-            VerificationVerdict::InvalidToolProof
-        );
+    fn test_verification_verdict_bcs_roundtrip() {
+        for value in [
+            VerificationVerdict::Accepted,
+            VerificationVerdict::InvalidToolProof,
+        ] {
+            assert_eq!(
+                bcs::from_bytes::<VerificationVerdict>(&bcs::to_bytes(&value).unwrap()).unwrap(),
+                value
+            );
+        }
     }
 
     #[test]
-    fn test_failure_evidence_kind_published_move_enum_serde() {
-        let tagged: PublishedMoveEnum<FailureEvidenceKind> =
-            serde_json::from_str("{\"_variant_name\":\"ToolEvidence\"}").unwrap();
-        assert_eq!(tagged.0, FailureEvidenceKind::ToolEvidence);
-
-        let string: PublishedMoveEnum<FailureEvidenceKind> =
-            serde_json::from_str("\"LeaderEvidence\"").unwrap();
-        assert_eq!(string.0, FailureEvidenceKind::LeaderEvidence);
-    }
-
-    #[test]
-    fn test_move_option_deserializes_published_move_enum_payload() {
-        let parsed: MoveOption<FailureEvidenceKind> =
-            serde_json::from_value(serde_json::json!([{ "@variant": "ToolEvidence" }])).unwrap();
-        assert_eq!(parsed, MoveOption(Some(FailureEvidenceKind::ToolEvidence)));
-    }
-
-    #[test]
-    fn test_verification_verdict_serde() {
-        let accepted: VerificationVerdict = serde_json::from_str("\"Accepted\"").unwrap();
-        assert_eq!(accepted, VerificationVerdict::Accepted);
-        assert_eq!(
-            serde_json::to_string(&VerificationVerdict::Accepted).unwrap(),
-            "\"Accepted\""
-        );
-
-        let invalid_tool_proof: VerificationVerdict =
-            serde_json::from_str("\"InvalidToolProof\"").unwrap();
-        assert_eq!(invalid_tool_proof, VerificationVerdict::InvalidToolProof);
-        assert_eq!(
-            serde_json::to_string(&VerificationVerdict::InvalidToolProof).unwrap(),
-            "\"InvalidToolProof\""
-        );
-    }
-
-    #[test]
-    fn test_verifier_decision_v1_serde() {
-        let accepted: VerifierDecision = serde_json::from_str("\"Accept\"").unwrap();
-        assert_eq!(accepted, VerifierDecision::Accept);
-        assert_eq!(
-            serde_json::to_string(&VerifierDecision::Reject).unwrap(),
-            "\"Reject\""
-        );
+    fn test_verifier_decision_v1_bcs_roundtrip() {
+        for value in [VerifierDecision::Accept, VerifierDecision::Reject] {
+            assert_eq!(
+                bcs::from_bytes::<VerifierDecision>(&bcs::to_bytes(&value).unwrap()).unwrap(),
+                value
+            );
+        }
     }
 
     #[test]
@@ -335,7 +209,7 @@ mod tests {
                 status_code: 200,
                 response_hash: vec![12, 13],
                 response_signature: vec![14, 15],
-                normalized_err_eval_reason_hash: MoveOption(Some(vec![16, 17])),
+                normalized_err_eval_reason_hash: MoveOption::from_option(Some(vec![16, 17])),
             },
         };
 
@@ -360,11 +234,11 @@ mod tests {
                 status_code: 200,
                 response_hash: vec![12, 13],
                 response_signature: vec![14, 15],
-                normalized_err_eval_reason_hash: MoveOption(Some(vec![16, 17])),
+                normalized_err_eval_reason_hash: MoveOption::from_option(Some(vec![16, 17])),
             },
         };
 
-        let bytes = value.to_bcs_bytes().unwrap();
+        let bytes = bcs::to_bytes(&value).unwrap();
         let parsed: AuthenticatedOffchainVerifierEvidence = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, value);
     }
@@ -372,25 +246,30 @@ mod tests {
     #[test]
     fn test_off_chain_tool_result_auxiliary_success_bcs_serializes() {
         let value = OffChainToolResultAuxiliary {
-            reported_failure_evidence_kind: MoveOption(None),
-        };
-
-        let bytes = bcs::to_bytes(&value).unwrap();
-        let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
-        assert_eq!(parsed.reported_failure_evidence_kind, MoveOption(None));
-    }
-
-    #[test]
-    fn test_off_chain_tool_result_auxiliary_err_eval_bcs_serializes() {
-        let value = OffChainToolResultAuxiliary {
-            reported_failure_evidence_kind: MoveOption(Some(FailureEvidenceKind::ToolEvidence)),
+            reported_failure_evidence_kind: MoveOption::from_option(None),
         };
 
         let bytes = bcs::to_bytes(&value).unwrap();
         let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(
             parsed.reported_failure_evidence_kind,
-            MoveOption(Some(FailureEvidenceKind::ToolEvidence))
+            MoveOption::from_option(None)
+        );
+    }
+
+    #[test]
+    fn test_off_chain_tool_result_auxiliary_err_eval_bcs_serializes() {
+        let value = OffChainToolResultAuxiliary {
+            reported_failure_evidence_kind: MoveOption::from_option(Some(
+                FailureEvidenceKind::ToolEvidence,
+            )),
+        };
+
+        let bytes = bcs::to_bytes(&value).unwrap();
+        let parsed: OffChainToolResultAuxiliary = bcs::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            parsed.reported_failure_evidence_kind,
+            MoveOption::from_option(Some(FailureEvidenceKind::ToolEvidence))
         );
     }
 

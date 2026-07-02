@@ -13,8 +13,7 @@ use {
         testcontainers::{
             core::{client, ports::ContainerPort},
             runners::AsyncRunner,
-            ContainerAsync,
-            ImageExt,
+            ContainerAsync, ImageExt,
         },
     },
 };

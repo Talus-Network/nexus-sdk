@@ -2,25 +2,22 @@
 
 use {
     crate::{
-        nexus::crawler::{prost_value_to_json_value, Crawler},
-        sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
-        types::{
-            registry,
-            ExternalVerifierRuntimeCall,
-            LeaderRegistry,
-            SharedObjectRef,
-            VerifierConfig,
+        move_bindings::{
+            interface::verifier::VerifierConfig,
+            primitives::{self, shared_object::SharedObjectRef},
+            registry::{self, leader::LeaderRegistry},
         },
+        nexus::crawler::Crawler,
+        sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
+        types::ExternalVerifierRuntimeCall,
     },
     anyhow::{anyhow, bail},
     serde::Deserialize,
     std::{collections::HashMap, str::FromStr},
 };
 
-#[derive(serde::Deserialize)]
-struct OwnerCapJson {
-    what_for: sui::types::Address,
-}
+type AnyCloneableOwnerCap =
+    primitives::owner_cap::CloneableOwnerCap<registry::leader_cap::OverNetwork>;
 
 /// Decode the registry network ID from a published `LeaderRegistry` Move object.
 pub fn extract_network_id_from_leader_registry(
@@ -43,7 +40,7 @@ pub async fn find_owned_capability_by_what_for(
             "object_id",
             "version",
             "digest",
-            "json",
+            "contents",
             "owner",
         ]));
 
@@ -61,10 +58,9 @@ pub async fn find_owned_capability_by_what_for(
         let digest = object.digest_opt().and_then(|value| value.parse().ok())?;
         let version = object_version(object)?;
 
-        let json = object.json_opt()?;
-        let json = prost_value_to_json_value(json).ok()?;
-        let parsed = serde_json::from_value::<OwnerCapJson>(json).ok()?;
-        if parsed.what_for != expected_what_for {
+        let bytes = object.contents_opt()?.value_opt()?;
+        let parsed = bcs::from_bytes::<AnyCloneableOwnerCap>(bytes).ok()?;
+        if parsed.what_for.bytes != expected_what_for {
             return None;
         }
 
@@ -124,12 +120,10 @@ pub async fn fetch_external_verifier_runtime_metadata(
     verifier: VerifierConfig,
 ) -> anyhow::Result<ExternalVerifierRuntimeMetadata> {
     let registry = crawler
-        .get_object_contents_bcs::<registry::verifier_registry::VerifierRegistry>(
-            *registry_ref.object_id(),
-        )
+        .get_object::<registry::verifier_registry::VerifierRegistry>(*registry_ref.object_id())
         .await?;
     let mut methods = crawler
-        .get_dynamic_fields_bcs::<String, registry::verifier_registry::VerifierMethodRecord>(
+        .get_dynamic_fields::<String, registry::verifier_registry::VerifierMethodRecord>(
             registry.data.methods.id(),
             registry.data.methods.size(),
         )
@@ -148,26 +142,29 @@ pub async fn fetch_external_verifier_runtime_metadata(
         );
     }
 
-    let call_shape = record.call_shape.0.map(|shape| VerifierCallShapeV1 {
-        module_name: shape.module_name.into(),
-        function_name: shape.function_name.into(),
-    });
+    let call_shape = record
+        .call_shape
+        .into_option()
+        .map(|shape| VerifierCallShapeV1 {
+            module_name: shape.module_name.into(),
+            function_name: shape.function_name.into(),
+        });
     let call_shape = call_shape.ok_or_else(|| {
         anyhow!(
             "Verifier method '{}' is missing runtime call-shape metadata",
             verifier.method.as_str()
         )
     })?;
-    let witness_type = record.witness_type.0.ok_or_else(|| {
+    let witness_type = record.witness_type.into_option().ok_or_else(|| {
         anyhow!(
             "Verifier method '{}' is missing witness type metadata",
             verifier.method.as_str()
         )
     })?;
-    let witness_type_name = if witness_type.name.starts_with("0x") {
-        witness_type.name.clone()
+    let witness_type_name = if witness_type.as_str().starts_with("0x") {
+        witness_type.to_string()
     } else {
-        format!("0x{}", witness_type.name)
+        format!("0x{witness_type}")
     };
     let witness_tag = sui::types::StructTag::from_str(&witness_type_name).map_err(|source| {
         anyhow!(
@@ -275,16 +272,20 @@ mod tests {
         object.set_object_id(object_ref.object_id().to_string());
         object.set_digest(*object_ref.digest());
         object.set_version(object_ref.version());
-        object.json = Some(Box::new(prost_types::Value {
-            kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct {
-                fields: std::collections::BTreeMap::from([(
-                    "what_for".to_string(),
-                    prost_types::Value {
-                        kind: Some(prost_types::value::Kind::StringValue(what_for.to_string())),
-                    },
-                )]),
-            })),
-        }));
+        let cap = AnyCloneableOwnerCap {
+            id: crate::move_bindings::sui_framework::object::UID::new(*object_ref.object_id()),
+            what_for: crate::move_bindings::sui_framework::object::ID::new(what_for),
+            inner: primitives::owner_cap::OwnerCap {
+                unique: crate::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::ZERO,
+                ),
+                phantom_t0: std::marker::PhantomData,
+            },
+            phantom_t0: std::marker::PhantomData,
+        };
+        let mut contents = sui::grpc::Bcs::default();
+        contents.set_value(bcs::to_bytes(&cap).expect("owner cap bcs"));
+        object.contents = Some(contents);
 
         if consensus_owner {
             let mut grpc_owner = sui::grpc::Owner::default();

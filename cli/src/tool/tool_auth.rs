@@ -3,21 +3,22 @@ use {
     crate::{
         command_title,
         display::json_output,
-        loading,
-        notify_success,
+        loading, notify_success,
         prelude::*,
         sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
     },
     nexus_sdk::{
-        nexus::network_auth::{
-            AllowedLeadersFileSyncerV1,
-            AllowedLeadersSyncOutcome,
-            NetworkAuthReader,
+        nexus::network_auth::NetworkAuthReader,
+        signed_http::{
+            keys::{parse_ed25519_signing_key, Ed25519Keypair},
+            v1::wire::AllowedLeadersFileV1,
         },
-        signed_http::keys::{parse_ed25519_signing_key, Ed25519Keypair},
         ToolFqn,
     },
-    std::{path::PathBuf, time::Duration},
+    std::{
+        path::{Path, PathBuf},
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    },
 };
 
 pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
@@ -246,12 +247,12 @@ async fn export_allowed_leaders(
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
-    if all {
+    let file = if all {
         nexus_client
             .network_auth()
-            .write_allowed_leaders_file_v1_for_all_leaders(&out)
+            .export_allowed_leaders_file_v1_for_all_leaders()
             .await
-            .map_err(NexusCliError::Nexus)?;
+            .map_err(NexusCliError::Nexus)?
     } else {
         if leaders.is_empty() {
             return Err(NexusCliError::Any(anyhow!(
@@ -261,10 +262,11 @@ async fn export_allowed_leaders(
 
         nexus_client
             .network_auth()
-            .write_allowed_leaders_file_v1(&leaders, &out)
+            .export_allowed_leaders_file_v1(&leaders)
             .await
-            .map_err(NexusCliError::Nexus)?;
-    }
+            .map_err(NexusCliError::Nexus)?
+    };
+    write_allowed_leaders_file_v1(&file, &out)?;
     handle.success();
 
     notify_success!(
@@ -278,6 +280,88 @@ async fn export_allowed_leaders(
         "leaders": leaders,
     }))?;
 
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AllowedLeadersSyncOutcome {
+    Unchanged,
+    Updated,
+}
+
+#[derive(Clone)]
+struct AllowedLeadersFileSyncerV1 {
+    reader: NetworkAuthReader,
+    out_path: PathBuf,
+}
+
+impl AllowedLeadersFileSyncerV1 {
+    fn new(reader: NetworkAuthReader, out_path: impl Into<PathBuf>) -> Self {
+        Self {
+            reader,
+            out_path: out_path.into(),
+        }
+    }
+
+    async fn sync_once(&self) -> AnyResult<AllowedLeadersSyncOutcome, NexusCliError> {
+        let file = self
+            .reader
+            .export_allowed_leaders_file_v1_for_all_leaders()
+            .await
+            .map_err(NexusCliError::Nexus)?;
+        let bytes = allowed_leaders_file_bytes(&file)?;
+
+        match std::fs::read(&self.out_path) {
+            Ok(existing) if existing == bytes => return Ok(AllowedLeadersSyncOutcome::Unchanged),
+            Ok(_) | Err(_) => {}
+        }
+
+        atomic_write(&self.out_path, &bytes).map_err(|e| {
+            NexusCliError::Any(anyhow!("failed to write {}: {e}", self.out_path.display()))
+        })?;
+
+        Ok(AllowedLeadersSyncOutcome::Updated)
+    }
+
+    async fn run_best_effort(&self, poll_interval: Duration) {
+        loop {
+            let _ = self.sync_once().await;
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
+}
+
+fn write_allowed_leaders_file_v1(
+    file: &AllowedLeadersFileV1,
+    path: &Path,
+) -> AnyResult<(), NexusCliError> {
+    let bytes = allowed_leaders_file_bytes(file)?;
+    atomic_write(path, &bytes)
+        .map_err(|e| NexusCliError::Any(anyhow!("failed to write {}: {e}", path.display())))
+}
+
+fn allowed_leaders_file_bytes(file: &AllowedLeadersFileV1) -> AnyResult<Vec<u8>, NexusCliError> {
+    serde_json::to_vec_pretty(file)
+        .map_err(|e| NexusCliError::Any(anyhow!("failed to serialize allowlist: {e}")))
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+
+    let base = path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "allowed-leaders.json".to_string());
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_nanos(0))
+        .as_nanos();
+    let pid = std::process::id();
+    let tmp = parent.join(format!(".{base}.{pid}.{nanos}.tmp"));
+
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(tmp, path)?;
     Ok(())
 }
 
@@ -310,7 +394,7 @@ async fn sync_allowed_leaders(
 
     if once {
         let handle = loading!("Syncing allowlist...");
-        let outcome = syncer.sync_once().await.map_err(NexusCliError::Nexus)?;
+        let outcome = syncer.sync_once().await?;
         handle.success();
 
         notify_success!(

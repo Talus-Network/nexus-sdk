@@ -62,6 +62,8 @@ fn sign_and_verify_request_roundtrip() {
     };
 
     let (sig_input, sig) = sign_invoke_request_v1(&claims, &leader_sk).unwrap();
+    assert_eq!(sig_input, serde_json::to_vec(&claims).unwrap());
+    assert!(sig_input.starts_with(b"{"));
     let decoded = DecodedSignatureV1 {
         sig_input,
         signature: sig,
@@ -596,69 +598,8 @@ fn sign_response_with_body_verifies_http_200_err_eval_body() {
     };
 
     let (sig_input, sig) = sign_invoke_response_with_body_v1(&claims, body, &tool_sk).unwrap();
-    verify_invoke_response_v1(
-        DecodedSignatureV1 {
-            sig_input,
-            signature: sig,
-        },
-        body,
-        "demo::tool::1.0.0",
-        req_sig_input_sha256,
-        tool_pk,
-        &VerifyOptions {
-            now_ms: 1500,
-            max_clock_skew_ms: 0,
-            max_validity_ms: 10_000,
-        },
-    )
-    .unwrap();
-}
-
-#[test]
-#[allow(deprecated)]
-fn sign_response_status_only_rejects_http_200() {
-    let tool_sk = sk_from_byte(9);
-    let claims = InvokeResponseClaimsV1 {
-        tool_id: "demo::tool::1.0.0".to_string(),
-        tool_kid: 0,
-        owner_leader_id: "0x1111".to_string(),
-        iat_ms: 1000,
-        exp_ms: 2000,
-        nonce: "abc".to_string(),
-        req_sig_input_sha256: hex::encode([3u8; 32]),
-        status: 200,
-        body_sha256: hex::encode(response_body_sha256_for_claim(br#"{"ok":true}"#)),
-    };
-
-    let err = sign_invoke_response_v1(&claims, &tool_sk).unwrap_err();
-
-    assert!(matches!(
-        err,
-        SignedHttpError::ResponseBodyRequiredForStatusOnlySigning { status: 200 }
-    ));
-}
-
-#[test]
-#[allow(deprecated)]
-fn sign_response_status_only_still_verifies_for_non_2xx() {
-    let tool_sk = sk_from_byte(9);
-    let tool_pk = tool_sk.verifying_key().to_bytes();
-    let req_sig_input_sha256 = [3u8; 32];
-    let body = br#"{"_err_eval":{"reason":"Tool rejected"}}"#;
-
-    let claims = InvokeResponseClaimsV1 {
-        tool_id: "demo::tool::1.0.0".to_string(),
-        tool_kid: 0,
-        owner_leader_id: "0x1111".to_string(),
-        iat_ms: 1000,
-        exp_ms: 2000,
-        nonce: "abc".to_string(),
-        req_sig_input_sha256: hex::encode(req_sig_input_sha256),
-        status: 503,
-        body_sha256: hex::encode(response_body_sha256_for_claim(body)),
-    };
-
-    let (sig_input, sig) = sign_invoke_response_v1(&claims, &tool_sk).unwrap();
+    assert_eq!(sig_input, serde_json::to_vec(&claims).unwrap());
+    assert!(sig_input.starts_with(b"{"));
     verify_invoke_response_v1(
         DecodedSignatureV1 {
             sig_input,
@@ -681,7 +622,7 @@ fn sign_response_status_only_still_verifies_for_non_2xx() {
 fn multi_variant_output_body_falls_back_to_raw_body_hash() {
     let body = br#"{"ok":{"message":"success"},"extra":{"ignored":false}}"#;
 
-    assert!(canonical_output_body_sha256_from_json_bytes(body).is_err());
+    assert!(canonical_json_output_payload_sha256(body).is_err());
     assert_eq!(response_body_sha256_for_claim(body), sha256(body));
 }
 

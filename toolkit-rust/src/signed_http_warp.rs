@@ -9,14 +9,8 @@ use {
     crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
     nexus_sdk::signed_http::v1::{
         engine::{
-            InvokerKeyResolver,
-            ResponderDecisionV1,
-            ResponderRejectionKindV1,
-            SignatureHeadersRef,
-            SignedHttpEngineV1,
-            SignedHttpPolicyV1,
-            SignedHttpResponderV1,
-            SignedResponseV1,
+            InvokerKeyResolver, ResponderDecisionV1, ResponderRejectionKindV1, SignatureHeadersRef,
+            SignedHttpEngineV1, SignedHttpPolicyV1, SignedHttpResponderV1, SignedResponseV1,
         },
         error::SignedHttpError,
         wire::{AllowedLeadersV1, HttpRequestMeta},
@@ -337,15 +331,9 @@ mod tests {
         nexus_sdk::signed_http::v1::{
             engine::{SignedHttpEngineV1, SignedHttpInvokerV1, SignedHttpPolicyV1},
             wire::{
-                AllowedLeaderFileV1,
-                AllowedLeaderKeyFileV1,
-                AllowedLeadersFileV1,
-                AllowedLeadersV1,
-                EncodedSignatureHeadersV1,
-                HEADER_SIG,
-                HEADER_SIG_INPUT,
-                HEADER_SIG_VERSION,
-                SIG_VERSION_V1,
+                AllowedLeaderFileV1, AllowedLeaderKeyFileV1, AllowedLeadersFileV1,
+                AllowedLeadersV1, EncodedSignatureHeadersV1, HEADER_SIG, HEADER_SIG_INPUT,
+                HEADER_SIG_VERSION, SIG_VERSION_V1,
             },
         },
         std::sync::{

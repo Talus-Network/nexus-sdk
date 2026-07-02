@@ -1,6 +1,12 @@
 use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
-    nexus_sdk::{nexus::crawler::DynamicMap, types::Tool},
+    nexus_sdk::{
+        move_bindings::{
+            move_std::ascii::String as MoveAsciiString, registry::tool_registry::ToolRegistry,
+            sui_framework::linked_table::Node as LinkedTableNode,
+        },
+        types::Tool,
+    },
     prettytable::{row, Table},
 };
 
@@ -14,11 +20,6 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     let tools_handle = loading!("Fetching tools from the tool registry...");
 
-    #[derive(Deserialize)]
-    struct ToolRegistry {
-        timeouts: DynamicMap<String, String>,
-    }
-
     let tool_registry = match crawler
         .get_object::<ToolRegistry>(*nexus_objects.tool_registry.object_id())
         .await
@@ -31,8 +32,17 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         }
     };
 
-    let timeouts = match crawler.get_dynamic_fields(&tool_registry.timeouts).await {
-        Ok(timeouts) => timeouts,
+    let timeouts = match crawler
+        .get_dynamic_fields::<MoveAsciiString, LinkedTableNode<MoveAsciiString, u64>>(
+            tool_registry.timeouts.id(),
+            tool_registry.timeouts.size(),
+        )
+        .await
+    {
+        Ok(timeouts) => timeouts
+            .into_iter()
+            .map(|(key, node)| (key.into_string(), node.value))
+            .collect::<HashMap<_, _>>(),
         Err(e) => {
             tools_handle.error();
 
@@ -74,21 +84,24 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     for tool in tools {
         let tool = tool.data;
+        let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
+        let registered_at = tool.registered_at_datetime().map_err(NexusCliError::Any)?;
+        let unregistered_at = tool
+            .unregistered_at_datetime()
+            .map_err(NexusCliError::Any)?;
+        let timeout = timeouts
+            .get(&fqn)
+            .map(|timeout| format!("{timeout} ms"))
+            .unwrap_or_else(|| "N/A".to_string());
 
         tools_json.push(json!(tool));
 
         table.add_row(row![
-            tool.fqn.to_string(),
-            tool.reference.to_string(),
-            format!(
-                "{} ms",
-                timeouts
-                    .get(&tool.fqn.to_string())
-                    .unwrap_or(&"N/A".to_string())
-            ),
-            tool.registered_at.to_string(),
-            tool.unregistered_at
-                .map_or("N/A".to_string(), |t| t.to_string())
+            fqn,
+            tool.r#ref.to_string(),
+            timeout,
+            registered_at.to_string(),
+            unregistered_at.map_or("N/A".to_string(), |t| t.to_string())
         ]);
     }
 

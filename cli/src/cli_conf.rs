@@ -1,9 +1,6 @@
 use {
     crate::prelude::*,
-    nexus_sdk::{
-        sui,
-        types::{SecretValue, StorageConf, StorageKind},
-    },
+    nexus_sdk::{sui, types::SecretValue, walrus::StorageConf},
 };
 
 /// Struct holding the config structure.
@@ -91,6 +88,13 @@ impl std::fmt::Display for SecretsMode {
             SecretsMode::Off => write!(f, "off"),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum StorageKind {
+    Inline,
+    Walrus,
 }
 
 /// Remote data storage configuration.

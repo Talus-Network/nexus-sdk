@@ -744,14 +744,13 @@ mod tests {
         super::*,
         crate::{
             events::NexusEventKind,
-            test_utils::sui_mocks,
-            types::{
-                interface::graph::OutputVariant,
+            move_bindings::{
+                interface::graph::{OutputVariant, RuntimeVertex},
+                move_std::ascii::String as MoveString,
                 sui_framework::object::ID,
                 workflow::execution_events::WalkAdvancedEvent,
-                MoveString,
-                RuntimeVertex,
             },
+            test_utils::sui_mocks,
         },
         std::sync::Arc,
     };
@@ -774,7 +773,7 @@ mod tests {
             variant: OutputVariant {
                 name: MoveString::from("ok"),
             },
-            variant_ports_to_data: crate::types::sui_framework::vec_map::VecMap {
+            variant_ports_to_data: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
         });

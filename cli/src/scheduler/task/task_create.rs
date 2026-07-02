@@ -1,23 +1,15 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        scheduler::helpers,
-        sui::get_nexus_client,
-        workflow,
+        command_title, display::json_output, loading, notify_success, prelude::*,
+        scheduler::helpers, sui::get_nexus_client, workflow,
     },
     nexus_sdk::{
         events::NexusEventKind,
+        move_bindings::primitives::policy::Symbol,
         nexus::scheduler::{
-            CreateTaskParams,
-            CreateTaskTapPayment,
-            GeneratorKind,
-            OccurrenceRequest,
+            CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest,
         },
-        types::{primitives::policy::Symbol, StorageConf},
+        walrus::StorageConf,
     },
     std::collections::HashMap,
 };
@@ -193,7 +185,7 @@ fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
 
 fn describe_generator(symbol: &Symbol) -> String {
     match symbol {
-        Symbol::Witness { pos0 } => pos0.name.clone(),
+        Symbol::Witness { pos0 } => pos0.to_string(),
         Symbol::Uid { pos0 } => pos0.bytes.to_string(),
     }
 }

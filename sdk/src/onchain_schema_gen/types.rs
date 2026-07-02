@@ -2,12 +2,18 @@
 
 use {
     crate::{
-        idents::{move_std, primitives, sui_framework},
+        move_bindings::{
+            interface::authorization::AgentVertexAuthorization,
+            primitives::authorization::ProvenValue, struct_shape_matches,
+        },
         sui,
     },
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{json, Value},
 };
+
+const MOVE_STD_PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x1");
+const SUI_FRAMEWORK_PACKAGE_ID: sui::types::Address = sui::types::Address::from_static("0x2");
 
 /// Convert a Sui Move signature (which includes reference info) to a JSON schema representation.
 ///
@@ -97,7 +103,7 @@ pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> 
                 .and_then(|n| n.parse().ok())
                 .ok_or_else(|| anyhow!("Datatype type missing or invalid StructTag"))?;
 
-            if *struct_tag.address() == move_std::PACKAGE_ID {
+            if *struct_tag.address() == MOVE_STD_PACKAGE_ID {
                 match (struct_tag.module().as_str(), struct_tag.name().as_str()) {
                     ("string", "String") => Ok(json!({
                         "type": "string",
@@ -112,7 +118,7 @@ pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> 
                         "description": format!("0x1::{}::{}", struct_tag.module(), struct_tag.name())
                     })),
                 }
-            } else if *struct_tag.address() == sui_framework::PACKAGE_ID {
+            } else if *struct_tag.address() == SUI_FRAMEWORK_PACKAGE_ID {
                 match (struct_tag.module().as_str(), struct_tag.name().as_str()) {
                     ("object", "ID") => Ok(json!({
                         "type": "object_id",
@@ -145,7 +151,8 @@ pub fn convert_move_type_to_schema(move_type: &sui::grpc::OpenSignatureBody) -> 
 }
 
 /// Check if a parameter is TxContext (should be excluded from the inputschema).
-pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+#[cfg(test)]
+fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };
@@ -153,7 +160,7 @@ pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let maybe_struct_tag: Option<sui::types::StructTag> = type_name.parse().ok();
 
     if let Some(struct_tag) = maybe_struct_tag {
-        *struct_tag.address() == sui_framework::PACKAGE_ID
+        *struct_tag.address() == SUI_FRAMEWORK_PACKAGE_ID
             && struct_tag.module().as_str() == "tx_context"
             && struct_tag.name().as_str() == "TxContext"
     } else {
@@ -172,7 +179,7 @@ pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -
         return false;
     };
 
-    (*struct_tag.address() == sui_framework::PACKAGE_ID
+    (*struct_tag.address() == SUI_FRAMEWORK_PACKAGE_ID
         && struct_tag.module().as_str() == "tx_context"
         && struct_tag.name().as_str() == "TxContext")
         || (struct_tag.module().as_str() == "proof_of_uid"
@@ -180,7 +187,8 @@ pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -
         || is_agent_vertex_authorization_proof_struct(&struct_tag)
 }
 
-pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+#[cfg(test)]
+fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };
@@ -193,16 +201,13 @@ pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSign
 }
 
 fn is_agent_vertex_authorization_proof_struct(struct_tag: &sui::types::StructTag) -> bool {
-    if *struct_tag.module() != primitives::Authorization::PROVEN_VALUE.module
-        || *struct_tag.name() != primitives::Authorization::PROVEN_VALUE.name
-    {
+    if !struct_shape_matches::<ProvenValue<AgentVertexAuthorization>>(struct_tag) {
         return false;
     }
     let Some(sui::types::TypeTag::Struct(inner)) = struct_tag.type_params().first() else {
         return false;
     };
-    *inner.module() == crate::idents::interface::Authorization::AGENT_VERTEX_AUTHORIZATION.module
-        && *inner.name() == crate::idents::interface::Authorization::AGENT_VERTEX_AUTHORIZATION.name
+    struct_shape_matches::<AgentVertexAuthorization>(inner)
 }
 
 pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {

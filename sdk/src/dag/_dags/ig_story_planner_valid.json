@@ -4,24 +4,111 @@
       "vertex": "restaurant_event_decider",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "decide restaurant"
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          34,
+          100,
+          101,
+          99,
+          105,
+          100,
+          101,
+          32,
+          114,
+          101,
+          115,
+          116,
+          97,
+          117,
+          114,
+          97,
+          110,
+          116,
+          34
+        ],
+        "many": []
       }
     },
     {
       "vertex": "events_llm_summarizer",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "summarize events"
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          34,
+          115,
+          117,
+          109,
+          109,
+          97,
+          114,
+          105,
+          122,
+          101,
+          32,
+          101,
+          118,
+          101,
+          110,
+          116,
+          115,
+          34
+        ],
+        "many": []
       }
     },
     {
       "vertex": "restaurants_llm_summarizer",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "summarize restaurants"
+        "storage": [
+          105,
+          110,
+          108,
+          105,
+          110,
+          101
+        ],
+        "one": [
+          34,
+          115,
+          117,
+          109,
+          109,
+          97,
+          114,
+          105,
+          122,
+          101,
+          32,
+          114,
+          101,
+          115,
+          116,
+          97,
+          117,
+          114,
+          97,
+          110,
+          116,
+          115,
+          34
+        ],
+        "many": []
       }
     }
   ],

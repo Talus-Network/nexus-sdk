@@ -1,42 +1,20 @@
 //! Standard TAP models shared by SDK, CLI, leader, and future Move surfaces.
 
 use {
-    super::{
-        interface::{
-            agent::{
-                Agent,
-                AgentPaymentVault,
-                AgentVaultFieldKey,
-                ExecutionPaymentHistoryFieldKey,
-                ExecutionPaymentReceiptFieldKey,
-                FixedTool,
-                SkillDagBinding,
-                SkillRecurrenceKind,
-                SkillRequirement,
-                SkillSchedulePolicy,
+    crate::{
+        move_bindings::{
+            interface::{
+                agent::{SkillDagBinding, SkillRequirement},
+                payment::{PaymentSourceKind, SkillPaymentPolicy},
+                version::InterfaceVersion,
             },
-            payment::{PaymentSourceKind, SkillPaymentPolicy},
-            version::InterfaceVersion,
+            registry::agent_registry::{AgentRecord, DefaultDagExecutor, SkillRecord},
         },
-        registry::agent_registry::{
-            AgentRecord,
-            AgentRegistry,
-            DefaultDagExecutor,
-            DefaultDagExecutorFieldKey,
-            SkillRecord,
-        },
-        serde_parsers::deserialize_tap_u64_value,
-        workflow::execution::DagExecutionPaymentFieldKey,
-        MoveString,
+        sui,
     },
-    crate::sui,
-    serde::{de::Error as _, Deserialize, Serialize},
+    serde::{Deserialize, Serialize},
     sha2::{Digest as _, Sha256},
-    std::{
-        fmt,
-        hash::{Hash, Hasher},
-        path::PathBuf,
-    },
+    std::{fmt, path::PathBuf},
 };
 
 /// On-chain generated standard Talus agent ID.
@@ -49,43 +27,10 @@ pub const fn skill_id(value: u64) -> SkillId {
     value
 }
 
-impl InterfaceVersion {
-    pub const fn new(inner: u64) -> Self {
-        Self { inner }
-    }
-}
-
-impl Copy for InterfaceVersion {}
-
-impl std::hash::Hash for InterfaceVersion {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.inner.hash(state);
-    }
-}
-
-impl PartialOrd for InterfaceVersion {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for InterfaceVersion {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.inner.cmp(&other.inner)
-    }
-}
-
-impl fmt::Display for InterfaceVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
-
 /// Key for a pinned skill interface revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SkillRevisionLookupKey {
     pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub interface_revision: InterfaceVersion,
 }
@@ -104,7 +49,6 @@ impl fmt::Display for SkillRevisionLookupKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WorksheetKey {
     pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
 
@@ -114,333 +58,10 @@ impl fmt::Display for WorksheetKey {
     }
 }
 
-/// Payment source policy for an agent skill.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PaymentMode {
-    UserFunded,
-    AgentFunded,
-}
-
-impl<'de> Deserialize<'de> for PaymentMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "snake_case")]
-            enum RawTapPaymentMode {
-                UserFunded,
-                AgentFunded,
-            }
-
-            return RawTapPaymentMode::deserialize(deserializer).map(|mode| match mode {
-                RawTapPaymentMode::UserFunded => Self::UserFunded,
-                RawTapPaymentMode::AgentFunded => Self::AgentFunded,
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_payment_mode_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP payment mode value"))
-    }
-}
-
-fn deserialize_payment_mode_value(value: &serde_json::Value) -> Option<PaymentMode> {
-    fn from_text(text: &str) -> Option<PaymentMode> {
-        match text {
-            "user_funded" | "UserFunded" | "userFunded" => Some(PaymentMode::UserFunded),
-            "agent_funded" | "AgentFunded" | "agentFunded" => Some(PaymentMode::AgentFunded),
-            _ => None,
-        }
-    }
-
-    match value {
-        serde_json::Value::String(text) => from_text(text),
-        serde_json::Value::Object(object) => {
-            for key in ["@variant", "variant", "type"] {
-                if let Some(serde_json::Value::String(text)) = object.get(key) {
-                    if let Some(mode) = from_text(text) {
-                        return Some(mode);
-                    }
-                }
-            }
-
-            if let Some(fields) = object.get("fields") {
-                if let Some(mode) = deserialize_payment_mode_value(fields) {
-                    return Some(mode);
-                }
-            }
-
-            object.keys().find_map(|key| from_text(key))
-        }
-        _ => None,
-    }
-}
-
-impl Default for SkillPaymentPolicy {
-    fn default() -> Self {
-        Self::UserFunded
-    }
-}
-
-impl SkillPaymentPolicy {
-    pub fn user_funded() -> Self {
-        Self::UserFunded
-    }
-
-    pub fn agent_funded(max_budget: u64) -> Self {
-        Self::AgentFunded { max_budget }
-    }
-
-    pub fn mode(&self) -> PaymentMode {
-        match self {
-            Self::UserFunded => PaymentMode::UserFunded,
-            Self::AgentFunded { .. } => PaymentMode::AgentFunded,
-        }
-    }
-
-    pub fn max_budget(&self) -> u64 {
-        match self {
-            Self::UserFunded => 0,
-            Self::AgentFunded { max_budget } => *max_budget,
-        }
-    }
-}
-
-impl PaymentSourceKind {
-    pub fn user_funded(user: sui::types::Address) -> Self {
-        Self::UserFunded { user }
-    }
-
-    pub fn agent_funded(agent_id: AgentId) -> Self {
-        Self::AgentFunded {
-            agent_id: crate::types::sui_address_to_id(agent_id),
-        }
-    }
-
-    pub fn identity(&self) -> sui::types::Address {
-        match self {
-            Self::UserFunded { user } => *user,
-            Self::AgentFunded { agent_id } => agent_id.clone().into(),
-        }
-    }
-
-    pub fn to_bcs_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(bcs::to_bytes(self)?)
-    }
-
-    pub fn from_bcs_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        Ok(bcs::from_bytes(bytes)?)
-    }
-}
-
-/// Long-lived payment source recorded on a scheduled TAP task.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ScheduledPaymentSource {
-    Address {
-        #[serde(deserialize_with = "crate::types::serde_parsers::deserialize_tap_address_value")]
-        refund_recipient: sui::types::Address,
-    },
-    AgentVault {
-        agent_id: AgentId,
-    },
-}
-
-impl<'de> Deserialize<'de> for ScheduledPaymentSource {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            enum RawSource {
-                Address {
-                    refund_recipient: sui::types::Address,
-                },
-                AgentVault {
-                    agent_id: AgentId,
-                },
-            }
-
-            return RawSource::deserialize(deserializer).map(|source| match source {
-                RawSource::Address { refund_recipient } => Self::Address { refund_recipient },
-                RawSource::AgentVault { agent_id } => Self::AgentVault { agent_id },
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_scheduled_payment_source_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP scheduled payment source value"))
-    }
-}
-
-fn deserialize_tap_scheduled_payment_source_value(
-    value: &serde_json::Value,
-) -> Option<ScheduledPaymentSource> {
-    let unwrapped = super::strip_fields_owned(value.clone());
-    let value = if &unwrapped != value {
-        &unwrapped
-    } else {
-        value
-    };
-    let serde_json::Value::Object(object) = value else {
-        return None;
-    };
-
-    if let Some(address) = object.get("Address").or_else(|| object.get("address")) {
-        let address = super::strip_fields_owned(address.clone());
-        let refund_recipient = address
-            .get("refund_recipient")
-            .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-        return Some(ScheduledPaymentSource::Address { refund_recipient });
-    }
-
-    if let Some(vault) = object
-        .get("AgentVault")
-        .or_else(|| object.get("agent_vault"))
-        .or_else(|| object.get("agentVault"))
-    {
-        let vault = super::strip_fields_owned(vault.clone());
-        let agent_id = vault
-            .get("agent_id")
-            .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-        return Some(ScheduledPaymentSource::AgentVault { agent_id });
-    }
-
-    let variant = object
-        .get("@variant")
-        .or_else(|| object.get("variant"))
-        .or_else(|| object.get("type"))
-        .and_then(|value| value.as_str());
-    match variant {
-        Some("Address") | Some("address") => {
-            let refund_recipient = object
-                .get("refund_recipient")
-                .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-            Some(ScheduledPaymentSource::Address { refund_recipient })
-        }
-        Some("AgentVault") | Some("agent_vault") | Some("agentVault") => {
-            let agent_id = object
-                .get("agent_id")
-                .and_then(|value| super::parse_address_value(value).ok().flatten())?;
-            Some(ScheduledPaymentSource::AgentVault { agent_id })
-        }
-        _ => None,
-    }
-}
-
-impl ScheduledPaymentSource {
-    pub fn source_kind(&self) -> PaymentSourceKind {
-        match self {
-            Self::Address { refund_recipient } => PaymentSourceKind::user_funded(*refund_recipient),
-            Self::AgentVault { agent_id } => PaymentSourceKind::agent_funded(*agent_id),
-        }
-    }
-
-    pub fn source_identity(&self) -> sui::types::Address {
-        match self {
-            Self::Address { refund_recipient } => *refund_recipient,
-            Self::AgentVault { agent_id } => *agent_id,
-        }
-    }
-}
-
-impl SkillDagBinding {
-    pub fn pinned(dag_id: sui::types::Address) -> Self {
-        Self::Pinned { dag_id }
-    }
-
-    pub fn runtime_selected() -> Self {
-        Self::RuntimeSelected
-    }
-
-    pub fn pinned_dag_id(&self) -> Option<sui::types::Address> {
-        match self {
-            Self::Pinned { dag_id } => Some(*dag_id),
-            Self::RuntimeSelected => None,
-        }
-    }
-}
-
-impl Default for SkillSchedulePolicy {
-    fn default() -> Self {
-        Self {
-            recurrence: SkillRecurrenceKind::Once,
-            allow_recursive: false,
-        }
-    }
-}
-
-impl FixedTool {
-    pub fn new(tool_registry_id: sui::types::Address, tool_fqn: impl Into<String>) -> Self {
-        Self {
-            tool_registry_id: crate::types::sui_address_to_id(tool_registry_id),
-            tool_fqn: MoveString::from(tool_fqn.into()),
-        }
-    }
-
-    pub fn tool_registry_address(&self) -> sui::types::Address {
-        self.tool_registry_id.clone().into()
-    }
-
-    pub fn tool_fqn_string(&self) -> String {
-        self.tool_fqn.clone().into()
-    }
-}
-
-impl Default for SkillRequirement {
-    fn default() -> Self {
-        Self {
-            input_commitment: Vec::new(),
-            payment_policy: SkillPaymentPolicy::default(),
-            schedule_policy: SkillSchedulePolicy::default(),
-            fixed_tools: Vec::new(),
-        }
-    }
-}
-
-impl SkillRecord {
-    pub fn description_bytes(&self) -> &[u8] {
-        &self.description
-    }
-}
-
-impl Clone for AgentRecord {
-    fn clone(&self) -> Self {
-        Self {
-            active: self.active,
-            skills: self.skills.clone(),
-        }
-    }
-}
-
-impl Clone for AgentRegistry {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            agents: self.agents.clone(),
-        }
-    }
-}
-
-impl Clone for Agent {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            next_skill_id: self.next_skill_id,
-            registry_id: self.registry_id.clone(),
-        }
-    }
-}
-
 /// Fetched skill record plus dynamic-table keys that are not stored in Move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillRecordContext {
     pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
     pub record: SkillRecord,
 }
@@ -467,56 +88,7 @@ impl SkillRecordContext {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DefaultDagExecutorTarget {
     pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
-}
-
-impl Agent {
-    pub fn object_id(&self) -> AgentId {
-        self.id.clone().into()
-    }
-
-    pub fn from_ids(
-        agent_id: AgentId,
-        next_skill_id: u64,
-        registry_id: Option<sui::types::Address>,
-    ) -> Self {
-        Self {
-            id: crate::types::sui_address_to_uid(agent_id),
-            next_skill_id,
-            registry_id: registry_id.map(crate::types::sui_address_to_id).into(),
-        }
-    }
-}
-
-impl DefaultDagExecutor {
-    pub fn target(&self) -> DefaultDagExecutorTarget {
-        DefaultDagExecutorTarget {
-            agent_id: self.agent.object_id(),
-            skill_id: self.skill_id,
-        }
-    }
-}
-
-impl Clone for DefaultDagExecutor {
-    fn clone(&self) -> Self {
-        Self {
-            agent: self.agent.clone(),
-            skill_id: self.skill_id,
-        }
-    }
-}
-
-impl Default for DefaultDagExecutorFieldKey {
-    fn default() -> Self {
-        Self { dummy_field: false }
-    }
-}
-
-impl std::hash::Hash for DefaultDagExecutorFieldKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.dummy_field.hash(state);
-    }
 }
 
 /// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
@@ -643,73 +215,6 @@ impl SkillRevisionContext {
         validate_requirements(&self.requirements)?;
 
         Ok(())
-    }
-}
-
-impl Clone for AgentPaymentVault {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            agent_id: self.agent_id.clone(),
-            available_balance: self.available_balance.clone(),
-            locked_amount: self.locked_amount,
-        }
-    }
-}
-
-impl AgentPaymentVault {
-    pub fn object_id(&self) -> AgentId {
-        self.id.id.bytes
-    }
-
-    pub fn agent_id_address(&self) -> AgentId {
-        self.agent_id.bytes
-    }
-
-    pub fn available_balance_value(&self) -> u64 {
-        self.available_balance.value
-    }
-
-    pub fn unlocked_balance_value(&self) -> u64 {
-        self.available_balance
-            .value
-            .saturating_sub(self.locked_amount)
-    }
-}
-
-impl Default for DagExecutionPaymentFieldKey {
-    fn default() -> Self {
-        Self { dummy_field: false }
-    }
-}
-
-impl Hash for DagExecutionPaymentFieldKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.dummy_field.hash(state);
-    }
-}
-
-impl Default for AgentVaultFieldKey {
-    fn default() -> Self {
-        Self { dummy_field: false }
-    }
-}
-
-impl Hash for AgentVaultFieldKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.dummy_field.hash(state);
-    }
-}
-
-impl Hash for ExecutionPaymentReceiptFieldKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.execution_id.hash(state);
-    }
-}
-
-impl Hash for ExecutionPaymentHistoryFieldKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.resolved.hash(state);
     }
 }
 
@@ -875,7 +380,7 @@ pub fn validate_execution_payment_options(
 ) -> anyhow::Result<()> {
     match policy {
         SkillPaymentPolicy::UserFunded => {
-            let expected = PaymentSourceKind::user_funded(payer).to_bcs_bytes()?;
+            let expected = bcs::to_bytes(&PaymentSourceKind::user_funded(payer))?;
             let source_is_valid =
                 payment_source.is_empty() || payment_source == expected.as_slice();
             if !source_is_valid {
@@ -892,7 +397,7 @@ pub fn validate_execution_payment_options(
                     max_budget
                 );
             }
-            let expected = PaymentSourceKind::agent_funded(agent_id).to_bcs_bytes()?;
+            let expected = bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id))?;
             let source_is_valid = payment_source == expected.as_slice();
             if !source_is_valid {
                 anyhow::bail!(
@@ -906,15 +411,7 @@ pub fn validate_execution_payment_options(
 }
 
 pub fn payment_source_from_address(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
-    tap_payment_source_for_invoker(address)
-}
-
-pub fn tap_payment_source_for_invoker(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
-    PaymentSourceKind::user_funded(address).to_bcs_bytes()
-}
-
-pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<Vec<u8>> {
-    PaymentSourceKind::agent_funded(agent_id).to_bcs_bytes()
+    Ok(bcs::to_bytes(&PaymentSourceKind::user_funded(address))?)
 }
 
 /// Resolve exactly one active skill revision for fresh execution.
@@ -1029,14 +526,16 @@ pub fn resolve_default_tap_dag_executor(
 mod tests {
     use {
         super::*,
-        crate::types::{
-            interface::payment::{
-                ExecutionPaymentFinalState,
-                ScheduledOccurrenceFinalState,
-                VertexExecutionPaymentSettlementKind,
+        crate::move_bindings::{
+            interface::{
+                agent::{Agent, SkillSchedulePolicy},
+                payment::{
+                    ExecutionPaymentFinalState, ScheduledOccurrenceFinalState,
+                    VertexExecutionPaymentSettlementKind,
+                },
             },
             registry::agent_registry::AgentRegistry,
-            MoveTable,
+            sui_framework::table::Table as MoveTable,
         },
         std::str::FromStr,
     };
@@ -1139,7 +638,7 @@ mod tests {
     #[test]
     fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
         let raw = AgentRegistry {
-            id: crate::types::sui_address_to_uid(addr("0xf")),
+            id: crate::move_bindings::sui_framework::object::UID::new(addr("0xf")),
             agents: MoveTable::new(addr("0x90"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
@@ -1201,7 +700,6 @@ mod tests {
         let agent = addr("0xa");
         let payer = addr("0x1");
         let explicit_source = payment_source_from_address(payer).expect("payer source");
-        let typed_source = tap_payment_source_for_invoker(payer).expect("typed payer source");
         let other_source = payment_source_from_address(addr("0x2")).expect("other source");
         let policy = SkillPaymentPolicy::UserFunded;
 
@@ -1209,8 +707,6 @@ mod tests {
             .expect("implicit payer source");
         validate_execution_payment_options(agent, &policy, &explicit_source, 100, payer)
             .expect("explicit payer source");
-        validate_execution_payment_options(agent, &policy, &typed_source, 100, payer)
-            .expect("generated user-funded source");
         assert!(
             validate_execution_payment_options(agent, &policy, &other_source, 100, payer,).is_err()
         );
@@ -1221,7 +717,8 @@ mod tests {
         let agent = addr("0xa");
         let payer = addr("0x1");
         let user_funded_agent_source = payment_source_from_address(agent).expect("agent source");
-        let agent_source = tap_payment_source_for_agent_vault(agent).expect("agent vault source");
+        let agent_source =
+            bcs::to_bytes(&PaymentSourceKind::agent_funded(agent)).expect("agent vault source");
 
         let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
         validate_execution_payment_options(agent, &agent_funded, &agent_source, 100, payer)
@@ -1248,167 +745,80 @@ mod tests {
     }
 
     #[test]
-    fn removed_payment_modes_do_not_deserialize() {
-        for mode in ["hybrid", "Hybrid", "sponsored", "Sponsored"] {
-            let value = serde_json::json!(mode);
-            assert!(serde_json::from_value::<PaymentMode>(value).is_err());
+    fn tap_generated_enums_bcs_roundtrip() {
+        for value in [
+            PaymentSourceKind::user_funded(addr("0x1")),
+            PaymentSourceKind::agent_funded(addr("0xa")),
+        ] {
+            assert_eq!(
+                bcs::from_bytes::<PaymentSourceKind>(&bcs::to_bytes(&value).unwrap()).unwrap(),
+                value
+            );
         }
-    }
 
-    #[test]
-    fn tap_enum_deserializers_accept_move_json_forms() {
+        for value in [
+            VertexExecutionPaymentSettlementKind::Paid,
+            VertexExecutionPaymentSettlementKind::Ticket,
+        ] {
+            assert_eq!(
+                bcs::from_bytes::<VertexExecutionPaymentSettlementKind>(
+                    &bcs::to_bytes(&value).unwrap()
+                )
+                .unwrap(),
+                value
+            );
+        }
+
+        let payment_state = ExecutionPaymentFinalState::Accomplished;
         assert_eq!(
-            serde_json::from_value::<PaymentMode>(serde_json::json!({
-                "fields": { "variant": "agentFunded" }
-            }))
-            .expect("nested payment mode"),
-            PaymentMode::AgentFunded
-        );
-        assert_eq!(
-            serde_json::from_value::<PaymentMode>(serde_json::json!({
-                "UserFunded": {}
-            }))
-            .expect("keyed payment mode"),
-            PaymentMode::UserFunded
-        );
-        assert_eq!(
-            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
-                "UserFunded": { "user": "0x1" }
-            }))
-            .expect("keyed user-funded payment source kind"),
-            PaymentSourceKind::user_funded(addr("0x1"))
-        );
-        assert_eq!(
-            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
-                "AgentFunded": { "agent_id": "0xa" }
-            }))
-            .expect("keyed agent-funded payment source kind"),
-            PaymentSourceKind::agent_funded(addr("0xa"))
-        );
-        assert!(
-            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
-                "fields": { "@variant": "invoker" }
-            }))
-            .is_err()
+            bcs::from_bytes::<ExecutionPaymentFinalState>(&bcs::to_bytes(&payment_state).unwrap())
+                .unwrap(),
+            payment_state
         );
 
+        let occurrence_state = ScheduledOccurrenceFinalState::InFlight;
         assert_eq!(
-            serde_json::from_value::<VertexExecutionPaymentSettlementKind>(serde_json::json!({
-                "Paid": {}
-            }))
-            .expect("keyed settlement kind"),
-            VertexExecutionPaymentSettlementKind::Paid
-        );
-        assert_eq!(
-            serde_json::from_value::<VertexExecutionPaymentSettlementKind>(serde_json::json!({
-                "fields": { "type": "Ticket" }
-            }))
-            .expect("nested settlement kind"),
-            VertexExecutionPaymentSettlementKind::Ticket
-        );
-        assert_eq!(
-            bcs::from_bytes::<VertexExecutionPaymentSettlementKind>(
-                &bcs::to_bytes(&9_u8).expect("raw settlement kind")
+            bcs::from_bytes::<ScheduledOccurrenceFinalState>(
+                &bcs::to_bytes(&occurrence_state).unwrap()
             )
-            .expect("unknown raw settlement kind falls back"),
-            VertexExecutionPaymentSettlementKind::Paid
-        );
-
-        assert_eq!(
-            serde_json::from_value::<ExecutionPaymentFinalState>(serde_json::json!({
-                "fields": { "variant": "Accomplished" }
-            }))
-            .expect("nested payment final state"),
-            ExecutionPaymentFinalState::Accomplished
-        );
-        assert_eq!(
-            serde_json::from_value::<ScheduledOccurrenceFinalState>(serde_json::json!({
-                "fields": { "@variant": "inFlight" }
-            }))
-            .expect("nested scheduled occurrence state"),
-            ScheduledOccurrenceFinalState::InFlight
+            .unwrap(),
+            occurrence_state
         );
     }
 
     #[test]
-    fn scheduled_payment_source_deserializes_supported_shapes() {
-        let address_source: ScheduledPaymentSource = serde_json::from_value(serde_json::json!({
-            "fields": {
-                "@variant": "address",
-                "refund_recipient": "0xee"
-            }
-        }))
-        .expect("variant address source");
-        assert_eq!(
-            address_source.source_kind(),
-            PaymentSourceKind::user_funded(addr("0xee"))
-        );
-        assert_eq!(address_source.source_identity(), addr("0xee"));
-
-        let vault_source: ScheduledPaymentSource = serde_json::from_value(serde_json::json!({
-            "agentVault": {
-                "fields": {
-                    "agent_id": "0xaa"
-                }
-            }
-        }))
-        .expect("nested vault source");
-        assert_eq!(
-            vault_source.source_kind(),
-            PaymentSourceKind::agent_funded(addr("0xaa"))
-        );
-        assert_eq!(vault_source.source_identity(), addr("0xaa"));
-
-        assert!(
-            serde_json::from_value::<ScheduledPaymentSource>(serde_json::json!({
-                "fields": { "@variant": "agentVault" }
-            }))
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
-        let template: crate::types::AgentVertexAuthorizationTemplate =
-            serde_json::from_value(serde_json::json!({
-                "skill_id": "7",
-                "vertex": "0x656e747279",
-                "recipient_id": "0xda6"
-            }))
-            .expect("hex byte strings decode as UTF-8");
-
-        assert_eq!(template.vertex.as_str(), "entry");
-
-        let template: crate::types::AgentVertexAuthorizationTemplate =
-            serde_json::from_value(serde_json::json!({
-                "skill_id": "7",
-                "vertex": "0xnothex",
-                "recipient_id": "0xda6"
-            }))
-            .expect("plain byte string remains text");
-
+    fn tap_authorization_template_bcs_roundtrip() {
+        let template =
+            crate::move_bindings::interface::authorization::AgentVertexAuthorizationTemplate {
+                skill_id: 7,
+                vertex: crate::move_bindings::move_std::ascii::String::from("0xnothex"),
+                recipient_id: crate::move_bindings::sui_framework::object::ID::new(addr("0xda6")),
+            };
+        let decoded: crate::move_bindings::interface::authorization::AgentVertexAuthorizationTemplate =
+            bcs::from_bytes(&bcs::to_bytes(&template).unwrap()).unwrap();
+        assert_eq!(decoded, template);
         assert_eq!(template.vertex.as_str(), "0xnothex");
     }
 
     #[test]
     fn tap_payment_source_bcs_roundtrips_and_rejects_unknown_kind() {
         let invoker = addr("0x21");
-        let typed = PaymentSourceKind::from_bcs_bytes(
-            &tap_payment_source_for_invoker(invoker).expect("typed invoker source"),
+        let typed = bcs::from_bytes::<PaymentSourceKind>(
+            &payment_source_from_address(invoker).expect("typed invoker source"),
         )
         .expect("typed invoker source decodes");
         assert_eq!(typed, PaymentSourceKind::user_funded(invoker));
         assert_eq!(typed.identity(), invoker);
 
         let agent = addr("0x22");
-        let typed = PaymentSourceKind::from_bcs_bytes(
-            &tap_payment_source_for_agent_vault(agent).expect("typed vault source"),
+        let typed = bcs::from_bytes::<PaymentSourceKind>(
+            &bcs::to_bytes(&PaymentSourceKind::agent_funded(agent)).expect("typed vault source"),
         )
         .expect("typed vault source decodes");
         assert_eq!(typed, PaymentSourceKind::agent_funded(agent));
         assert_eq!(typed.identity(), agent);
 
-        assert!(PaymentSourceKind::from_bcs_bytes(&[9]).is_err());
+        assert!(bcs::from_bytes::<PaymentSourceKind>(&[9]).is_err());
     }
 
     #[test]

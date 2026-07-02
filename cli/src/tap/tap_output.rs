@@ -10,24 +10,16 @@
 use {
     super::*,
     nexus_sdk::{
+        move_bindings::interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
         nexus::{
             scheduler::CreateTaskResult,
             tap::{
-                AccomplishExecutionPaymentResult,
-                BindAgentSkillResult,
-                DepositAgentVaultResult,
-                RefillExecutionPaymentResult,
-                WaitForPaymentResult,
+                AccomplishExecutionPaymentResult, BindAgentSkillResult, DepositAgentVaultResult,
+                RefillExecutionPaymentResult, WaitForPaymentResult,
             },
             workflow::{AbortExecutionResult, CommittedToolResultSettlementResult, ExecuteResult},
         },
-        types::{
-            interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
-            AgentId,
-            AgentRegistrySnapshot,
-            DefaultDagExecutorRecord,
-            SkillConfig,
-        },
+        types::{AgentId, AgentRegistrySnapshot, DefaultDagExecutorRecord, SkillConfig},
     },
 };
 
@@ -69,7 +61,10 @@ pub(crate) fn create_skill_artifact_result_json(
 
 pub(crate) fn create_agent_result_json(result: &CreateAgentResult) -> serde_json::Value {
     json!({
-        "function": nexus_sdk::idents::registry::AgentRegistry::CREATE_AGENT.name.to_string(),
+        "function": nexus_sdk::move_bindings::registry::agent_registry::create_agent_target()
+            .expect("generated agent_registry::create_agent target")
+            .function
+            .to_string(),
         "agent_id": result.agent_id,
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
@@ -94,7 +89,10 @@ pub(crate) fn register_skill_result_json(
     result: &RegisterSkillResult,
 ) -> serde_json::Value {
     json!({
-        "function": nexus_sdk::idents::registry::AgentRegistry::REGISTER_SKILL.name.to_string(),
+        "function": nexus_sdk::move_bindings::registry::agent_registry::register_skill_target()
+            .expect("generated agent_registry::register_skill target")
+            .function
+            .to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "agent_id": result.agent_id,
@@ -164,7 +162,10 @@ pub(crate) fn agent_execute_result_json(
 
 pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> serde_json::Value {
     json!({
-        "function": nexus_sdk::idents::registry::AgentRegistry::GET_SKILL_REQUIREMENTS.name.to_string(),
+        "function": nexus_sdk::move_bindings::registry::agent_registry::get_skill_requirements_target()
+            .expect("generated agent_registry::get_skill_requirements target")
+            .function
+            .to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
         "active_skill_revision_key": result.active_skill_revision_key,
@@ -350,7 +351,10 @@ pub(crate) fn vault_balance_result_json(
 
 pub(crate) fn vault_deposit_result_json(result: &DepositAgentVaultResult) -> serde_json::Value {
     json!({
-        "function": nexus_sdk::idents::interface::Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name.to_string(),
+        "function": nexus_sdk::move_bindings::interface::agent::deposit_agent_payment_vault_target()
+            .expect("generated agent::deposit_agent_payment_vault target")
+            .function
+            .to_string(),
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "agent_id": result.agent_id,
@@ -391,20 +395,20 @@ mod tests {
     use {
         super::*,
         nexus_sdk::{
-            nexus::{
-                tap::TapPackagePublishResult,
-                workflow::{PublishResult, TapExecutionSubmitMetadata},
-            },
-            types::{
+            move_bindings::{
                 interface::{
                     agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
                     payment::{ExecutionPaymentFinalState, SkillPaymentPolicy},
                     version::InterfaceVersion,
                 },
                 registry::agent_registry::SkillRecord,
-                DefaultDagExecutorTarget,
-                SkillRecordContext,
-                SkillRevisionContext,
+            },
+            nexus::{
+                tap::TapPackagePublishResult,
+                workflow::{PublishResult, TapExecutionSubmitMetadata},
+            },
+            types::{
+                DefaultDagExecutorTarget, SkillRecordContext, SkillRevisionContext,
                 SkillRevisionLookupKey,
             },
         },
@@ -438,23 +442,29 @@ mod tests {
         };
 
         ExecutionPayment {
-            id: nexus_sdk::types::sui_address_to_uid(sui::types::Address::from_static("0xaa")),
+            id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
+                sui::types::Address::from_static("0xaa"),
+            ),
             execution_id: sui::types::Address::from_static("0xbb"),
-            agent_id: nexus_sdk::types::sui_address_to_id(sui::types::Address::from_static("0xcc")),
+            agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
+                sui::types::Address::from_static("0xcc"),
+            ),
             skill_id: 11,
             interface_revision: InterfaceVersion::new(2),
-            payment_policy: nexus_sdk::types::interface::payment::SkillPaymentPolicy::UserFunded,
-            source_kind: nexus_sdk::types::interface::payment::PaymentSourceKind::user_funded(
-                sui::types::Address::from_static("0xee"),
-            ),
+            payment_policy:
+                nexus_sdk::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
+            source_kind:
+                nexus_sdk::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                    sui::types::Address::from_static("0xee"),
+                ),
             max_budget: 1_000,
             locked_budget: 0,
-            funds: nexus_sdk::types::sui_framework::balance::Balance {
+            funds: nexus_sdk::move_bindings::sui_framework::balance::Balance {
                 value: 1_000,
                 phantom_t0: std::marker::PhantomData,
             },
             consumed: 0,
-            tool_cost_snapshot: nexus_sdk::types::sui_framework::vec_map::VecMap {
+            tool_cost_snapshot: nexus_sdk::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
             accomplished,
@@ -529,7 +539,7 @@ mod tests {
         );
         assert_eq!(
             output["artifact"]["interface_revision"],
-            serde_json::json!(1)
+            serde_json::json!({ "inner": 1 })
         );
     }
 
@@ -566,7 +576,7 @@ mod tests {
             agent_id: sui::types::Address::from_static("0xa1"),
             skill_id: 7,
             current_interface_revision: InterfaceVersion::new(2),
-            dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+            dag_binding: nexus_sdk::move_bindings::interface::agent::SkillDagBinding::pinned(
                 artifact.dag_id,
             ),
             requirements: artifact.requirements.clone(),
@@ -574,7 +584,10 @@ mod tests {
         let json = update_skill_result_json(&artifact, &result);
         assert_eq!(json["function"], "update_skill");
         assert_eq!(json["skill_id"], serde_json::json!(7));
-        assert_eq!(json["current_interface_revision"], serde_json::json!(2));
+        assert_eq!(
+            json["current_interface_revision"],
+            serde_json::json!({ "inner": 2 })
+        );
         assert!(json.get("config_digest_hex").is_none());
     }
 
@@ -612,7 +625,7 @@ mod tests {
         );
         assert_eq!(
             output["submit"]["skill_revision_key"]["interface_revision"],
-            serde_json::json!(3)
+            serde_json::json!({ "inner": 3 })
         );
         assert_eq!(
             output["submit"]["payment_max_budget"],
@@ -641,7 +654,7 @@ mod tests {
         });
         assert_eq!(
             requirements_output["active_skill_revision_key"]["interface_revision"],
-            serde_json::json!(3)
+            serde_json::json!({ "inner": 3 })
         );
         assert_eq!(
             requirements_output["requirements"]["input_commitment"],
@@ -895,7 +908,10 @@ mod tests {
         assert_eq!(json["agent_id"], serde_json::json!(agent_id.to_string()));
         assert_eq!(json["skill_id"], serde_json::json!(7));
         assert_eq!(json["dag_id"], serde_json::json!(dag_id.to_string()));
-        assert_eq!(json["interface_revision"], serde_json::json!(3));
+        assert_eq!(
+            json["interface_revision"],
+            serde_json::json!({ "inner": 3 })
+        );
         assert!(json.get("requirements").is_some());
         assert!(json.get("target").is_none());
     }
@@ -962,7 +978,10 @@ mod tests {
 
         let validate = validate_skill_result_json(&config);
         assert_eq!(validate["valid"], serde_json::Value::Bool(true));
-        assert_eq!(validate["interface_revision"], serde_json::json!(7));
+        assert_eq!(
+            validate["interface_revision"],
+            serde_json::json!({ "inner": 7 })
+        );
 
         let dry_run = dry_run_result_json(&config);
         assert_eq!(dry_run["dry_run"], serde_json::Value::Bool(true));
@@ -975,7 +994,10 @@ mod tests {
         let output = create_skill_artifact_result_json(&artifact);
 
         assert_eq!(output["skill_name"], serde_json::json!("weather skill"));
-        assert_eq!(output["interface_revision"], serde_json::json!(1));
+        assert_eq!(
+            output["interface_revision"],
+            serde_json::json!({ "inner": 1 })
+        );
         assert_eq!(
             output["dag_id"],
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())

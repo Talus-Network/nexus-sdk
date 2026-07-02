@@ -1,4 +1,4 @@
-use {super::*, std::path::Path};
+use {super::*, nexus_sdk::dag, std::path::Path};
 
 pub(crate) async fn read_skill_config(path: &PathBuf) -> AnyResult<SkillConfig, NexusCliError> {
     let text = tokio::fs::read_to_string(path)
@@ -25,10 +25,10 @@ pub(crate) fn tap_package_path_for_config(config_path: &Path) -> PathBuf {
 pub(crate) fn validate_dag_file(dag_path: &std::path::Path) -> AnyResult<()> {
     let dag_text = std::fs::read_to_string(dag_path)
         .map_err(|error| anyhow!("failed to read DAG file '{}': {error}", dag_path.display()))?;
-    let dag: JsonDag = serde_json::from_str(&dag_text)
-        .map_err(|error| anyhow!("failed to parse DAG JSON '{}': {error}", dag_path.display()))?;
+    let dag = dag::json::parse_dag_spec(&dag_text)
+        .map_err(|error| anyhow!("failed to parse DAG spec '{}': {error}", dag_path.display()))?;
 
-    dag_validator::validate(dag).map_err(|error| {
+    dag::validator::validate(&dag).map_err(|error| {
         anyhow!(
             "DAG validation failed for '{}': {error}",
             dag_path.display()

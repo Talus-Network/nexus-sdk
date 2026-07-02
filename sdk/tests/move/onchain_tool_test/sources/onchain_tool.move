@@ -3,6 +3,7 @@ module onchain_tool::onchain_tool;
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
+use onchain_tool::proof_of_uid::ProofOfUID;
 
 /// One-time witness for package initialization.
 public struct ONCHAIN_TOOL has drop {}
@@ -18,11 +19,6 @@ public struct RandomCounter has key {
     count: u64,
     /// Store the witness object that identifies this tool.
     witness: Bag,
-}
-
-/// Placeholder for ProofOfUID.
-public struct ProofOfUID {
-    id: UID,
 }
 
 /// Tool execution output variants.

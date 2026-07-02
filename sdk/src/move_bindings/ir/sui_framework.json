@@ -1,0 +1,1830 @@
+{
+  "storage_id": "0x2",
+  "original_id": "0x2",
+  "version": 1,
+  "modules": {
+    "accumulator": {
+      "name": "accumulator",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "accumulator",
+            "name": "AccumulatorRoot"
+          },
+          "module": "accumulator",
+          "name": "AccumulatorRoot",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "accumulator",
+            "name": "Key"
+          },
+          "module": "accumulator",
+          "name": "Key",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "address",
+                  "position": 0,
+                  "ty": "Address"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "accumulator",
+            "name": "U128"
+          },
+          "module": "accumulator",
+          "name": "U128",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "value",
+                  "position": 0,
+                  "ty": "U128"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "bag": {
+      "name": "bag",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "bag",
+            "name": "Bag"
+          },
+          "module": "bag",
+          "name": "Bag",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "size",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "balance": {
+      "name": "balance",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "balance",
+            "name": "Balance"
+          },
+          "module": "balance",
+          "name": "Balance",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "value",
+                  "position": 0,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "balance",
+            "name": "Supply"
+          },
+          "module": "balance",
+          "name": "Supply",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "value",
+                  "position": 0,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "clock": {
+      "name": "clock",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "clock",
+            "name": "Clock"
+          },
+          "module": "clock",
+          "name": "Clock",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "timestamp_ms",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "coin": {
+      "name": "coin",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "Coin"
+          },
+          "module": "coin",
+          "name": "Coin",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "balance",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "balance",
+                        "name": "Balance"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "CoinMetadata"
+          },
+          "module": "coin",
+          "name": "CoinMetadata",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "decimals",
+                  "position": 1,
+                  "ty": "U8"
+                },
+                {
+                  "name": "name",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "string",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "symbol",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "description",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "string",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "icon_url",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "url",
+                              "name": "Url"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "CurrencyCreated"
+          },
+          "module": "coin",
+          "name": "CurrencyCreated",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "decimals",
+                  "position": 0,
+                  "ty": "U8"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "DenyCap"
+          },
+          "module": "coin",
+          "name": "DenyCap",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "DenyCapV2"
+          },
+          "module": "coin",
+          "name": "DenyCapV2",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "allow_global_pause",
+                  "position": 1,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "RegulatedCoinMetadata"
+          },
+          "module": "coin",
+          "name": "RegulatedCoinMetadata",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "coin_metadata_object",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "deny_cap_object",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "coin",
+            "name": "TreasuryCap"
+          },
+          "module": "coin",
+          "name": "TreasuryCap",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "total_supply",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "balance",
+                        "name": "Supply"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "destroy_zero",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    },
+    "funds_accumulator": {
+      "name": "funds_accumulator",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "funds_accumulator",
+            "name": "Withdrawal"
+          },
+          "module": "funds_accumulator",
+          "name": "Withdrawal",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "owner",
+                  "position": 0,
+                  "ty": "Address"
+                },
+                {
+                  "name": "limit",
+                  "position": 1,
+                  "ty": "U256"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "linked_table": {
+      "name": "linked_table",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "linked_table",
+            "name": "LinkedTable"
+          },
+          "module": "linked_table",
+          "name": "LinkedTable",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "size",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "head",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "tail",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "linked_table",
+            "name": "Node"
+          },
+          "module": "linked_table",
+          "name": "Node",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "prev",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "next",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "value",
+                  "position": 2,
+                  "ty": {
+                    "TypeParameter": 1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "object": {
+      "name": "object",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "object",
+            "name": "ID"
+          },
+          "module": "object",
+          "name": "ID",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "bytes",
+                  "position": 0,
+                  "ty": "Address"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "object",
+            "name": "UID"
+          },
+          "module": "object",
+          "name": "UID",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "id_from_address",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": "Address"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "object_bag": {
+      "name": "object_bag",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "object_bag",
+            "name": "ObjectBag"
+          },
+          "module": "object_bag",
+          "name": "ObjectBag",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "size",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "object_table": {
+      "name": "object_table",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "object_table",
+            "name": "ObjectTable"
+          },
+          "module": "object_table",
+          "name": "ObjectTable",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": true
+            },
+            {
+              "constraints": [
+                "Store",
+                "Key"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "size",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "priority_queue": {
+      "name": "priority_queue",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "priority_queue",
+            "name": "Entry"
+          },
+          "module": "priority_queue",
+          "name": "Entry",
+          "abilities": [
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "priority",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "value",
+                  "position": 1,
+                  "ty": {
+                    "TypeParameter": 0
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "priority_queue",
+            "name": "PriorityQueue"
+          },
+          "module": "priority_queue",
+          "name": "PriorityQueue",
+          "abilities": [
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "entries",
+                  "position": 0,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "priority_queue",
+                          "name": "Entry"
+                        },
+                        "type_arguments": [
+                          {
+                            "TypeParameter": 0
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "sui": {
+      "name": "sui",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "sui",
+            "name": "SUI"
+          },
+          "module": "sui",
+          "name": "SUI",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "table": {
+      "name": "table",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "table",
+            "name": "Table"
+          },
+          "module": "table",
+          "name": "Table",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": true
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "size",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "table_vec": {
+      "name": "table_vec",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "table_vec",
+            "name": "TableVec"
+          },
+          "module": "table_vec",
+          "name": "TableVec",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "contents",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        "U64",
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "drop",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "table_vec",
+                    "name": "TableVec"
+                  },
+                  "type_arguments": [
+                    {
+                      "TypeParameter": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "empty",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "table_vec",
+                  "name": "TableVec"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "push_back",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table_vec",
+                        "name": "TableVec"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    },
+    "transfer": {
+      "name": "transfer",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "transfer",
+            "name": "Receiving"
+          },
+          "module": "transfer",
+          "name": "Receiving",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Key"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "version",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "public_share_object",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Store",
+                "Key"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    },
+    "url": {
+      "name": "url",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "url",
+            "name": "Url"
+          },
+          "module": "url",
+          "name": "Url",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "url",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    },
+    "vec_map": {
+      "name": "vec_map",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "vec_map",
+            "name": "Entry"
+          },
+          "module": "vec_map",
+          "name": "Entry",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "key",
+                  "position": 0,
+                  "ty": {
+                    "TypeParameter": 0
+                  }
+                },
+                {
+                  "name": "value",
+                  "position": 1,
+                  "ty": {
+                    "TypeParameter": 1
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "vec_map",
+            "name": "VecMap"
+          },
+          "module": "vec_map",
+          "name": "VecMap",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "contents",
+                  "position": 0,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "vec_map",
+                          "name": "Entry"
+                        },
+                        "type_arguments": [
+                          {
+                            "TypeParameter": 0
+                          },
+                          {
+                            "TypeParameter": 1
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "empty",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  {
+                    "TypeParameter": 0
+                  },
+                  {
+                    "TypeParameter": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "insert",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        },
+                        {
+                          "TypeParameter": 1
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "arg2",
+              "ty": {
+                "TypeParameter": 1
+              }
+            }
+          ],
+          "return_types": []
+        }
+      ]
+    },
+    "vec_set": {
+      "name": "vec_set",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0x2",
+            "module": "vec_set",
+            "name": "VecSet"
+          },
+          "module": "vec_set",
+          "name": "VecSet",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "contents",
+                  "position": 0,
+                  "ty": {
+                    "Vector": {
+                      "TypeParameter": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": []
+    }
+  }
+}

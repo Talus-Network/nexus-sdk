@@ -5,20 +5,12 @@
 use {
     crate::{
         events::{parse_bcs, NexusEvent},
-        idents::primitives,
-        sui,
-        types::{
-            normalize_json_string,
-            parse_address_value,
-            parse_bool_value,
-            parse_byte_vector_value,
-            parse_published_move_enum_value,
-            parse_runtime_vertex_value,
-            parse_string_value,
-            parse_u64_value,
-            workflow,
-            NexusObjects,
+        move_bindings::primitives::{
+            data::NexusData as MoveNexusData, distributed_event as distributed_event_move,
+            event as event_move,
         },
+        sui,
+        types::NexusObjects,
     },
     anyhow::bail,
 };
@@ -90,30 +82,6 @@ impl FromSuiGrpcEvent for NexusEvent {
     }
 }
 
-/// Parse a nested Move-JSON payload into a full terminal `_err_eval` event.
-pub fn parse_terminal_err_eval_recorded_event_value(
-    value: serde_json::Value,
-) -> anyhow::Result<Option<crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent>>
-{
-    parse_nested_event_value(value, try_parse_terminal_err_eval_recorded_event)
-}
-
-/// Parse a nested Move-JSON payload into submission-failure evidence.
-pub fn parse_submission_failure_evidence_recorded_event(
-    value: serde_json::Value,
-) -> anyhow::Result<
-    Option<crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent>,
-> {
-    parse_nested_event_value(value, try_parse_submission_failure_evidence_recorded_event)
-}
-
-/// Parse a nested Move-JSON payload into a verification-verdict event.
-pub fn parse_verification_verdict_event(
-    value: serde_json::Value,
-) -> anyhow::Result<Option<crate::types::workflow::execution_events::VerificationVerdictEvent>> {
-    parse_nested_event_value(value, try_parse_verification_verdict_event)
-}
-
 fn normalize_event_name(
     event_type: &sui::types::StructTag,
     objects: &NexusObjects,
@@ -175,333 +143,6 @@ fn normalize_event_name(
     Ok(normalized.to_string())
 }
 
-pub(crate) fn parse_nested_event_value<T>(
-    value: serde_json::Value,
-    try_parse: fn(&serde_json::Value) -> anyhow::Result<Option<T>>,
-) -> anyhow::Result<Option<T>> {
-    const KEYS: [&str; 7] = [
-        "event",
-        "parsedJson",
-        "parsed_json",
-        "fields",
-        "value",
-        "data",
-        "contents",
-    ];
-    if let Some(parsed) = try_parse(&value)? {
-        return Ok(Some(parsed));
-    }
-
-    match value {
-        serde_json::Value::Object(object) => {
-            for key in KEYS {
-                if let Some(nested) = object.get(key) {
-                    if let Some(parsed) = parse_nested_event_value(nested.clone(), try_parse)? {
-                        return Ok(Some(parsed));
-                    }
-                }
-            }
-
-            for (key, nested) in object.into_iter() {
-                if !KEYS.contains(&key.as_str()) {
-                    if let Some(parsed) = parse_nested_event_value(nested, try_parse)? {
-                        return Ok(Some(parsed));
-                    }
-                }
-            }
-        }
-        serde_json::Value::Array(values) => {
-            for nested in values {
-                if let Some(parsed) = parse_nested_event_value(nested, try_parse)? {
-                    return Ok(Some(parsed));
-                }
-            }
-        }
-        _ => {}
-    }
-
-    Ok(None)
-}
-
-fn try_parse_terminal_err_eval_recorded_event(
-    value: &serde_json::Value,
-) -> anyhow::Result<Option<crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent>>
-{
-    let serde_json::Value::Object(object) = value else {
-        return Ok(None);
-    };
-
-    for key in [
-        "dag",
-        "execution",
-        "walk_index",
-        "vertex",
-        "leader",
-        "failure_class",
-        "outcome",
-        "reason",
-        "err_eval_hash",
-        "duplicate",
-    ] {
-        if !object.contains_key(key) {
-            return Ok(None);
-        }
-    }
-
-    let Some(raw) =
-        parse_move_event::<workflow::execution_events::TerminalErrEvalRecordedEvent>(value)?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(raw.into_public()))
-}
-
-fn try_parse_submission_failure_evidence_recorded_event(
-    value: &serde_json::Value,
-) -> anyhow::Result<
-    Option<crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent>,
-> {
-    let serde_json::Value::Object(object) = value else {
-        return Ok(None);
-    };
-
-    if !object.contains_key("execution") {
-        return Ok(None);
-    }
-    if !object.contains_key("walk_index") {
-        return Ok(None);
-    }
-    if !object.contains_key("vertex") {
-        return Ok(None);
-    }
-    if !object.contains_key("failed_leader") {
-        return Ok(None);
-    }
-    if !object.contains_key("winning_leader") {
-        return Ok(None);
-    }
-    if !object.contains_key("reason") {
-        return Ok(None);
-    }
-    if !object.contains_key("err_eval_hash") {
-        return Ok(None);
-    }
-
-    let value = event_value_with_default_dag(value);
-    let Some(raw) = parse_move_event::<
-        workflow::execution_events::SubmissionFailureEvidenceRecordedEvent,
-    >(&value)?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(raw.into_public()))
-}
-
-fn event_value_with_default_dag(value: &serde_json::Value) -> serde_json::Value {
-    let serde_json::Value::Object(mut object) = value.clone() else {
-        return value.clone();
-    };
-    object
-        .entry("dag".to_string())
-        .or_insert_with(|| serde_json::Value::String(sui::types::Address::ZERO.to_string()));
-    serde_json::Value::Object(object)
-}
-
-fn try_parse_verification_verdict_event(
-    value: &serde_json::Value,
-) -> anyhow::Result<Option<crate::types::workflow::execution_events::VerificationVerdictEvent>> {
-    let serde_json::Value::Object(object) = value else {
-        return Ok(None);
-    };
-
-    for key in [
-        "execution",
-        "walk_index",
-        "vertex",
-        "leader",
-        "submission_kind",
-        "failure_evidence_kind",
-        "leader_verifier_mode",
-        "leader_verifier_method",
-        "tool_verifier_mode",
-        "tool_verifier_method",
-        "checked_leader_kid",
-        "checked_tool_kid",
-        "payload_or_reason_hash",
-        "checked_identity",
-        "verdict_reference",
-        "verdict",
-    ] {
-        if !object.contains_key(key) {
-            return Ok(None);
-        }
-    }
-
-    let value = event_value_with_default_dag(value);
-    let Some(raw) =
-        parse_move_event::<workflow::execution_events::VerificationVerdictEvent>(&value)?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(raw.into_public()))
-}
-
-trait IntoPublicEvent {
-    type Public;
-
-    fn into_public(self) -> Self::Public;
-}
-
-impl IntoPublicEvent for workflow::execution_events::TerminalErrEvalRecordedEvent {
-    type Public = crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent;
-
-    fn into_public(self) -> Self::Public {
-        self
-    }
-}
-
-impl IntoPublicEvent for workflow::execution_events::SubmissionFailureEvidenceRecordedEvent {
-    type Public = crate::types::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent;
-
-    fn into_public(self) -> Self::Public {
-        self
-    }
-}
-
-impl IntoPublicEvent for workflow::execution_events::VerificationVerdictEvent {
-    type Public = crate::types::workflow::execution_events::VerificationVerdictEvent;
-
-    fn into_public(self) -> Self::Public {
-        self
-    }
-}
-
-fn parse_move_event<T>(value: &serde_json::Value) -> anyhow::Result<Option<T>>
-where
-    T: serde::de::DeserializeOwned,
-{
-    let serde_json::Value::Object(object) = value else {
-        return Ok(None);
-    };
-
-    let normalized = serde_json::Value::Object(
-        object
-            .iter()
-            .map(|(key, value)| Ok((key.clone(), normalize_move_event_field(key, value)?)))
-            .collect::<anyhow::Result<_>>()?,
-    );
-
-    Ok(Some(serde_json::from_value(normalized)?))
-}
-
-fn normalize_move_event_field(
-    key: &str,
-    value: &serde_json::Value,
-) -> anyhow::Result<serde_json::Value> {
-    let value = match key {
-        "dag" | "execution" => id_json(value)?,
-        "leader" | "failed_leader" => parse_address_value(value)?
-            .map(|address| serde_json::Value::String(address.to_string()))
-            .unwrap_or_else(|| value.clone()),
-        "winning_leader" => value.clone(),
-        "checked_leader_kid" | "checked_tool_kid" => optional_u64_json(value)?,
-        "walk_index" => parse_u64_value(value)?
-            .map(serde_json::Value::from)
-            .unwrap_or_else(|| value.clone()),
-        "vertex" => {
-            serde_json::to_value(parse_runtime_vertex_value(value)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse generated event vertex: {value}")
-            })?)?
-        }
-        "failure_class" => workflow_failure_class_json(value)?,
-        "outcome"
-        | "submission_kind"
-        | "failure_evidence_kind"
-        | "leader_verifier_mode"
-        | "tool_verifier_mode"
-        | "verdict" => normalize_move_enum_json(value)?,
-        "reason" | "leader_verifier_method" | "tool_verifier_method" => serde_json::Value::String(
-            normalize_json_string(parse_string_value(value)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse generated event string field {key}: {value}")
-            })?),
-        ),
-        "err_eval_hash" | "payload_or_reason_hash" | "checked_identity" | "verdict_reference" => {
-            serde_json::to_value(parse_byte_vector_value(value)?.ok_or_else(|| {
-                anyhow::anyhow!("Could not parse generated event byte-vector field {key}: {value}")
-            })?)?
-        }
-        "duplicate" => parse_bool_value(value)?
-            .map(serde_json::Value::from)
-            .unwrap_or_else(|| value.clone()),
-        _ => value.clone(),
-    };
-    Ok(value)
-}
-
-fn optional_u64_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-    if value.is_null() {
-        return Ok(value.clone());
-    }
-
-    if let Some(parsed) = parse_u64_value(value)? {
-        return Ok(serde_json::Value::from(parsed));
-    }
-
-    let serde_json::Value::Object(object) = value else {
-        return Ok(value.clone());
-    };
-
-    if let Some(fields) = object.get("fields") {
-        let normalized = optional_u64_json(fields)?;
-        if &normalized != fields {
-            let mut object = object.clone();
-            object.insert("fields".to_string(), normalized);
-            return Ok(serde_json::Value::Object(object));
-        }
-    }
-
-    if let Some(vec) = object.get("vec").and_then(serde_json::Value::as_array) {
-        let normalized = vec
-            .iter()
-            .map(optional_u64_json)
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let mut object = object.clone();
-        object.insert("vec".to_string(), serde_json::Value::Array(normalized));
-        return Ok(serde_json::Value::Object(object));
-    }
-
-    Ok(value.clone())
-}
-
-fn id_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-    let address = parse_address_value(value)?
-        .ok_or_else(|| anyhow::anyhow!("Could not parse generated event object id: {value}"))?;
-    Ok(serde_json::json!({ "bytes": address }))
-}
-
-fn normalize_move_enum_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-    let parsed = parse_published_move_enum_value::<String>(value)?;
-    Ok(parsed
-        .map(serde_json::Value::String)
-        .unwrap_or_else(|| value.clone()))
-}
-
-fn workflow_failure_class_json(value: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
-    let parsed = parse_published_move_enum_value::<crate::types::WorkflowFailureClass>(value)?
-        .ok_or_else(|| anyhow::anyhow!("Could not parse workflow failure class: {value}"))?;
-    let variant = match parsed {
-        crate::types::WorkflowFailureClass::Retryable => "Retryable",
-        crate::types::WorkflowFailureClass::TerminalToolFailure => "TerminalToolFailure",
-        crate::types::WorkflowFailureClass::TerminalSubmissionFailure => {
-            "TerminalSubmissionFailure"
-        }
-    };
-    Ok(serde_json::Value::String(variant.to_string()))
-}
-
 /// Helper function to determine whether the given address is one of the Nexus
 /// package addresses.
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
@@ -529,11 +170,11 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
 /// Helper function to determine whether the provided struct tag corresponds to
 /// `nexus_primitives::event::EventWrapper`.
 fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
-    *tag.address() == objects.primitives_pkg_id
-        && (*tag.module() == primitives::Event::EVENT_WRAPPER.module
-            || *tag.module() == primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module)
-        && (*tag.name() == primitives::Event::EVENT_WRAPPER.name
-            || *tag.name() == primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name)
+    crate::move_bindings::struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(
+        objects, tag,
+    ) || crate::move_bindings::struct_tag_matches::<
+        distributed_event_move::DistributedEventWrapper<MoveNexusData>,
+    >(objects, tag)
 }
 
 #[cfg(all(test, feature = "test_utils"))]
@@ -542,16 +183,16 @@ mod direct_event_tests {
         super::*,
         crate::{
             events::{parse_bcs, NexusEventKind},
-            idents::primitives,
-            sui,
-            test_utils::sui_mocks,
-            types::{
+            move_bindings::{
                 interface::{
                     agent::{self as agent_types, *},
                     dag::*,
+                    graph::{PostFailureAction, RuntimeVertex},
                     payment::{self as payment_types, *},
-                    scheduled_request,
-                    version,
+                    scheduled_request, version,
+                },
+                move_std::{
+                    ascii::String as MoveString, option::Option as MoveOption, type_name::TypeName,
                 },
                 primitives::policy::Symbol as PolicySymbol,
                 registry::{agent_registry::*, leader::*, leader_cap::*, tool_registry::*},
@@ -560,17 +201,12 @@ mod direct_event_tests {
                     object::ID,
                     vec_map::{Entry as VecMapEntry, VecMap as MoveVecMap},
                 },
-                workflow::{execution_events::*, gas::*},
-                MoveOption,
-                MoveString,
-                PostFailureAction,
-                RuntimeVertex,
-                TypeName,
-                WorkflowFailureClass,
+                workflow::{execution_events::*, execution_failure::WorkflowFailureClass, gas::*},
             },
+            sui,
+            test_utils::sui_mocks,
         },
         serde::Serialize,
-        serde_json::json,
     };
 
     type RequestScheduledOccurrenceEvent =
@@ -627,8 +263,8 @@ mod direct_event_tests {
     }
 
     fn empty_ports_data() -> MoveVecMap<
-        crate::types::interface::graph::OutputPort,
-        crate::types::primitives::data::NexusData,
+        crate::move_bindings::interface::graph::OutputPort,
+        crate::move_bindings::primitives::data::NexusData,
     > {
         MoveVecMap { contents: vec![] }
     }
@@ -654,16 +290,12 @@ mod direct_event_tests {
         assert_eq!(parsed.name(), expected_name);
 
         let emitter_package = *inner.address();
+        let type_ = wrapper_tag(objects, inner);
         let wrapped = sui::types::Event {
             package_id: emitter_package,
-            module: primitives::Event::EVENT_WRAPPER.module,
+            module: type_.module().clone(),
             sender: addr(0xee),
-            type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::Event::EVENT_WRAPPER.module,
-                primitives::Event::EVENT_WRAPPER.name,
-                vec![sui::types::TypeTag::Struct(Box::new(inner))],
-            ),
+            type_,
             contents: bytes,
         };
 
@@ -692,22 +324,47 @@ mod direct_event_tests {
         )
     }
 
+    fn wrapper_tag(
+        objects: &crate::types::NexusObjects,
+        inner: sui::types::StructTag,
+    ) -> sui::types::StructTag {
+        let wrapper =
+            crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(objects);
+        sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        )
+    }
+
+    fn distributed_wrapper_tag(
+        objects: &crate::types::NexusObjects,
+        inner: sui::types::StructTag,
+    ) -> sui::types::StructTag {
+        let wrapper = crate::move_bindings::struct_tag::<
+            distributed_event_move::DistributedEventWrapper<MoveNexusData>,
+        >(objects);
+        sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        )
+    }
+
     fn wrapped_event<T: Serialize>(
         objects: &crate::types::NexusObjects,
         emitter_package: sui::types::Address,
         inner: sui::types::StructTag,
         event: T,
     ) -> sui::types::Event {
+        let type_ = wrapper_tag(objects, inner);
         sui::types::Event {
             package_id: emitter_package,
-            module: primitives::Event::EVENT_WRAPPER.module,
+            module: type_.module().clone(),
             sender: addr(0xee),
-            type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::Event::EVENT_WRAPPER.module,
-                primitives::Event::EVENT_WRAPPER.name,
-                vec![sui::types::TypeTag::Struct(Box::new(inner))],
-            ),
+            type_,
             contents: bcs::to_bytes(&Wrapper { event }).unwrap(),
         }
     }
@@ -742,8 +399,8 @@ mod direct_event_tests {
                 agent_id: agent_id.clone(),
                 skill_id: 2,
                 interface_version: version::InterfaceVersion { inner: 3 },
-                scheduled_task_id: MoveOption(None),
-                scheduled_occurrence_index: MoveOption(None),
+                scheduled_task_id: MoveOption::from_option(None),
+                scheduled_occurrence_index: MoveOption::from_option(None),
             },
         })
         .unwrap();
@@ -779,8 +436,8 @@ mod direct_event_tests {
             agent_id: id(addr(0xb4)),
             skill_id: 13,
             interface_version: interface_version(14),
-            scheduled_task_id: MoveOption(None),
-            scheduled_occurrence_index: MoveOption(None),
+            scheduled_task_id: MoveOption::from_option(None),
+            scheduled_occurrence_index: MoveOption::from_option(None),
         };
         let scheduled = scheduled_request::RequestScheduledExecution {
             request,
@@ -800,16 +457,12 @@ mod direct_event_tests {
                 vec![],
             )))],
         );
+        let type_ = distributed_wrapper_tag(&objects, inner);
         let event = sui::types::Event {
             package_id: objects.workflow_pkg_id,
-            module: primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+            module: type_.module().clone(),
             sender: addr(0xee),
-            type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
-                vec![sui::types::TypeTag::Struct(Box::new(inner))],
-            ),
+            type_,
             contents: bcs::to_bytes(&DistributedWrapper {
                 event: scheduled,
                 deadline_ms: 19,
@@ -833,46 +486,6 @@ mod direct_event_tests {
             .expect("scheduled request carries distribution metadata");
         assert_eq!(distribution.task_id, task_id);
         assert_eq!(distribution.leaders, leaders);
-    }
-
-    #[test]
-    fn nested_terminal_err_eval_json_parses_direct_event() {
-        let parsed = parse_terminal_err_eval_recorded_event_value(json!({
-            "event": {
-                "fields": {
-                    "dag": "0x1",
-                    "execution": "0x2",
-                    "walk_index": "4",
-                    "vertex": {
-                        "_variant_name": "Plain",
-                        "vertex": { "name": "failable" }
-                    },
-                    "leader": "0x3",
-                    "failure_class": "TerminalSubmissionFailure",
-                    "outcome": "Terminate",
-                    "reason": "\"timeout\"",
-                    "err_eval_hash": [9, 8, 7],
-                    "duplicate": false
-                }
-            }
-        }))
-        .unwrap();
-
-        assert_eq!(
-            parsed,
-            Some(TerminalErrEvalRecordedEvent {
-                dag: id(sui::types::Address::from_static("0x1")),
-                execution: id(sui::types::Address::TWO),
-                walk_index: 4,
-                vertex: RuntimeVertex::plain("failable"),
-                leader: sui::types::Address::THREE,
-                failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-                outcome: MoveOption(Some(PostFailureAction::Terminate)),
-                reason: MoveString::from("timeout"),
-                err_eval_hash: vec![9, 8, 7],
-                duplicate: false,
-            })
-        );
     }
 
     #[test]
@@ -931,8 +544,8 @@ mod direct_event_tests {
                 agent_id: id(addr(0xb4)),
                 skill_id: 13,
                 interface_version: interface_version(14),
-                scheduled_task_id: MoveOption(None),
-                scheduled_occurrence_index: MoveOption(None),
+                scheduled_task_id: MoveOption::from_option(None),
+                scheduled_occurrence_index: MoveOption::from_option(None),
             },
             priority: 15,
             request_ms: 16,
@@ -945,21 +558,20 @@ mod direct_event_tests {
             "RequestWalkExecutionEvent",
             vec![],
         );
+        let walk_type = distributed_wrapper_tag(
+            &objects,
+            inner_tag(
+                objects.interface_pkg_id,
+                "scheduled_request",
+                "RequestScheduledExecution",
+                vec![sui::types::TypeTag::Struct(Box::new(foreign_walk_payload))],
+            ),
+        );
         let walk_event = sui::types::Event {
             package_id: addr(0xf5),
-            module: primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+            module: walk_type.module().clone(),
             sender: addr(0xee),
-            type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
-                vec![sui::types::TypeTag::Struct(Box::new(inner_tag(
-                    objects.interface_pkg_id,
-                    "scheduled_request",
-                    "RequestScheduledExecution",
-                    vec![sui::types::TypeTag::Struct(Box::new(foreign_walk_payload))],
-                )))],
-            ),
+            type_: walk_type,
             contents: bcs::to_bytes(&DistributedWrapper {
                 event: scheduled_walk,
                 deadline_ms: 19,
@@ -990,23 +602,22 @@ mod direct_event_tests {
         };
         let foreign_occurrence_payload =
             inner_tag(addr(0xf6), "scheduler", "OccurrenceScheduledEvent", vec![]);
+        let occurrence_type = distributed_wrapper_tag(
+            &objects,
+            inner_tag(
+                objects.interface_pkg_id,
+                "scheduled_request",
+                "RequestScheduledExecution",
+                vec![sui::types::TypeTag::Struct(Box::new(
+                    foreign_occurrence_payload,
+                ))],
+            ),
+        );
         let occurrence_event = sui::types::Event {
             package_id: addr(0xf7),
-            module: primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
+            module: occurrence_type.module().clone(),
             sender: addr(0xee),
-            type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.module,
-                primitives::DistributedEvent::DISTRIBUTED_EVENT_WRAPPER.name,
-                vec![sui::types::TypeTag::Struct(Box::new(inner_tag(
-                    objects.interface_pkg_id,
-                    "scheduled_request",
-                    "RequestScheduledExecution",
-                    vec![sui::types::TypeTag::Struct(Box::new(
-                        foreign_occurrence_payload,
-                    ))],
-                )))],
-            ),
+            type_: occurrence_type,
             contents: bcs::to_bytes(&DistributedWrapper {
                 event: scheduled_occurrence,
                 deadline_ms: 25,
@@ -1053,8 +664,8 @@ mod direct_event_tests {
                 agent_id: id(addr(0xa9)),
                 skill_id: 10,
                 interface_version: interface_version(11),
-                scheduled_task_id: MoveOption(None),
-                scheduled_occurrence_index: MoveOption(None),
+                scheduled_task_id: MoveOption::from_option(None),
+                scheduled_occurrence_index: MoveOption::from_option(None),
             },
         );
 
@@ -1152,8 +763,8 @@ mod direct_event_tests {
                 agent_id: id(addr(0x08)),
                 skill_id: 9,
                 interface_version: interface_version(10),
-                scheduled_task_id: MoveOption(Some(id(addr(0x0b)))),
-                scheduled_occurrence_index: MoveOption(Some(12)),
+                scheduled_task_id: MoveOption::from_option(Some(id(addr(0x0b)))),
+                scheduled_occurrence_index: MoveOption::from_option(Some(12)),
             }
         );
         check!(
@@ -1213,8 +824,8 @@ mod direct_event_tests {
                 walk_index: 23,
                 vertex: RuntimeVertex::plain("auth"),
                 tool_fqn: MoveString::from("demo::tool::run"),
-                agent_id: MoveOption(Some(id(addr(0x18)))),
-                skill_id: MoveOption(Some(24)),
+                agent_id: MoveOption::from_option(Some(id(addr(0x18)))),
+                skill_id: MoveOption::from_option(Some(24)),
             }
         );
         check!(
@@ -1436,7 +1047,7 @@ mod direct_event_tests {
                 execution: id(addr(0x4c)),
                 walk_index: 61,
                 vertex: RuntimeVertex::plain("advanced"),
-                variant: crate::types::interface::graph::OutputVariant {
+                variant: crate::move_bindings::interface::graph::OutputVariant {
                     name: MoveString::from("ok"),
                 },
                 variant_ports_to_data: empty_ports_data(),
@@ -1463,7 +1074,7 @@ mod direct_event_tests {
                 vertex: RuntimeVertex::plain("terminal"),
                 leader: addr(0x51),
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                outcome: MoveOption::from_option(Some(PostFailureAction::Terminate)),
                 reason: MoveString::from("terminal"),
                 err_eval_hash: vec![1, 2, 3],
                 duplicate: false,
@@ -1479,21 +1090,21 @@ mod direct_event_tests {
                 vertex: RuntimeVertex::plain("verified"),
                 leader: addr(0x54),
                 submission_kind:
-                    crate::types::interface::verifier::VerificationSubmissionKind::Success,
+                    crate::move_bindings::interface::verifier::VerificationSubmissionKind::Success,
                 failure_evidence_kind:
-                    crate::types::interface::verifier::FailureEvidenceKind::ToolEvidence,
+                    crate::move_bindings::interface::verifier::FailureEvidenceKind::ToolEvidence,
                 leader_verifier_mode:
-                    crate::types::interface::verifier::VerifierMode::LeaderRegisteredKey,
+                    crate::move_bindings::interface::verifier::VerifierMode::LeaderRegisteredKey,
                 leader_verifier_method: MoveString::from("leader"),
                 tool_verifier_mode:
-                    crate::types::interface::verifier::VerifierMode::ToolVerifierContract,
+                    crate::move_bindings::interface::verifier::VerifierMode::ToolVerifierContract,
                 tool_verifier_method: MoveString::from("tool"),
-                checked_leader_kid: MoveOption(Some(65)),
-                checked_tool_kid: MoveOption(Some(66)),
+                checked_leader_kid: MoveOption::from_option(Some(65)),
+                checked_tool_kid: MoveOption::from_option(Some(66)),
                 payload_or_reason_hash: vec![4, 5],
                 checked_identity: vec![6, 7],
                 verdict_reference: vec![8, 9],
-                verdict: crate::types::interface::verifier::VerificationVerdict::Accepted,
+                verdict: crate::move_bindings::interface::verifier::VerificationVerdict::Accepted,
             }
         );
         check!(
@@ -1524,17 +1135,17 @@ mod direct_event_tests {
                 execution: id(addr(0x5a)),
                 walk_index: 69,
                 vertex: RuntimeVertex::plain("end"),
-                variant: crate::types::interface::graph::OutputVariant {
+                variant: crate::move_bindings::interface::graph::OutputVariant {
                     name: MoveString::from("ok"),
                 },
                 variant_ports_to_data: MoveVecMap {
                     contents: vec![VecMapEntry {
-                        key: crate::types::interface::graph::OutputPort {
+                        key: crate::move_bindings::interface::graph::OutputPort {
                             name: MoveString::from("answer"),
                         },
-                        value: crate::types::primitives::data::NexusData {
+                        value: crate::move_bindings::primitives::data::NexusData {
                             storage: b"inline".to_vec(),
-                            one: serde_json::to_vec(&json!(42)).unwrap(),
+                            one: b"42".to_vec(),
                             many: vec![],
                         },
                     }],
@@ -1558,7 +1169,7 @@ mod direct_event_tests {
             MissedOccurrenceEvent {
                 task: id(addr(0x5d)),
                 start_time_ms: 70,
-                deadline_ms: MoveOption(Some(71)),
+                deadline_ms: MoveOption::from_option(Some(71)),
                 pruned_at: 72,
                 priority_fee_per_gas_unit: 73,
                 generator: generator(),
@@ -1570,7 +1181,7 @@ mod direct_event_tests {
             OccurrenceConsumedEvent {
                 task: id(addr(0x5e)),
                 start_time_ms: 74,
-                deadline_ms: MoveOption(None),
+                deadline_ms: MoveOption::from_option(None),
                 priority_fee_per_gas_unit: 75,
                 generator: generator(),
                 executed_at: 76,
@@ -1581,12 +1192,12 @@ mod direct_event_tests {
             check!(@tag objects.scheduler_pkg_id, "scheduler", "PeriodicScheduleConfiguredEvent"),
             PeriodicScheduleConfiguredEvent {
                 task: id(addr(0x5f)),
-                period_ms: MoveOption(Some(77)),
-                deadline_offset_ms: MoveOption(Some(78)),
-                max_iterations: MoveOption(Some(79)),
-                generated: MoveOption(Some(80)),
+                period_ms: MoveOption::from_option(Some(77)),
+                deadline_offset_ms: MoveOption::from_option(Some(78)),
+                max_iterations: MoveOption::from_option(Some(79)),
+                generated: MoveOption::from_option(Some(80)),
                 priority_fee_per_gas_unit: 81,
-                last_generated_start_ms: MoveOption(Some(82)),
+                last_generated_start_ms: MoveOption::from_option(Some(82)),
             }
         );
         check!(

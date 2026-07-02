@@ -103,7 +103,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[cfg(feature = "test_utils")]
+    #[ignore = "requires a Docker-backed Sui test container"]
     async fn test_generate_output_schema_from_published_package() {
         use crate::test_utils;
 

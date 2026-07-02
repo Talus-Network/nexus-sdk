@@ -1,7 +1,7 @@
 use {
-    crate::{command_title, display::json_output, loading, prelude::*},
+    crate::{cli_conf::StorageKind, command_title, display::json_output, loading, prelude::*},
     nexus_sdk::{
-        types::{SecretValue, StorageKind},
+        types::SecretValue,
         walrus::{WALRUS_AGGREGATOR_URL, WALRUS_PUBLISHER_URL},
     },
 };

@@ -3,10 +3,6 @@
 //!
 //! This way we can use, for example `sui::types::Address` in our code.
 
-pub mod tx {
-    pub use sui_transaction_builder::*;
-}
-
 pub mod types {
     pub use sui_sdk_types::*;
 }
