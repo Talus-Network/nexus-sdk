@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
 - `tap scheduled-task pause|resume|cancel` commands for explicit-agent scheduled task state changes with required `--agent-id`.
 - `tap execution settle` and `tap execution abort` commands for permissionless committed-result settlement and expired execution abort flows.
+- `tap execution resolve-expired-walk` command that classifies one double-timeout walk and submits committed-result settlement, plain abort, or ToolGas-assisted abort through the shared SDK helper.
 - `tap payments refill` command for coin top-ups and agent-vault-funded execution payment refills.
 - `DagExecution` decoding now exposes execution walk summary counters: `active_walks`, `pending_abort_walks`, `successful_walks`, `failed_walks`, `aborted_walks`, `consumed_walks`, and `cancelled_walks`.
 
@@ -43,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
 - Low-level and high-level helpers for current committed-result settlement, record-only leader gas-charge submission, expired execution abort, and execution-payment refill flows.
+- `WorkflowActions::resolve_expired_walk` and `inspect_expired_walk_resolution` classify timeout-expired walks into settlement, plain abort, ToolGas abort, or skipped outcomes without adding new Move entrypoints.
 - Receipt lifecycle event decoding for `ExecutionPaymentReceiptCreatedEvent`, `ExecutionPaymentReceiptResolvedEvent`, and `ScheduledPaymentReserveReceiptCreatedEvent`.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduled task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 - Scheduler PTB builders for settling finished scheduled TAP execution payments from task-owned address-funded or agent-vault reserves.
@@ -69,6 +71,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled task state decoding now mirrors the on-chain five-state lifecycle `Active`, `Paused`, `Canceled`, `Completed`, and `Failed`, while legacy `Exhausted` scheduled-state wire values decode as `Completed`.
 - Agent-object transaction builders and high-level actions now route user-supplied agent ids through `AgentInput`, so mutable calls reject immutable objects locally and immutable calls can borrow shared objects immutably.
 - Abort-expired workflow actions now read DAG metadata from `DagExecution.dag` instead of re-resolving the current active skill binding, allowing runtime-selected active bindings to recover already-created executions.
+- ToolGas abort candidate discovery now ignores timeout-expired pending-settlement walks, leaving committed-result timeouts to the settlement branch.
 - DAG and scheduled occurrence execution builders now use the current begin-lock-start Move flow without a request-walk hot potato or lock ticket.
 - Scheduled task settlement builders now keep automatic occurrence settlement task+execution-only and expose whole-reserve idle agent-funded scheduled reserve collection as a task+agent operation.
 - Scheduler task-state builders and `SchedulerActions::set_task_state` now pass the agent registry so default-agent task-state calls can validate against the registry-owned default agent and guarded scheduled-count cleanup path.

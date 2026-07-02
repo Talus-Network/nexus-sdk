@@ -136,7 +136,7 @@ pub enum DagExecutionWalk {
 }
 
 impl DagExecutionWalk {
-    pub fn expired_active_vertex(&self, clock_ms: u64) -> Option<&crate::types::RuntimeVertex> {
+    pub fn timeout_expired_vertex(&self, clock_ms: u64) -> Option<&crate::types::RuntimeVertex> {
         match self {
             Self::Active {
                 next_vertex,
@@ -145,6 +145,23 @@ impl DagExecutionWalk {
                 ..
             }
             | Self::PendingSettlement {
+                next_vertex,
+                timeout_ms,
+                created_at,
+                ..
+            } if clock_ms >= created_at.saturating_add(timeout_ms.saturating_mul(2)) => {
+                Some(next_vertex)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn abortable_timeout_expired_vertex(
+        &self,
+        clock_ms: u64,
+    ) -> Option<&crate::types::RuntimeVertex> {
+        match self {
+            Self::Active {
                 next_vertex,
                 timeout_ms,
                 created_at,
@@ -911,5 +928,31 @@ mod tests {
                 created_at: 42,
             }
         );
+    }
+
+    #[test]
+    fn dag_execution_walk_separates_timeout_expired_from_abortable() {
+        let vertex = crate::types::RuntimeVertex::plain("settling");
+        let pending = DagExecutionWalk::PendingSettlement {
+            next_vertex: vertex.clone(),
+            timeout_ms: 5_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+        let active = DagExecutionWalk::Active {
+            next_vertex: vertex.clone(),
+            timeout_ms: 5_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+
+        assert_eq!(pending.timeout_expired_vertex(11_000), Some(&vertex));
+        assert_eq!(pending.abortable_timeout_expired_vertex(11_000), None);
+        assert_eq!(active.timeout_expired_vertex(11_000), Some(&vertex));
+        assert_eq!(
+            active.abortable_timeout_expired_vertex(11_000),
+            Some(&vertex)
+        );
+        assert_eq!(active.timeout_expired_vertex(10_999), None);
     }
 }
