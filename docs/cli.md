@@ -693,6 +693,18 @@ This command requires that a wallet is connected to the CLI and holds sufficient
 
 ---
 
+**`nexus tap execution resolve-expired-walk --execution-id <OBJECT_ID> --walk-index <U64> [--tool-gas-id <OBJECT_ID>]`**
+
+Resolves one double-timeout TAP DAG execution walk by inspecting on-chain state and submitting the matching workflow entry. Committed-result walks settle through `settle_committed_tool_result_for_walk`; no-committed-result active walks abort through `abort_expired_execution`, using the selected ToolGas when the vertex payment is locked.
+
+JSON output includes the `function`, `resolution_kind` (`settled`, `aborted`, `aborted_with_tool_gas`, or `skipped`), `dag_id`, `execution_id`, `walk_index`, optional `tool_gas_id`, optional `skip_reason`, and transaction `digest`/`tx_checkpoint` when a transaction was submitted.
+
+{% hint style="info" %}
+This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
+{% endhint %}
+
+---
+
 **`nexus tap execution settle --execution-id <OBJECT_ID> --walk-index <U64>`**
 
 Permissionlessly settles one committed-result walk after the on-chain settlement rules allow it. This command calls `settle_committed_tool_result_for_walk` and does not submit leader gas-charge claims; leader-authenticated settlement remains SDK-only.

@@ -19,7 +19,12 @@ use {
                 RefillExecutionPaymentResult,
                 WaitForPaymentResult,
             },
-            workflow::{AbortExecutionResult, CommittedToolResultSettlementResult, ExecuteResult},
+            workflow::{
+                AbortExecutionResult,
+                CommittedToolResultSettlementResult,
+                ExecuteResult,
+                ExpiredWalkResolutionResult,
+            },
         },
         types::{
             interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
@@ -208,6 +213,25 @@ pub(crate) fn execution_settle_result_json(
         "dag_id": result.dag_id,
         "execution_id": result.dag_execution_id,
         "walk_index": result.walk_index,
+    })
+}
+
+pub(crate) fn execution_resolve_expired_walk_result_json(
+    result: &ExpiredWalkResolutionResult,
+) -> serde_json::Value {
+    json!({
+        "function": "resolve_expired_walk",
+        "resolution_kind": result.resolution_kind.as_str(),
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "dag_id": result.dag_id,
+        "execution_id": result.dag_execution_id,
+        "walk_index": result.walk_index,
+        "tool_gas_id": result
+            .resolution_kind
+            .selected_candidate()
+            .map(|candidate| candidate.tool_gas_ref.object_id()),
+        "skip_reason": result.resolution_kind.skip_reason(),
     })
 }
 
@@ -825,6 +849,34 @@ mod tests {
             sui::types::Address::from_static("0xe").to_string()
         );
         assert_eq!(json["walk_index"], 3);
+    }
+
+    #[test]
+    fn execution_resolve_expired_walk_result_json_includes_branch_and_optional_fields() {
+        let result = ExpiredWalkResolutionResult {
+            tx_digest: Some(sui::types::Digest::default()),
+            tx_checkpoint: Some(42),
+            dag_id: sui::types::Address::from_static("0xda6"),
+            dag_execution_id: sui::types::Address::from_static("0xe"),
+            walk_index: 3,
+            resolution_kind: nexus_sdk::nexus::workflow::ExpiredWalkResolutionKind::Settled,
+        };
+
+        let json = execution_resolve_expired_walk_result_json(&result);
+
+        assert_eq!(json["function"], "resolve_expired_walk");
+        assert_eq!(json["resolution_kind"], "settled");
+        assert_eq!(json["tx_checkpoint"], 42);
+        assert_eq!(
+            json["dag_id"],
+            sui::types::Address::from_static("0xda6").to_string()
+        );
+        assert_eq!(
+            json["execution_id"],
+            sui::types::Address::from_static("0xe").to_string()
+        );
+        assert_eq!(json["walk_index"], 3);
+        assert!(json["skip_reason"].is_null());
     }
 
     #[test]

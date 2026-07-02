@@ -633,6 +633,26 @@ pub(crate) enum PaymentsCommand {
 
 #[derive(Subcommand)]
 pub(crate) enum ExecutionCommand {
+    #[command(about = "Resolve one double-timeout TAP DAG execution walk.")]
+    ResolveExpiredWalk {
+        #[arg(
+            long = "execution-id",
+            help = "Shared `DAGExecution` object ID to resolve.",
+            value_name = "OBJECT_ID"
+        )]
+        execution_id: sui::types::Address,
+        #[arg(long = "walk-index", help = "Expired walk index to resolve.")]
+        walk_index: u64,
+        /// Optional ToolGas object ID to require when the selected branch needs ToolGas-assisted abort.
+        #[arg(
+            long = "tool-gas-id",
+            help = "ToolGas object ID to use when the walk requires ToolGas-assisted abort.",
+            value_name = "OBJECT_ID"
+        )]
+        tool_gas_id: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
     #[command(about = "Permissionlessly settle one committed result walk after it is eligible.")]
     Settle {
         #[arg(
@@ -1091,6 +1111,23 @@ mod tests {
                 .to_string()
                 .contains("Sui RPC URL is not configured"),
             "unexpected error: {execution_settle_error}"
+        );
+
+        let execution_resolve_error = handle(TapCommand::Execution(
+            ExecutionCommand::ResolveExpiredWalk {
+                execution_id: sui::types::Address::from_static("0xee"),
+                walk_index: 0,
+                tool_gas_id: None,
+                gas: gas_args(),
+            },
+        ))
+        .await
+        .expect_err("execution resolve dispatch reaches missing RPC");
+        assert!(
+            execution_resolve_error
+                .to_string()
+                .contains("Sui RPC URL is not configured"),
+            "unexpected error: {execution_resolve_error}"
         );
 
         let execution_abort_error = handle(TapCommand::Execution(ExecutionCommand::Abort {
