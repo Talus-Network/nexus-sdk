@@ -1,12 +1,5 @@
 use {
-    crate::{
-        sui,
-        types::{
-            interface::version::InterfaceVersion,
-            workflow::execution_events::RequestWalkExecutionEvent,
-            *,
-        },
-    },
+    crate::sui,
     anyhow::{bail, Result},
     serde::{Deserialize, Serialize},
 };
@@ -15,6 +8,42 @@ mod parsing;
 mod polling;
 
 pub use {parsing::*, polling::*};
+
+fn deserialize_u64_to_datetime<'de, D>(
+    deserializer: D,
+) -> Result<chrono::DateTime<chrono::Utc>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let timestamp = u64::deserialize(deserializer)?;
+    chrono::DateTime::from_timestamp_millis(timestamp as i64)
+        .ok_or_else(|| serde::de::Error::custom("datetime out of range"))
+}
+
+fn serialize_datetime_to_u64<S>(
+    value: &chrono::DateTime<chrono::Utc>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(value.timestamp_millis() as u64)
+}
+
+fn deserialize_u64_to_duration<'de, D>(deserializer: D) -> Result<chrono::Duration, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let millis = u64::deserialize(deserializer)?;
+    Ok(chrono::Duration::milliseconds(millis as i64))
+}
+
+fn serialize_duration_to_u64<S>(value: &chrono::Duration, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(value.num_milliseconds() as u64)
+}
 
 /// Distribution metadata for distributed events. This contains metadata about
 /// the event deadline as well as the priority in which leaders should attempt
@@ -105,8 +134,8 @@ macro_rules! events {
 
             if name == "RequestWalkExecutionEvent" {
                 type ScheduledWalkRequest =
-                    crate::types::interface::scheduled_request::RequestScheduledExecution<
-                        crate::types::workflow::execution_events::RequestWalkExecutionEvent,
+                    crate::move_bindings::interface::scheduled_request::RequestScheduledExecution<
+                        crate::move_bindings::workflow::execution_events::RequestWalkExecutionEvent,
                     >;
 
                 if let Ok(distributed) = bcs::from_bytes::<DistributedWrapper<ScheduledWalkRequest>>(bytes) {
@@ -157,89 +186,50 @@ macro_rules! events {
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
 events! {
-    crate::types::interface::scheduled_request::RequestScheduledExecution<crate::types::scheduler::scheduler::OccurrenceScheduledEvent> => RequestScheduledOccurrence, "RequestScheduledOccurrenceEvent",
-    crate::types::scheduler::scheduler::OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
-    crate::types::workflow::execution_events::RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
-    crate::types::interface::agent::AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
-    crate::types::registry::agent_registry::SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
-    crate::types::registry::agent_registry::SkillContractRevisionedEvent => SkillContractRevisioned, "SkillContractRevisionedEvent",
-    crate::types::registry::agent_registry::DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
-    crate::types::workflow::execution_events::AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
-    crate::types::workflow::execution_events::AgentVertexAuthorizationRequiredEvent => AgentVertexAuthorizationRequired, "AgentVertexAuthorizationRequiredEvent",
-    crate::types::interface::payment::AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
-    crate::types::interface::payment::ExecutionPaymentReceiptCreatedEvent => ExecutionPaymentReceiptCreated, "ExecutionPaymentReceiptCreatedEvent",
-    crate::types::interface::payment::ExecutionPaymentReceiptResolvedEvent => ExecutionPaymentReceiptResolved, "ExecutionPaymentReceiptResolvedEvent",
-    crate::types::interface::payment::ScheduledPaymentReserveReceiptCreatedEvent => ScheduledPaymentReserveReceiptCreated, "ScheduledPaymentReserveReceiptCreatedEvent",
-    crate::types::interface::payment::GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
-    crate::types::interface::payment::ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
-    crate::types::interface::payment::ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
-    crate::types::scheduler::scheduler::ScheduledSkillExecutionCreatedEvent => ScheduledSkillExecutionCreated, "ScheduledSkillExecutionCreatedEvent",
-    crate::types::scheduler::scheduler::ScheduledSkillExecutionPausedEvent => ScheduledSkillExecutionPaused, "ScheduledSkillExecutionPausedEvent",
-    crate::types::scheduler::scheduler::ScheduledSkillExecutionResumedEvent => ScheduledSkillExecutionResumed, "ScheduledSkillExecutionResumedEvent",
-    crate::types::scheduler::scheduler::ScheduledSkillExecutionCanceledEvent => ScheduledSkillExecutionCanceled, "ScheduledSkillExecutionCanceledEvent",
-    crate::types::interface::payment::ScheduledSkillPaymentRefilledEvent => ScheduledSkillPaymentRefilled, "ScheduledSkillPaymentRefilledEvent",
-    crate::types::interface::payment::ScheduledOccurrencePaymentCreatedEvent => ScheduledOccurrencePaymentCreated, "ScheduledOccurrencePaymentCreatedEvent",
-    crate::types::interface::payment::ScheduledSkillPaymentCanceledEvent => ScheduledSkillPaymentCanceled, "ScheduledSkillPaymentCanceledEvent",
-    crate::types::interface::payment::ScheduledOccurrencePaymentFinalizedEvent => ScheduledOccurrencePaymentFinalized, "ScheduledOccurrencePaymentFinalizedEvent",
-    crate::types::registry::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
-    crate::types::registry::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
-    crate::types::workflow::execution_events::CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
-    crate::types::workflow::execution_events::WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
-    crate::types::workflow::execution_events::WalkFailedEvent => WalkFailed, "WalkFailedEvent",
-    crate::types::workflow::execution_events::TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
-    crate::types::workflow::execution_events::VerificationVerdictEvent => VerificationVerdictRecorded, "VerificationVerdictEvent",
-    crate::types::workflow::execution_events::WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
-    crate::types::workflow::execution_events::WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
-    crate::types::workflow::execution_events::EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
-    crate::types::workflow::execution_events::ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
-    crate::types::scheduler::scheduler::MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
-    crate::types::scheduler::scheduler::OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
-    crate::types::scheduler::scheduler::PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
-    crate::types::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
-    crate::types::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
-    crate::types::registry::leader::LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
-    crate::types::workflow::gas::PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
-    crate::types::workflow::gas::PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
-    crate::types::workflow::gas::PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
-    crate::types::interface::dag::DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
-    crate::types::registry::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RequestWalkContext {
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub interface_revision: InterfaceVersion,
-    pub scheduled_task_id: Option<sui::types::Address>,
-    pub scheduled_occurrence_index: Option<u64>,
-}
-
-impl RequestWalkContext {
-    pub fn skill_revision_key(&self) -> SkillRevisionLookupKey {
-        SkillRevisionLookupKey {
-            agent_id: self.agent_id,
-            skill_id: self.skill_id,
-            interface_revision: self.interface_revision,
-        }
-    }
-}
-
-impl RequestWalkExecutionEvent {
-    pub fn skill_revision_key(&self) -> Option<SkillRevisionLookupKey> {
-        Some(SkillRevisionLookupKey {
-            agent_id: self.agent_id.clone().into(),
-            skill_id: self.skill_id,
-            interface_revision: self.interface_version,
-        })
-    }
-
-    pub fn to_context(&self) -> Result<Option<RequestWalkContext>> {
-        Ok(Some(RequestWalkContext {
-            agent_id: self.agent_id.clone().into(),
-            skill_id: self.skill_id,
-            interface_revision: self.interface_version,
-            scheduled_task_id: self.scheduled_task_id.clone().0.map(Into::into),
-            scheduled_occurrence_index: self.scheduled_occurrence_index.0,
-        }))
-    }
+    crate::move_bindings::interface::scheduled_request::RequestScheduledExecution<crate::move_bindings::scheduler::scheduler::OccurrenceScheduledEvent> => RequestScheduledOccurrence, "RequestScheduledOccurrenceEvent",
+    crate::move_bindings::scheduler::scheduler::OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
+    crate::move_bindings::workflow::execution_events::RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
+    crate::move_bindings::interface::agent::AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
+    crate::move_bindings::registry::agent_registry::SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
+    crate::move_bindings::registry::agent_registry::SkillContractRevisionedEvent => SkillContractRevisioned, "SkillContractRevisionedEvent",
+    crate::move_bindings::registry::agent_registry::DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
+    crate::move_bindings::workflow::execution_events::AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
+    crate::move_bindings::workflow::execution_events::AgentVertexAuthorizationRequiredEvent => AgentVertexAuthorizationRequired, "AgentVertexAuthorizationRequiredEvent",
+    crate::move_bindings::interface::payment::AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
+    crate::move_bindings::interface::payment::ExecutionPaymentReceiptCreatedEvent => ExecutionPaymentReceiptCreated, "ExecutionPaymentReceiptCreatedEvent",
+    crate::move_bindings::interface::payment::ExecutionPaymentReceiptResolvedEvent => ExecutionPaymentReceiptResolved, "ExecutionPaymentReceiptResolvedEvent",
+    crate::move_bindings::interface::payment::ScheduledPaymentReserveReceiptCreatedEvent => ScheduledPaymentReserveReceiptCreated, "ScheduledPaymentReserveReceiptCreatedEvent",
+    crate::move_bindings::interface::payment::GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
+    crate::move_bindings::interface::payment::ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
+    crate::move_bindings::interface::payment::ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
+    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionCreatedEvent => ScheduledSkillExecutionCreated, "ScheduledSkillExecutionCreatedEvent",
+    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionPausedEvent => ScheduledSkillExecutionPaused, "ScheduledSkillExecutionPausedEvent",
+    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionResumedEvent => ScheduledSkillExecutionResumed, "ScheduledSkillExecutionResumedEvent",
+    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionCanceledEvent => ScheduledSkillExecutionCanceled, "ScheduledSkillExecutionCanceledEvent",
+    crate::move_bindings::interface::payment::ScheduledSkillPaymentRefilledEvent => ScheduledSkillPaymentRefilled, "ScheduledSkillPaymentRefilledEvent",
+    crate::move_bindings::interface::payment::ScheduledOccurrencePaymentCreatedEvent => ScheduledOccurrencePaymentCreated, "ScheduledOccurrencePaymentCreatedEvent",
+    crate::move_bindings::interface::payment::ScheduledSkillPaymentCanceledEvent => ScheduledSkillPaymentCanceled, "ScheduledSkillPaymentCanceledEvent",
+    crate::move_bindings::interface::payment::ScheduledOccurrencePaymentFinalizedEvent => ScheduledOccurrencePaymentFinalized, "ScheduledOccurrencePaymentFinalizedEvent",
+    crate::move_bindings::registry::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
+    crate::move_bindings::registry::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
+    crate::move_bindings::workflow::execution_events::CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
+    crate::move_bindings::workflow::execution_events::WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
+    crate::move_bindings::workflow::execution_events::WalkFailedEvent => WalkFailed, "WalkFailedEvent",
+    crate::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
+    crate::move_bindings::workflow::execution_events::VerificationVerdictEvent => VerificationVerdictRecorded, "VerificationVerdictEvent",
+    crate::move_bindings::workflow::execution_events::WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
+    crate::move_bindings::workflow::execution_events::WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
+    crate::move_bindings::workflow::execution_events::EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
+    crate::move_bindings::workflow::execution_events::ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
+    crate::move_bindings::scheduler::scheduler::MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
+    crate::move_bindings::scheduler::scheduler::OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
+    crate::move_bindings::scheduler::scheduler::PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
+    crate::move_bindings::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
+    crate::move_bindings::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
+    crate::move_bindings::registry::leader::LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
+    crate::move_bindings::workflow::gas::PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
+    crate::move_bindings::workflow::gas::PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
+    crate::move_bindings::workflow::gas::PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
+    crate::move_bindings::interface::dag::DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
+    crate::move_bindings::registry::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 }

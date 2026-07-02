@@ -2,7 +2,6 @@ use {
     crate::walrus::models::*,
     futures_util::StreamExt,
     reqwest::Client,
-    serde::{de::DeserializeOwned, Serialize},
     std::{io, path::PathBuf},
     thiserror::Error,
     tokio::{fs::File, io::AsyncWriteExt},
@@ -38,10 +37,6 @@ pub enum WalrusError {
         #[source]
         source: io::Error,
     },
-
-    /// Error serializing data to JSON
-    #[error("Failed to serialize data to JSON: {0}")]
-    SerializationError(#[from] serde_json::Error),
 
     /// Error during HTTP request
     #[error("HTTP request failed: {message}")]
@@ -171,79 +166,39 @@ impl WalrusClient {
                     source: e,
                 })?;
 
-        // Construct API URL with query parameters
-        let mut url = format!("{}/v1/blobs?epochs={epochs}", self.publisher_url);
-        if let Some(address) = send_to {
-            url.push_str(&format!("&send_object_to={address}"));
-        }
-
-        // Send PUT request
-        let response = self
-            .client
-            .put(&url)
-            .body(file_content)
-            .send()
-            .await
-            .map_err(|e| WalrusError::RequestError {
-                message: "Failed to upload file".to_string(),
-                source: e,
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(WalrusError::ApiError {
-                status_code,
-                message: error_text,
-            });
-        }
-
-        let storage_info =
-            response
-                .json::<StorageInfo>()
-                .await
-                .map_err(|e| WalrusError::RequestError {
-                    message: "Failed to parse response".to_string(),
-                    source: e,
-                })?;
-
-        Ok(storage_info)
+        self.upload_bytes(file_content, epochs, send_to).await
     }
 
-    /// Upload JSON data to Walrus
+    /// Upload bytes to Walrus.
     ///
     /// # Arguments
-    /// * `data` - Data to serialize as JSON and upload
+    /// * `data` - Bytes to upload
     /// * `epochs` - Number of epochs to store the data
     /// * `send_to` - Optional address to which the created Blob object should be sent
     ///
     /// # Returns
     /// * `Result<StorageInfo>` - Information about the uploaded data
-    pub async fn upload_json<T: Serialize>(
+    pub async fn upload_bytes(
         &self,
-        data: &T,
+        data: impl Into<Vec<u8>>,
         epochs: u8,
         send_to: Option<String>,
     ) -> Result<StorageInfo> {
-        // Serialize data to JSON
-        let json_content = serde_json::to_vec(data).map_err(WalrusError::SerializationError)?;
-
         // Construct API URL with query parameters
         let mut url = format!("{}/v1/blobs?epochs={}", self.publisher_url, epochs);
         if let Some(address) = send_to {
             url.push_str(&format!("&send_object_to={address}"));
         }
 
-        // Send PUT request with JSON content
+        // Send PUT request with raw blob content
         let response = self
             .client
             .put(&url)
-            .header("Content-Type", "application/json")
-            .body(json_content)
+            .body(data.into())
             .send()
             .await
             .map_err(|e| WalrusError::RequestError {
-                message: "Failed to upload JSON data".to_string(),
+                message: "Failed to upload bytes".to_string(),
                 source: e,
             })?;
 
@@ -367,52 +322,6 @@ impl WalrusClient {
             })?;
 
         Ok(bytes.to_vec())
-    }
-
-    /// Download and parse JSON data from Walrus
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID of the JSON data to download
-    ///
-    /// # Returns
-    /// * `Result<T>` - The parsed JSON data
-    ///
-    /// # Type Parameters
-    /// * `T` - The type to deserialize the JSON into, must implement DeserializeOwned
-    pub async fn read_json<T: DeserializeOwned>(&self, blob_id: &str) -> Result<T> {
-        // Construct download URL
-        let url = format!("{}/v1/blobs/{}", self.aggregator_url, blob_id);
-
-        // Send GET request
-        let response =
-            self.client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| WalrusError::RequestError {
-                    message: "Failed to download JSON blob".to_string(),
-                    source: e,
-                })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(WalrusError::ApiError {
-                status_code,
-                message: error_text,
-            });
-        }
-
-        // Parse the JSON response
-        let json_data = response
-            .json::<T>()
-            .await
-            .map_err(|e| WalrusError::RequestError {
-                message: "Failed to parse JSON data".to_string(),
-                source: e,
-            })?;
-
-        Ok(json_data)
     }
 
     /// Verify if a blob exists in the Walrus network

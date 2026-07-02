@@ -1,11 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        item,
-        loading,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, item, loading, notify_success, prelude::*,
         sui::get_nexus_client,
     },
     nexus_sdk::sui,

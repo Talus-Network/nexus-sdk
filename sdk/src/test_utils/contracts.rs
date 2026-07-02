@@ -1,6 +1,6 @@
 use {
     crate::{
-        idents::{publish_dependency_ids_or_framework_defaults, sui_framework},
+        move_boundary,
         nexus::signer::{ExecutedTransaction, Signer},
         sui,
         test_utils::sui_mocks,
@@ -127,32 +127,35 @@ pub async fn publish_move_package_with_overrides(
 
     let with_unpublished_deps = false;
 
-    let mut tx = sui::tx::TransactionBuilder::new();
+    let mut ptb = sui_move_ptb::PtbBuilder::new();
 
-    let upgrade_cap = tx.publish(
-        package.get_package_bytes(with_unpublished_deps),
-        publish_dependency_ids_or_framework_defaults(
-            package
-                .get_dependency_storage_package_ids()
-                .iter()
-                .map(|id| id.to_string().parse().unwrap()),
-        ),
-    );
-    let address =
-        sui_framework::Address::address_from_type(&mut tx, addr).expect("Failed to get address.");
+    let upgrade_cap = ptb
+        .publish(
+            package.get_package_bytes(with_unpublished_deps),
+            move_boundary::publish_dependency_ids_or_framework_defaults(
+                package
+                    .get_dependency_storage_package_ids()
+                    .iter()
+                    .map(|id| id.to_string().parse().unwrap()),
+            ),
+        )
+        .expect("publish command should build");
+    let address = ptb.arg(&addr).expect("address input should build");
 
-    tx.transfer_objects(vec![upgrade_cap], address);
+    ptb.transfer_objects(vec![upgrade_cap], address)
+        .expect("upgrade cap transfer should build");
 
-    tx.set_sender(addr);
-    tx.set_gas_budget(1_000_000_000);
-    tx.set_gas_price(reference_gas_price);
-    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.try_build().expect("Failed to finish transaction.");
+    let tx = sui::types::Transaction {
+        kind: sui::types::TransactionKind::ProgrammableTransaction(ptb.finish()),
+        sender: addr,
+        gas_payment: sui::types::GasPayment {
+            objects: vec![gas_coin.clone()],
+            owner: addr,
+            price: reference_gas_price,
+            budget: 1_000_000_000,
+        },
+        expiration: sui::types::TransactionExpiration::None,
+    };
 
     let signature = signer
         .sign_tx(&tx)

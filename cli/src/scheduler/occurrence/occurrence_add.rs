@@ -1,10 +1,6 @@
 use {
     crate::{
-        command_title,
-        display::json_output,
-        notify_success,
-        prelude::*,
-        sui::get_nexus_client,
+        command_title, display::json_output, notify_success, prelude::*, sui::get_nexus_client,
     },
     nexus_sdk::nexus::scheduler::OccurrenceRequest,
     serde_json::json,

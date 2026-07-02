@@ -16,7 +16,7 @@ pub enum SignedHttpError {
     },
     #[error("invalid signature length {0}, expected 64")]
     InvalidSignatureLength(usize),
-    #[error("invalid json in signed input: {0}")]
+    #[error("invalid signed input JSON: {0}")]
     InvalidSignedInputJson(#[source] serde_json::Error),
     #[error("unknown leader key (leader_id={leader_id}, leader_kid={leader_kid})")]
     UnknownLeaderKey { leader_id: String, leader_kid: u64 },
@@ -46,10 +46,6 @@ pub enum SignedHttpError {
     RequestBindingMismatch,
     #[error("status mismatch (claimed {claimed}, actual {actual})")]
     StatusMismatch { claimed: u16, actual: u16 },
-    #[error(
-        "response body is required to sign status {status}; use sign_invoke_response_with_body_v1"
-    )]
-    ResponseBodyRequiredForStatusOnlySigning { status: u16 },
     #[error("exp_ms must be >= iat_ms")]
     InvalidTimeWindow,
     #[error("request is not yet valid (iat_ms={iat_ms}, now_ms={now_ms})")]

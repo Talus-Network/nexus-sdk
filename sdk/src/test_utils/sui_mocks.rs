@@ -1,6 +1,9 @@
-use crate::{
-    sui,
-    types::{DefaultDagExecutorTarget, NexusObjects},
+use {
+    crate::{
+        sui,
+        types::{DefaultDagExecutorTarget, NexusObjects},
+    },
+    sui_transaction_builder as tx,
 };
 
 /// Create a new [`sui::types::ObjectReference`] with random values.
@@ -75,15 +78,15 @@ pub fn mock_sui_event(
     }
 }
 
-/// Finish the given [`sui::tx::TransactionBuilder`] with mock data.
-pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::types::Transaction {
+/// Finish the given test transaction builder with mock gas data.
+pub fn mock_finish_transaction(mut tx: tx::TransactionBuilder) -> sui::types::Transaction {
     let mut rng = rand::thread_rng();
     let gas = mock_sui_object_ref();
 
     tx.set_sender(sui::types::Address::generate(&mut rng));
     tx.set_gas_budget(1000);
     tx.set_gas_price(1000);
-    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
+    tx.add_gas_objects(vec![tx::ObjectInput::owned(
         *gas.object_id(),
         gas.version(),
         *gas.digest(),
@@ -95,7 +98,10 @@ pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::type
 pub mod grpc {
     use {
         super::*,
-        crate::{events::NexusEventKind, idents::primitives},
+        crate::{
+            events::NexusEventKind,
+            move_bindings::primitives::{data::NexusData, event as event_move},
+        },
         mockall::mock,
         serde::Serialize,
         std::time::SystemTime,
@@ -104,8 +110,7 @@ pub mod grpc {
             state_service_server::{StateService, StateServiceServer},
             subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
-                TransactionExecutionService,
-                TransactionExecutionServiceServer,
+                TransactionExecutionService, TransactionExecutionServiceServer,
             },
             *,
         },
@@ -924,11 +929,14 @@ pub mod grpc {
                         }
                         _ => panic!("Unsupported event type for mock event serialization"),
                     };
+                    let wrapper_tag = crate::move_bindings::struct_tag::<
+                        event_move::EventWrapper<NexusData>,
+                    >(&objects);
                     let t = format!(
                         "{}::{}::{}<{}::{}::{}>",
                         objects.primitives_pkg_id,
-                        primitives::Event::EVENT_WRAPPER.module,
-                        primitives::Event::EVENT_WRAPPER.name,
+                        wrapper_tag.module(),
+                        wrapper_tag.name(),
                         event_pkg_id,
                         event_module,
                         event_name
@@ -936,7 +944,7 @@ pub mod grpc {
 
                     let mut grpc_event = sui::grpc::Event::default();
                     grpc_event.set_package_id(event_pkg_id);
-                    grpc_event.set_module(primitives::Event::EVENT_WRAPPER.module.to_string());
+                    grpc_event.set_module(wrapper_tag.module().to_string());
                     grpc_event.set_sender(sui::types::Address::ZERO);
                     grpc_event.set_event_type(t);
                     grpc_event.set_contents(match event {

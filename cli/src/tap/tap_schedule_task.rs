@@ -2,11 +2,12 @@ use {
     super::*,
     crate::scheduler::helpers,
     nexus_sdk::{
+        move_bindings::interface::agent::SkillDagBinding,
         nexus::{
             scheduler::{CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest},
             tap::fetch_configured_active_tap_skill_execution_target,
         },
-        types::{interface::agent::SkillDagBinding, StorageConf},
+        walrus::StorageConf,
     },
     std::collections::HashMap,
 };

@@ -3,42 +3,34 @@
 use {
     crate::{
         events::NexusEventKind,
-        idents::{scheduler, sui_framework, workflow, ModuleAndNameIdent},
+        move_bindings::{
+            interface::{agent as agent_move, authorization::AgentVertexAuthorizationTemplate},
+            move_std::type_name::TypeName,
+            primitives::{
+                automaton as automaton_move, data::NexusData, policy::Symbol as PolicySymbol,
+            },
+            scheduler::{scheduler as scheduler_move, scheduler::Task},
+            workflow::execution_entries as execution_entries_move,
+        },
         nexus::{
             client::NexusClient,
-            crawler::{Crawler, DynamicMap, Map, Response},
+            crawler::{Crawler, DynamicFieldReference, Response},
             error::NexusError,
             signer::ExecutedTransaction,
         },
         sui,
         transactions::scheduler as scheduler_tx,
-        types::{
-            interface::{agent as agent_move, graph as graph_move},
-            primitives::policy::Symbol as PolicySymbol,
-            scheduler::scheduler::{PeriodicGeneratorState, QueueGeneratorState},
-            sui_framework::vec_map,
-            AgentExecutionConfig,
-            AgentId,
-            AgentVertexAuthorizationTemplate,
-            ExecutionSelection,
-            MoveFields,
-            MoveOption,
-            NexusData,
-            NexusObjects,
-            SkillId,
-            Task,
-            TransitionConfigKey,
-            TypeName,
-        },
+        types::{AgentId, NexusObjects, SkillId},
     },
     anyhow::{anyhow, bail},
     std::collections::HashMap,
+    sui_move::MoveStruct,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ScheduledAgentExecutionConfig {
-    Default(AgentExecutionConfig),
-    Registered(AgentExecutionConfig),
+    Default(agent_move::AgentExecutionConfig),
+    Registered(agent_move::AgentExecutionConfig),
 }
 
 impl ScheduledAgentExecutionConfig {
@@ -61,6 +53,8 @@ pub enum GeneratorKind {
     Queue,
     Periodic,
 }
+
+type SchedulerConfigKey = automaton_move::TransitionConfigKey<u64, PolicySymbol>;
 
 impl From<GeneratorKind> for scheduler_tx::OccurrenceGenerator {
     fn from(value: GeneratorKind) -> Self {
@@ -280,6 +274,11 @@ impl SchedulerActions {
                 ));
             }
         };
+        if agent_binding.is_none() && tap_payment.is_none() {
+            return Err(NexusError::Configuration(
+                "default-agent scheduled task creation requires user-funded tap_payment".into(),
+            ));
+        }
         if let Some((agent_id, skill_id)) = agent_binding {
             let payment = match tap_payment {
                 Some(CreateTaskTapPayment::UserFunded {
@@ -333,137 +332,43 @@ impl SchedulerActions {
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
         let tap_payment_result =
             create_task_payment_result(&tap_payment, agent_binding, &self.client.nexus_objects)?;
 
-        let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.iter().cloned())
-            .map_err(NexusError::TransactionBuilding)?;
-
-        let constraints_arg =
-            scheduler_tx::new_constraints_policy(&mut tx, objects, generator.into())
-                .map_err(NexusError::TransactionBuilding)?;
-
-        let execution_arg = if let Some((agent_id, skill_id)) = agent_binding {
-            scheduler_tx::new_agent_execution_policy(
-                &mut tx,
-                objects,
-                execution_priority_fee_per_gas_unit,
-                entry_group.as_str(),
-                &input_data,
-                agent_id,
-                skill_id,
-                Some(dag_id),
-            )
-            .map_err(NexusError::TransactionBuilding)?
-        } else {
-            scheduler_tx::new_execution_policy(
-                &mut tx,
-                objects,
-                dag_id,
-                execution_priority_fee_per_gas_unit,
-                entry_group.as_str(),
-                &input_data,
-            )
-            .map_err(NexusError::TransactionBuilding)?
+        let Some(CreateTaskTapPayment::UserFunded {
+            prepay_amount,
+            occurrence_budget,
+            refund_recipient,
+            selected_dag,
+            authorization_templates,
+        }) = &tap_payment
+        else {
+            return Err(NexusError::TransactionBuilding(anyhow!(
+                "default-agent scheduled task creation requires user-funded tap_payment"
+            )));
         };
-
-        let registry = tx.object(sui::tx::ObjectInput::shared(
-            *objects.agent_registry.object_id(),
-            objects.agent_registry.version(),
-            true,
-        ));
-        let task = match &tap_payment {
-            Some(CreateTaskTapPayment::UserFunded {
-                prepay_amount,
-                occurrence_budget,
-                refund_recipient,
-                selected_dag,
-                authorization_templates,
-            }) => {
-                if refund_recipient.is_some()
-                    || selected_dag.is_some()
-                    || !authorization_templates.is_empty()
-                {
-                    return Err(NexusError::Configuration(
-                        "default-agent scheduled task user funding does not accept refund_recipient, selected_dag, or authorization_templates"
-                            .into(),
-                    ));
-                }
-                let prepay_amount = tx.pure(prepay_amount);
-                let gas = tx.gas();
-                let prepayment_coin = tx
-                    .split_coins(gas, vec![prepay_amount])
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| {
-                        NexusError::TransactionBuilding(anyhow!(
-                            "failed to split default scheduled prepayment coin"
-                        ))
-                    })?;
-                scheduler_tx::new_default_agent_task(
-                    &mut tx,
-                    objects,
-                    metadata_arg,
-                    constraints_arg,
-                    execution_arg,
-                    registry,
-                    prepayment_coin,
-                    *occurrence_budget,
-                )
-            }
-            Some(CreateTaskTapPayment::AgentFunded { .. }) => {
-                return Err(NexusError::Configuration(
-                    "agent-funded scheduled payment requires both scheduled task agent_id and skill_id"
-                        .into(),
-                ));
-            }
-            None => {
-                return Err(NexusError::Configuration(
-                    "default-agent scheduled task creation requires user-funded tap_payment".into(),
-                ));
-            }
+        if refund_recipient.is_some()
+            || selected_dag.is_some()
+            || !authorization_templates.is_empty()
+        {
+            return Err(NexusError::TransactionBuilding(anyhow!(
+                "default-agent scheduled task user funding does not accept refund_recipient, selected_dag, or authorization_templates"
+            )));
         }
+
+        let tx = scheduler_tx::create_default_agent_task_ptb(
+            objects,
+            dag_id,
+            entry_group.as_str(),
+            &input_data,
+            &metadata,
+            generator.into(),
+            execution_priority_fee_per_gas_unit,
+            *prepay_amount,
+            *occurrence_budget,
+        )
         .map_err(NexusError::TransactionBuilding)?;
-
-        let task_type =
-            scheduler::into_type_tag(objects.scheduler_pkg_id, scheduler::Scheduler::TASK);
-
-        tx.move_call(
-            sui::tx::Function::new(
-                sui_framework::PACKAGE_ID,
-                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.module,
-                sui_framework::Transfer::PUBLIC_SHARE_OBJECT.name,
-            )
-            .with_type_args(vec![task_type]),
-            vec![task],
-        );
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         let task_id = extract_task_id(&response)?;
 
@@ -497,43 +402,14 @@ impl SchedulerActions {
         metadata: Vec<(String, String)>,
     ) -> Result<UpdateMetadataResult, NexusError> {
         let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
 
-        let metadata_arg = scheduler_tx::new_metadata(&mut tx, objects, metadata.clone())
+        let tx = scheduler_tx::update_metadata_ptb(objects, &task_ref, metadata.clone())
             .map_err(NexusError::TransactionBuilding)?;
-
-        scheduler_tx::update_metadata(&mut tx, objects, &task_ref, metadata_arg)
-            .map_err(NexusError::TransactionBuilding)?;
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(UpdateMetadataResult {
             tx_digest: response.digest,
@@ -548,50 +424,18 @@ impl SchedulerActions {
         request: TaskStateAction,
     ) -> Result<TaskStateResult, NexusError> {
         let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
 
-        match request {
-            TaskStateAction::Pause => {
-                scheduler_tx::pause_time_constraint_for_task(&mut tx, objects, &task_ref)
-            }
-            TaskStateAction::Resume => {
-                scheduler_tx::resume_time_constraint_for_task(&mut tx, objects, &task_ref)
-            }
-            TaskStateAction::Cancel => {
-                scheduler_tx::cancel_time_constraint_for_task(&mut tx, objects, &task_ref)
-            }
+        let tx = match request {
+            TaskStateAction::Pause => scheduler_tx::pause_task_for_self_ptb(objects, &task_ref),
+            TaskStateAction::Resume => scheduler_tx::resume_task_for_self_ptb(objects, &task_ref),
+            TaskStateAction::Cancel => scheduler_tx::cancel_task_for_self_ptb(objects, &task_ref),
         }
         .map_err(NexusError::TransactionBuilding)?;
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(TaskStateResult {
             tx_digest: response.digest,
@@ -618,13 +462,11 @@ impl SchedulerActions {
         config: PeriodicScheduleConfig,
     ) -> Result<PeriodicScheduleResult, NexusError> {
         let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
 
-        scheduler_tx::new_or_modify_periodic_for_task(
-            &mut tx,
+        let tx = scheduler_tx::configure_periodic_for_task_for_self_ptb(
             objects,
             &task_ref,
             scheduler_tx::PeriodicScheduleInputs {
@@ -636,32 +478,7 @@ impl SchedulerActions {
             },
         )
         .map_err(NexusError::TransactionBuilding)?;
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(PeriodicScheduleResult {
             tx_digest: response.digest,
@@ -675,39 +492,13 @@ impl SchedulerActions {
         task_id: sui::types::Address,
     ) -> Result<DisablePeriodicResult, NexusError> {
         let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
 
-        scheduler_tx::disable_periodic_for_task(&mut tx, objects, &task_ref)
+        let tx = scheduler_tx::disable_periodic_for_task_for_self_ptb(objects, &task_ref)
             .map_err(NexusError::TransactionBuilding)?;
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(DisablePeriodicResult {
             tx_digest: response.digest,
@@ -720,17 +511,15 @@ impl SchedulerActions {
         request: OccurrenceRequest,
         address: sui::types::Address,
     ) -> Result<ScheduleExecutionResult, NexusError> {
-        let mut tx = sui::tx::TransactionBuilder::new();
         let objects = &self.client.nexus_objects;
         let task_ref = task.object_ref();
 
-        if let Some(start_ms) = request.start_ms {
+        let tx = if let Some(start_ms) = request.start_ms {
             let deadline_offset = request
                 .deadline_offset_ms
                 .or_else(|| request.deadline_ms.map(|deadline| deadline - start_ms));
 
-            scheduler_tx::add_occurrence_absolute_for_task(
-                &mut tx,
+            scheduler_tx::add_occurrence_absolute_for_task_for_self_ptb(
                 objects,
                 &task_ref,
                 start_ms,
@@ -738,8 +527,7 @@ impl SchedulerActions {
                 request.priority_fee_per_gas_unit,
             )
         } else {
-            scheduler_tx::add_occurrence_relative_for_task(
-                &mut tx,
+            scheduler_tx::add_occurrence_relative_for_task_for_self_ptb(
                 objects,
                 &task_ref,
                 request.start_offset_ms.expect("validated start offset"),
@@ -748,32 +536,7 @@ impl SchedulerActions {
             )
         }
         .map_err(NexusError::TransactionBuilding)?;
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(ScheduleExecutionResult {
             tx_digest: response.digest,
@@ -793,51 +556,28 @@ impl SchedulerActions {
     }
 }
 
-pub fn active_scheduler_start_ms<F>(
-    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
-    expected_config: &str,
-    generator: GeneratorKind,
-    symbol_matches_generator: F,
-) -> anyhow::Result<Option<u64>>
-where
-    F: Fn(&PolicySymbol) -> bool,
-{
-    let mut candidates = configs.into_iter().filter(|(key, _)| {
-        key.config.matches_qualified_name(expected_config)
-            && key.transition.state.is_none()
-            && symbol_matches_generator(&key.transition.symbol)
-    });
-
-    let Some((_key, value)) = candidates.next() else {
-        bail!("Missing scheduler generator state config for {expected_config}");
-    };
-
-    let active_start_ms = match generator {
-        GeneratorKind::Queue => {
-            let MoveFields(state): MoveFields<QueueGeneratorState> = serde_json::from_value(value)?;
-            state.active.0.map(|entry| entry.occurrence.start_time_ms)
-        }
-        GeneratorKind::Periodic => {
-            let MoveFields(state): MoveFields<PeriodicGeneratorState> =
-                serde_json::from_value(value)?;
-            state.active.0.map(|occ| occ.start_time_ms)
-        }
-    };
-
-    Ok(active_start_ms)
-}
-
 pub async fn fetch_begin_default_agent_execution_config(
     crawler: &Crawler,
     objects: &NexusObjects,
     configured_automaton_id: &sui::types::Address,
-) -> anyhow::Result<AgentExecutionConfig> {
-    let parent: DynamicMap<TransitionConfigKey<u64, PolicySymbol>, serde_json::Value> =
-        DynamicMap::new(*configured_automaton_id, 0);
+) -> anyhow::Result<agent_move::AgentExecutionConfig> {
+    let configs = fetch_scheduler_config_fields(crawler, *configured_automaton_id).await?;
+    let Some(field) = find_execution_config_field::<
+        execution_entries_move::AdvanceForDefaultAgentExecution,
+    >(&configs, objects) else {
+        bail!(
+            "Missing execution policy config for AdvanceForDefaultAgentExecution; {}",
+            describe_transition_config_keys(&configs)
+        );
+    };
 
-    let configs = crawler.get_dynamic_fields(&parent).await?;
-
-    extract_begin_default_agent_execution_config(configs, objects)
+    let config = decode_agent_execution_config_field(
+        crawler,
+        field,
+        "AdvanceForDefaultAgentExecution config",
+    )
+    .await?;
+    ensure_default_agent_execution_config(config, "AdvanceForDefaultAgentExecution config")
 }
 
 pub async fn fetch_scheduled_agent_execution_config(
@@ -845,179 +585,190 @@ pub async fn fetch_scheduled_agent_execution_config(
     objects: &NexusObjects,
     configured_automaton_id: &sui::types::Address,
 ) -> anyhow::Result<ScheduledAgentExecutionConfig> {
-    let parent: DynamicMap<TransitionConfigKey<u64, PolicySymbol>, serde_json::Value> =
-        DynamicMap::new(*configured_automaton_id, 0);
-
-    let configs = crawler.get_dynamic_fields(&parent).await?;
-
-    extract_scheduled_agent_execution_config(configs, objects)
-}
-
-fn extract_begin_default_agent_execution_config(
-    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
-    objects: &NexusObjects,
-) -> anyhow::Result<AgentExecutionConfig> {
-    let configs = configs.into_iter().collect::<Vec<_>>();
-    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
-
-    let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
-        bail!(
-            "Missing execution policy config for AdvanceForDefaultAgentExecution; {}",
-            describe_transition_config_keys(&configs)
-        );
-    };
-
-    let config = decode_agent_execution_config(value, "AdvanceForDefaultAgentExecution config")?;
-    if !matches!(config.selection, ExecutionSelection::DefaultAgent { .. }) {
-        bail!("AdvanceForDefaultAgentExecution config is not a default-agent selection");
-    }
-    Ok(config)
-}
-
-fn extract_scheduled_agent_execution_config(
-    configs: impl IntoIterator<Item = (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)>,
-    objects: &NexusObjects,
-) -> anyhow::Result<ScheduledAgentExecutionConfig> {
-    let configs = configs.into_iter().collect::<Vec<_>>();
-    let default_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE;
-    if let Some(value) = find_execution_config_value(&configs, default_symbol, objects) {
-        let config =
-            decode_agent_execution_config(value, "AdvanceForDefaultAgentExecution config")?;
-        if !matches!(config.selection, ExecutionSelection::DefaultAgent { .. }) {
-            bail!("AdvanceForDefaultAgentExecution config is not a default-agent selection");
-        }
-        return Ok(ScheduledAgentExecutionConfig::Default(config));
+    let configs = fetch_scheduler_config_fields(crawler, *configured_automaton_id).await?;
+    if let Some(field) = find_execution_config_field::<
+        execution_entries_move::AdvanceForDefaultAgentExecution,
+    >(&configs, objects)
+    {
+        let config = decode_agent_execution_config_field(
+            crawler,
+            field,
+            "AdvanceForDefaultAgentExecution config",
+        )
+        .await?;
+        return ensure_default_agent_execution_config(
+            config,
+            "AdvanceForDefaultAgentExecution config",
+        )
+        .map(ScheduledAgentExecutionConfig::Default);
     }
 
-    let expected_symbol = &workflow::ExecutionEntries::ADVANCE_FOR_AGENT_EXECUTION_TYPE;
-
-    let Some(value) = find_execution_config_value(&configs, expected_symbol, objects) else {
+    let Some(field) = find_execution_config_field::<execution_entries_move::AdvanceForAgentExecution>(
+        &configs, objects,
+    ) else {
         bail!(
             "Missing execution policy config for AdvanceForDefaultAgentExecution or AdvanceForAgentExecution; {}",
             describe_transition_config_keys(&configs)
         );
     };
 
-    let config = decode_agent_execution_config(value, "AdvanceForAgentExecution config")?;
-    if !matches!(config.selection, ExecutionSelection::AgentSkill { .. }) {
-        bail!("AdvanceForAgentExecution config is not an agent-skill selection");
-    }
-    Ok(ScheduledAgentExecutionConfig::Registered(config))
+    let config =
+        decode_agent_execution_config_field(crawler, field, "AdvanceForAgentExecution config")
+            .await?;
+    ensure_agent_skill_execution_config(config, "AdvanceForAgentExecution config")
+        .map(ScheduledAgentExecutionConfig::Registered)
 }
 
-fn find_execution_config_value<'a>(
-    configs: &'a [(TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)],
-    expected_symbol: &ModuleAndNameIdent,
+pub async fn fetch_active_scheduler_start_ms(
+    crawler: &Crawler,
     objects: &NexusObjects,
-) -> Option<&'a serde_json::Value> {
-    let expected_config = &crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG;
+    configured_automaton_id: &sui::types::Address,
+    generator: GeneratorKind,
+) -> anyhow::Result<Option<u64>> {
+    let configs = fetch_scheduler_config_fields(crawler, *configured_automaton_id).await?;
 
-    configs.iter().find_map(|(key, value)| {
+    match generator {
+        GeneratorKind::Queue => {
+            let Some(field) = find_scheduler_generator_state_field::<
+                scheduler_move::QueueGeneratorWitness,
+                scheduler_move::QueueGeneratorState,
+            >(&configs, objects) else {
+                bail!(
+                    "Missing scheduler queue generator state config; {}",
+                    describe_transition_config_keys(&configs)
+                );
+            };
+
+            let state = crawler
+                .get_dynamic_field_value_by_id::<
+                    SchedulerConfigKey,
+                    scheduler_move::QueueGeneratorState,
+                >(field.field_id)
+                .await
+                .map_err(|error| {
+                    anyhow!("decode QueueGeneratorState as generated BCS Move layout: {error}")
+                })?;
+
+            Ok(state
+                .active
+                .as_option()
+                .map(|entry| entry.occurrence.start_time_ms))
+        }
+        GeneratorKind::Periodic => {
+            let Some(field) = find_scheduler_generator_state_field::<
+                scheduler_move::PeriodicGeneratorWitness,
+                scheduler_move::PeriodicGeneratorState,
+            >(&configs, objects) else {
+                bail!(
+                    "Missing scheduler periodic generator state config; {}",
+                    describe_transition_config_keys(&configs)
+                );
+            };
+
+            let state = crawler
+                .get_dynamic_field_value_by_id::<
+                    SchedulerConfigKey,
+                    scheduler_move::PeriodicGeneratorState,
+                >(field.field_id)
+                .await
+                .map_err(|error| {
+                    anyhow!("decode PeriodicGeneratorState as generated BCS Move layout: {error}")
+                })?;
+
+            Ok(state
+                .active
+                .as_option()
+                .map(|occurrence| occurrence.start_time_ms))
+        }
+    }
+}
+
+async fn fetch_scheduler_config_fields(
+    crawler: &Crawler,
+    configured_automaton_id: sui::types::Address,
+) -> anyhow::Result<Vec<DynamicFieldReference<SchedulerConfigKey>>> {
+    crawler
+        .get_dynamic_field_refs_matching_key::<SchedulerConfigKey>(configured_automaton_id)
+        .await
+}
+
+async fn decode_agent_execution_config_field(
+    crawler: &Crawler,
+    field: &DynamicFieldReference<SchedulerConfigKey>,
+    label: &str,
+) -> anyhow::Result<agent_move::AgentExecutionConfig> {
+    crawler
+        .get_dynamic_field_value_by_id::<SchedulerConfigKey, agent_move::AgentExecutionConfig>(
+            field.field_id,
+        )
+        .await
+        .map_err(|error| anyhow!("decode {label} as generated BCS Move layout: {error}"))
+}
+
+fn ensure_default_agent_execution_config(
+    config: agent_move::AgentExecutionConfig,
+    label: &str,
+) -> anyhow::Result<agent_move::AgentExecutionConfig> {
+    if !config.selection.is_default_agent() {
+        bail!("{label} is not a default-agent selection");
+    }
+    Ok(config)
+}
+
+fn ensure_agent_skill_execution_config(
+    config: agent_move::AgentExecutionConfig,
+    label: &str,
+) -> anyhow::Result<agent_move::AgentExecutionConfig> {
+    if !config.selection.is_agent_skill() {
+        bail!("{label} is not an agent-skill selection");
+    }
+    Ok(config)
+}
+
+fn find_execution_config_field<'a, Symbol>(
+    configs: &'a [DynamicFieldReference<SchedulerConfigKey>],
+    objects: &NexusObjects,
+) -> Option<&'a DynamicFieldReference<SchedulerConfigKey>>
+where
+    Symbol: MoveStruct,
+{
+    configs.iter().find(|field| {
+        let key = &field.name;
         let matches_config =
-            type_name_matches_ident(&key.config, expected_config, &[objects.interface_pkg_id]);
-        let matches_symbol = policy_symbol_matches_ident(
-            &key.transition.symbol,
-            expected_symbol,
-            &[
-                objects.workflow_type_origin_pkg_id(),
-                objects.workflow_pkg_id,
-            ],
-        );
+            type_name_matches_move_struct::<agent_move::AgentExecutionConfig>(&key.config, objects);
+        let matches_symbol =
+            policy_symbol_matches_move_struct::<Symbol>(&key.transition.symbol, objects);
 
-        (matches_config && key.transition.state.is_none() && matches_symbol).then_some(value)
+        matches_config && key.transition.state.as_option().is_none() && matches_symbol
     })
 }
 
-fn decode_agent_execution_config(
-    value: &serde_json::Value,
-    label: &str,
-) -> anyhow::Result<AgentExecutionConfig> {
-    match serde_json::from_value::<MoveFields<AgentExecutionConfig>>(value.clone()) {
-        Ok(MoveFields(config)) => Ok(config),
-        Err(public_err) => {
-            let MoveFields(config): MoveFields<agent_move::AgentExecutionConfig> =
-                serde_json::from_value(value.clone()).map_err(|move_layout_err| {
-                    anyhow!("decode {label}: {public_err}; Move layout: {move_layout_err}")
-                })?;
-            Ok(agent_execution_config_from_move(config))
-        }
-    }
-}
+fn find_scheduler_generator_state_field<'a, Symbol, State>(
+    configs: &'a [DynamicFieldReference<SchedulerConfigKey>],
+    objects: &NexusObjects,
+) -> Option<&'a DynamicFieldReference<SchedulerConfigKey>>
+where
+    Symbol: MoveStruct,
+    State: MoveStruct,
+{
+    configs.iter().find(|field| {
+        let key = &field.name;
+        let matches_config = type_name_matches_move_struct::<State>(&key.config, objects);
+        let matches_symbol =
+            policy_symbol_matches_move_struct::<Symbol>(&key.transition.symbol, objects);
 
-fn agent_execution_config_from_move(
-    config: agent_move::AgentExecutionConfig,
-) -> AgentExecutionConfig {
-    AgentExecutionConfig {
-        selection: execution_selection_from_move(config.selection),
-        network: config.network.bytes,
-        entry_group: crate::types::SchedulerEntryGroup {
-            name: String::from(config.entry_group.name),
-        },
-        inputs: move_inputs_from_vec_map(config.inputs),
-        invoker: config.invoker,
-        priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
-        authorization_templates: config.authorization_templates,
-    }
-}
-
-fn execution_selection_from_move(selection: agent_move::ExecutionSelection) -> ExecutionSelection {
-    match selection {
-        agent_move::ExecutionSelection::AgentSkill {
-            agent_id,
-            skill_id,
-            selected_dag,
-        } => ExecutionSelection::AgentSkill {
-            agent_id: agent_id.bytes,
-            skill_id,
-            selected_dag: MoveOption(selected_dag.0.map(|dag_id| dag_id.bytes)),
-        },
-        agent_move::ExecutionSelection::DefaultAgent { dag_id } => {
-            ExecutionSelection::DefaultAgent {
-                dag_id: dag_id.bytes,
-            }
-        }
-    }
-}
-
-fn move_inputs_from_vec_map(
-    inputs: vec_map::VecMap<graph_move::Vertex, vec_map::VecMap<graph_move::InputPort, NexusData>>,
-) -> Map<TypeName, Map<crate::nexus::models::DagInputPort, NexusData>> {
-    inputs
-        .contents
-        .into_iter()
-        .map(|entry| {
-            (
-                TypeName::from(String::from(entry.key.name)),
-                move_input_ports_from_vec_map(entry.value),
-            )
-        })
-        .collect()
-}
-
-fn move_input_ports_from_vec_map(
-    inputs: vec_map::VecMap<graph_move::InputPort, NexusData>,
-) -> Map<crate::nexus::models::DagInputPort, NexusData> {
-    inputs
-        .contents
-        .into_iter()
-        .map(|entry| {
-            (
-                crate::nexus::models::DagInputPort {
-                    name: String::from(entry.key.name),
-                },
-                entry.value,
-            )
-        })
-        .collect()
+        matches_config && key.transition.state.as_option().is_none() && matches_symbol
+    })
 }
 
 fn describe_transition_config_keys(
-    configs: &[(TransitionConfigKey<u64, PolicySymbol>, serde_json::Value)],
+    configs: &[DynamicFieldReference<SchedulerConfigKey>],
 ) -> String {
     let keys = configs
         .iter()
         .take(5)
-        .map(|(key, _)| {
+        .map(|field| {
+            let key = &field.name;
             format!(
                 "state={:?}, config={}, symbol={}",
                 key.transition.state,
@@ -1036,32 +787,29 @@ fn policy_symbol_display(symbol: &PolicySymbol) -> String {
     }
 }
 
-fn policy_symbol_matches_ident(
-    symbol: &PolicySymbol,
-    ident: &ModuleAndNameIdent,
-    package_ids: &[sui::types::Address],
-) -> bool {
+fn policy_symbol_matches_move_struct<T>(symbol: &PolicySymbol, objects: &NexusObjects) -> bool
+where
+    T: MoveStruct,
+{
     let PolicySymbol::Witness { pos0: name } = symbol else {
         return false;
     };
 
-    type_name_matches_ident(name, ident, package_ids)
+    type_name_matches_move_struct::<T>(name, objects)
 }
 
-fn type_name_matches_ident(
-    name: &TypeName,
-    ident: &ModuleAndNameIdent,
-    package_ids: &[sui::types::Address],
-) -> bool {
-    if package_ids
-        .iter()
-        .any(|package_id| name.matches_qualified_name(&ident.qualified_name(*package_id)))
-    {
+fn type_name_matches_move_struct<T>(name: &TypeName, objects: &NexusObjects) -> bool
+where
+    T: MoveStruct,
+{
+    let tag = crate::move_bindings::struct_tag::<T>(objects);
+    let expected = crate::move_bindings::struct_type_name::<T>(objects);
+    if name.matches_qualified_name(&expected) {
         return true;
     }
 
-    let expected_suffix = format!("::{}::{}", ident.module, ident.name);
-    let actual = name.name.trim_start_matches("0x");
+    let expected_suffix = format!("::{}::{}", tag.module(), tag.name());
+    let actual = name.as_str().trim_start_matches("0x");
     actual
         .get(actual.len().saturating_sub(expected_suffix.len())..)
         .is_some_and(|suffix| suffix.eq_ignore_ascii_case(&expected_suffix))
@@ -1163,48 +911,44 @@ mod tests {
         super::*,
         crate::{
             events::{NexusEvent, NexusEventKind},
-            nexus::{
-                client::NexusClient,
-                crawler::{Bag, Map, ObjectBag, TableVec},
-                error::NexusError,
-                signer::ExecutedTransaction,
+            move_bindings::{
+                interface::{
+                    agent::{AgentExecutionConfig, ExecutionSelection},
+                    graph as graph_move, scheduled_request,
+                },
+                move_std::{ascii::String as MoveString, option::Option as MoveOption},
+                primitives::{
+                    automaton::{
+                        ConfiguredAutomaton, DeterministicAutomaton, TransitionConfigKey,
+                        TransitionKey,
+                    },
+                    data::NexusData,
+                    event as event_move,
+                    policy::{Policy, Symbol as PolicySymbol},
+                },
+                scheduler::scheduler::{
+                    Constraints, Execution, Metadata, OccurrenceScheduledEvent,
+                    ScheduledSkillExecutionCreatedEvent, State as TaskState, Task,
+                },
+                sui_framework::vec_map,
             },
+            nexus::{client::NexusClient, error::NexusError, signer::ExecutedTransaction},
             sui,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{
-                interface::scheduled_request,
-                primitives::policy::Symbol as PolicySymbol,
-                scheduler::scheduler::{
-                    Occurrence,
-                    OccurrenceScheduledEvent,
-                    PeriodicGeneratorState,
-                    QueueEntry,
-                    QueueGeneratorState,
-                    ScheduledSkillExecutionCreatedEvent,
-                    State as TaskState,
-                },
-                sui_framework::priority_queue::PriorityQueue,
-                ConfiguredAutomaton,
-                ConstraintsData,
-                DeterministicAutomaton,
-                ExecutionData,
-                Metadata,
-                MoveOption,
-                NexusData,
-                NexusObjects,
-                Policy,
-                TransitionConfigKey,
-                TransitionKey,
-                TypeName,
-            },
+            types::NexusObjects,
         },
         rand::thread_rng,
         serde::Serialize,
-        serde_json::json,
+        std::{marker::PhantomData, sync::Arc},
+        tokio::sync::Mutex,
     };
 
     type RequestScheduledOccurrenceEvent =
         scheduled_request::RequestScheduledExecution<OccurrenceScheduledEvent>;
+
+    fn inline_bytes(value: &'static [u8]) -> NexusData {
+        NexusData::inline_one(value.to_vec())
+    }
 
     fn dummy_executed_transaction(events: Vec<NexusEvent>) -> ExecutedTransaction {
         let mut rng = thread_rng();
@@ -1232,64 +976,113 @@ mod tests {
     fn sample_input_data() -> HashMap<String, HashMap<String, NexusData>> {
         HashMap::from([(
             "entry_vertex".to_string(),
-            HashMap::from([(
-                "entry_port".to_string(),
-                NexusData::new_inline(json!("payload")).commit_inline_plain(),
-            )]),
+            HashMap::from([("entry_port".to_string(), inline_bytes(b"payload"))]),
         )])
     }
 
-    fn mock_task_object(
-        task_id: sui::types::Address,
-        owner: sui::types::Address,
-    ) -> serde_json::Value {
+    fn mock_task_object(task_id: sui::types::Address, owner: sui::types::Address) -> Task {
+        fn string(value: &str) -> crate::move_bindings::move_std::string::String {
+            crate::move_bindings::move_std::string::String {
+                bytes: value.as_bytes().to_vec(),
+            }
+        }
+
         let metadata = Metadata {
-            values: Map::from_iter([("initial".to_string(), "value".to_string())]),
+            values: vec_map::VecMap {
+                contents: vec![vec_map::Entry {
+                    key: string("initial"),
+                    value: string("value"),
+                }],
+            },
         };
 
         let dfa = DeterministicAutomaton {
-            states: TableVec::new(sui::types::Address::from_static("0x100"), 1),
-            alphabet: TableVec::new(sui::types::Address::from_static("0x101"), 0),
-            transition: TableVec::new(sui::types::Address::from_static("0x102"), 1),
-            accepting: TableVec::new(sui::types::Address::from_static("0x103"), 1),
+            states: crate::move_bindings::sui_framework::table_vec::TableVec::new(
+                sui::types::Address::from_static("0x100"),
+                1,
+            ),
+            alphabet: crate::move_bindings::sui_framework::table_vec::TableVec::new(
+                sui::types::Address::from_static("0x101"),
+                0,
+            ),
+            transition: crate::move_bindings::sui_framework::table_vec::TableVec::new(
+                sui::types::Address::from_static("0x102"),
+                1,
+            ),
+            accepting: crate::move_bindings::sui_framework::table_vec::TableVec::new(
+                sui::types::Address::from_static("0x103"),
+                1,
+            ),
             start: 0,
+            phantom_t0: PhantomData,
+            phantom_t1: PhantomData,
         };
 
         let constraints = Policy {
-            id: sui::types::Address::from_static("0x400"),
+            id: crate::move_bindings::sui_framework::object::UID::new(
+                sui::types::Address::from_static("0x400"),
+            ),
             dfa: ConfiguredAutomaton {
-                id: sui::types::Address::from_static("0x401"),
+                id: crate::move_bindings::sui_framework::object::UID::new(
+                    sui::types::Address::from_static("0x401"),
+                ),
                 dfa: dfa.clone(),
+                phantom_t0: PhantomData,
+                phantom_t1: PhantomData,
             },
             state_index: 0,
-            data: ConstraintsData::default(),
+            data: Constraints { dummy_field: false },
         };
 
         let execution = Policy {
-            id: sui::types::Address::from_static("0x500"),
+            id: crate::move_bindings::sui_framework::object::UID::new(
+                sui::types::Address::from_static("0x500"),
+            ),
             dfa: ConfiguredAutomaton {
-                id: sui::types::Address::from_static("0x600"),
+                id: crate::move_bindings::sui_framework::object::UID::new(
+                    sui::types::Address::from_static("0x600"),
+                ),
                 dfa,
+                phantom_t0: PhantomData,
+                phantom_t1: PhantomData,
             },
             state_index: 0,
-            data: ExecutionData::default(),
+            data: Execution { dummy_field: false },
         };
 
-        let task = Task {
-            id: task_id,
+        Task {
+            id: crate::move_bindings::sui_framework::object::UID::new(task_id),
             owner,
-            agent_id: sui::types::Address::from_static("0xa11ce"),
+            agent_id: object_id(sui::types::Address::from_static("0xa11ce")),
             skill_id: 7,
-            interface_version: crate::types::interface::version::InterfaceVersion::new(1),
+            interface_version: crate::move_bindings::interface::version::InterfaceVersion::new(1),
             metadata,
             constraints,
             execution,
             state: TaskState::Active,
-            data: Bag::new(sui::types::Address::from_static("0x700"), 0),
-            objects: ObjectBag::new(sui::types::Address::from_static("0x701"), 0),
-        };
+            data: crate::move_bindings::sui_framework::bag::Bag::new(
+                sui::types::Address::from_static("0x700"),
+                0,
+            ),
+            objects: crate::move_bindings::sui_framework::object_bag::ObjectBag::new(
+                sui::types::Address::from_static("0x701"),
+                0,
+            ),
+        }
+    }
 
-        serde_json::to_value(task).expect("serialize task")
+    fn mock_get_task_object(
+        ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
+        task_ref: sui::types::ObjectReference,
+        owner: sui::types::Address,
+        task: Task,
+    ) {
+        sui_mocks::grpc::mock_get_object_bcs(
+            ledger_service_mock,
+            task_ref,
+            sui::types::Owner::Address(owner),
+            bcs::to_bytes(&task).expect("generated task serializes"),
+        );
     }
 
     fn generator_symbol(scheduler_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
@@ -1302,81 +1095,42 @@ mod tests {
         generator_symbol(scheduler_pkg_id, "QueueGeneratorWitness")
     }
 
-    fn object_id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
-        crate::types::sui_address_to_id(bytes)
+    fn generated_type_name<T>(objects: &NexusObjects) -> String
+    where
+        T: MoveStruct,
+    {
+        crate::move_bindings::struct_type_name::<T>(objects)
     }
 
-    fn scheduler_config(
+    fn generated_type_name_with_package<T>(
+        objects: &NexusObjects,
+        package: sui::types::Address,
+    ) -> String
+    where
+        T: MoveStruct,
+    {
+        crate::move_bindings::struct_type_name_with_package::<T>(objects, package)
+    }
+
+    fn object_id(bytes: sui::types::Address) -> crate::move_bindings::sui_framework::object::ID {
+        crate::move_bindings::sui_framework::object::ID::new(bytes)
+    }
+
+    fn execution_config_field(
         config_name: &str,
-        start_time_ms: u64,
         symbol: PolicySymbol,
-        generator: GeneratorKind,
-        wrapped: bool,
-    ) -> (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value) {
-        let occurrence = Occurrence {
-            start_time_ms,
-            deadline_ms: MoveOption(None),
-            priority_fee_per_gas_unit: 0,
-            generator: symbol.clone(),
-        };
-        let inner = match generator {
-            GeneratorKind::Queue => serde_json::to_value(QueueGeneratorState {
-                pending: PriorityQueue { entries: vec![] },
-                len: 0,
-                next_sequence: 1,
-                active: MoveOption(Some(QueueEntry {
-                    occurrence,
-                    sequence: 0,
-                    request_ms: start_time_ms,
-                })),
-            })
-            .expect("queue state serializes"),
-            GeneratorKind::Periodic => serde_json::to_value(PeriodicGeneratorState {
-                active: MoveOption(Some(occurrence)),
-                next_start_ms: MoveOption(Some(start_time_ms + 1)),
-                period_ms: 1,
-                deadline_offset_ms: MoveOption(None),
-                max_iterations: MoveOption(None),
-                generated: 1,
-                last_emitted_start_ms: MoveOption(Some(start_time_ms)),
-                priority_fee_per_gas_unit: 0,
-            })
-            .expect("periodic state serializes"),
-        };
-
-        let value = if wrapped {
-            json!({ "fields": inner })
-        } else {
-            inner
-        };
-
-        (
-            TransitionConfigKey {
+        field_id: sui::types::Address,
+    ) -> DynamicFieldReference<SchedulerConfigKey> {
+        DynamicFieldReference {
+            name: TransitionConfigKey {
                 transition: TransitionKey {
-                    state: None,
+                    state: MoveOption::from_option(None),
                     symbol,
                 },
                 config: TypeName::from(config_name.to_string()),
             },
-            value,
-        )
-    }
-
-    fn execution_config(
-        config_name: &str,
-        symbol: PolicySymbol,
-        config: AgentExecutionConfig,
-    ) -> (TransitionConfigKey<u64, PolicySymbol>, serde_json::Value) {
-        (
-            TransitionConfigKey {
-                transition: TransitionKey {
-                    state: None,
-                    symbol,
-                },
-                config: TypeName::from(config_name.to_string()),
-            },
-            json!({ "fields": serde_json::to_value(config).expect("serialize config") }),
-        )
+            field_id,
+        }
     }
 
     fn default_agent_execution_config(
@@ -1384,12 +1138,12 @@ mod tests {
         dag_id: sui::types::Address,
     ) -> AgentExecutionConfig {
         AgentExecutionConfig {
-            selection: ExecutionSelection::DefaultAgent { dag_id },
-            network: objects.network_id,
-            entry_group: crate::types::SchedulerEntryGroup {
-                name: "entry".into(),
+            selection: ExecutionSelection::DefaultAgent {
+                dag_id: object_id(dag_id),
             },
-            inputs: crate::nexus::crawler::Map::new(),
+            network: object_id(objects.network_id),
+            entry_group: graph_move::EntryGroup::new("entry"),
+            inputs: vec_map::VecMap { contents: vec![] },
             invoker: sui::types::Address::ZERO,
             priority_fee_per_gas_unit: 0,
             authorization_templates: vec![],
@@ -1397,7 +1151,7 @@ mod tests {
     }
 
     fn event_bcs(
-        primitives_pkg: sui::types::Address,
+        objects: &NexusObjects,
         event_pkg: sui::types::Address,
         kind: NexusEventKind,
     ) -> sui::types::Event {
@@ -1413,10 +1167,13 @@ mod tests {
             vec![],
         );
 
+        let wrapper = crate::move_bindings::struct_tag::<
+            event_move::EventWrapper<OccurrenceScheduledEvent>,
+        >(objects);
         let wrapper_tag = sui::types::StructTag::new(
-            primitives_pkg,
-            crate::idents::primitives::Event::EVENT_WRAPPER.module,
-            crate::idents::primitives::Event::EVENT_WRAPPER.name,
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
             vec![sui::types::TypeTag::Struct(Box::new(event_type))],
         );
 
@@ -1442,7 +1199,7 @@ mod tests {
             _ => bcs::to_bytes(&Wrapper { event: &kind }).unwrap(),
         };
 
-        sui_mocks::mock_sui_event(primitives_pkg, wrapper_tag, bcs)
+        sui_mocks::mock_sui_event(objects.primitives_pkg_id, wrapper_tag, bcs)
     }
 
     async fn mock_nexus_client_with_server(
@@ -1464,129 +1221,41 @@ mod tests {
     }
 
     #[test]
-    fn active_scheduler_start_ms_reads_wrapped_queue_state() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let expected = scheduler::Scheduler::QUEUE_GENERATOR_STATE
-            .qualified_name(objects.scheduler_type_origin_pkg_id());
-
-        let active = active_scheduler_start_ms(
-            vec![scheduler_config(
-                &expected,
-                42,
-                objects.scheduler_queue_generator_symbol(),
-                GeneratorKind::Queue,
-                true,
-            )],
-            &expected,
-            GeneratorKind::Queue,
-            |symbol| objects.scheduler_matches_queue_generator(symbol),
-        )
-        .unwrap();
-
-        assert_eq!(active, Some(42));
-    }
-
-    #[test]
-    fn active_scheduler_start_ms_ignores_other_generator_symbols_for_shared_state_type() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let expected = scheduler::Scheduler::QUEUE_GENERATOR_STATE
-            .qualified_name(objects.scheduler_type_origin_pkg_id());
-
-        let active = active_scheduler_start_ms(
-            vec![
-                scheduler_config(
-                    &expected,
-                    13,
-                    objects.scheduler_periodic_generator_symbol(),
-                    GeneratorKind::Queue,
-                    true,
-                ),
-                scheduler_config(
-                    &expected,
-                    42,
-                    objects.scheduler_queue_generator_symbol(),
-                    GeneratorKind::Queue,
-                    true,
-                ),
-            ],
-            &expected,
-            GeneratorKind::Queue,
-            |symbol| objects.scheduler_matches_queue_generator(symbol),
-        )
-        .unwrap();
-
-        assert_eq!(active, Some(42));
-    }
-
-    #[test]
-    fn active_scheduler_start_ms_reads_plain_periodic_state() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let expected = scheduler::Scheduler::PERIODIC_GENERATOR_STATE
-            .qualified_name(objects.scheduler_type_origin_pkg_id());
-
-        let active = active_scheduler_start_ms(
-            vec![scheduler_config(
-                &expected,
-                77,
-                objects.scheduler_periodic_generator_symbol(),
-                GeneratorKind::Periodic,
-                false,
-            )],
-            &expected,
-            GeneratorKind::Periodic,
-            |symbol| objects.scheduler_matches_periodic_generator(symbol),
-        )
-        .unwrap();
-
-        assert_eq!(active, Some(77));
-    }
-
-    #[test]
-    fn active_scheduler_start_ms_errors_when_config_is_missing() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let expected = scheduler::Scheduler::QUEUE_GENERATOR_STATE
-            .qualified_name(objects.scheduler_type_origin_pkg_id());
-
-        let err = active_scheduler_start_ms(vec![], &expected, GeneratorKind::Queue, |symbol| {
-            objects.scheduler_matches_queue_generator(symbol)
-        })
-        .expect_err("missing generator config must error");
-
-        assert!(err
-            .to_string()
-            .contains("Missing scheduler generator state config"));
-    }
-
-    #[test]
     fn scheduled_execution_config_matches_execution_entries_symbol_by_module_name() {
         let objects = sui_mocks::mock_nexus_objects();
         let dag_id = sui::types::Address::from_static("0xd");
         let defining_pkg_not_in_objects = sui::types::Address::from_static("0x999");
-        let config_name = crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG
-            .qualified_name(defining_pkg_not_in_objects);
-        let symbol = PolicySymbol::witness(TypeName::new(
-            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
-                .qualified_name(defining_pkg_not_in_objects),
-        ));
-
-        let config = extract_scheduled_agent_execution_config(
-            vec![execution_config(
-                &config_name,
-                symbol,
-                default_agent_execution_config(&objects, dag_id),
-            )],
+        let config_name = generated_type_name_with_package::<AgentExecutionConfig>(
             &objects,
-        )
-        .expect("config should match by execution_entries module/name");
+            defining_pkg_not_in_objects,
+        );
+        let symbol = PolicySymbol::witness(TypeName::new(&generated_type_name_with_package::<
+            execution_entries_move::AdvanceForDefaultAgentExecution,
+        >(
+            &objects, defining_pkg_not_in_objects
+        )));
 
-        assert_eq!(config.dag(), Some(dag_id));
-        assert!(matches!(config, ScheduledAgentExecutionConfig::Default(_)));
+        let fields = vec![execution_config_field(
+            &config_name,
+            symbol,
+            sui::types::Address::from_static("0x1"),
+        )];
+        assert!(find_execution_config_field::<
+            execution_entries_move::AdvanceForDefaultAgentExecution,
+        >(&fields, &objects,)
+        .is_some());
+
+        let config = ensure_default_agent_execution_config(
+            default_agent_execution_config(&objects, dag_id),
+            "AdvanceForDefaultAgentExecution config",
+        )
+        .expect("default config should validate");
+        assert_eq!(config.selection.dag_id(), Some(dag_id));
     }
 
     #[test]
     fn scheduled_execution_config_matches_raw_move_type_names_without_0x_prefix() {
         let objects = sui_mocks::mock_nexus_objects();
-        let dag_id = sui::types::Address::from_static("0xd");
         let interface_pkg = "82da904e4d6040729d0b16ee49aae067bed36aec31e167b24e1e072221c1eb16";
         let workflow_pkg = "deafc2c9ef3914a7d4945572d07fd961fef7ff1f3e1d329f4057c28538598776";
         let config_name = format!("{interface_pkg}::agent::AgentExecutionConfig");
@@ -1594,49 +1263,61 @@ mod tests {
             "{workflow_pkg}::execution_entries::AdvanceForDefaultAgentExecution"
         )));
 
-        let config = extract_scheduled_agent_execution_config(
-            vec![execution_config(
-                &config_name,
-                symbol,
-                default_agent_execution_config(&objects, dag_id),
-            )],
-            &objects,
-        )
-        .expect("config should match raw dynamic field type names by module/name");
-
-        assert_eq!(config.dag(), Some(dag_id));
-        assert!(matches!(config, ScheduledAgentExecutionConfig::Default(_)));
+        let fields = vec![execution_config_field(
+            &config_name,
+            symbol,
+            sui::types::Address::from_static("0x1"),
+        )];
+        assert!(find_execution_config_field::<
+            execution_entries_move::AdvanceForDefaultAgentExecution,
+        >(&fields, &objects,)
+        .is_some());
     }
 
-    #[test]
-    fn scheduled_execution_config_decodes_move_config_shape() {
+    #[tokio::test]
+    async fn scheduled_execution_config_fetches_selected_bcs_config_field() {
+        #[derive(Clone, Serialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            id: sui::types::Address,
+            name: K,
+            value: V,
+        }
+
+        let mut rng = rand::thread_rng();
         let objects = sui_mocks::mock_nexus_objects();
+        let configured_automaton_id = sui::types::Address::from_static("0xca");
+        let field_id = sui::types::Address::from_static("0xcf");
         let dag_id = sui::types::Address::from_static("0xd");
         let invoker = sui::types::Address::from_static("0x1");
-        let config_name = crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG
-            .qualified_name(objects.interface_pkg_id);
-        let symbol = PolicySymbol::witness(TypeName::new(
-            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
-                .qualified_name(objects.workflow_pkg_id),
-        ));
-        let input_value = NexusData::new_inline(json!({ "amount": 7 }));
+        let config_name = generated_type_name::<AgentExecutionConfig>(&objects);
+        let symbol = PolicySymbol::witness(TypeName::new(&generated_type_name::<
+            execution_entries_move::AdvanceForDefaultAgentExecution,
+        >(&objects)));
+        let key = TransitionConfigKey {
+            transition: TransitionKey {
+                state: MoveOption::<u64>::from_option(None),
+                symbol,
+            },
+            config: TypeName::from(config_name),
+        };
+        let input_value = inline_bytes(b"amount=7");
         let move_config = agent_move::AgentExecutionConfig {
             selection: agent_move::ExecutionSelection::DefaultAgent {
-                dag_id: crate::types::sui_address_to_id(dag_id),
+                dag_id: crate::move_bindings::sui_framework::object::ID::new(dag_id),
             },
-            network: crate::types::sui_address_to_id(objects.network_id),
+            network: crate::move_bindings::sui_framework::object::ID::new(objects.network_id),
             entry_group: graph_move::EntryGroup {
-                name: crate::types::MoveString::from("default"),
+                name: MoveString::from("default"),
             },
             inputs: vec_map::VecMap {
                 contents: vec![vec_map::Entry {
                     key: graph_move::Vertex {
-                        name: crate::types::MoveString::from("source"),
+                        name: MoveString::from("source"),
                     },
                     value: vec_map::VecMap {
                         contents: vec![vec_map::Entry {
                             key: graph_move::InputPort {
-                                name: crate::types::MoveString::from("amount"),
+                                name: MoveString::from("amount"),
                             },
                             value: input_value.clone(),
                         }],
@@ -1648,39 +1329,56 @@ mod tests {
             authorization_templates: vec![],
         };
 
-        let config = extract_scheduled_agent_execution_config(
-            vec![(
-                TransitionConfigKey {
-                    transition: TransitionKey {
-                        state: None,
-                        symbol,
-                    },
-                    config: TypeName::from(config_name),
-                },
-                json!({ "fields": serde_json::to_value(move_config).unwrap() }),
-            )],
-            &objects,
-        )
-        .expect("generated config should decode");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(key.clone(), field_id)],
+        );
+
+        let field_value = DynamicFieldValueBcs {
+            id: field_id,
+            name: key,
+            value: move_config,
+        };
+        let field_ref =
+            sui::types::ObjectReference::new(field_id, 1, sui::types::Digest::generate(&mut rng));
+        let object_type =
+            crate::move_bindings::struct_tag::<agent_move::AgentExecutionConfig>(&objects);
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            field_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&field_value).expect("dynamic field BCS should serialize"),
+            object_type,
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let config =
+            fetch_scheduled_agent_execution_config(&crawler, &objects, &configured_automaton_id)
+                .await
+                .expect("generated config should decode from BCS");
 
         let ScheduledAgentExecutionConfig::Default(config) = config else {
             panic!("expected default scheduled config");
         };
         assert_eq!(config.selection.dag_id(), Some(dag_id));
-        assert_eq!(config.network, objects.network_id);
-        assert_eq!(config.entry_group.name, "default");
+        assert_eq!(config.network_address(), objects.network_id);
+        assert_eq!(config.entry_group.name.as_str(), "default");
         assert_eq!(config.invoker, invoker);
         let vertex_inputs = config
             .inputs
-            .inner()
-            .get(&TypeName::new("source"))
+            .get(&graph_move::Vertex::new("source"))
             .expect("source inputs converted");
         assert_eq!(
-            vertex_inputs
-                .inner()
-                .get(&crate::nexus::models::DagInputPort {
-                    name: "amount".into(),
-                }),
+            vertex_inputs.get(&graph_move::InputPort::new("amount")),
             Some(&input_value)
         );
     }
@@ -1688,33 +1386,25 @@ mod tests {
     #[test]
     fn scheduled_execution_config_does_not_swallow_default_selection_mismatch() {
         let objects = sui_mocks::mock_nexus_objects();
-        let config_name = crate::idents::interface::Agent::AGENT_EXECUTION_CONFIG
-            .qualified_name(objects.interface_pkg_id);
-        let symbol = PolicySymbol::witness(TypeName::new(
-            &workflow::ExecutionEntries::ADVANCE_FOR_DEFAULT_AGENT_EXECUTION_TYPE
-                .qualified_name(objects.workflow_pkg_id),
-        ));
         let config = AgentExecutionConfig {
             selection: ExecutionSelection::AgentSkill {
-                agent_id: sui::types::Address::from_static("0xa"),
+                agent_id: object_id(sui::types::Address::from_static("0xa")),
                 skill_id: 1,
-                selected_dag: MoveOption(Some(sui::types::Address::from_static("0xd"))),
+                selected_dag: MoveOption::from_option(Some(object_id(
+                    sui::types::Address::from_static("0xd"),
+                ))),
             },
-            network: objects.network_id,
-            entry_group: crate::types::SchedulerEntryGroup {
-                name: "entry".into(),
-            },
-            inputs: crate::nexus::crawler::Map::new(),
+            network: object_id(objects.network_id),
+            entry_group: graph_move::EntryGroup::new("entry"),
+            inputs: vec_map::VecMap { contents: vec![] },
             invoker: sui::types::Address::ZERO,
             priority_fee_per_gas_unit: 0,
             authorization_templates: vec![],
         };
 
-        let err = extract_scheduled_agent_execution_config(
-            vec![execution_config(&config_name, symbol, config)],
-            &objects,
-        )
-        .expect_err("default witness with agent selection should not fall through");
+        let err =
+            ensure_default_agent_execution_config(config, "AdvanceForDefaultAgentExecution config")
+                .expect_err("default witness with agent selection should not fall through");
 
         assert!(err
             .to_string()
@@ -1739,7 +1429,7 @@ mod tests {
         let dag_id = sui::types::Address::generate(&mut rng);
 
         let events = vec![event_bcs(
-            nexus_objects.primitives_pkg_id,
+            &nexus_objects,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: object_id(task_id),
@@ -1824,7 +1514,7 @@ mod tests {
         let dag_id = sui::types::Address::generate(&mut rng);
 
         let creation_events = vec![event_bcs(
-            nexus_objects.primitives_pkg_id,
+            &nexus_objects,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: object_id(task_id),
@@ -1845,15 +1535,10 @@ mod tests {
         );
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         // Scheduled occurrence event
         let queue_generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
@@ -1878,7 +1563,7 @@ mod tests {
             vec![],
             vec![],
             vec![event_bcs(
-                nexus_objects.primitives_pkg_id,
+                &nexus_objects,
                 nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
@@ -1979,9 +1664,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_task_agent_bound_branch_delegates_to_tap_action() {
-        // Compatibility path for agent-bound task creation. The scheduler
-        // action delegates explicit-agent requests to the TAP action, which
-        // owns the agent/skill/payment creation semantics.
+        // Agent-bound task creation delegates to the TAP action, which owns the
+        // agent/skill/payment creation semantics.
         let mut rng = rand::thread_rng();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut execution_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
@@ -2001,7 +1685,7 @@ mod tests {
             sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
 
         let events = vec![event_bcs(
-            nexus_objects.primitives_pkg_id,
+            &nexus_objects,
             nexus_objects.scheduler_pkg_id,
             NexusEventKind::ScheduledSkillExecutionCreated(ScheduledSkillExecutionCreatedEvent {
                 task: object_id(task_id),
@@ -2151,15 +1835,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
             &mut subscription_service_mock,
@@ -2210,15 +1889,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
@@ -2266,15 +1940,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
@@ -2291,7 +1960,7 @@ mod tests {
             vec![],
             vec![],
             vec![event_bcs(
-                nexus_objects.primitives_pkg_id,
+                &nexus_objects,
                 nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
@@ -2338,15 +2007,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         let generator = queue_generator_symbol(nexus_objects.scheduler_pkg_id);
         let scheduled_event = NexusEventKind::OccurrenceScheduled(OccurrenceScheduledEvent {
@@ -2363,7 +2027,7 @@ mod tests {
             vec![],
             vec![],
             vec![event_bcs(
-                nexus_objects.primitives_pkg_id,
+                &nexus_objects,
                 nexus_objects.scheduler_pkg_id,
                 scheduled_event.clone(),
             )],
@@ -2409,15 +2073,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,
@@ -2473,15 +2132,10 @@ mod tests {
         let owner = sui::types::Address::generate(&mut rng);
 
         // Task fetch
-        let task_object_json = mock_task_object(task_id, owner);
+        let task_object = mock_task_object(task_id, owner);
         let task_ref =
             sui::types::ObjectReference::new(task_id, 1, sui::types::Digest::generate(&mut rng));
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            task_ref,
-            sui::types::Owner::Address(owner),
-            task_object_json,
-        );
+        mock_get_task_object(&mut ledger_service_mock, task_ref, owner, task_object);
 
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut execution_service_mock,

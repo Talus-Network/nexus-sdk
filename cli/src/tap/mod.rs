@@ -23,57 +23,34 @@ mod tap_vault_deposit;
 
 #[cfg(test)]
 use tap_validate_skill::{
-    collect_move_source_files,
-    validate_tap_package_manifest,
-    validate_tap_package_sources,
+    collect_move_source_files, validate_tap_package_manifest, validate_tap_package_sources,
 };
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        sui::get_nexus_client,
-        workflow,
+        command_title, display::json_output, loading, notify_success, prelude::*,
+        sui::get_nexus_client, workflow,
     },
     convert_case::{Case, Casing},
     nexus_sdk::{
-        dag::validator as dag_validator,
+        move_bindings::interface::payment::ExecutionPaymentReceipt,
         nexus::{
             error::NexusError,
             tap::{
-                fetch_agent_payment_vault_for_agent,
-                fetch_execution_payment_history,
-                AgentTaskStateAction,
-                CreateAgentResult,
-                GetSkillRequirementResult,
-                PublishSkillResult,
-                RegisterSkillResult,
-                TapPackagePublishOptions,
+                fetch_agent_payment_vault_for_agent, fetch_execution_payment_history,
+                AgentTaskStateAction, CreateAgentResult, GetSkillRequirementResult,
+                PublishSkillResult, RegisterSkillResult, TapPackagePublishOptions,
                 UpdateSkillResult,
             },
             workflow::AgentDagExecuteOptions,
         },
-        types::{
-            interface::payment::ExecutionPaymentReceipt,
-            Dag as JsonDag,
-            SkillConfig,
-            SkillId,
-            TapPublishArtifact,
-            DEFAULT_ENTRY_GROUP,
-        },
+        types::{SkillConfig, SkillId, TapPublishArtifact, DEFAULT_ENTRY_GROUP},
     },
     regex::Regex,
     tap_agent::handle_agent_command,
     tap_bind::bind_agent_skill,
     tap_common::{
-        agent_execute_options_from_cli,
-        agent_id_from_alias_or_arg,
-        ensure_cli_agent_owner,
-        ensure_cli_mutable_agent,
-        read_artifact,
-        schedule_policy_from_cli,
+        agent_execute_options_from_cli, agent_id_from_alias_or_arg, ensure_cli_agent_owner,
+        ensure_cli_mutable_agent, read_artifact, schedule_policy_from_cli,
     },
     tap_create_agent::create_agent,
     tap_create_skill_artifact::{create_skill_artifact, ArtifactPaymentMode},
@@ -81,29 +58,14 @@ use {
     tap_dry_run::dry_run_skill,
     tap_execute::execute_agent_dag_skill,
     tap_output::{
-        agent_execute_result_json,
-        agent_list_result_json,
-        agent_remove_result_json,
-        agent_save_result_json,
-        bind_result_json,
-        create_agent_result_json,
-        create_skill_artifact_result_json,
-        default_agent_result_json,
-        dry_run_result_json,
-        payment_resolve_result_json,
-        payment_show_result_json,
-        payment_wait_result_json,
-        payments_list_result_json,
-        publish_skill_result_json,
-        register_skill_result_json,
-        registry_show_result_json,
-        requirements_result_json,
-        scaffold_result_json,
-        schedule_task_result_json,
-        update_skill_result_json,
-        validate_skill_result_json,
-        vault_balance_result_json,
-        vault_deposit_result_json,
+        agent_execute_result_json, agent_list_result_json, agent_remove_result_json,
+        agent_save_result_json, bind_result_json, create_agent_result_json,
+        create_skill_artifact_result_json, default_agent_result_json, dry_run_result_json,
+        payment_resolve_result_json, payment_show_result_json, payment_wait_result_json,
+        payments_list_result_json, publish_skill_result_json, register_skill_result_json,
+        registry_show_result_json, requirements_result_json, scaffold_result_json,
+        schedule_task_result_json, update_skill_result_json, validate_skill_result_json,
+        vault_balance_result_json, vault_deposit_result_json,
     },
     tap_payments::handle_payments_command,
     tap_publish_skill::publish_skill,
@@ -848,7 +810,7 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
-        nexus_sdk::types::interface::{
+        nexus_sdk::move_bindings::interface::{
             agent::{SkillRequirement, SkillSchedulePolicy},
             payment::SkillPaymentPolicy,
             version::InterfaceVersion,
@@ -1272,7 +1234,7 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 current_interface_revision: InterfaceVersion::new(3),
-                dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+                dag_binding: nexus_sdk::move_bindings::interface::agent::SkillDagBinding::pinned(
                     artifact.dag_id,
                 ),
                 requirements: artifact.requirements.clone(),
@@ -1280,7 +1242,10 @@ mod tests {
         );
 
         assert_eq!(output["function"], "update_skill");
-        assert_eq!(output["current_interface_revision"], serde_json::json!(3));
+        assert_eq!(
+            output["current_interface_revision"],
+            serde_json::json!({ "inner": 3 })
+        );
         assert!(output.get("config_digest_hex").is_none());
     }
 

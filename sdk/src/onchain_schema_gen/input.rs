@@ -2,10 +2,8 @@
 
 use {
     super::types::{
-        convert_move_signature_to_schema,
-        is_hidden_internal_tool_param,
-        is_onchain_tool_result_param,
-        is_workflow_dag_execution_param,
+        convert_move_signature_to_schema, is_hidden_internal_tool_param,
+        is_onchain_tool_result_param, is_workflow_dag_execution_param,
     },
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
@@ -66,14 +64,12 @@ pub async fn generate_input_schema(
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for (i, param_type) in execute_func.parameters().iter().enumerate() {
+    for param_type in execute_func.parameters() {
         let body = param_type.body_opt().ok_or_else(|| {
             anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
         })?;
 
-        // Skip internal parameters. The first-parameter fallback preserves
-        // legacy packages that used a local placeholder ProofOfUID type.
-        if i == 0 || is_hidden_internal_tool_param(body) {
+        if is_hidden_internal_tool_param(body) {
             continue;
         }
 
@@ -207,7 +203,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(feature = "test_utils")]
+    #[ignore = "requires a Docker-backed Sui test container"]
     async fn test_generate_input_schema_from_published_package() {
         use crate::test_utils;
 

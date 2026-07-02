@@ -3,7 +3,7 @@
 //! This module implements a simple, deployment agnostic signing format designed
 //! for Nexus Leader <=> Tool communication:
 //! - Payload stays as the regular HTTP body (e.g., tool input/output JSON).
-//! - A small JSON "claims" blob is serialized to bytes and signed with Ed25519.
+//! - A small JSON "claims" blob is serialized to bytes and bound to Ed25519 signatures.
 //! - The signed bytes are shipped in `X-Nexus-Sig-Input` (base64url) alongside
 //!   the signature in `X-Nexus-Sig` (base64url).
 //!
@@ -25,7 +25,8 @@
 //! - a time window (`iat_ms`/`exp_ms`) and `nonce`,
 //! - the `LeaderId`/`ToolId` identifiers and key ids.
 //!
-//! The claims bytes are the only bytes covered by the Ed25519 signature. This ensures:
+//! The request signature covers the request claims hash; response signatures cover the request
+//! binding, response body hash, status, and outcome used by on-chain verification. This ensures:
 //! - tool input/output schemas remain unchanged,
 //! - no bespoke body canonicalization is required,
 //! - the signature is stable and auditable (store claims bytes + signature).

@@ -1,11 +1,6 @@
 use crate::{
-    command_title,
-    dag::dag_validate::validate_dag,
-    display::json_output,
-    loading,
-    notify_success,
-    prelude::*,
-    sui::*,
+    command_title, dag::dag_validate::validate_dag, display::json_output, loading, notify_success,
+    prelude::*, sui::*,
 };
 
 /// Publish the provided Nexus DAG to the currently active Sui net. This also
