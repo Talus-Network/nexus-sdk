@@ -373,16 +373,6 @@ pub fn abort_expired_execution(
         execution.version(),
         true,
     ));
-    let tool_registry_arg = tx.object(sui::tx::ObjectInput::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
-        false,
-    ));
-    let leader_registry_arg = tx.object(sui::tx::ObjectInput::shared(
-        *objects.leader_registry.object_id(),
-        objects.leader_registry.version(),
-        false,
-    ));
     let clock_arg = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
@@ -395,13 +385,7 @@ pub fn abort_expired_execution(
             workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.module,
             workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name,
         ),
-        vec![
-            dag_arg,
-            execution_arg,
-            tool_registry_arg,
-            leader_registry_arg,
-            clock_arg,
-        ],
+        vec![dag_arg, execution_arg, clock_arg],
     )
 }
 
@@ -2789,7 +2773,7 @@ mod tests {
             call.function,
             workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name
         );
-        assert_eq!(call.arguments.len(), 5);
+        assert_eq!(call.arguments.len(), 3);
     }
 
     #[test]

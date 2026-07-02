@@ -256,6 +256,7 @@ struct CommittedToolResultBcs {
     primary_failure_evidence_kind: MoveOption<FailureEvidenceKind>,
     secondary_failure_evidence_kind: MoveOption<FailureEvidenceKind>,
     current_leader_cap_id: sui::types::Address,
+    has_finalized_onchain_payload: bool,
     leader_records: BcsMap<sui::types::Address, CommittedToolResultLeaderRecordBcs>,
 }
 
@@ -269,6 +270,7 @@ pub struct CommittedToolResultView {
     pub primary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub secondary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub current_leader_cap_id: sui::types::Address,
+    pub has_finalized_onchain_payload: bool,
     pub leader_records: Vec<CommittedToolResultLeaderRecordView>,
 }
 
@@ -366,6 +368,7 @@ impl From<CommittedToolResultBcs> for CommittedToolResultView {
             primary_failure_evidence_kind: value.primary_failure_evidence_kind.0,
             secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.0,
             current_leader_cap_id: value.current_leader_cap_id,
+            has_finalized_onchain_payload: value.has_finalized_onchain_payload,
             leader_records: value
                 .leader_records
                 .contents
@@ -678,9 +681,14 @@ pub async fn inspect_expired_walk_resolution_at(
         });
     };
 
-    if fetch_committed_tool_result_for_walk(crawler, objects, params.dag_execution_id, params.walk_index)
-        .await?
-        .is_some()
+    if fetch_committed_tool_result_for_walk(
+        crawler,
+        objects,
+        params.dag_execution_id,
+        params.walk_index,
+    )
+    .await?
+    .is_some()
     {
         return Ok(ExpiredWalkResolutionPlan {
             dag_id: execution.dag_id,
@@ -2221,6 +2229,7 @@ mod tests {
             primary_failure_evidence_kind: MoveOption(primary_failure),
             secondary_failure_evidence_kind: MoveOption(secondary_failure),
             current_leader_cap_id: primary_leader,
+            has_finalized_onchain_payload: true,
             leader_records: BcsMap {
                 contents: vec![crate::nexus::models::BcsMapEntry {
                     key: primary_leader,
