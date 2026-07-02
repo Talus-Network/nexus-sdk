@@ -233,6 +233,7 @@ impl From<EntryGroupDocument> for DagEntryGroup {
 struct DefaultValueDocument {
     vertex: String,
     input_port: String,
+    #[serde(deserialize_with = "deserialize_nexus_data")]
     value: NexusData,
 }
 
@@ -243,6 +244,54 @@ impl From<DefaultValueDocument> for DagDefaultValue {
             input_port: document.input_port,
             value: document.value,
         }
+    }
+}
+
+fn deserialize_nexus_data<'de, D>(deserializer: D) -> Result<NexusData, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    nexus_data_from_json(value).map_err(serde::de::Error::custom)
+}
+
+fn nexus_data_from_json(value: serde_json::Value) -> Result<NexusData, String> {
+    let serde_json::Value::Object(mut object) = value else {
+        return serde_json::from_value(value).map_err(|error| error.to_string());
+    };
+
+    let Some(data) = object.remove("data") else {
+        return serde_json::from_value(serde_json::Value::Object(object))
+            .map_err(|error| error.to_string());
+    };
+
+    let storage = object
+        .remove("storage")
+        .and_then(|value| value.as_str().map(storage_tag_bytes))
+        .ok_or_else(|| "missing nexus data storage".to_string())??;
+
+    match data {
+        serde_json::Value::Array(values) => Ok(NexusData {
+            storage,
+            one: Vec::new(),
+            many: values
+                .into_iter()
+                .map(|value| serde_json::to_vec(&value).map_err(|error| error.to_string()))
+                .collect::<Result<Vec<_>, _>>()?,
+        }),
+        value => Ok(NexusData {
+            storage,
+            one: serde_json::to_vec(&value).map_err(|error| error.to_string())?,
+            many: Vec::new(),
+        }),
+    }
+}
+
+fn storage_tag_bytes(name: &str) -> Result<Vec<u8>, String> {
+    match name {
+        "inline" => Ok(b"inline".to_vec()),
+        "walrus" => Ok(b"walrus".to_vec()),
+        _ => Err(format!("unknown nexus data storage `{name}`")),
     }
 }
 
@@ -474,6 +523,37 @@ mod tests {
                 method: "demo_verifier_v1".into(),
             })
         );
+    }
+
+    #[test]
+    fn default_value_accepts_readable_inline_storage_shape() {
+        let dag = parse_dag_spec(
+            r#"{
+                "vertices": [
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                        "name": "root"
+                    }
+                ],
+                "default_values": [
+                    {
+                        "vertex": "root",
+                        "input_port": "amount",
+                        "value": {
+                            "storage": "inline",
+                            "data": -3
+                        }
+                    }
+                ],
+                "edges": []
+            }"#,
+        )
+        .unwrap();
+
+        let value = &dag.default_values[0].value;
+        assert_eq!(value.storage, b"inline".to_vec());
+        assert_eq!(value.one, b"-3".to_vec());
+        assert!(value.many.is_empty());
     }
 
     #[test]
