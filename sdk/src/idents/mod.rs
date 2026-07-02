@@ -38,3 +38,46 @@ impl ModuleAndNameIdent {
         format!("{package}::{}::{}", self.module, self.name)
     }
 }
+
+/// Normalize package dependency IDs for Sui publish commands.
+///
+/// Current Sui clients reject a `Publish` command with an empty dependency
+/// vector. Test fixtures and simple user packages can still depend only on the
+/// implicit framework packages, which the compiler may report as an empty
+/// storage-dependency list. In that case, include the fixed framework package
+/// IDs so the publish command remains valid without changing package code.
+#[cfg_attr(not(feature = "move_publish"), allow(dead_code))]
+pub(crate) fn publish_dependency_ids_or_framework_defaults(
+    dependency_ids: impl IntoIterator<Item = sui::types::Address>,
+) -> Vec<sui::types::Address> {
+    let dependency_ids = dependency_ids.into_iter().collect::<Vec<_>>();
+    if dependency_ids.is_empty() {
+        vec![move_std::PACKAGE_ID, sui_framework::PACKAGE_ID]
+    } else {
+        dependency_ids
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publish_dependency_ids_defaults_frameworks_when_empty() {
+        let dependencies = publish_dependency_ids_or_framework_defaults([]);
+
+        assert_eq!(
+            dependencies,
+            vec![move_std::PACKAGE_ID, sui_framework::PACKAGE_ID]
+        );
+    }
+
+    #[test]
+    fn publish_dependency_ids_preserves_compiler_dependencies() {
+        let package = sui::types::Address::from_static("0x42");
+
+        let dependencies = publish_dependency_ids_or_framework_defaults([package]);
+
+        assert_eq!(dependencies, vec![package]);
+    }
+}

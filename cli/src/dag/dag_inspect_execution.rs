@@ -8,7 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{events::NexusEventKind, sui, types::Storable},
+    nexus_sdk::{events::NexusEventKind, sui},
 };
 
 fn terminal_err_eval_trace_entry(event: &NexusEventKind) -> serde_json::Value {
@@ -17,8 +17,8 @@ fn terminal_err_eval_trace_entry(event: &NexusEventKind) -> serde_json::Value {
             "terminal_err_eval": true,
             "vertex": event.vertex,
             "failure_class": event.failure_class.to_string(),
-            "outcome": event.outcome.to_string(),
-            "reason": event.reason,
+            "outcome": event.outcome.0.as_ref().map(|outcome| outcome.to_string()),
+            "reason": event.reason.as_str(),
             "duplicate": event.duplicate,
             "err_eval_hash": hex::encode(&event.err_eval_hash),
         }),
@@ -70,13 +70,13 @@ pub(crate) async fn inspect_dag_execution(
                 notify_success!(
                     "Vertex '{vertex}' evaluated with output variant '{variant}'.",
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
-                    variant = e.variant.name.truecolor(100, 100, 100),
+                    variant = e.variant.name.as_str().truecolor(100, 100, 100),
                 );
 
                 let mut json_data = Vec::new();
 
-                let fetched_data = e
-                    .variant_ports_to_data
+                let fetched_data = e.variant_ports_to_data
+                    .clone()
                     .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
@@ -86,7 +86,7 @@ pub(crate) async fn inspect_dag_execution(
                         testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
                     )))?;
 
-                for (port, data) in fetched_data {
+                for (port, data) in fetched_data.into_map() {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
                         json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
@@ -104,7 +104,7 @@ pub(crate) async fn inspect_dag_execution(
                 json_trace.push(json!({
                     "end_state": false,
                     "vertex": e.vertex,
-                    "variant": e.variant.name,
+                    "variant": e.variant.name.as_str(),
                     "data": json_data,
                 }));
             }
@@ -113,14 +113,14 @@ pub(crate) async fn inspect_dag_execution(
                 notify_success!(
                     "{end_state} Vertex '{vertex}' evaluated with output variant '{variant}'.",
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
-                    variant = e.variant.name.truecolor(100, 100, 100),
+                    variant = e.variant.name.as_str().truecolor(100, 100, 100),
                     end_state = "END STATE".truecolor(100, 100, 100)
                 );
 
                 let mut json_data = Vec::new();
 
-                let fetched_data = e
-                    .variant_ports_to_data
+                let fetched_data = e.variant_ports_to_data
+                    .clone()
                     .fetch_all(&storage_conf)
                     .await
                     .map_err(|e| NexusCliError::Any(anyhow!(
@@ -130,7 +130,7 @@ pub(crate) async fn inspect_dag_execution(
                         testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
                     )))?;
 
-                for (port, data) in fetched_data {
+                for (port, data) in fetched_data.into_map() {
                     let (display_data, json_data_value) = (
                         format!("{}", data.as_json()),
                         json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
@@ -148,7 +148,7 @@ pub(crate) async fn inspect_dag_execution(
                 json_trace.push(json!({
                     "end_state": true,
                     "vertex": e.vertex,
-                    "variant": e.variant.name,
+                    "variant": e.variant.name.as_str(),
                     "data": json_data,
                 }));
             }
@@ -157,7 +157,7 @@ pub(crate) async fn inspect_dag_execution(
                 notify_error!(
                     "Vertex '{vertex}' failed to execute: '{reason}'.",
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
-                    reason = e.reason.truecolor(100, 100, 100),
+                    reason = e.reason.as_str().truecolor(100, 100, 100),
                 );
             }
 
@@ -166,8 +166,13 @@ pub(crate) async fn inspect_dag_execution(
                     "Terminal _err_eval recorded for vertex '{vertex}' as {failure_class} with outcome '{outcome}': '{reason}'.{duplicate_suffix}",
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
                     failure_class = e.failure_class.to_string().truecolor(100, 100, 100),
-                    outcome = e.outcome.to_string().truecolor(100, 100, 100),
-                    reason = e.reason.truecolor(100, 100, 100),
+                    outcome = e.outcome
+                        .0
+                        .as_ref()
+                        .map(|outcome| outcome.to_string())
+                        .unwrap_or_else(|| "none".to_string())
+                        .truecolor(100, 100, 100),
+                    reason = e.reason.as_str().truecolor(100, 100, 100),
                     duplicate_suffix = terminal_err_eval_duplicate_suffix(event_kind),
                 );
 
@@ -235,23 +240,31 @@ pub(crate) async fn await_poller_outcome(
 mod tests {
     use {
         super::*,
-        nexus_sdk::types::{PostFailureAction, RuntimeVertex, TypeName, WorkflowFailureClass},
+        nexus_sdk::types::{
+            sui_address_to_id,
+            MoveOption,
+            MoveString,
+            PostFailureAction,
+            RuntimeVertex,
+            TypeName,
+            WorkflowFailureClass,
+        },
     };
 
     #[test]
     fn test_terminal_err_eval_trace_entry() {
         let event = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
-                dag: sui::types::Address::ZERO,
-                execution: sui::types::Address::TWO,
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
+                dag: sui_address_to_id(sui::types::Address::ZERO),
+                execution: sui_address_to_id(sui::types::Address::TWO),
                 walk_index: 5,
                 vertex: RuntimeVertex::Plain {
-                    vertex: TypeName::new("failable"),
+                    vertex: TypeName::new("failable").into(),
                 },
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: PostFailureAction::TransientContinue,
-                reason: "tool failed".to_string(),
+                outcome: MoveOption(Some(PostFailureAction::TransientContinue)),
+                reason: MoveString::from("tool failed"),
                 err_eval_hash: vec![0xab, 0xcd],
                 duplicate: true,
             },
@@ -277,22 +290,22 @@ mod tests {
     #[test]
     fn test_terminal_err_eval_duplicate_suffix() {
         let duplicate = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
-                dag: sui::types::Address::ZERO,
-                execution: sui::types::Address::TWO,
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
+                dag: sui_address_to_id(sui::types::Address::ZERO),
+                execution: sui_address_to_id(sui::types::Address::TWO),
                 walk_index: 0,
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-                outcome: PostFailureAction::Terminate,
-                reason: "timeout".to_string(),
+                outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                reason: MoveString::from("timeout"),
                 err_eval_hash: vec![],
                 duplicate: true,
             },
         );
 
         let first = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::events::TerminalErrEvalRecordedEvent {
+            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
                 duplicate: false,
                 ..match &duplicate {
                     NexusEventKind::TerminalErrEvalRecorded(event) => event.clone(),

@@ -3,12 +3,13 @@ use {
     nexus_sdk::{
         nexus::{models::Dag, workflow::fetch_dag_vertices_bcs},
         types::{
+            interface::{
+                agent::{FixedTool, SkillRequirement},
+                payment::SkillPaymentPolicy,
+                version::InterfaceVersion,
+            },
             tap_input_commitment_from_dag_inputs,
             validate_requirements,
-            FixedTool,
-            InterfaceRevision,
-            SkillPaymentPolicy,
-            SkillRequirements,
         },
     },
 };
@@ -34,12 +35,12 @@ pub(crate) async fn create_skill_artifact(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Creating TAP skill publish artifact for '{skill_name}'");
 
-    let input_schema_commitment = fetch_input_schema_commitment(dag_id).await?;
+    let input_commitment = fetch_input_commitment(dag_id).await?;
     let artifact = build_artifact(
         skill_name,
         dag_id,
         interface_revision,
-        input_schema_commitment,
+        input_commitment,
         payment_mode,
         agent_funded_max_budget,
         recurrence_kind,
@@ -67,7 +68,7 @@ fn build_artifact(
     skill_name: String,
     dag_id: sui::types::Address,
     interface_revision: u64,
-    input_schema_commitment: Vec<u8>,
+    input_commitment: Vec<u8>,
     payment_mode: ArtifactPaymentMode,
     agent_funded_max_budget: Option<u64>,
     recurrence_kind: String,
@@ -92,8 +93,8 @@ fn build_artifact(
         .map(parse_fixed_tool)
         .collect::<AnyResult<Vec<_>, _>>()?;
 
-    let requirements = SkillRequirements {
-        input_schema_commitment,
+    let requirements = SkillRequirement {
+        input_commitment,
         payment_policy,
         schedule_policy,
         fixed_tools,
@@ -103,14 +104,12 @@ fn build_artifact(
     Ok(TapPublishArtifact {
         skill_name,
         dag_id,
-        interface_revision: InterfaceRevision(interface_revision),
+        interface_revision: InterfaceVersion::new(interface_revision),
         requirements,
     })
 }
 
-async fn fetch_input_schema_commitment(
-    dag_id: sui::types::Address,
-) -> AnyResult<Vec<u8>, NexusCliError> {
+async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8>, NexusCliError> {
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
     let dag = crawler.get_object::<Dag>(dag_id).await.map_err(|error| {
@@ -180,10 +179,7 @@ fn parse_fixed_tool(value: String) -> AnyResult<FixedTool, NexusCliError> {
         NexusCliError::Any(anyhow!("invalid fixed-tool registry id '{registry}': {e}"))
     })?;
 
-    Ok(FixedTool {
-        tool_registry_id,
-        tool_fqn: fqn.to_string(),
-    })
+    Ok(FixedTool::new(tool_registry_id, fqn))
 }
 
 #[cfg(test)]
@@ -212,9 +208,9 @@ mod tests {
 
         assert_eq!(artifact.skill_name, "owned sum skill");
         assert_eq!(artifact.dag_id, sui::types::Address::from_static("0xd"));
-        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert_eq!(artifact.interface_revision, InterfaceVersion::new(1));
         assert_eq!(
-            artifact.requirements.input_schema_commitment,
+            artifact.requirements.input_commitment,
             b"sum-input".to_vec()
         );
         assert_eq!(
@@ -277,10 +273,10 @@ mod tests {
         ))
         .expect("fixed tool parses");
         assert_eq!(
-            fixed_tool.tool_registry_id,
+            fixed_tool.tool_registry_address(),
             sui::types::Address::from_static("0xa")
         );
-        assert_eq!(fixed_tool.tool_fqn, "xyz.taluslabs.sum@1");
+        assert_eq!(fixed_tool.tool_fqn_string(), "xyz.taluslabs.sum@1");
 
         let error = parse_fixed_tool("xyz.taluslabs.sum@1".to_string())
             .expect_err("missing separator should fail");

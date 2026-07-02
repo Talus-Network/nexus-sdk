@@ -69,13 +69,13 @@ mod tests {
         let config = SkillConfig {
             name: "weather skill".to_string(),
             dag_path: PathBuf::from("dag.json"),
-            requirements: nexus_sdk::types::SkillRequirements {
-                input_schema_commitment: vec![1],
-                payment_policy: nexus_sdk::types::SkillPaymentPolicy::default(),
-                schedule_policy: nexus_sdk::types::SkillSchedulePolicy::default(),
+            requirements: nexus_sdk::types::interface::agent::SkillRequirement {
+                input_commitment: vec![1],
+                payment_policy: nexus_sdk::types::interface::payment::SkillPaymentPolicy::default(),
+                schedule_policy: nexus_sdk::types::interface::agent::SkillSchedulePolicy::default(),
                 fixed_tools: Vec::new(),
             },
-            interface_revision: nexus_sdk::types::InterfaceRevision(1),
+            interface_revision: nexus_sdk::types::interface::version::InterfaceVersion::new(1),
         };
 
         TapPublishArtifact::from_config(&config, sui::types::Address::from_static("0xd"))

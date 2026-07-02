@@ -827,11 +827,21 @@ impl EventPoller {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test_utils"))]
 mod tests {
     use {
         super::*,
-        crate::{events::NexusEventKind, test_utils::sui_mocks},
+        crate::{
+            events::NexusEventKind,
+            test_utils::sui_mocks,
+            types::{
+                interface::graph::OutputVariant,
+                sui_framework::object::ID,
+                workflow::execution_events::WalkAdvancedEvent,
+                MoveString,
+                RuntimeVertex,
+            },
+        },
         std::{
             sync::{
                 atomic::{AtomicUsize, Ordering},
@@ -842,6 +852,10 @@ mod tests {
         },
         tokio::{sync::mpsc, time::timeout},
     };
+
+    fn id(bytes: sui::types::Address) -> ID {
+        ID { bytes }
+    }
 
     fn empty_transaction_response(digests: Vec<String>) -> sui::grpc::BatchGetTransactionsResponse {
         let mut response = sui::grpc::BatchGetTransactionsResponse::default();
@@ -864,28 +878,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_event_poller_receives_events() {
+    async fn event_poller_receives_events() {
         let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        // Create a mock event
-        let walk_advanced_event = NexusEventKind::WalkAdvanced(crate::events::WalkAdvancedEvent {
-            dag: sui_mocks::mock_sui_address(),
-            execution: sui_mocks::mock_sui_address(),
+        let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+            dag: id(sui_mocks::mock_sui_address()),
+            execution: id(sui_mocks::mock_sui_address()),
             walk_index: 0,
-            vertex: crate::events::RuntimeVertex::Plain {
-                vertex: crate::events::TypeName::new("v"),
+            vertex: RuntimeVertex::plain("v"),
+            variant: OutputVariant {
+                name: MoveString::from("ok"),
             },
-            variant: crate::events::TypeName::new("ok"),
-            variant_ports_to_data: crate::events::PortsData::from_map(Default::default()),
+            variant_ports_to_data: crate::types::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
         });
 
         sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
         sui_mocks::grpc::mock_events_get_checkpoint(
             &mut ledger_service_mock,
             (*nexus_objects).clone(),
-            vec![walk_advanced_event.clone()],
+            vec![walk_advanced_event],
             1,
         );
 
@@ -898,7 +913,7 @@ mod tests {
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
             .with_transactions_max_batch_size(1)
-            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+            .with_transactions_batch_max_wait(Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
         let page = receiver
@@ -906,16 +921,17 @@ mod tests {
             .await
             .expect("should receive a page")
             .expect("no error");
+
         assert_eq!(page.checkpoint, 1);
         assert_eq!(page.events.len(), 1);
-        match &page.events[0].data {
-            NexusEventKind::WalkAdvanced(_) => {}
-            _ => panic!("Expected WalkAdvanced event"),
-        }
+        assert!(matches!(
+            &page.events[0].data,
+            NexusEventKind::WalkAdvanced(_)
+        ));
     }
 
     #[tokio::test]
-    async fn test_event_poller_empty_events() {
+    async fn event_poller_preserves_empty_event_pages() {
         let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -937,7 +953,7 @@ mod tests {
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
             .with_transactions_max_batch_size(1)
-            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+            .with_transactions_batch_max_wait(Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
         let page = receiver
@@ -945,6 +961,7 @@ mod tests {
             .await
             .expect("should receive a page")
             .expect("no error");
+
         assert_eq!(page.checkpoint, 1);
         assert!(page.events.is_empty());
     }

@@ -2,24 +2,42 @@
 
 use {
     super::{
-        serde_parsers::{
-            deserialize_move_ascii_string,
-            deserialize_tap_address_value,
-            deserialize_tap_byte_vector,
-            deserialize_tap_u64_value,
-            serialize_move_ascii_string,
+        interface::{
+            agent::{
+                Agent,
+                AgentPaymentVault,
+                AgentVaultFieldKey,
+                ExecutionPaymentHistoryFieldKey,
+                ExecutionPaymentReceiptFieldKey,
+                FixedTool,
+                SkillDagBinding,
+                SkillRecurrenceKind,
+                SkillRequirement,
+                SkillSchedulePolicy,
+            },
+            payment::{PaymentSourceKind, SkillPaymentPolicy},
+            version::InterfaceVersion,
         },
-        MoveOption,
-        MoveTable,
+        registry::agent_registry::{
+            AgentRecord,
+            AgentRegistry,
+            DefaultDagExecutor,
+            DefaultDagExecutorFieldKey,
+            SkillRecord,
+        },
+        serde_parsers::deserialize_tap_u64_value,
+        workflow::execution::DagExecutionPaymentFieldKey,
+        MoveString,
     },
     crate::sui,
     serde::{de::Error as _, Deserialize, Serialize},
     sha2::{Digest as _, Sha256},
-    std::{fmt, path::PathBuf},
+    std::{
+        fmt,
+        hash::{Hash, Hasher},
+        path::PathBuf,
+    },
 };
-
-const TAP_PAYMENT_SOURCE_KIND_INVOKER: u8 = 0;
-const TAP_PAYMENT_SOURCE_KIND_AGENT_VAULT: u8 = 1;
 
 /// On-chain generated standard Talus agent ID.
 pub type AgentId = sui::types::Address;
@@ -31,39 +49,48 @@ pub const fn skill_id(value: u64) -> SkillId {
     value
 }
 
-/// TAP skill interface revision used for fresh lookup and in-flight pinning.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
-#[serde(transparent)]
-pub struct InterfaceRevision(pub u64);
-
-/// Canonical name for `nexus_interface::version::InterfaceVersion`.
-pub type InterfaceVersion = InterfaceRevision;
-
-impl<'de> Deserialize<'de> for InterfaceRevision {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserialize_tap_u64_value(deserializer).map(Self)
+impl InterfaceVersion {
+    pub const fn new(inner: u64) -> Self {
+        Self { inner }
     }
 }
 
-impl fmt::Display for InterfaceRevision {
+impl Copy for InterfaceVersion {}
+
+impl std::hash::Hash for InterfaceVersion {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl PartialOrd for InterfaceVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for InterfaceVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.inner.cmp(&other.inner)
+    }
+}
+
+impl fmt::Display for InterfaceVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.inner)
     }
 }
 
 /// Key for a pinned skill interface revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SkillRevisionKey {
+pub struct SkillRevisionLookupKey {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
-    pub interface_revision: InterfaceRevision,
+    pub interface_revision: InterfaceVersion,
 }
 
-impl fmt::Display for SkillRevisionKey {
+impl fmt::Display for SkillRevisionLookupKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -152,86 +179,9 @@ fn deserialize_payment_mode_value(value: &serde_json::Value) -> Option<PaymentMo
     }
 }
 
-/// TAP-facing payment policy summary used by config digest and dry-run checks.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Default)]
-pub enum SkillPaymentPolicy {
-    #[default]
-    UserFunded,
-    AgentFunded {
-        max_budget: u64,
-    },
-}
-
-impl<'de> Deserialize<'de> for SkillPaymentPolicy {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            enum RawTapPaymentPolicy {
-                UserFunded,
-                AgentFunded { max_budget: u64 },
-            }
-
-            return RawTapPaymentPolicy::deserialize(deserializer).map(|raw| match raw {
-                RawTapPaymentPolicy::UserFunded => SkillPaymentPolicy::UserFunded,
-                RawTapPaymentPolicy::AgentFunded { max_budget } => {
-                    SkillPaymentPolicy::AgentFunded { max_budget }
-                }
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_payment_policy_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP payment policy value"))
-    }
-}
-
-fn deserialize_payment_policy_value(value: &serde_json::Value) -> Option<SkillPaymentPolicy> {
-    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
-        ["@variant", "variant", "type"]
-            .into_iter()
-            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
-    }
-
-    fn parse_agent_funded(fields: Option<&serde_json::Value>) -> Option<SkillPaymentPolicy> {
-        let max_budget = fields
-            .and_then(|fields| match fields {
-                serde_json::Value::Object(object) => object.get("max_budget"),
-                other => Some(other),
-            })
-            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
-        Some(SkillPaymentPolicy::AgentFunded { max_budget })
-    }
-
-    match value {
-        serde_json::Value::String(text) if text == "UserFunded" || text == "user_funded" => {
-            Some(SkillPaymentPolicy::UserFunded)
-        }
-        serde_json::Value::Object(object) => {
-            if let Some(text) = variant_text(object) {
-                return match text {
-                    "UserFunded" | "user_funded" => Some(SkillPaymentPolicy::UserFunded),
-                    "AgentFunded" | "agent_funded" => {
-                        parse_agent_funded(object.get("fields").or(Some(value)))
-                    }
-                    _ => None,
-                };
-            }
-
-            if object.contains_key("UserFunded") {
-                return Some(SkillPaymentPolicy::UserFunded);
-            }
-            if let Some(fields) = object.get("AgentFunded") {
-                return parse_agent_funded(Some(fields));
-            }
-            if object.contains_key("max_budget") {
-                return parse_agent_funded(Some(value));
-            }
-            None
-        }
-        _ => None,
+impl Default for SkillPaymentPolicy {
+    fn default() -> Self {
+        Self::UserFunded
     }
 }
 
@@ -259,28 +209,30 @@ impl SkillPaymentPolicy {
     }
 }
 
-/// Source kind for standard TAP execution payment.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PaymentSourceKind {
-    Invoker,
-    AgentVault,
-}
-
 impl PaymentSourceKind {
-    pub fn as_u8(self) -> u8 {
-        match self {
-            Self::Invoker => TAP_PAYMENT_SOURCE_KIND_INVOKER,
-            Self::AgentVault => TAP_PAYMENT_SOURCE_KIND_AGENT_VAULT,
+    pub fn user_funded(user: sui::types::Address) -> Self {
+        Self::UserFunded { user }
+    }
+
+    pub fn agent_funded(agent_id: AgentId) -> Self {
+        Self::AgentFunded {
+            agent_id: crate::types::sui_address_to_id(agent_id),
         }
     }
 
-    pub fn from_u8(value: u8) -> anyhow::Result<Self> {
-        match value {
-            TAP_PAYMENT_SOURCE_KIND_INVOKER => Ok(Self::Invoker),
-            TAP_PAYMENT_SOURCE_KIND_AGENT_VAULT => Ok(Self::AgentVault),
-            _ => anyhow::bail!("unsupported TAP payment source kind {value}"),
+    pub fn identity(&self) -> sui::types::Address {
+        match self {
+            Self::UserFunded { user } => *user,
+            Self::AgentFunded { agent_id } => agent_id.clone().into(),
         }
+    }
+
+    pub fn to_bcs_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(bcs::to_bytes(self)?)
+    }
+
+    pub fn from_bcs_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        Ok(bcs::from_bytes(bytes)?)
     }
 }
 
@@ -289,7 +241,7 @@ impl PaymentSourceKind {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ScheduledPaymentSource {
     Address {
-        #[serde(deserialize_with = "deserialize_tap_address_value")]
+        #[serde(deserialize_with = "crate::types::serde_parsers::deserialize_tap_address_value")]
         refund_recipient: sui::types::Address,
     },
     AgentVault {
@@ -383,8 +335,8 @@ fn deserialize_tap_scheduled_payment_source_value(
 impl ScheduledPaymentSource {
     pub fn source_kind(&self) -> PaymentSourceKind {
         match self {
-            Self::Address { .. } => PaymentSourceKind::Invoker,
-            Self::AgentVault { .. } => PaymentSourceKind::AgentVault,
+            Self::Address { refund_recipient } => PaymentSourceKind::user_funded(*refund_recipient),
+            Self::AgentVault { agent_id } => PaymentSourceKind::agent_funded(*agent_id),
         }
     }
 
@@ -396,105 +348,6 @@ impl ScheduledPaymentSource {
     }
 }
 
-impl<'de> Deserialize<'de> for PaymentSourceKind {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            return u8::deserialize(deserializer)
-                .and_then(|value| Self::from_u8(value).map_err(D::Error::custom));
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_payment_source_kind_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP payment source kind value"))
-    }
-}
-
-fn deserialize_payment_source_kind_value(value: &serde_json::Value) -> Option<PaymentSourceKind> {
-    fn from_text(text: &str) -> Option<PaymentSourceKind> {
-        match text {
-            "invoker" | "Invoker" => Some(PaymentSourceKind::Invoker),
-            "agent_vault" | "AgentVault" | "agentVault" => Some(PaymentSourceKind::AgentVault),
-            _ => None,
-        }
-    }
-
-    match value {
-        serde_json::Value::String(text) => from_text(text),
-        serde_json::Value::Number(number) => number.as_u64().and_then(|value| {
-            u8::try_from(value)
-                .ok()
-                .and_then(|value| PaymentSourceKind::from_u8(value).ok())
-        }),
-        serde_json::Value::Object(object) => {
-            for key in ["@variant", "variant", "type"] {
-                if let Some(serde_json::Value::String(text)) = object.get(key) {
-                    if let Some(kind) = from_text(text) {
-                        return Some(kind);
-                    }
-                }
-            }
-
-            if let Some(fields) = object.get("fields") {
-                if let Some(kind) = deserialize_payment_source_kind_value(fields) {
-                    return Some(kind);
-                }
-            }
-
-            object.keys().find_map(|key| from_text(key))
-        }
-        _ => None,
-    }
-}
-
-/// Typed standard TAP payment source payload.
-///
-/// New standard TAP calls use this encoded pair to distinguish invoker-funded
-/// settlement from agent-vault-funded settlement. Legacy address-only BCS
-/// sources remain accepted by validation for backward compatibility.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct PaymentSource {
-    pub kind: PaymentSourceKind,
-    pub identity: sui::types::Address,
-}
-
-impl PaymentSource {
-    pub fn invoker(invoker: sui::types::Address) -> Self {
-        Self {
-            kind: PaymentSourceKind::Invoker,
-            identity: invoker,
-        }
-    }
-
-    pub fn agent_vault(agent_id: AgentId) -> Self {
-        Self {
-            kind: PaymentSourceKind::AgentVault,
-            identity: agent_id,
-        }
-    }
-
-    pub fn to_bcs_bytes(self) -> anyhow::Result<Vec<u8>> {
-        Ok(bcs::to_bytes(&(self.kind.as_u8(), self.identity))?)
-    }
-
-    pub fn from_bcs_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        let (kind, identity): (u8, sui::types::Address) = bcs::from_bytes(bytes)?;
-        Ok(Self {
-            kind: PaymentSourceKind::from_u8(kind)?,
-            identity,
-        })
-    }
-}
-
-/// DAG binding mode for a registered TAP skill.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SkillDagBinding {
-    Pinned { dag_id: sui::types::Address },
-    RuntimeSelected,
-}
-
 impl SkillDagBinding {
     pub fn pinned(dag_id: sui::types::Address) -> Self {
         Self::Pinned { dag_id }
@@ -504,245 +357,184 @@ impl SkillDagBinding {
         Self::RuntimeSelected
     }
 
-    pub fn pinned_dag_id(self) -> Option<sui::types::Address> {
+    pub fn pinned_dag_id(&self) -> Option<sui::types::Address> {
         match self {
-            Self::Pinned { dag_id } => Some(dag_id),
+            Self::Pinned { dag_id } => Some(*dag_id),
             Self::RuntimeSelected => None,
         }
     }
 }
 
-/// TAP-facing recurrence mode for a scheduled skill.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub enum RecurrenceKind {
-    Once,
-    Recursive {
-        min_interval_ms: u64,
-        max_occurrences: Option<u64>,
-    },
-}
-
-impl<'de> Deserialize<'de> for RecurrenceKind {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        if !deserializer.is_human_readable() {
-            #[derive(Deserialize)]
-            enum RawTapRecurrenceKind {
-                Once,
-                Recursive {
-                    min_interval_ms: u64,
-                    max_occurrences: Option<u64>,
-                },
-            }
-
-            return RawTapRecurrenceKind::deserialize(deserializer).map(|raw| match raw {
-                RawTapRecurrenceKind::Once => RecurrenceKind::Once,
-                RawTapRecurrenceKind::Recursive {
-                    min_interval_ms,
-                    max_occurrences,
-                } => RecurrenceKind::Recursive {
-                    min_interval_ms,
-                    max_occurrences,
-                },
-            });
-        }
-
-        let value = serde_json::Value::deserialize(deserializer)?;
-        deserialize_tap_recurrence_kind_value(&value)
-            .ok_or_else(|| D::Error::custom("missing TAP recurrence kind value"))
-    }
-}
-
-fn deserialize_tap_recurrence_kind_value(value: &serde_json::Value) -> Option<RecurrenceKind> {
-    fn variant_text(object: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
-        ["@variant", "variant", "type"]
-            .into_iter()
-            .find_map(|key| object.get(key).and_then(serde_json::Value::as_str))
-    }
-
-    fn parse_recursive(fields: Option<&serde_json::Value>) -> Option<RecurrenceKind> {
-        let serde_json::Value::Object(object) = fields? else {
-            return None;
-        };
-        let min_interval_ms = object
-            .get("min_interval_ms")
-            .and_then(|value| super::parse_u64_value(value).ok().flatten())?;
-        let max_occurrences = object
-            .get("max_occurrences")
-            .and_then(|value| {
-                crate::types::deserialize_move_option_sui_u64(value.clone())
-                    .ok()
-                    .map(|value| value.0)
-            })
-            .flatten();
-        Some(RecurrenceKind::Recursive {
-            min_interval_ms,
-            max_occurrences,
-        })
-    }
-
-    match value {
-        serde_json::Value::String(text) if text == "Once" || text == "once" => {
-            Some(RecurrenceKind::Once)
-        }
-        serde_json::Value::Object(object) => {
-            if let Some(text) = variant_text(object) {
-                return match text {
-                    "Once" | "once" => Some(RecurrenceKind::Once),
-                    "Recursive" | "recursive" => {
-                        parse_recursive(object.get("fields").or(Some(value)))
-                    }
-                    _ => None,
-                };
-            }
-
-            if object.contains_key("Once") {
-                return Some(RecurrenceKind::Once);
-            }
-            if let Some(fields) = object.get("Recursive") {
-                return parse_recursive(Some(fields));
-            }
-            if object.contains_key("min_interval_ms") {
-                return parse_recursive(Some(value));
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// TAP-facing schedule policy summary used by dry-run checks.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillSchedulePolicy {
-    pub recurrence: RecurrenceKind,
-    pub allow_recursive: bool,
-}
-
 impl Default for SkillSchedulePolicy {
     fn default() -> Self {
         Self {
-            recurrence: RecurrenceKind::Once,
+            recurrence: SkillRecurrenceKind::Once,
             allow_recursive: false,
         }
     }
 }
 
-/// Fixed tool that must be preserved by a skill DAG.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FixedTool {
-    pub tool_registry_id: sui::types::Address,
-    #[serde(
-        alias = "fqn",
-        deserialize_with = "deserialize_move_ascii_string",
-        serialize_with = "serialize_move_ascii_string"
-    )]
-    pub tool_fqn: String,
+impl FixedTool {
+    pub fn new(tool_registry_id: sui::types::Address, tool_fqn: impl Into<String>) -> Self {
+        Self {
+            tool_registry_id: crate::types::sui_address_to_id(tool_registry_id),
+            tool_fqn: MoveString::from(tool_fqn.into()),
+        }
+    }
+
+    pub fn tool_registry_address(&self) -> sui::types::Address {
+        self.tool_registry_id.clone().into()
+    }
+
+    pub fn tool_fqn_string(&self) -> String {
+        self.tool_fqn.clone().into()
+    }
 }
 
-/// User-facing skill requirements fetched before dry-run or execution.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillRequirements {
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub input_schema_commitment: Vec<u8>,
-    pub payment_policy: SkillPaymentPolicy,
-    pub schedule_policy: SkillSchedulePolicy,
-    #[serde(default)]
-    pub fixed_tools: Vec<FixedTool>,
+impl Default for SkillRequirement {
+    fn default() -> Self {
+        Self {
+            input_commitment: Vec::new(),
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
+            fixed_tools: Vec::new(),
+        }
+    }
 }
 
-/// Canonical core skill requirement name.
-pub type SkillRequirement = SkillRequirements;
-
-/// Stored `nexus_registry::agent_registry::AgentRecord`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentRecord {
-    pub active: bool,
-    pub skills: MoveTable<SkillId, SkillRecord>,
+impl SkillRecord {
+    pub fn description_bytes(&self) -> &[u8] {
+        &self.description
+    }
 }
 
-/// Stored `nexus_interface::tap::SkillRecord`.
+impl Clone for AgentRecord {
+    fn clone(&self) -> Self {
+        Self {
+            active: self.active,
+            skills: self.skills.clone(),
+        }
+    }
+}
+
+impl Clone for AgentRegistry {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            agents: self.agents.clone(),
+        }
+    }
+}
+
+impl Clone for Agent {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            next_skill_id: self.next_skill_id,
+            registry_id: self.registry_id.clone(),
+        }
+    }
+}
+
+/// Fetched skill record plus dynamic-table keys that are not stored in Move.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillRecord {
-    /// SDK-expanded dynamic table context. This is not part of the on-chain `SkillRecord`.
-    #[serde(skip)]
-    pub agent_id: Option<AgentId>,
-    /// SDK-expanded dynamic table context. This is not part of the on-chain `SkillRecord`.
-    #[serde(skip)]
-    pub skill_id: Option<SkillId>,
-    #[serde(deserialize_with = "deserialize_tap_byte_vector")]
-    pub description: Vec<u8>,
-    pub active: bool,
-    pub dag_binding: SkillDagBinding,
-    pub requirements: SkillRequirements,
-    pub current_interface_revision: InterfaceRevision,
+pub struct SkillRecordContext {
+    pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub scheduled_task_count: u64,
+    pub skill_id: SkillId,
+    pub record: SkillRecord,
 }
 
-/// Standard network default DAG executor for arbitrary-DAG execution.
+impl SkillRecordContext {
+    pub fn active(&self) -> bool {
+        self.record.active
+    }
+
+    pub fn dag_binding(&self) -> &SkillDagBinding {
+        &self.record.dag_binding
+    }
+
+    pub fn current_interface_revision(&self) -> InterfaceVersion {
+        self.record.current_interface_revision
+    }
+
+    pub fn requirements(&self) -> &SkillRequirement {
+        &self.record.requirements
+    }
+}
+
+/// SDK-resolved default DAG executor target for arbitrary-DAG execution.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DefaultDagExecutor {
+pub struct DefaultDagExecutorTarget {
     pub agent_id: AgentId,
     #[serde(deserialize_with = "deserialize_tap_u64_value")]
     pub skill_id: SkillId,
 }
 
-/// Dynamic field key for the registry-owned default DAG executor value.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DefaultDagExecutorFieldKey {}
+impl Agent {
+    pub fn object_id(&self) -> AgentId {
+        self.id.clone().into()
+    }
 
-/// Stored `nexus_interface::tap::DefaultDagExecutor` value. The wrapper owns
-/// the default agent on chain; SDK callers only expose its public target IDs.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DefaultDagExecutorValue {
-    pub agent: Agent,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: SkillId,
+    pub fn from_ids(
+        agent_id: AgentId,
+        next_skill_id: u64,
+        registry_id: Option<sui::types::Address>,
+    ) -> Self {
+        Self {
+            id: crate::types::sui_address_to_uid(agent_id),
+            next_skill_id,
+            registry_id: registry_id.map(crate::types::sui_address_to_id).into(),
+        }
+    }
 }
 
-impl DefaultDagExecutorValue {
-    pub fn target(&self) -> DefaultDagExecutor {
-        DefaultDagExecutor {
-            agent_id: self.agent.id,
+impl DefaultDagExecutor {
+    pub fn target(&self) -> DefaultDagExecutorTarget {
+        DefaultDagExecutorTarget {
+            agent_id: self.agent.object_id(),
             skill_id: self.skill_id,
         }
     }
 }
 
-/// Stored `nexus_interface::tap::Agent` object shape.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Agent {
-    pub id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub next_skill_id: u64,
-    pub registry_id: MoveOption<sui::types::Address>,
+impl Clone for DefaultDagExecutor {
+    fn clone(&self) -> Self {
+        Self {
+            agent: self.agent.clone(),
+            skill_id: self.skill_id,
+        }
+    }
 }
 
-/// Raw shared `nexus_registry::agent_registry::AgentRegistry` object contents.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentRegistryObject {
-    pub id: sui::types::Address,
-    pub agents: MoveTable<sui::types::Address, AgentRecord>,
+impl Default for DefaultDagExecutorFieldKey {
+    fn default() -> Self {
+        Self { dummy_field: false }
+    }
+}
+
+impl std::hash::Hash for DefaultDagExecutorFieldKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.dummy_field.hash(state);
+    }
 }
 
 /// Expanded `nexus_registry::agent_registry::AgentRegistry` contents with table entries fetched.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentRegistry {
+pub struct AgentRegistrySnapshot {
     pub id: sui::types::Address,
     pub agents: Vec<AgentRecord>,
-    pub skills: Vec<SkillRecord>,
+    pub skills: Vec<SkillRecordContext>,
     #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
 }
 
-impl AgentRegistry {
+impl AgentRegistrySnapshot {
     /// Convert current skill revisions into leader-facing skill revision records.
-    pub fn skill_revision_records(&self) -> anyhow::Result<Vec<SkillRevisionRecord>> {
+    pub fn skill_revision_records(&self) -> anyhow::Result<Vec<SkillRevisionContext>> {
         self.skills
             .iter()
-            .filter_map(SkillRevisionRecord::from_skill_record)
+            .filter_map(SkillRevisionContext::from_skill_record)
             .map(|record| {
                 record.validate()?;
                 Ok(record)
@@ -752,8 +544,8 @@ impl AgentRegistry {
 
     pub fn skill_revision_record(
         &self,
-        key: SkillRevisionKey,
-    ) -> anyhow::Result<SkillRevisionRecord> {
+        key: SkillRevisionLookupKey,
+    ) -> anyhow::Result<SkillRevisionContext> {
         let matches = self
             .skill_revision_records()?
             .into_iter()
@@ -771,33 +563,29 @@ impl AgentRegistry {
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
-    ) -> anyhow::Result<SkillRevisionRecord> {
+    ) -> anyhow::Result<SkillRevisionContext> {
         let skills = self
             .skills
             .iter()
             .filter(|skill| {
-                skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
+                skill.agent_id == agent_id && skill.skill_id == skill_id && skill.active()
             })
             .collect::<Vec<_>>();
 
         let skill = match skills.as_slice() {
             [] => {
-                return Err(SkillRevisionResolutionError::MissingActiveRevision {
-                    agent_id,
-                    skill_id,
-                }
-                .into())
+                return Err(
+                    SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id }.into(),
+                )
             }
-            [skill] if skill.active => *skill,
+            [skill] if skill.active() => *skill,
             [_] => {
-                return Err(SkillRevisionResolutionError::MissingActiveRevision {
-                    agent_id,
-                    skill_id,
-                }
-                .into())
+                return Err(
+                    SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id }.into(),
+                )
             }
             _ => {
-                return Err(SkillRevisionResolutionError::DuplicateActiveRevision {
+                return Err(SkillRevisionLookupError::DuplicateActiveRevision {
                     agent_id,
                     skill_id,
                     count: skills.len(),
@@ -806,42 +594,41 @@ impl AgentRegistry {
             }
         };
 
-        let skill_revision = SkillRevisionRecord {
-            key: SkillRevisionKey {
+        let skill_revision = SkillRevisionContext {
+            key: SkillRevisionLookupKey {
                 agent_id,
                 skill_id,
-                interface_revision: skill.current_interface_revision,
+                interface_revision: skill.current_interface_revision(),
             },
-            requirements: skill.requirements.clone(),
+            requirements: skill.requirements().clone(),
         };
         skill_revision.validate()?;
         Ok(skill_revision)
     }
 
-    pub fn default_dag_executor(&self) -> anyhow::Result<DefaultDagExecutor> {
+    pub fn default_dag_executor(&self) -> anyhow::Result<&DefaultDagExecutor> {
         self.default_executor
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("AgentRegistry missing default agent"))
     }
 }
 
 /// Active or pinned skill revision record returned to leader and SDK callers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkillRevisionRecord {
-    pub key: SkillRevisionKey,
-    pub requirements: SkillRequirements,
+pub struct SkillRevisionContext {
+    pub key: SkillRevisionLookupKey,
+    pub requirements: SkillRequirement,
 }
 
-impl SkillRevisionRecord {
-    fn from_skill_record(skill: &SkillRecord) -> Option<Self> {
-        let agent_id = skill.agent_id?;
-        let skill_id = skill.skill_id?;
+impl SkillRevisionContext {
+    fn from_skill_record(skill: &SkillRecordContext) -> Option<Self> {
         Some(Self {
-            key: SkillRevisionKey {
-                agent_id,
-                skill_id,
-                interface_revision: skill.current_interface_revision,
+            key: SkillRevisionLookupKey {
+                agent_id: skill.agent_id,
+                skill_id: skill.skill_id,
+                interface_revision: skill.current_interface_revision(),
             },
-            requirements: skill.requirements.clone(),
+            requirements: skill.requirements().clone(),
         })
     }
 
@@ -859,57 +646,86 @@ impl SkillRevisionRecord {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct DagExecutionPaymentFieldKey {}
-
-/// Dynamic-field key for vault-owned execution payment receipts.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ExecutionPaymentReceiptFieldKey {
-    pub execution_id: sui::types::Address,
+impl Clone for AgentPaymentVault {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            agent_id: self.agent_id.clone(),
+            available_balance: self.available_balance.clone(),
+            locked_amount: self.locked_amount,
+        }
+    }
 }
 
-/// Dynamic-field key for an agent's standard payment vault.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentVaultFieldKey {}
+impl AgentPaymentVault {
+    pub fn object_id(&self) -> AgentId {
+        self.id.id.bytes
+    }
 
-/// Dynamic-field key for vault payment-history lists.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ExecutionPaymentHistoryFieldKey {
-    pub resolved: bool,
+    pub fn agent_id_address(&self) -> AgentId {
+        self.agent_id.bytes
+    }
+
+    pub fn available_balance_value(&self) -> u64 {
+        self.available_balance.value
+    }
+
+    pub fn unlocked_balance_value(&self) -> u64 {
+        self.available_balance
+            .value
+            .saturating_sub(self.locked_amount)
+    }
 }
 
-/// Shared standard Talus agent payment vault object.
-///
-/// Each agent created by the standard TAP interface has one vault. The vault's
-/// `available_balance` includes locked funds; `locked_amount` records the
-/// portion reserved by in-flight execution payments.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentPaymentVault {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    pub agent_id: AgentId,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub available_balance: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub locked_amount: u64,
+impl Default for DagExecutionPaymentFieldKey {
+    fn default() -> Self {
+        Self { dummy_field: false }
+    }
 }
 
-/// Backward-compatible alias for the current `nexus_interface::authorization` template.
-pub type ScheduledVertexAuthorizationTemplate = crate::types::AgentVertexAuthorizationTemplate;
+impl Hash for DagExecutionPaymentFieldKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dummy_field.hash(state);
+    }
+}
+
+impl Default for AgentVaultFieldKey {
+    fn default() -> Self {
+        Self { dummy_field: false }
+    }
+}
+
+impl Hash for AgentVaultFieldKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.dummy_field.hash(state);
+    }
+}
+
+impl Hash for ExecutionPaymentReceiptFieldKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.execution_id.hash(state);
+    }
+}
+
+impl Hash for ExecutionPaymentHistoryFieldKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.resolved.hash(state);
+    }
+}
 
 /// Registered skill plus the currently active skill revision used for fresh standard execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActiveSkillExecutionTarget {
-    pub skill: SkillRecord,
-    pub skill_revision: SkillRevisionRecord,
+    pub skill: SkillRecordContext,
+    pub skill_revision: SkillRevisionContext,
 }
 
 /// Default execution target plus active skill revision recovered for fresh default DAG execution.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefaultDagExecutorRecord {
-    pub target: DefaultDagExecutor,
-    pub skill: SkillRecord,
-    pub skill_revision: SkillRevisionRecord,
+    pub target: DefaultDagExecutorTarget,
+    pub skill: SkillRecordContext,
+    pub skill_revision: SkillRevisionContext,
 }
 
 /// DAG-backed TAP skill config used by SDK/CLI authoring helpers.
@@ -917,8 +733,8 @@ pub struct DefaultDagExecutorRecord {
 pub struct SkillConfig {
     pub name: String,
     pub dag_path: PathBuf,
-    pub requirements: SkillRequirements,
-    pub interface_revision: InterfaceRevision,
+    pub requirements: SkillRequirement,
+    pub interface_revision: InterfaceVersion,
 }
 
 impl SkillConfig {
@@ -939,8 +755,8 @@ impl SkillConfig {
 pub struct TapPublishArtifact {
     pub skill_name: String,
     pub dag_id: sui::types::Address,
-    pub interface_revision: InterfaceRevision,
-    pub requirements: SkillRequirements,
+    pub interface_revision: InterfaceVersion,
+    pub requirements: SkillRequirement,
 }
 
 impl TapPublishArtifact {
@@ -1001,7 +817,7 @@ impl fmt::Display for TapValidationError {
 impl std::error::Error for TapValidationError {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SkillRevisionResolutionError {
+pub enum SkillRevisionLookupError {
     MissingActiveRevision {
         agent_id: AgentId,
         skill_id: SkillId,
@@ -1014,13 +830,13 @@ pub enum SkillRevisionResolutionError {
     InvalidSkillRevision(TapValidationError),
 }
 
-impl fmt::Display for SkillRevisionResolutionError {
+impl fmt::Display for SkillRevisionLookupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id } => {
+            SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id } => {
                 write!(f, "no active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}")
             }
-            SkillRevisionResolutionError::DuplicateActiveRevision {
+            SkillRevisionLookupError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count,
@@ -1028,21 +844,21 @@ impl fmt::Display for SkillRevisionResolutionError {
                 f,
                 "expected one active TAP skill revision for agent_id={agent_id}, skill_id={skill_id}, found {count}"
             ),
-            SkillRevisionResolutionError::InvalidSkillRevision(error) => {
+            SkillRevisionLookupError::InvalidSkillRevision(error) => {
                 write!(f, "invalid TAP skill revision: {error}")
             }
         }
     }
 }
 
-impl std::error::Error for SkillRevisionResolutionError {}
+impl std::error::Error for SkillRevisionLookupError {}
 
-pub fn validate_requirements(requirements: &SkillRequirements) -> Result<(), TapValidationError> {
-    if requirements.input_schema_commitment.is_empty() {
+pub fn validate_requirements(requirements: &SkillRequirement) -> Result<(), TapValidationError> {
+    if requirements.input_commitment.is_empty() {
         return Err(TapValidationError::MissingInputCommitment);
     }
     for tool in &requirements.fixed_tools {
-        if tool.tool_fqn.trim().is_empty() {
+        if tool.tool_fqn_string().trim().is_empty() {
             return Err(TapValidationError::EmptyAuthorizedToolModule);
         }
     }
@@ -1059,12 +875,12 @@ pub fn validate_execution_payment_options(
 ) -> anyhow::Result<()> {
     match policy {
         SkillPaymentPolicy::UserFunded => {
-            let expected = bcs::to_bytes(&payer)?;
+            let expected = PaymentSourceKind::user_funded(payer).to_bcs_bytes()?;
             let source_is_valid =
                 payment_source.is_empty() || payment_source == expected.as_slice();
             if !source_is_valid {
                 anyhow::bail!(
-                    "standard TAP user-funded payment source must be empty or payer address BCS"
+                    "standard TAP user-funded payment source must be empty or generated user-funded source BCS"
                 );
             }
         }
@@ -1076,11 +892,11 @@ pub fn validate_execution_payment_options(
                     max_budget
                 );
             }
-            let expected = bcs::to_bytes(&agent_id)?;
+            let expected = PaymentSourceKind::agent_funded(agent_id).to_bcs_bytes()?;
             let source_is_valid = payment_source == expected.as_slice();
             if !source_is_valid {
                 anyhow::bail!(
-                    "standard Talus agent-funded payment source must be agent_id address BCS"
+                    "standard Talus agent-funded payment source must be generated agent-funded source BCS"
                 );
             }
         }
@@ -1090,41 +906,35 @@ pub fn validate_execution_payment_options(
 }
 
 pub fn payment_source_from_address(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
-    Ok(bcs::to_bytes(&address)?)
+    tap_payment_source_for_invoker(address)
 }
 
 pub fn tap_payment_source_for_invoker(address: sui::types::Address) -> anyhow::Result<Vec<u8>> {
-    PaymentSource::invoker(address).to_bcs_bytes()
+    PaymentSourceKind::user_funded(address).to_bcs_bytes()
 }
 
 pub fn tap_payment_source_for_agent_vault(agent_id: AgentId) -> anyhow::Result<Vec<u8>> {
-    PaymentSource::agent_vault(agent_id).to_bcs_bytes()
+    PaymentSourceKind::agent_funded(agent_id).to_bcs_bytes()
 }
 
 /// Resolve exactly one active skill revision for fresh execution.
 pub fn resolve_active_tap_skill_revision<'a>(
-    records: &'a [SkillRevisionRecord],
-    skills: &[SkillRecord],
+    records: &'a [SkillRevisionContext],
+    skills: &[SkillRecordContext],
     agent_id: AgentId,
     skill_id: SkillId,
-) -> Result<&'a SkillRevisionRecord, SkillRevisionResolutionError> {
+) -> Result<&'a SkillRevisionContext, SkillRevisionLookupError> {
     let skill_matches = skills
         .iter()
-        .filter(|skill| {
-            skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
-        })
+        .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id && skill.active())
         .collect::<Vec<_>>();
 
     let skill = match skill_matches.as_slice() {
-        [] => {
-            return Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id })
-        }
-        [skill] if skill.active => *skill,
-        [_] => {
-            return Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id })
-        }
+        [] => return Err(SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id }),
+        [skill] if skill.active() => *skill,
+        [_] => return Err(SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id }),
         _ => {
-            return Err(SkillRevisionResolutionError::DuplicateActiveRevision {
+            return Err(SkillRevisionLookupError::DuplicateActiveRevision {
                 agent_id,
                 skill_id,
                 count: skill_matches.len(),
@@ -1137,19 +947,19 @@ pub fn resolve_active_tap_skill_revision<'a>(
         .filter(|record| {
             record.key.agent_id == agent_id
                 && record.key.skill_id == skill_id
-                && record.key.interface_revision == skill.current_interface_revision
+                && record.key.interface_revision == skill.current_interface_revision()
         })
         .collect::<Vec<_>>();
 
     match active.as_slice() {
-        [] => Err(SkillRevisionResolutionError::MissingActiveRevision { agent_id, skill_id }),
+        [] => Err(SkillRevisionLookupError::MissingActiveRevision { agent_id, skill_id }),
         [record] => {
             record
                 .validate()
-                .map_err(SkillRevisionResolutionError::InvalidSkillRevision)?;
+                .map_err(SkillRevisionLookupError::InvalidSkillRevision)?;
             Ok(record)
         }
-        _ => Err(SkillRevisionResolutionError::DuplicateActiveRevision {
+        _ => Err(SkillRevisionLookupError::DuplicateActiveRevision {
             agent_id,
             skill_id,
             count: active.len(),
@@ -1159,16 +969,14 @@ pub fn resolve_active_tap_skill_revision<'a>(
 
 /// Resolve the unique active skill and skill revision for fresh standard execution.
 pub fn resolve_active_tap_skill_execution_target(
-    registry: &AgentRegistry,
+    registry: &AgentRegistrySnapshot,
     agent_id: AgentId,
     skill_id: SkillId,
 ) -> anyhow::Result<ActiveSkillExecutionTarget> {
     let skill_matches = registry
         .skills
         .iter()
-        .filter(|skill| {
-            skill.agent_id == Some(agent_id) && skill.skill_id == Some(skill_id) && skill.active
-        })
+        .filter(|skill| skill.agent_id == agent_id && skill.skill_id == skill_id && skill.active())
         .collect::<Vec<_>>();
 
     let skill = match skill_matches.as_slice() {
@@ -1195,13 +1003,14 @@ pub fn resolve_active_tap_skill_execution_target(
 
 /// Resolve the configured default agent from registry state.
 pub fn resolve_default_tap_dag_executor(
-    registry: &AgentRegistry,
+    registry: &AgentRegistrySnapshot,
 ) -> anyhow::Result<DefaultDagExecutorRecord> {
-    let target = registry.default_dag_executor()?;
+    let default_executor = registry.default_dag_executor()?;
+    let target = default_executor.target();
     let execution_target =
         resolve_active_tap_skill_execution_target(registry, target.agent_id, target.skill_id)?;
 
-    if execution_target.skill.dag_binding != SkillDagBinding::RuntimeSelected {
+    if execution_target.skill.dag_binding() != &SkillDagBinding::RuntimeSelected {
         anyhow::bail!(
             "default agent skill {} for agent {} is not runtime-DAG selected",
             target.skill_id,
@@ -1221,9 +1030,13 @@ mod tests {
     use {
         super::*,
         crate::types::{
-            ExecutionPaymentFinalState,
-            ScheduledOccurrenceFinalState,
-            VertexExecutionPaymentSettlementKind,
+            interface::payment::{
+                ExecutionPaymentFinalState,
+                ScheduledOccurrenceFinalState,
+                VertexExecutionPaymentSettlementKind,
+            },
+            registry::agent_registry::AgentRegistry,
+            MoveTable,
         },
         std::str::FromStr,
     };
@@ -1232,41 +1045,43 @@ mod tests {
         sui::types::Address::from_str(value).expect("valid address")
     }
 
-    fn requirements() -> SkillRequirements {
-        SkillRequirements {
-            input_schema_commitment: vec![1],
+    fn requirements() -> SkillRequirement {
+        SkillRequirement {
+            input_commitment: vec![1],
             payment_policy: SkillPaymentPolicy::AgentFunded { max_budget: 100 },
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         }
     }
 
-    fn skill_revision(revision: u64) -> SkillRevisionRecord {
-        SkillRevisionRecord {
-            key: SkillRevisionKey {
+    fn skill_revision(revision: u64) -> SkillRevisionContext {
+        SkillRevisionContext {
+            key: SkillRevisionLookupKey {
                 agent_id: addr("0xa"),
                 skill_id: 11,
-                interface_revision: InterfaceRevision(revision),
+                interface_revision: InterfaceVersion::new(revision),
             },
             requirements: requirements(),
         }
     }
 
-    fn skill(active: bool, current_interface_revision: u64) -> SkillRecord {
-        SkillRecord {
-            agent_id: Some(addr("0xa")),
-            skill_id: Some(11),
-            description: vec![3],
-            active,
-            dag_binding: SkillDagBinding::pinned(addr("0x44")),
-            requirements: requirements(),
-            current_interface_revision: InterfaceRevision(current_interface_revision),
-            scheduled_task_count: 0,
+    fn skill(active: bool, current_interface_revision: u64) -> SkillRecordContext {
+        SkillRecordContext {
+            agent_id: addr("0xa"),
+            skill_id: 11,
+            record: SkillRecord {
+                description: vec![3],
+                active,
+                dag_binding: SkillDagBinding::pinned(addr("0x44")),
+                requirements: requirements(),
+                current_interface_revision: InterfaceVersion::new(current_interface_revision),
+                scheduled_task_count: 0,
+            },
         }
     }
 
-    fn registry_with_active_skill() -> AgentRegistry {
-        AgentRegistry {
+    fn registry_with_active_skill() -> AgentRegistrySnapshot {
+        AgentRegistrySnapshot {
             id: addr("0xf"),
             agents: Vec::new(),
             skills: vec![skill(true, 2)],
@@ -1282,13 +1097,13 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].key.agent_id, addr("0xa"));
         assert_eq!(records[0].key.skill_id, 11);
-        assert_eq!(records[0].key.interface_revision, InterfaceRevision(2));
+        assert_eq!(records[0].key.interface_revision, InterfaceVersion::new(2));
     }
 
     #[test]
     fn validate_rejects_missing_input_commitment() {
         let mut requirements = requirements();
-        requirements.input_schema_commitment.clear();
+        requirements.input_commitment.clear();
 
         assert_eq!(
             validate_requirements(&requirements),
@@ -1311,34 +1126,28 @@ mod tests {
         )
         .expect("one active skill revision");
 
-        assert_eq!(resolved.key.interface_revision, InterfaceRevision(1));
+        assert_eq!(resolved.key.interface_revision, InterfaceVersion::new(1));
 
         let duplicate = vec![skill_revision(1), skill_revision(1)];
         assert!(matches!(
             resolve_active_tap_skill_revision(&duplicate, &skills, addr("0xa"), 11),
-            Err(SkillRevisionResolutionError::DuplicateActiveRevision { count: 2, .. })
+            Err(SkillRevisionLookupError::DuplicateActiveRevision { count: 2, .. })
         ));
     }
 
     #[cfg(feature = "bcs")]
     #[test]
     fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
-        #[derive(Serialize)]
-        struct RawTapRegistryObjectBcs {
-            id: sui::types::Address,
-            agents: MoveTable<sui::types::Address, AgentRecord>,
-        }
-
-        let raw = RawTapRegistryObjectBcs {
-            id: addr("0xf"),
+        let raw = AgentRegistry {
+            id: crate::types::sui_address_to_uid(addr("0xf")),
             agents: MoveTable::new(addr("0x90"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
-        let decoded: AgentRegistryObject =
+        let decoded: AgentRegistry =
             bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
-        assert_eq!(decoded.id, addr("0xf"));
-        assert_eq!(decoded.agents.id, addr("0x90"));
+        assert_eq!(sui::types::Address::from(decoded.id), addr("0xf"));
+        assert_eq!(decoded.agents.id(), addr("0x90"));
     }
 
     #[test]
@@ -1347,7 +1156,7 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
 
         let artifact =
@@ -1363,12 +1172,12 @@ mod tests {
             name: "weather".to_string(),
             dag_path: PathBuf::from("skill.dag.json"),
             requirements: requirements(),
-            interface_revision: InterfaceRevision(1),
+            interface_revision: InterfaceVersion::new(1),
         };
         let artifact =
             TapPublishArtifact::from_config(&config, addr("0x8")).expect("valid artifact");
 
-        assert_eq!(artifact.interface_revision, InterfaceRevision(1));
+        assert_eq!(artifact.interface_revision, InterfaceVersion::new(1));
         assert_eq!(artifact.requirements, config.requirements);
     }
 
@@ -1400,10 +1209,8 @@ mod tests {
             .expect("implicit payer source");
         validate_execution_payment_options(agent, &policy, &explicit_source, 100, payer)
             .expect("explicit payer source");
-        assert!(
-            validate_execution_payment_options(agent, &policy, &typed_source, 100, payer,).is_err(),
-            "typed invoker sources are not accepted by Move direct user-funded policy"
-        );
+        validate_execution_payment_options(agent, &policy, &typed_source, 100, payer)
+            .expect("generated user-funded source");
         assert!(
             validate_execution_payment_options(agent, &policy, &other_source, 100, payer,).is_err()
         );
@@ -1413,11 +1220,11 @@ mod tests {
     fn validate_execution_payment_options_enforces_source_modes() {
         let agent = addr("0xa");
         let payer = addr("0x1");
-        let legacy_agent_source = payment_source_from_address(agent).expect("agent source");
+        let user_funded_agent_source = payment_source_from_address(agent).expect("agent source");
         let agent_source = tap_payment_source_for_agent_vault(agent).expect("agent vault source");
 
         let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
-        validate_execution_payment_options(agent, &agent_funded, &legacy_agent_source, 100, payer)
+        validate_execution_payment_options(agent, &agent_funded, &agent_source, 100, payer)
             .expect("agent-funded source at policy cap");
         assert!(
             validate_execution_payment_options(agent, &agent_funded, &[], 100, payer,).is_err()
@@ -1425,7 +1232,7 @@ mod tests {
         assert!(validate_execution_payment_options(
             agent,
             &agent_funded,
-            &agent_source,
+            &user_funded_agent_source,
             100,
             payer,
         )
@@ -1433,7 +1240,7 @@ mod tests {
         assert!(validate_execution_payment_options(
             agent,
             &agent_funded,
-            &legacy_agent_source,
+            &agent_source,
             101,
             payer,
         )
@@ -1465,18 +1272,25 @@ mod tests {
             PaymentMode::UserFunded
         );
         assert_eq!(
-            serde_json::from_value::<PaymentSourceKind>(serde_json::json!(1))
-                .expect("numeric payment source kind"),
-            PaymentSourceKind::AgentVault
+            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
+                "UserFunded": { "user": "0x1" }
+            }))
+            .expect("keyed user-funded payment source kind"),
+            PaymentSourceKind::user_funded(addr("0x1"))
         );
         assert_eq!(
             serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
+                "AgentFunded": { "agent_id": "0xa" }
+            }))
+            .expect("keyed agent-funded payment source kind"),
+            PaymentSourceKind::agent_funded(addr("0xa"))
+        );
+        assert!(
+            serde_json::from_value::<PaymentSourceKind>(serde_json::json!({
                 "fields": { "@variant": "invoker" }
             }))
-            .expect("nested payment source kind"),
-            PaymentSourceKind::Invoker
+            .is_err()
         );
-        assert!(serde_json::from_value::<PaymentSourceKind>(serde_json::json!(7)).is_err());
 
         assert_eq!(
             serde_json::from_value::<VertexExecutionPaymentSettlementKind>(serde_json::json!({
@@ -1525,7 +1339,10 @@ mod tests {
             }
         }))
         .expect("variant address source");
-        assert_eq!(address_source.source_kind(), PaymentSourceKind::Invoker);
+        assert_eq!(
+            address_source.source_kind(),
+            PaymentSourceKind::user_funded(addr("0xee"))
+        );
         assert_eq!(address_source.source_identity(), addr("0xee"));
 
         let vault_source: ScheduledPaymentSource = serde_json::from_value(serde_json::json!({
@@ -1536,7 +1353,10 @@ mod tests {
             }
         }))
         .expect("nested vault source");
-        assert_eq!(vault_source.source_kind(), PaymentSourceKind::AgentVault);
+        assert_eq!(
+            vault_source.source_kind(),
+            PaymentSourceKind::agent_funded(addr("0xaa"))
+        );
         assert_eq!(vault_source.source_identity(), addr("0xaa"));
 
         assert!(
@@ -1549,7 +1369,7 @@ mod tests {
 
     #[test]
     fn tap_byte_string_deserializes_hex_utf8_and_plain_text() {
-        let template: ScheduledVertexAuthorizationTemplate =
+        let template: crate::types::AgentVertexAuthorizationTemplate =
             serde_json::from_value(serde_json::json!({
                 "skill_id": "7",
                 "vertex": "0x656e747279",
@@ -1557,9 +1377,9 @@ mod tests {
             }))
             .expect("hex byte strings decode as UTF-8");
 
-        assert_eq!(template.vertex, "entry");
+        assert_eq!(template.vertex.as_str(), "entry");
 
-        let template: ScheduledVertexAuthorizationTemplate =
+        let template: crate::types::AgentVertexAuthorizationTemplate =
             serde_json::from_value(serde_json::json!({
                 "skill_id": "7",
                 "vertex": "0xnothex",
@@ -1567,29 +1387,28 @@ mod tests {
             }))
             .expect("plain byte string remains text");
 
-        assert_eq!(template.vertex, "0xnothex");
+        assert_eq!(template.vertex.as_str(), "0xnothex");
     }
 
     #[test]
     fn tap_payment_source_bcs_roundtrips_and_rejects_unknown_kind() {
         let invoker = addr("0x21");
-        let typed = PaymentSource::from_bcs_bytes(
+        let typed = PaymentSourceKind::from_bcs_bytes(
             &tap_payment_source_for_invoker(invoker).expect("typed invoker source"),
         )
         .expect("typed invoker source decodes");
-        assert_eq!(typed.kind, PaymentSourceKind::Invoker);
-        assert_eq!(typed.identity, invoker);
+        assert_eq!(typed, PaymentSourceKind::user_funded(invoker));
+        assert_eq!(typed.identity(), invoker);
 
         let agent = addr("0x22");
-        let typed = PaymentSource::from_bcs_bytes(
+        let typed = PaymentSourceKind::from_bcs_bytes(
             &tap_payment_source_for_agent_vault(agent).expect("typed vault source"),
         )
         .expect("typed vault source decodes");
-        assert_eq!(typed.kind, PaymentSourceKind::AgentVault);
-        assert_eq!(typed.identity, agent);
+        assert_eq!(typed, PaymentSourceKind::agent_funded(agent));
+        assert_eq!(typed.identity(), agent);
 
-        let invalid = bcs::to_bytes(&(9_u8, invoker)).expect("invalid source kind bytes");
-        assert!(PaymentSource::from_bcs_bytes(&invalid).is_err());
+        assert!(PaymentSourceKind::from_bcs_bytes(&[9]).is_err());
     }
 
     #[test]
@@ -1599,12 +1418,12 @@ mod tests {
             .expect("active skill target");
 
         assert_eq!(
-            resolved.skill.dag_binding,
+            *resolved.skill.dag_binding(),
             SkillDagBinding::pinned(addr("0x44"))
         );
         assert_eq!(
             resolved.skill_revision.key.interface_revision,
-            InterfaceRevision(2)
+            InterfaceVersion::new(2)
         );
     }
 
@@ -1612,7 +1431,7 @@ mod tests {
     fn default_dag_executor_requires_runtime_selected_skill() {
         let mut registry = registry_with_active_skill();
         registry.default_executor = Some(DefaultDagExecutor {
-            agent_id: addr("0xa"),
+            agent: Agent::from_ids(addr("0xa"), 1, Some(registry.id)),
             skill_id: 11,
         });
 
@@ -1620,18 +1439,21 @@ mod tests {
             .expect_err("pinned skill cannot be default runtime target");
         assert!(error.to_string().contains("is not runtime-DAG selected"));
 
-        registry.skills[0].dag_binding = SkillDagBinding::runtime_selected();
+        registry.skills[0].record.dag_binding = SkillDagBinding::runtime_selected();
         let target = resolve_default_tap_dag_executor(&registry)
             .expect("runtime-selected default skill resolves");
 
         assert_eq!(
             target.target,
-            DefaultDagExecutor {
+            DefaultDagExecutorTarget {
                 agent_id: addr("0xa"),
                 skill_id: 11,
             }
         );
-        assert_eq!(target.skill.dag_binding, SkillDagBinding::RuntimeSelected);
+        assert_eq!(
+            target.skill.dag_binding(),
+            &SkillDagBinding::RuntimeSelected
+        );
     }
 
     #[test]

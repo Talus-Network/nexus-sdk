@@ -542,6 +542,87 @@ impl Crawler {
         Ok(out)
     }
 
+    /// Fetch one dynamic field by BCS key, returning `Ok(None)` when that key is absent.
+    ///
+    /// Unlike [`Crawler::get_dynamic_fields_bcs`], this skips unrelated dynamic-field key
+    /// namespaces under the same parent. That is useful for Sui objects that store several
+    /// unrelated dynamic-field types directly under one UID.
+    pub async fn get_optional_dynamic_field_bcs<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        key: K,
+    ) -> anyhow::Result<Option<V>>
+    where
+        K: Eq + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        #[derive(Clone, Debug, Deserialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            #[allow(dead_code)]
+            id: sui::types::Address,
+            #[allow(dead_code)]
+            name: K,
+            value: V,
+        }
+
+        let mut page_token = None;
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id"]);
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|r| r.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
+                })?;
+
+            drop(client);
+
+            page_token = response.next_page_token;
+
+            for field in response.dynamic_fields {
+                let Some(name) = field.name_opt() else {
+                    continue;
+                };
+                let Ok(parsed_name) = parse_dynamic_field_name::<K>(name.value()) else {
+                    continue;
+                };
+                if parsed_name != key {
+                    continue;
+                }
+
+                let field_id = field
+                    .field_id_opt()
+                    .ok_or_else(|| anyhow!("Dynamic field ID missing for parent '{parent_id}'"))?
+                    .parse()
+                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?;
+
+                let object = self
+                    .get_object_contents_bcs::<DynamicFieldValueBcs<K, V>>(field_id)
+                    .await?;
+                return Ok(Some(object.data.value));
+            }
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Fetch dynamic field values from their field objects without decoding key
     /// names. This is useful for singleton dynamic fields whose on-chain name
     /// encoding is package-version dependent.

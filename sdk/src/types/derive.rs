@@ -45,7 +45,7 @@ pub fn derive_tool_gas_id(
 /// Note that this ID derived twice - first type based on the vertex name and
 /// second time based on the iteration.
 ///
-/// [`RequestWalkExecutionEvent`]: crate::events::RequestWalkExecutionEvent
+/// [`RequestWalkExecutionEvent`]: crate::types::workflow::execution_events::RequestWalkExecutionEvent
 /// [`RuntimeVertex`]: crate::types::RuntimeVertex
 pub fn derive_walk_execution_event_task_id(
     interface_pkg_id: sui::types::Address,
@@ -71,7 +71,7 @@ pub fn derive_walk_execution_event_task_id(
 /// Derive the object ID for a [`OccurrenceScheduledEvent`] task given the
 /// execution ID and the expected start time.
 ///
-/// [`OccurrenceScheduledEvent`]: crate::events::OccurrenceScheduledEvent
+/// [`OccurrenceScheduledEvent`]: crate::types::scheduler::scheduler::OccurrenceScheduledEvent
 pub fn derive_occurrence_scheduled_event_task_id(
     task: sui::types::Address,
     start_time_ms: &u64,

@@ -1,5 +1,5 @@
 use {
-    crate::types::{Dag, EdgeKind, DEFAULT_ENTRY_GROUP},
+    crate::types::{interface::graph::EdgeKind, Dag, DEFAULT_ENTRY_GROUP},
     anyhow::{bail, Result as AnyResult},
     petgraph::{
         graph::{DiGraph, NodeIndex},

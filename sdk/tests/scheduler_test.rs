@@ -6,8 +6,8 @@ use {
         types::{
             deserialize_sui_option_u64,
             deserialize_sui_u64,
-            PolicySymbol,
-            TaskState,
+            primitives::policy::Symbol as PolicySymbol,
+            scheduler::scheduler::State as TaskState,
             TypeName,
         },
     },
@@ -25,17 +25,21 @@ fn policy_symbol_supports_pos0_fallback_shape() {
     let symbol: PolicySymbol = serde_json::from_value(value).expect("deserialize policy symbol");
     assert_eq!(
         symbol,
-        PolicySymbol::Witness(TypeName::new("0x1::module::Type"))
+        PolicySymbol::witness(TypeName::new("0x1::module::Type"))
     );
 }
 
 #[test]
-fn task_state_supports_variant_object_and_errors_on_unknown_variant() {
-    let paused: TaskState = serde_json::from_value(json!({ "variant": "Paused" }))
-        .expect("deserialize TaskState from object");
+fn task_state_uses_move_enum_deserialization() {
+    let paused: TaskState =
+        serde_json::from_value(json!("Paused")).expect("deserialize TaskState from string");
     assert_eq!(paused, TaskState::Paused);
 
-    let err = serde_json::from_value::<TaskState>(json!({ "variant": "Bogus" }))
+    let active: TaskState = serde_json::from_value(json!({ "@variant": "Active" }))
+        .expect("deserialize TaskState from Move JSON variant");
+    assert_eq!(active, TaskState::Active);
+
+    let err = serde_json::from_value::<TaskState>(json!("Bogus"))
         .expect_err("unknown TaskState should error");
     let msg = err.to_string();
     assert!(
@@ -46,8 +50,15 @@ fn task_state_supports_variant_object_and_errors_on_unknown_variant() {
 
 #[test]
 fn task_state_roundtrips_through_bcs() {
-    for state in [TaskState::Active, TaskState::Paused, TaskState::Canceled] {
+    for state in [
+        TaskState::Active,
+        TaskState::Paused,
+        TaskState::Canceled,
+        TaskState::Completed,
+        TaskState::Failed,
+    ] {
         let bytes = bcs::to_bytes(&state).expect("bcs serialize TaskState");
+
         let decoded: TaskState = bcs::from_bytes(&bytes).expect("bcs deserialize TaskState");
         assert_eq!(decoded, state);
     }
@@ -111,5 +122,5 @@ fn policy_symbol_uid_pos0_fallback_parses_addresses() {
     });
 
     let parsed: PolicySymbol = serde_json::from_value(value).expect("deserialize PolicySymbol");
-    assert_eq!(parsed, PolicySymbol::Uid(addr));
+    assert_eq!(parsed, PolicySymbol::uid(addr));
 }
