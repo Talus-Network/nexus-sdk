@@ -4,97 +4,40 @@
       "vertex": "start",
       "input_port": "comp",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          49,
-          53
-        ],
-        "many": []
+        "storage": "inline",
+        "data": 15
       }
     },
     {
       "vertex": "loop_1",
       "input_port": "comp",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          49,
-          48,
-          48,
-          48
-        ],
-        "many": []
+        "storage": "inline",
+        "data": 1000
       }
     },
     {
       "vertex": "loop_1",
       "input_port": "b",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          49
-        ],
-        "many": []
+        "storage": "inline",
+        "data": 1
       }
     },
     {
       "vertex": "loop_2",
       "input_port": "comp",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          49,
-          48,
-          48,
-          48
-        ],
-        "many": []
+        "storage": "inline",
+        "data": 1000
       }
     },
     {
       "vertex": "loop_2",
       "input_port": "b",
       "value": {
-        "storage": [
-          105,
-          110,
-          108,
-          105,
-          110,
-          101
-        ],
-        "one": [
-          50
-        ],
-        "many": []
+        "storage": "inline",
+        "data": 2
       }
     }
   ],
@@ -159,26 +102,12 @@
   ],
   "edges": [
     {
-      "from": {
-        "vertex": "start",
-        "output_variant": "lt",
-        "output_port": "a"
-      },
-      "to": {
-        "vertex": "loop_1",
-        "input_port": "a"
-      }
+      "from": { "vertex": "start", "output_variant": "lt", "output_port": "a" },
+      "to": { "vertex": "loop_1", "input_port": "a" }
     },
     {
-      "from": {
-        "vertex": "start",
-        "output_variant": "lt",
-        "output_port": "b"
-      },
-      "to": {
-        "vertex": "loop_2",
-        "input_port": "a"
-      }
+      "from": { "vertex": "start", "output_variant": "lt", "output_port": "b" },
+      "to": { "vertex": "loop_2", "input_port": "a" }
     },
     {
       "from": {
@@ -186,10 +115,7 @@
         "output_variant": "lt",
         "output_port": "comp"
       },
-      "to": {
-        "vertex": "decide",
-        "input_port": "comp"
-      },
+      "to": { "vertex": "decide", "input_port": "comp" },
       "kind": "static"
     },
     {
@@ -198,10 +124,7 @@
         "output_variant": "lt",
         "output_port": "a"
       },
-      "to": {
-        "vertex": "add_1",
-        "input_port": "a"
-      }
+      "to": { "vertex": "add_1", "input_port": "a" }
     },
     {
       "from": {
@@ -209,10 +132,7 @@
         "output_variant": "lt",
         "output_port": "b"
       },
-      "to": {
-        "vertex": "add_2",
-        "input_port": "b"
-      }
+      "to": { "vertex": "add_2", "input_port": "b" }
     },
     {
       "from": {
@@ -220,10 +140,7 @@
         "output_variant": "lt",
         "output_port": "a"
       },
-      "to": {
-        "vertex": "add_1",
-        "input_port": "b"
-      }
+      "to": { "vertex": "add_1", "input_port": "b" }
     },
     {
       "from": {
@@ -231,10 +148,7 @@
         "output_variant": "lt",
         "output_port": "b"
       },
-      "to": {
-        "vertex": "add_2",
-        "input_port": "a"
-      }
+      "to": { "vertex": "add_2", "input_port": "a" }
     },
     {
       "from": {
@@ -242,10 +156,7 @@
         "output_variant": "ok",
         "output_port": "result"
       },
-      "to": {
-        "vertex": "decide",
-        "input_port": "a"
-      }
+      "to": { "vertex": "decide", "input_port": "a" }
     },
     {
       "from": {
@@ -253,10 +164,7 @@
         "output_variant": "ok",
         "output_port": "result"
       },
-      "to": {
-        "vertex": "decide",
-        "input_port": "b"
-      }
+      "to": { "vertex": "decide", "input_port": "b" }
     },
     {
       "from": {
@@ -264,10 +172,7 @@
         "output_variant": "lt",
         "output_port": "a"
       },
-      "to": {
-        "vertex": "loop_1",
-        "input_port": "a"
-      },
+      "to": { "vertex": "loop_1", "input_port": "a" },
       "kind": "do_while"
     },
     {
@@ -276,10 +181,7 @@
         "output_variant": "lt",
         "output_port": "b"
       },
-      "to": {
-        "vertex": "loop_2",
-        "input_port": "a"
-      },
+      "to": { "vertex": "loop_2", "input_port": "a" },
       "kind": "do_while"
     },
     {
@@ -288,10 +190,7 @@
         "output_variant": "gte",
         "output_port": "a"
       },
-      "to": {
-        "vertex": "output",
-        "input_port": "a"
-      },
+      "to": { "vertex": "output", "input_port": "a" },
       "kind": "break"
     },
     {
@@ -300,10 +199,7 @@
         "output_variant": "gte",
         "output_port": "b"
       },
-      "to": {
-        "vertex": "output",
-        "input_port": "b"
-      },
+      "to": { "vertex": "output", "input_port": "b" },
       "kind": "break"
     }
   ],
