@@ -45,7 +45,6 @@ const MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS: usize = 64;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentDagExecuteInput {
     pub agent_id: AgentId,
-    pub skill_id: SkillId,
     pub selected_dag: Option<sui::types::Address>,
     pub authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     pub payment_source: Vec<u8>,
@@ -1536,6 +1535,47 @@ pub fn settle_committed_tool_result_for_walk(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn settle_onchain_tool_result_for_walk(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    result: sui::tx::Argument,
+    leader_registry: sui::tx::Argument,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    tool_witness_id: sui::types::Address,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.pure(&walk_index);
+    let expected_vertex =
+        interface::Graph::runtime_vertex_from_enum(tx, objects.interface_pkg_id, expected_vertex)?;
+    let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::ExecutionSettlement::SETTLE_ONCHAIN_TOOL_RESULT_FOR_WALK.module,
+            workflow::ExecutionSettlement::SETTLE_ONCHAIN_TOOL_RESULT_FOR_WALK.name,
+        ),
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            walk_index,
+            expected_vertex,
+            tool_witness_id,
+            clock,
+        ],
+    );
+
+    Ok(())
+}
+
 pub fn emit_payment_ready_walk_requests(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -1553,7 +1593,6 @@ pub fn emit_payment_ready_walk_requests(
         vec![dag, execution, leader_registry, clock],
     );
 }
-
 /// PTB template for creating a new DAG default value.
 pub fn create_default_value(
     tx: &mut sui::tx::TransactionBuilder,
@@ -1748,8 +1787,8 @@ pub fn begin_user_funded_agent_execution(
     tool_registry: sui::tx::Argument,
     agent_registry: sui::tx::Argument,
     agent: sui::tx::Argument,
+    skill_id: SkillId,
     dag: sui::tx::Argument,
-    _dag_id: sui::tx::Argument,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
@@ -1855,7 +1894,7 @@ pub fn begin_user_funded_agent_execution(
         entry_group,
         with_vertex_inputs,
         priority_fee_per_gas_unit,
-        agent_execution.skill_id,
+        skill_id,
         agent_execution.selected_dag,
         &agent_execution.authorization_templates,
     )?;
@@ -2042,6 +2081,7 @@ pub fn execute_agent_dag(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     agent: AgentInput,
+    skill_id: SkillId,
     priority_fee_per_gas_unit: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
@@ -2058,6 +2098,7 @@ pub fn execute_agent_dag(
         input_data,
         agent_execution,
         tools_gas,
+        Some(skill_id),
         false,
     )
 }
@@ -2083,6 +2124,7 @@ pub fn execute_default_agent_dag(
         input_data,
         agent_execution,
         tools_gas,
+        None,
         true,
     )
 }
@@ -2098,6 +2140,7 @@ fn execute_agent_dag_internal(
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    skill_id: Option<SkillId>,
     default_executor: bool,
 ) -> anyhow::Result<()> {
     let dag_id = sui_framework::Object::id_from_object_id(tx, *dag.object_id())?;
@@ -2173,14 +2216,16 @@ fn execute_agent_dag_internal(
     } else {
         let agent =
             agent.ok_or_else(|| anyhow::anyhow!("agent DAG execution requires an Agent input"))?;
+        let skill_id =
+            skill_id.ok_or_else(|| anyhow::anyhow!("agent DAG execution requires a skill id"))?;
         begin_user_funded_agent_execution(
             tx,
             objects,
             tool_registry,
             agent_registry,
             agent,
+            skill_id,
             dag,
-            dag_id,
             priority_fee_per_gas_unit,
             entry_group,
             input_data,
@@ -3458,6 +3503,60 @@ mod tests {
     }
 
     #[test]
+    fn test_settle_onchain_tool_result_for_walk_uses_result_object_and_witness() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let tool_registry = tx.pure(&2u64);
+        let result = tx.pure(&3u64);
+        let leader_registry = tx.pure(&4u64);
+        let clock = tx.pure(&5u64);
+
+        settle_onchain_tool_result_for_walk(
+            &mut tx,
+            &objects,
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            9,
+            &mock_runtime_vertex(),
+            witness,
+            clock,
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionSettlement::SETTLE_ONCHAIN_TOOL_RESULT_FOR_WALK.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionSettlement::SETTLE_ONCHAIN_TOOL_RESULT_FOR_WALK.name
+        );
+        assert_eq!(call.arguments.len(), 9);
+        assert!(matches!(call.arguments[6], sui::types::Argument::Result(_)));
+        let tool_witness_id = match call.arguments[7] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected tool witness ID to be a command result, got {other:?}"),
+        };
+        assert_eq!(tool_witness_id.package, sui_framework::PACKAGE_ID);
+        assert_eq!(
+            tool_witness_id.function,
+            sui_framework::Object::ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&tool_witness_id.arguments[0], witness);
+        inspector.expect_u64(&call.arguments[5], 9);
+    }
+
+    #[test]
     fn test_emit_payment_ready_walk_requests_builds_post_lock_request_call() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut tx = sui::tx::TransactionBuilder::new();
@@ -3720,7 +3819,6 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         let agent_execution = AgentDagExecuteInput {
             agent_id: sui_mocks::mock_sui_address(),
-            skill_id: 11,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: vec![1, 2],
@@ -3734,6 +3832,7 @@ mod tests {
             &nexus_objects,
             &dag,
             AgentInput::Shared(agent.clone()),
+            11,
             13,
             entry_group,
             &input_data,
@@ -3779,7 +3878,6 @@ mod tests {
             crate::idents::interface::Agent::NEW_AGENT_EXECUTION_CONFIG.name
         );
         assert_eq!(agent_config_call.arguments.len(), 8);
-        inspector.expect_u64(&agent_config_call.arguments[5], agent_execution.skill_id);
 
         let begin_call = inspector.move_call(begin_index);
         assert_eq!(
@@ -3844,7 +3942,6 @@ mod tests {
         let tools_gas = HashSet::new();
         let agent_execution = AgentDagExecuteInput {
             agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: vec![1],
@@ -3859,6 +3956,7 @@ mod tests {
             &nexus_objects,
             &dag,
             AgentInput::Immutable(agent.clone()),
+            11,
             0,
             entry_group,
             &input_data,
@@ -3884,7 +3982,6 @@ mod tests {
         let tools_gas = HashSet::new();
         let agent_execution = AgentDagExecuteInput {
             agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: vec![1, 2],
@@ -3899,6 +3996,7 @@ mod tests {
             &nexus_objects,
             &dag,
             AgentInput::Shared(agent.clone()),
+            11,
             0,
             entry_group,
             &input_data,
@@ -3938,7 +4036,6 @@ mod tests {
         let dag = sui_mocks::mock_sui_object_ref();
         let agent_execution = AgentDagExecuteInput {
             agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: vec![1],
@@ -4033,7 +4130,6 @@ mod tests {
         let mut tx = sui::tx::TransactionBuilder::new();
         let agent_execution = AgentDagExecuteInput {
             agent_id: sui_mocks::mock_sui_address(),
-            skill_id: 11,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: vec![1],
@@ -4046,6 +4142,7 @@ mod tests {
             &nexus_objects,
             &dag,
             AgentInput::Shared(agent.clone()),
+            11,
             0,
             entry_group,
             &input_data,

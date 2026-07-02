@@ -33,6 +33,7 @@ use {
         transactions::{dag, gas},
         types::{
             derive_tool_gas_id,
+            derive_tool_id,
             deserialize_sui_u64,
             interface::{
                 agent::SkillDagBinding,
@@ -60,6 +61,7 @@ use {
             SkillId,
             SkillRevisionLookupKey,
             StorageConf,
+            ToolRef,
             TypeName,
             VerifierConfig,
             VerifierMode,
@@ -148,6 +150,12 @@ pub struct ResolveExpiredWalkParams {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExpiredWalkResolutionKind {
     Settled,
+    SettledOnchainResult {
+        result_ref: sui::types::ObjectReference,
+        expected_vertex: RuntimeVertex,
+        tool_witness_id: sui::types::Address,
+        finalize_tx_digest: Vec<u8>,
+    },
     Aborted,
     AbortedWithToolGas {
         selected_candidate: ToolGasAbortCandidate,
@@ -161,6 +169,7 @@ impl ExpiredWalkResolutionKind {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Settled => "settled",
+            Self::SettledOnchainResult { .. } => "settled_onchain_result",
             Self::Aborted => "aborted",
             Self::AbortedWithToolGas { .. } => "aborted_with_tool_gas",
             Self::Skipped { .. } => "skipped",
@@ -681,21 +690,68 @@ pub async fn inspect_expired_walk_resolution_at(
         });
     };
 
-    if fetch_committed_tool_result_for_walk(
+    match fetch_onchain_tool_result_state_for_walk(
         crawler,
         objects,
         params.dag_execution_id,
         params.walk_index,
     )
     .await?
-    .is_some()
     {
-        return Ok(ExpiredWalkResolutionPlan {
-            dag_id: execution.dag_id,
-            dag_execution_id: params.dag_execution_id,
-            walk_index: params.walk_index,
-            kind: ExpiredWalkResolutionKind::Settled,
-        });
+        OnchainToolResultState::Committed { .. } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id,
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Settled,
+            });
+        }
+        OnchainToolResultState::Finalized { result, object_ref } => {
+            let dag = crawler.get_object::<Dag>(execution.dag_id).await?;
+            let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
+            let kind = finalized_onchain_result_resolution_kind(
+                crawler,
+                objects,
+                &vertices,
+                timeout_vertex.clone(),
+                result,
+                object_ref,
+            )
+            .await?;
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id,
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind,
+            });
+        }
+        OnchainToolResultState::InsufficientSettlement { .. } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id,
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Skipped {
+                    reason: "walk has committed result with insufficient settlement".to_string(),
+                },
+            });
+        }
+        OnchainToolResultState::InvalidEmpty {
+            result_id,
+            object_ref,
+        } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id,
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Skipped {
+                    reason: format!(
+                        "stored on-chain tool result {result_id}@{} is not finalized",
+                        object_ref.version()
+                    ),
+                },
+            });
+        }
+        OnchainToolResultState::NoResult => {}
     }
 
     let Some(abort_vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
@@ -758,6 +814,50 @@ pub async fn inspect_expired_walk_resolution_at(
         dag_execution_id: params.dag_execution_id,
         walk_index: params.walk_index,
         kind: ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate },
+    })
+}
+
+async fn finalized_onchain_result_resolution_kind(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    vertices: &HashMap<TypeName, DagVertexInfo>,
+    timeout_vertex: RuntimeVertex,
+    result: OnchainToolResult,
+    object_ref: sui::types::ObjectReference,
+) -> anyhow::Result<ExpiredWalkResolutionKind> {
+    let vertex_info = vertices.get(&timeout_vertex.name()).ok_or_else(|| {
+        anyhow!(
+            "DAG vertex '{}' missing from fetched DAG",
+            timeout_vertex.name().name
+        )
+    })?;
+    let tool_fqn = vertex_info.kind.tool_fqn();
+    let tool_id = derive_tool_id(*objects.tool_registry.object_id(), tool_fqn)?;
+    let tool = crawler
+        .get_object::<crate::types::Tool>(tool_id)
+        .await?
+        .data;
+    let ToolRef::Sui {
+        tool_witness_id, ..
+    } = tool.reference
+    else {
+        return Ok(ExpiredWalkResolutionKind::Skipped {
+            reason: format!(
+                "finalized on-chain result exists for non-Sui tool vertex '{}'",
+                timeout_vertex.name().name
+            ),
+        });
+    };
+    let finalize_tx_digest = result
+        .finalize_tx_digest
+        .0
+        .ok_or_else(|| anyhow!("finalized on-chain result is missing finalize_tx_digest"))?;
+
+    Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
+        result_ref: object_ref,
+        expected_vertex: timeout_vertex,
+        tool_witness_id,
+        finalize_tx_digest,
     })
 }
 
@@ -1178,7 +1278,6 @@ impl WorkflowActions {
         }
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id: default_executor.target.agent_id,
-            skill_id: default_executor.target.skill_id,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: options.payment_source,
@@ -1369,7 +1468,6 @@ impl WorkflowActions {
         }
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id,
-            skill_id,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: options.payment_source,
@@ -1390,6 +1488,7 @@ impl WorkflowActions {
             &dag.object_ref(),
             tap::agent_input_from_metadata(&agent_object)
                 .map_err(NexusError::TransactionBuilding)?,
+            skill_id,
             priority_fee_per_gas_unit,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &transaction_input_data,
@@ -1771,6 +1870,77 @@ impl WorkflowActions {
                     tx_digest: Some(settled.tx_digest),
                     tx_checkpoint: Some(settled.tx_checkpoint),
                     ..base(ExpiredWalkResolutionKind::Settled)
+                })
+            }
+            ExpiredWalkResolutionKind::SettledOnchainResult {
+                result_ref,
+                expected_vertex,
+                tool_witness_id,
+                finalize_tx_digest,
+            } => {
+                let crawler = self.client.crawler();
+                let dag_ref = crawler
+                    .get_object_metadata(plan.dag_id)
+                    .await
+                    .map_err(NexusError::Rpc)?
+                    .object_ref();
+                let execution_ref = crawler
+                    .get_object_metadata(plan.dag_execution_id)
+                    .await
+                    .map_err(NexusError::Rpc)?;
+                let address = self.client.signer.get_active_address();
+                let objects = &self.client.nexus_objects;
+                let mut tx = sui::tx::TransactionBuilder::new();
+                let dag = tx.object(sui::tx::ObjectInput::shared(
+                    *dag_ref.object_id(),
+                    dag_ref.version(),
+                    false,
+                ));
+                let execution = object_argument_from_metadata(&mut tx, &execution_ref, true)?;
+                let tool_registry = tx.object(sui::tx::ObjectInput::shared(
+                    *objects.tool_registry.object_id(),
+                    objects.tool_registry.version(),
+                    false,
+                ));
+                let result = tx.object(sui::tx::ObjectInput::shared(
+                    *result_ref.object_id(),
+                    result_ref.version(),
+                    true,
+                ));
+                let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+                    *objects.leader_registry.object_id(),
+                    objects.leader_registry.version(),
+                    false,
+                ));
+                let clock = tx.object(sui::tx::ObjectInput::shared(
+                    sui_framework::CLOCK_OBJECT_ID,
+                    1,
+                    false,
+                ));
+                dag::settle_onchain_tool_result_for_walk(
+                    &mut tx,
+                    objects,
+                    dag,
+                    execution,
+                    tool_registry,
+                    result,
+                    leader_registry,
+                    plan.walk_index,
+                    &expected_vertex,
+                    tool_witness_id,
+                    clock,
+                )
+                .map_err(NexusError::TransactionBuilding)?;
+                let response = self.client.submit_transaction(tx, address).await?;
+                Ok(ExpiredWalkResolutionResult {
+                    tx_digest: Some(response.digest),
+                    tx_checkpoint: Some(response.checkpoint),
+                    ..base(ExpiredWalkResolutionKind::SettledOnchainResult {
+                        result_ref,
+                        expected_vertex,
+                        tool_witness_id,
+                        finalize_tx_digest,
+                    })
                 })
             }
             ExpiredWalkResolutionKind::Aborted => {
@@ -2702,6 +2872,195 @@ mod tests {
         assert_eq!(result.tag.0, Some(b"ok".to_vec()));
         assert_eq!(result.finalize_tx_digest.0, Some(vec![1, 2, 3]));
         assert_eq!(object_ref.object_id(), &result_id);
+    }
+
+    #[tokio::test]
+    async fn inspect_expired_walk_resolution_settles_finalized_onchain_result() {
+        let execution_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xe1"));
+        let dag_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xd1"));
+        let result_id = sui::types::Address::from_static("0xbeef");
+        let result_ref = sui_mocks::object_ref_for_id(result_id);
+        let result_field_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
+        let vertex_field_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
+        let tool_witness_id = sui::types::Address::from_static("0x777");
+        let tool_fqn = fqn!("xyz.taluslabs.onchain@1");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_id = derive_tool_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+            .expect("tool id derives");
+        let dag = Dag {
+            vertices: DynamicMap::new(sui::types::Address::from_static("0x900"), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        };
+        let result_field_value = DynamicFieldValueBcs {
+            id: *result_field_ref.object_id(),
+            name: OnchainToolResultKey { walk_index: 0 },
+            value: object_id(result_id),
+        };
+        let vertex = RuntimeVertex::plain("onchain");
+        let vertex_node = LinkedTableNodeBcs {
+            prev: crate::types::MoveOption(None::<TypeName>),
+            next: crate::types::MoveOption(None::<TypeName>),
+            value: DagVertexInfoBcs {
+                kind: crate::nexus::models::DagVertexKindBcs::OnChain {
+                    _variant_name: "OnChain".to_string(),
+                    tool_fqn: tool_fqn.to_string(),
+                },
+                input_ports: crate::types::MoveVecSet { contents: vec![] },
+                post_failure_action: crate::types::MoveOption(
+                    None::<crate::nexus::models::PostFailureActionBcs>,
+                ),
+                leader_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+                tool_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+            },
+        };
+        let tool = crate::types::Tool {
+            id: tool_id,
+            fqn: tool_fqn.clone(),
+            reference: ToolRef::Sui {
+                package_address: sui::types::Address::from_static("0x42"),
+                module_name: sui::types::Identifier::from_static("tool"),
+                tool_witness_id,
+            },
+            description: "on-chain tool".to_string(),
+            input_schema: json!({}),
+            output_schema: json!({}),
+            workflow_authorization_cap_first: false,
+            registered_at: chrono::DateTime::from_timestamp_millis(1_000).unwrap(),
+            unregistered_at: None,
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(execution_ref.version()),
+            json!({
+                "invoker": "0x1",
+                "dag": dag_ref.object_id().to_string(),
+                "agent_id": "0xa",
+                "skill_id": "11",
+                "interface_version": "7",
+                "scheduled_task_id": { "vec": [] },
+                "scheduled_occurrence_index": { "vec": [] },
+                "walks": [{
+                    "Active": {
+                        "next_vertex": { "Plain": { "vertex": { "name": "onchain" } } },
+                        "timeout_ms": "30000",
+                        "created_at": "1000"
+                    }
+                }]
+            }),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
+            &mut state_service_mock,
+            vec![(
+                OnchainToolResultKey { walk_index: 0 },
+                *result_field_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_field_ref,
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&result_field_value).expect("result field bcs"),
+            dynamic_field_struct_tag(),
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_ref.clone(),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&onchain_tool_result_bcs(
+                result_id,
+                *execution_ref.object_id(),
+                true,
+            ))
+            .expect("result bcs"),
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0xa1"),
+                sui::types::Identifier::from_static("onchain_tool_result"),
+                sui::types::Identifier::from_static("OnchainToolResult"),
+                vec![],
+            ),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref,
+            sui::types::Owner::Shared(0),
+            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("onchain"), *vertex_field_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                vertex_field_ref,
+                sui::types::Owner::Shared(1),
+                TypeName::new("onchain"),
+                vertex_node,
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui_mocks::object_ref_for_id(tool_id),
+            sui::types::Owner::Shared(0),
+            serde_json::to_value(tool).expect("tool JSON should serialize"),
+        );
+        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
+
+        let plan = inspect_expired_walk_resolution_at(
+            &crawler,
+            &nexus_objects,
+            ResolveExpiredWalkParams {
+                dag_execution_id: *execution_ref.object_id(),
+                walk_index: 0,
+                tool_gas_id: None,
+            },
+            61_001,
+        )
+        .await
+        .expect("planner should settle finalized result");
+
+        let (planned_result_ref, expected_vertex, planned_witness, finalize_tx_digest) = match plan
+            .kind
+        {
+            ExpiredWalkResolutionKind::SettledOnchainResult {
+                result_ref,
+                expected_vertex,
+                tool_witness_id,
+                finalize_tx_digest,
+            } => (
+                result_ref,
+                expected_vertex,
+                tool_witness_id,
+                finalize_tx_digest,
+            ),
+            other => panic!("expected finalized on-chain result settlement branch, got {other:?}"),
+        };
+        assert_eq!(planned_result_ref, result_ref);
+        assert_eq!(expected_vertex, vertex);
+        assert_eq!(planned_witness, tool_witness_id);
+        assert_eq!(finalize_tx_digest, vec![1, 2, 3]);
     }
 
     #[tokio::test]
