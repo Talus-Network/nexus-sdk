@@ -284,7 +284,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
 - Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
 
-## [`1.0.1`] - 2025-06-09
+## [`1.0.2`] - 2026-07-02
+
+### `nexus-sdk`
+
+#### Fixed
+
+- event poller transaction fetching now handles resource exhausted responses by splitting batches and quarantining oversized single digests
+
+## [`1.0.1`] - 2026-06-09
 
 ### `nexus-cli`
 
