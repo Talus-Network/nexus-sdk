@@ -1,14 +1,15 @@
 module {{ name_snake_case }}::{{ name_snake_case }};
 
 use nexus_interface::authorization::AgentVertexAuthorization;
+use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};
 use nexus_primitives::data;
-use nexus_primitives::authorization::ProvenValue;
+use nexus_primitives::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
 use nexus_primitives::proof_of_uid::ProofOfUID;
-use nexus_primitives::tagged_output::{Self, TaggedOutput};
+use nexus_primitives::tagged_output;
 use sui::bag::{Self, Bag};
+use sui::clock::Clock;
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;
-use sui::clock::Clock;
 
 /// One-time witness for package initialization.
 public struct {{ name_uppercase }} has drop {}
@@ -65,38 +66,43 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 ///
 /// CRITICAL REQUIREMENTS:
 /// 1. Internal authorization parameter: _authorization: ProvenValue<AgentVertexAuthorization>
-/// 2. Internal workflow proof parameter: worksheet: &mut ProofOfUID
-/// 3. Last parameter: ctx: &mut TxContext
-/// 4. Return type: TaggedOutput
-/// 5. Must stamp worksheet with tool witness ID
-public fun execute(
-    _authorization: ProvenValue<AgentVertexAuthorization>,
-    worksheet: &mut ProofOfUID,
+/// 2. Internal workflow proof parameter: worksheet: ProofOfUID
+/// 3. Internal result parameter: result: OnchainToolResult
+/// 4. Last parameter: ctx: &mut TxContext
+/// 5. No return value; finalize and share result
+/// 6. Must stamp worksheet with tool witness ID
+entry fun execute(
+    authorization: ProvenValue<AgentVertexAuthorization>,
+    worksheet: ProofOfUID,
+    result: OnchainToolResult,
     state: &mut {{ name_pascal_case }}State,
     // Add your custom parameters here.
     input_value: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): TaggedOutput {
+) {
+    primitive_authorization::drop(authorization);
+    let mut worksheet = worksheet;
     // REQUIRED: Stamp the worksheet with the tool witness ID to prove execution.
     worksheet.stamp_with_data(&state.witness().id, b"{{ name_snake_case }}_executed");
 
     // Implement your tool logic here.
-    if (input_value == 0) {
+    let output = if (input_value == 0) {
         // Return error variant.
-        Self::new(b"err")
+        tagged_output::new(b"err")
             .with_named_payload(b"reason", data::inline_one(b"Input value cannot be zero").as_string())
     } else if (input_value > 1000) {
         // Return custom variant.
-        Self::new(b"custom_result")
+        tagged_output::new(b"custom_result")
             .with_named_payload(b"data", data::inline_one(b"large_value_processed").as_string())
             .with_named_payload(b"timestamp", data::inline_one(sui::clock::timestamp_ms(clock).to_string().into_bytes()).as_number())
     } else {
         // Return success variant.
-        let result = input_value * 2;
-        Self::new(b"ok")
-            .with_named_payload(b"result", data::inline_one(result.to_string().into_bytes()).as_number())
-    }
+        let computed = input_value * 2;
+        tagged_output::new(b"ok")
+            .with_named_payload(b"result", data::inline_one(computed.to_string().into_bytes()).as_number())
+    };
+    onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);
 }
 
 // === Getters and Helper Functions ===

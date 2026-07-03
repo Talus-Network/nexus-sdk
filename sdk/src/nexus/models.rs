@@ -518,28 +518,6 @@ pub struct BcsMap<K, V> {
     pub contents: Vec<BcsMapEntry<K, V>>,
 }
 
-/// Raw on-chain `NexusData` wire shape for committed-result wake reads.
-///
-/// The public `NexusData` type eagerly parses payload bytes as JSON, but committed-result metadata
-/// reads only need to skip over output payload bytes without inspecting them.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct RawNexusDataBcs {
-    #[allow(dead_code)]
-    pub(crate) storage: Vec<u8>,
-    #[allow(dead_code)]
-    pub(crate) one: Vec<u8>,
-    #[allow(dead_code)]
-    pub(crate) many: Vec<Vec<u8>>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub(crate) struct CommittedToolResultLeaderRecordBcs {
-    pub(crate) commit_tx_digest: Vec<u8>,
-    pub(crate) recipient: sui::types::Address,
-    pub(crate) commit_gas_charge: MoveOption<u64>,
-    pub(crate) settlement_gas_charge: MoveOption<u64>,
-}
-
 impl<K, V> BcsMap<K, V>
 where
     K: Eq + std::hash::Hash,

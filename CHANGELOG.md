@@ -41,10 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `WorkflowActions`/crawler support for fetching on-chain tool result state by execution and walk, returning finalized state through the generated `nexus_primitives::onchain_tool_result::OnchainToolResult` type plus the shared object reference.
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
 - Low-level and high-level helpers for current committed-result settlement, record-only leader gas-charge submission, expired execution abort, and execution-payment refill flows.
 - `WorkflowActions::resolve_expired_walk` and `inspect_expired_walk_resolution` classify timeout-expired walks into settlement, plain abort, ToolGas abort, or skipped outcomes without adding new Move entrypoints.
+- `inspect_expired_walk_resolution` now classifies finalized raw `OnchainToolResult` evidence as a leader-authenticated consume-and-settle branch before no-result abort planning.
+- `WorkflowActions::resolve_expired_walk` and the raw on-chain result settlement PTB builder now submit finalized `OnchainToolResult` settlement permissionlessly without a leader cap or leader gas-charge arguments.
 - Receipt lifecycle event decoding for `ExecutionPaymentReceiptCreatedEvent`, `ExecutionPaymentReceiptResolvedEvent`, and `ScheduledPaymentReserveReceiptCreatedEvent`.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduled task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 - Scheduler PTB builders for settling finished scheduled TAP execution payments from task-owned address-funded or agent-vault reserves.
@@ -57,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- On-chain tool transaction builders now follow the split result flow without an SDK finalize helper: create the workflow result object for the tool phase, and consume finalized shared results without leader-supplied output or failure-evidence arguments.
 - `TapPublishArtifact` no longer carries `tap_package_id`, shared objects, or config-digest fields; reusable skill artifacts now contain only `skill_name`, `dag_id`, `interface_revision`, and simplified requirements consumed by register, bind, and update flows.
 - `TapSkillRequirements` now carries `input_schema_commitment`, `payment_policy`, `schedule_policy`, and `fixed_tools`, replacing workflow/metadata commitments and `TapVertexAuthorizationSchema`.
 - `TapPaymentPolicy` and `TapSchedulePolicy` now mirror the current on-chain enum shapes, including user-funded vs agent-funded payment policy and once vs recursive schedule recurrence.
@@ -90,6 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- On-chain tool result inspection now filters same-shape dynamic-field keys by value type before BCS decoding, avoiding false settlement-marker reads from unrelated execution fields.
 - Verification verdict event parsing now accepts string-valued Move-JSON option payloads for checked leader/tool key ids, matching transaction event JSON emitted by current workflow contracts.
 - `TerminalErrEvalRecordedEvent.outcome` is now optional so SDK, CLI, and parser callers can represent primary retry `_err_eval` records before a post-failure action is resolved.
 - Verification verdict event parsing now accepts nested inspection JSON that omits `dag`, matching the existing default used for submission-failure evidence helpers.

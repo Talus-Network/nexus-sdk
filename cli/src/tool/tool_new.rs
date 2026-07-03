@@ -230,15 +230,19 @@ mod tests {
         assert!(move_contents.contains("witness: Bag"));
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
-        assert!(move_contents.contains("public fun execute("));
+        assert!(move_contents.contains("entry fun execute("));
         assert!(
             move_contents.contains("use nexus_interface::authorization::AgentVertexAuthorization;")
         );
-        assert!(move_contents.contains("use nexus_primitives::authorization::ProvenValue;"));
-        assert!(move_contents.contains("_authorization: ProvenValue<AgentVertexAuthorization>"));
-        assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
+        assert!(move_contents.contains(
+            "use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};"
+        ));
+        assert!(move_contents.contains("authorization: ProvenValue<AgentVertexAuthorization>"));
+        assert!(move_contents.contains("worksheet: ProofOfUID"));
+        assert!(move_contents.contains("result: OnchainToolResult"));
         assert!(move_contents.contains("worksheet.stamp_with_data(&state.witness().id"));
-        assert!(move_contents.contains("): TaggedOutput"));
+        assert!(move_contents
+            .contains("onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);"));
         assert!(move_contents.contains("public fun tool_witness_id(self: &TestToolState): ID"));
         assert!(
             move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")

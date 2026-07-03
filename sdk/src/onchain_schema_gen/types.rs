@@ -164,6 +164,13 @@ pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
 /// Check whether a parameter is one of the hidden fixed-tool internal arguments
 /// that should not appear in the user-facing input schema.
 pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    is_onchain_tool_result_param(move_type)
+        || is_proof_of_uid_param(move_type)
+        || is_tx_context_param(move_type)
+        || is_agent_vertex_authorization_proof_param(move_type)
+}
+
+pub fn is_onchain_tool_result_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };
@@ -172,12 +179,26 @@ pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -
         return false;
     };
 
-    (*struct_tag.address() == sui_framework::PACKAGE_ID
-        && struct_tag.module().as_str() == "tx_context"
-        && struct_tag.name().as_str() == "TxContext")
-        || (struct_tag.module().as_str() == "proof_of_uid"
-            && struct_tag.name().as_str() == "ProofOfUID")
-        || is_agent_vertex_authorization_proof_struct(&struct_tag)
+    struct_tag.module().as_str()
+        == primitives::OnchainToolResult::ONCHAIN_TOOL_RESULT
+            .module
+            .as_str()
+        && struct_tag.name().as_str()
+            == primitives::OnchainToolResult::ONCHAIN_TOOL_RESULT
+                .name
+                .as_str()
+}
+
+fn is_proof_of_uid_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
+    };
+
+    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
+        return false;
+    };
+
+    struct_tag.module().as_str() == "proof_of_uid" && struct_tag.name().as_str() == "ProofOfUID"
 }
 
 pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
@@ -333,6 +354,11 @@ mod tests {
             "proof_of_uid",
             "ProofOfUID"
         )));
+        assert!(is_hidden_internal_tool_param(&make_struct(
+            "0x42",
+            "onchain_tool_result",
+            "OnchainToolResult"
+        )));
         let authorization_proof = sui::grpc::OpenSignatureBody::default()
             .with_type(Type::Datatype)
             .with_type_name(
@@ -346,6 +372,9 @@ mod tests {
             "0x45",
             "counter",
             "RandomCounter"
+        )));
+        assert!(!is_hidden_internal_tool_param(&make_struct(
+            "0x2", "random", "Random"
         )));
         assert!(is_workflow_dag_execution_param(&make_struct(
             "0x44",
