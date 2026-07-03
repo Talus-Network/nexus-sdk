@@ -1,9 +1,9 @@
 //! [`NexusObjects`] struct is holding the Nexus object IDs and refs that are
 //! generated during Nexus package deployment.
 #[cfg(not(feature = "sui_idents"))]
-use super::DefaultDagExecutor;
+use super::DefaultDagExecutorTarget;
 #[cfg(feature = "sui_idents")]
-use super::{scheduler::PolicySymbol, DefaultDagExecutor, TypeName};
+use super::{primitives::policy::Symbol as PolicySymbol, DefaultDagExecutorTarget, TypeName};
 #[cfg(all(test, feature = "sui_idents"))]
 use crate::idents::primitives;
 #[cfg(all(test, feature = "sui_idents"))]
@@ -31,7 +31,7 @@ pub struct NexusObjects {
     pub verifier_registry: sui::types::ObjectReference,
     pub network_auth: sui::types::ObjectReference,
     pub agent_registry: sui::types::ObjectReference,
-    pub default_dag_executor: DefaultDagExecutor,
+    pub default_dag_executor: DefaultDagExecutorTarget,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
 
@@ -253,7 +253,7 @@ impl NexusObjects {
     }
 
     fn sched_generator_symbol(&self, ident: &ModuleAndNameIdent) -> PolicySymbol {
-        PolicySymbol::Witness(TypeName::new(
+        PolicySymbol::witness(TypeName::new(
             &ident.qualified_name(self.scheduler_type_origin_pkg_id()),
         ))
     }
@@ -307,7 +307,7 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
-            default_dag_executor: DefaultDagExecutor {
+            default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: sui::types::Address::generate(&mut rng),
                 skill_id: 1,
             },
@@ -601,12 +601,12 @@ mod tests {
         assert!(objects.scheduler_matches_periodic_generator(&periodic));
 
         // Symbols using the current (upgraded) package should also match.
-        let current_queue = PolicySymbol::Witness(TypeName::new(
+        let current_queue = PolicySymbol::witness(TypeName::new(
             &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.scheduler_pkg_id),
         ));
         assert!(objects.scheduler_matches_queue_generator(&current_queue));
 
-        let current_periodic = PolicySymbol::Witness(TypeName::new(
+        let current_periodic = PolicySymbol::witness(TypeName::new(
             &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS
                 .qualified_name(objects.scheduler_pkg_id),
         ));

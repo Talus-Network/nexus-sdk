@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
 - `tap scheduled-task pause|resume|cancel` commands for explicit-agent scheduled task state changes with required `--agent-id`.
+- `tap execution settle` and `tap execution abort` commands for permissionless committed-result settlement and expired execution abort flows.
+- `tap execution resolve-expired-walk` command that classifies one double-timeout walk and submits committed-result settlement, plain abort, or ToolGas-assisted abort through the shared SDK helper.
+- `tap payments refill` command for coin top-ups and agent-vault-funded execution payment refills.
 - `DagExecution` decoding now exposes execution walk summary counters: `active_walks`, `pending_abort_walks`, `successful_walks`, `failed_walks`, `aborted_walks`, `consumed_walks`, and `cancelled_walks`.
 
 #### Changed
@@ -40,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
+- Low-level and high-level helpers for current committed-result settlement, record-only leader gas-charge submission, expired execution abort, and execution-payment refill flows.
+- `WorkflowActions::resolve_expired_walk` and `inspect_expired_walk_resolution` classify timeout-expired walks into settlement, plain abort, ToolGas abort, or skipped outcomes without adding new Move entrypoints.
 - Receipt lifecycle event decoding for `ExecutionPaymentReceiptCreatedEvent`, `ExecutionPaymentReceiptResolvedEvent`, and `ScheduledPaymentReserveReceiptCreatedEvent`.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduled task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 - Scheduler PTB builders for settling finished scheduled TAP execution payments from task-owned address-funded or agent-vault reserves.
@@ -66,9 +71,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduled task state decoding now mirrors the on-chain five-state lifecycle `Active`, `Paused`, `Canceled`, `Completed`, and `Failed`, while legacy `Exhausted` scheduled-state wire values decode as `Completed`.
 - Agent-object transaction builders and high-level actions now route user-supplied agent ids through `AgentInput`, so mutable calls reject immutable objects locally and immutable calls can borrow shared objects immutably.
 - Abort-expired workflow actions now read DAG metadata from `DagExecution.dag` instead of re-resolving the current active skill binding, allowing runtime-selected active bindings to recover already-created executions.
+- ToolGas abort candidate discovery now ignores timeout-expired pending-settlement walks, leaving committed-result timeouts to the settlement branch.
+- DAG and scheduled occurrence execution builders now use the current begin-lock-start Move flow without a request-walk hot potato or lock ticket.
 - Scheduled task settlement builders now keep automatic occurrence settlement task+execution-only and expose whole-reserve idle agent-funded scheduled reserve collection as a task+agent operation.
 - Scheduler task-state builders and `SchedulerActions::set_task_state` now pass the agent registry so default-agent task-state calls can validate against the registry-owned default agent and guarded scheduled-count cleanup path.
 - `TapActions::set_agent_task_state` and explicit-agent scheduler task-state PTB builders now operate TAP scheduled tasks with a required agent id.
+- Committed-result leader gas-charge and settlement helpers now take a settlement gas charge in addition to the prior commit gas charge.
 - Bump Sui SDK and images to `mainnet-v1.73.2`
 
 #### Removed
@@ -78,13 +86,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Stale attach-style and registry scheduled payment APIs, including `ScheduleSkillExecutionResult`, `ScheduleReserveFund`, `ScheduleSkillExecutionFromAgentVaultParams`, `TapActions::schedule_skill_execution`, `TapActions::schedule_skill_execution_from_agent_vault`, `TapActions::schedule_skill_execution_address_funded`, `TapActions::schedule_default_dag_executor_skill_execution_address_funded`, `transactions::tap::schedule_skill_execution`, registry `SCHEDULE_SKILL_EXECUTION*` idents, and raw registry/scheduler attachment PTB builders; use scheduled task creation with `CreateTaskTapPayment` plus occurrence and periodic APIs.
 - Per-occurrence scheduled settlement-to-agent-vault SDK builders and idents; use task+execution settlement for occurrence completion and whole-reserve collection or cancellation for agent-vault reserve exits.
 - `LEADER_STAMP_WORKSHEET` and its method, as this should be internal during submission result.
+- use `transactions::dag::prepare_tool_result_submission_worksheet` to build the public worksheet preparation call.
 
 #### Fixed
 
+- Verification verdict event parsing now accepts string-valued Move-JSON option payloads for checked leader/tool key ids, matching transaction event JSON emitted by current workflow contracts.
+- `TerminalErrEvalRecordedEvent.outcome` is now optional so SDK, CLI, and parser callers can represent primary retry `_err_eval` records before a post-failure action is resolved.
+- Verification verdict event parsing now accepts nested inspection JSON that omits `dag`, matching the existing default used for submission-failure evidence helpers.
+- Committed-result dynamic-field reads now decode wake metadata without parsing raw `variant_ports_to_data` payload bytes as JSON, so listener freshness checks can handle non-JSON tool outputs.
+- Event parsing now accepts foreign-emitter `RequestScheduledOccurrenceEvent` wrappers so extension packages that call public scheduler occurrence entrypoints still produce distributable scheduled occurrence events.
+- `DagExecution` walk decoding now mirrors the current workflow `DAGWalk::PendingSettlement` variant so executions waiting on committed-result settlement can be inspected.
 - Signed HTTP invoke authentication now rejects replayed signatures paired with a different request body by comparing the signed `body_sha256` claim to the inbound body hash.
 - `DagExecution` JSON decoding now accepts the on-chain `dag` field for abort-expired execution recovery paths.
 - `transactions::tap::register_skill_with_fixed_tools` now passes the required immutable `ToolRegistry` shared object to the registry entry so fixed-tool validation matches the current Move signature.
 - SDK and CLI PTB helpers now use the current `sui-transaction-builder` object, pure input, function type-argument, and opaque argument APIs consistently, restoring `just sdk test` and `just cli test` under the `0.3.1` builder stack.
+- Scheduler task state decoding now accepts Sui Move JSON enum objects with `@variant`, allowing leader scheduled occurrence execution to fetch current task objects while preserving string JSON output.
 
 ### `docs`
 
@@ -196,7 +212,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `settle_gas_state_for_vertex` gas transaction helper.
 - `WorkflowActions::inspect_execution_until_completion`, returning terminal state, terminal `_err_eval` records, end-state outputs, and the underlying execution event stream.
 - Focused coverage for branch-specific SDK transaction builder behavior, including terminal `_err_eval` output shape, verifier config wiring, no-verifier auxiliary routing, verifier proof routing, and explicit on-chain witness passthrough.
-- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidenceV1`, calls the registered verifier package, wraps the returned `VerifierContractResultV1` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
+- Typed external-verifier PTB helper that constructs `OffchainVerifierEvidence`, calls the registered verifier package, wraps the returned `VerifierContractResult` as typed verifier proof, and submits through the verifier-aware workflow entrypoint.
 - Additional signed HTTP tests for response signing verification and multi-variant output handling.
 - SDK-owned standard TAP authorization-plan models and current-vertex grant resolution helpers for fixed-tool execution.
 - High-level standard TAP package publishing, DAG publishing orchestration, standard endpoint revision metadata construction, and complete publish-artifact construction.
@@ -273,7 +289,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Updated basic DAG JSON structure documentation to include all optional configuration fields
 - Refactoring-003 PR notes now map the standard TAP SDK/CLI builders, parsers, object models, and CI coverage workflow into the commit-scoped TAP lifecycle coverage matrix.
 
-## [`1.0.1`] - 2025-06-09
+## [`1.0.2`] - 2026-07-02
+
+### `nexus-sdk`
+
+#### Fixed
+
+- event poller transaction fetching now handles resource exhausted responses by splitting batches and quarantining oversized single digests
+
+## [`1.0.1`] - 2026-06-09
 
 ### `nexus-cli`
 

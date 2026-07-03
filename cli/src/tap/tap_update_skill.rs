@@ -23,7 +23,7 @@ pub(crate) async fn update_skill_from_artifact(
         skill_id = result.skill_id.to_string().truecolor(100, 100, 100),
         revision = result
             .current_interface_revision
-            .0
+            .inner
             .to_string()
             .truecolor(100, 100, 100),
     );

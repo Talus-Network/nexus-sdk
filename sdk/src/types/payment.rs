@@ -1,42 +1,20 @@
-//! Types for `nexus_interface::payment`.
+//! Companion helpers for generated `nexus_interface::payment` types.
 
 use {
-    super::{
-        serde_parsers::{
-            deserialize_tap_address_value,
-            deserialize_tap_execution_payment_final_state_value,
-            deserialize_tap_scheduled_occurrence_final_state_value,
-            deserialize_tap_u64_value,
-            deserialize_vertex_execution_payment_settlement_kind_value,
-        },
-        InterfaceVersion,
+    super::interface::payment::{
+        ExecutionPayment,
+        ExecutionPaymentFinalState,
+        ExecutionPaymentHistoryList,
+        ExecutionPaymentReceipt,
+        ScheduledOccurrenceFinalState,
+        ScheduledPaymentReserve,
+        ScheduledPaymentReserveReceipt,
         SkillPaymentPolicy,
-        SuiBalance,
+        VertexExecutionPaymentSettlementKind,
     },
-    crate::sui,
-    serde::{de::Error as _, Deserialize, Deserializer, Serialize},
+    serde::{de::Error as _, Deserialize, Deserializer},
     serde_json::Value,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ExecutionPaymentSourceKind {
-    UserFunded {
-        #[serde(deserialize_with = "deserialize_tap_address_value")]
-        user: sui::types::Address,
-    },
-    AgentFunded {
-        #[serde(deserialize_with = "deserialize_tap_address_value")]
-        agent_id: sui::types::Address,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExecutionPaymentFinalState {
-    Pending,
-    Accomplished,
-    Refunded,
-}
 
 impl<'de> Deserialize<'de> for ExecutionPaymentFinalState {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -46,31 +24,23 @@ impl<'de> Deserialize<'de> for ExecutionPaymentFinalState {
         if !deserializer.is_human_readable() {
             #[derive(Deserialize)]
             #[serde(rename_all = "snake_case")]
-            enum RawState {
+            enum PaymentFinalStateBcs {
                 Pending,
                 Accomplished,
                 Refunded,
             }
 
-            return RawState::deserialize(deserializer).map(|state| match state {
-                RawState::Pending => Self::Pending,
-                RawState::Accomplished => Self::Accomplished,
-                RawState::Refunded => Self::Refunded,
+            return PaymentFinalStateBcs::deserialize(deserializer).map(|state| match state {
+                PaymentFinalStateBcs::Pending => Self::Pending,
+                PaymentFinalStateBcs::Accomplished => Self::Accomplished,
+                PaymentFinalStateBcs::Refunded => Self::Refunded,
             });
         }
 
         let value = Value::deserialize(deserializer)?;
-        deserialize_tap_execution_payment_final_state_value(&value)
+        super::serde_parsers::deserialize_tap_execution_payment_final_state_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP execution payment final state value"))
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VertexExecutionPaymentSettlementKind {
-    Free,
-    Ticket,
-    Paid,
 }
 
 impl<'de> Deserialize<'de> for VertexExecutionPaymentSettlementKind {
@@ -88,17 +58,9 @@ impl<'de> Deserialize<'de> for VertexExecutionPaymentSettlementKind {
         }
 
         let value = Value::deserialize(deserializer)?;
-        deserialize_vertex_execution_payment_settlement_kind_value(&value)
+        super::serde_parsers::deserialize_vertex_execution_payment_settlement_kind_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP payment settlement kind value"))
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScheduledOccurrenceFinalState {
-    InFlight,
-    Accomplished,
-    Refunded,
 }
 
 impl<'de> Deserialize<'de> for ScheduledOccurrenceFinalState {
@@ -109,61 +71,35 @@ impl<'de> Deserialize<'de> for ScheduledOccurrenceFinalState {
         if !deserializer.is_human_readable() {
             #[derive(Deserialize)]
             #[serde(rename_all = "snake_case")]
-            enum RawState {
+            enum ScheduledOccurrenceFinalStateBcs {
                 InFlight,
                 Accomplished,
                 Refunded,
             }
 
-            return RawState::deserialize(deserializer).map(|state| match state {
-                RawState::InFlight => Self::InFlight,
-                RawState::Accomplished => Self::Accomplished,
-                RawState::Refunded => Self::Refunded,
+            return ScheduledOccurrenceFinalStateBcs::deserialize(deserializer).map(|state| {
+                match state {
+                    ScheduledOccurrenceFinalStateBcs::InFlight => Self::InFlight,
+                    ScheduledOccurrenceFinalStateBcs::Accomplished => Self::Accomplished,
+                    ScheduledOccurrenceFinalStateBcs::Refunded => Self::Refunded,
+                }
             });
         }
 
         let value = Value::deserialize(deserializer)?;
-        deserialize_tap_scheduled_occurrence_final_state_value(&value)
+        super::serde_parsers::deserialize_tap_scheduled_occurrence_final_state_value(&value)
             .ok_or_else(|| D::Error::custom("missing TAP scheduled occurrence final state value"))
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecutionPayment {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub execution_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub agent_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: u64,
-    pub interface_revision: InterfaceVersion,
-    pub payment_policy: SkillPaymentPolicy,
-    pub source_kind: ExecutionPaymentSourceKind,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub max_budget: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub locked_budget: u64,
-    pub funds: SuiBalance,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub consumed: u64,
-    pub accomplished: bool,
-    pub refunded: bool,
-    pub final_state: ExecutionPaymentFinalState,
-    pub tool_cost_snapshot: PaymentVecMap<Vec<u8>, u64>,
-    #[serde(default)]
-    pub locked_vertices: Vec<ExecutionPaymentVertexLock>,
-}
-
 impl ExecutionPayment {
-    pub fn payment_id(&self) -> sui::types::Address {
-        self.id
+    pub fn payment_id(&self) -> crate::sui::types::Address {
+        self.id.id.bytes
     }
 
-    pub fn skill_revision_key(&self) -> crate::types::SkillRevisionKey {
-        crate::types::SkillRevisionKey {
-            agent_id: self.agent_id,
+    pub fn skill_revision_key(&self) -> crate::types::SkillRevisionLookupKey {
+        crate::types::SkillRevisionLookupKey {
+            agent_id: self.agent_id.bytes,
             skill_id: self.skill_id,
             interface_revision: self.interface_revision,
         }
@@ -174,114 +110,170 @@ impl ExecutionPayment {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaymentVecMap<K, V> {
-    pub contents: Vec<PaymentVecMapEntry<K, V>>,
+impl Clone for ExecutionPayment {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            execution_id: self.execution_id,
+            agent_id: self.agent_id.clone(),
+            skill_id: self.skill_id,
+            interface_revision: self.interface_revision,
+            payment_policy: self.payment_policy.clone(),
+            source_kind: self.source_kind.clone(),
+            max_budget: self.max_budget,
+            locked_budget: self.locked_budget,
+            funds: self.funds.clone(),
+            consumed: self.consumed,
+            accomplished: self.accomplished,
+            refunded: self.refunded,
+            final_state: self.final_state.clone(),
+            tool_cost_snapshot: self.tool_cost_snapshot.clone(),
+            locked_vertices: self.locked_vertices.clone(),
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaymentVecMapEntry<K, V> {
-    pub key: K,
-    pub value: V,
+impl Clone for ExecutionPaymentReceipt {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            execution_id: self.execution_id,
+            payment_id: self.payment_id,
+            agent_id: self.agent_id.clone(),
+            skill_id: self.skill_id,
+            source_kind: self.source_kind.clone(),
+            max_budget: self.max_budget,
+            resolved: self.resolved,
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecutionPaymentVertexLock {
-    #[serde(deserialize_with = "super::serde_parsers::deserialize_tap_byte_vector")]
-    pub vertex_key: Vec<u8>,
-    #[serde(deserialize_with = "super::serde_parsers::deserialize_tap_byte_vector")]
-    pub tool_fqn: Vec<u8>,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub amount: u64,
-    pub settlement_kind: VertexExecutionPaymentSettlementKind,
+impl Clone for ExecutionPaymentHistoryList {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            execution_ids: self.execution_ids.clone(),
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecutionPaymentReceipt {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub execution_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub payment_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub agent_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: u64,
-    pub source_kind: ExecutionPaymentSourceKind,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub max_budget: u64,
-    pub resolved: bool,
+impl Clone for ScheduledPaymentReserve {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            scheduled_task_id: self.scheduled_task_id,
+            agent_id: self.agent_id.clone(),
+            skill_id: self.skill_id,
+            interface_version: self.interface_version,
+            agent_skill_authorization_id: self.agent_skill_authorization_id.clone(),
+            payment_source: self.payment_source.clone(),
+            occurrence_budget: self.occurrence_budget,
+            remaining_funds: self.remaining_funds.clone(),
+            payment_policy: self.payment_policy.clone(),
+            in_flight: self.in_flight.clone(),
+            payment_receipts: self.payment_receipts.clone(),
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScheduledPaymentReserveReceipt {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub scheduled_task_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub reserve_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub agent_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: u64,
-    pub interface_version: InterfaceVersion,
-    pub source_kind: ExecutionPaymentSourceKind,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub prepaid_amount: u64,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub occurrence_budget: u64,
-    pub resolved: bool,
-    pub canceled: bool,
+impl Clone for ScheduledPaymentReserveReceipt {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            scheduled_task_id: self.scheduled_task_id,
+            reserve_id: self.reserve_id,
+            agent_id: self.agent_id.clone(),
+            skill_id: self.skill_id,
+            interface_version: self.interface_version,
+            source_kind: self.source_kind.clone(),
+            prepaid_amount: self.prepaid_amount,
+            occurrence_budget: self.occurrence_budget,
+            resolved: self.resolved,
+            canceled: self.canceled,
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecutionPaymentHistoryList {
-    #[serde(deserialize_with = "super::serde_parsers::deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    pub execution_ids: Vec<sui::types::Address>,
+pub(crate) fn deserialize_skill_payment_policy<'de, D>(
+    deserializer: D,
+) -> Result<SkillPaymentPolicy, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if !deserializer.is_human_readable() {
+        return SkillPaymentPolicy::deserialize(deserializer);
+    }
+
+    let value = Value::deserialize(deserializer)?;
+    parse_skill_payment_policy_value(&value)
+        .ok_or_else(|| D::Error::custom("missing TAP skill payment policy value"))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScheduledOccurrenceRecord {
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub occurrence_index: u64,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub execution_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub payment_id: sui::types::Address,
-    pub interface_revision: InterfaceVersion,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub budget: u64,
-    pub final_state: ScheduledOccurrenceFinalState,
+fn parse_skill_payment_policy_value(value: &Value) -> Option<SkillPaymentPolicy> {
+    fn policy_from_text(text: &str, value: &Value) -> Option<SkillPaymentPolicy> {
+        match text {
+            "user_funded" | "UserFunded" | "userFunded" => Some(SkillPaymentPolicy::UserFunded),
+            "agent_funded" | "AgentFunded" | "agentFunded" => {
+                Some(SkillPaymentPolicy::AgentFunded {
+                    max_budget: extract_max_budget(value).unwrap_or(0),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    match value {
+        Value::String(text) => policy_from_text(text, value),
+        Value::Object(object) => {
+            for key in ["@variant", "variant", "type"] {
+                if let Some(Value::String(text)) = object.get(key) {
+                    if let Some(policy) = policy_from_text(text, value) {
+                        return Some(policy);
+                    }
+                }
+            }
+
+            if let Some(fields) = object.get("fields") {
+                if let Some(policy) = parse_skill_payment_policy_value(fields) {
+                    return Some(policy);
+                }
+            }
+
+            object
+                .iter()
+                .find_map(|(key, nested)| policy_from_text(key, nested))
+        }
+        _ => None,
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScheduledPaymentReserve {
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub scheduled_task_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub agent_id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub skill_id: u64,
-    pub interface_version: InterfaceVersion,
-    #[serde(deserialize_with = "deserialize_tap_address_value")]
-    pub agent_skill_authorization_id: sui::types::Address,
-    pub payment_source: ExecutionPaymentSourceKind,
-    #[serde(deserialize_with = "deserialize_tap_u64_value")]
-    pub occurrence_budget: u64,
-    pub remaining_funds: SuiBalance,
-    pub payment_policy: SkillPaymentPolicy,
-    pub in_flight: Vec<ScheduledOccurrenceRecord>,
-    pub payment_receipts: Vec<ExecutionPaymentReceipt>,
+fn extract_max_budget(value: &Value) -> Option<u64> {
+    match value {
+        Value::Object(object) => {
+            if let Some(budget) = object.get("max_budget").and_then(parse_u64_value) {
+                return Some(budget);
+            }
+
+            object
+                .get("fields")
+                .and_then(extract_max_budget)
+                .or_else(|| object.values().find_map(extract_max_budget))
+        }
+        _ => None,
+    }
+}
+
+fn parse_u64_value(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => text.parse().ok(),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::types::sui_framework::vec_map::VecMap};
 
     #[test]
     fn tap_execution_payment_deserializes_move_json_byte_vectors() {
@@ -328,6 +320,11 @@ mod tests {
             payment.locked_vertices[0].tool_fqn,
             vec![120, 121, 122, 46, 112, 97, 121]
         );
+        assert_eq!(
+            payment.id.id.bytes,
+            crate::sui::types::Address::from_static("0xa1")
+        );
+        let _: VecMap<Vec<u8>, u64> = payment.tool_cost_snapshot;
     }
 
     #[test]

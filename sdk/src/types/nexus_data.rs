@@ -1,24 +1,16 @@
-//! [`NexusData`] is a wrapper around any raw data stored on-chain. This can be
-//! data for input ports, output ports or default values. It is represented as
-//! an enum because default values can be stored remotely.
-//!
-//! The [`DataStorage`] enum has multiple implementations to support inline
-//! or remote storage.
-//!
-//! Note: As an optimization to reduce storage costs, array types are stored as
-//! one blob containing a JSON array, instead of multiple blobs. This means that
-//! the array of keys referencing the data will contain only one key repeated N
-//! times where N is the length of the array.
+//! Helpers for generated `nexus_primitives::data::NexusData`.
 
 use {
     crate::{
         types::StorageKind,
         walrus::{WalrusClient, WALRUS_MAX_EPOCHS},
     },
-    enum_dispatch::enum_dispatch,
-    serde::{Deserialize, Serialize},
+    serde_json::Value,
     std::collections::HashMap,
 };
+
+const NEXUS_DATA_INLINE_STORAGE_TAG: &[u8] = b"inline";
+const NEXUS_DATA_WALRUS_STORAGE_TAG: &[u8] = b"walrus";
 
 /// Nexus submit walk evaluation transaction size base size without any data.
 pub const NEXUS_BASE_TRANSACTION_SIZE: usize = 8 * 1024;
@@ -30,154 +22,59 @@ const ENTRY_PORTS_RESERVED_BYTES: usize = 64 * 1024;
 /// The length of a Walrus blob ID.
 pub const WALRUS_BLOB_ID_LENGTH: usize = 44;
 
-// == NexusData ==
-
-/// Note that the sole reason the top-level [`NexusData`] struct exists is to
-/// ensure that the inner `data` can only be accessed via [`DataStorage`]'s
-/// `fetch` and `commit` methods.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NexusData {
-    pub(super) data: DataStorage,
-}
-
-#[cfg(test)]
-impl From<DataStorage> for NexusData {
-    fn from(data: DataStorage) -> Self {
-        Self { data }
-    }
-}
-
-impl NexusData {
-    /// Fetches the data from its storage location. This consumes `self`.
-    pub async fn fetch(mut self, conf: &StorageConf) -> anyhow::Result<DataStorage> {
-        self.data.fetch(conf).await?;
-
-        Ok(self.data)
+impl crate::types::NexusData {
+    pub fn new_inline(data: Value) -> Self {
+        Self::from_json_value(StorageKind::Inline, data)
     }
 
-    /// Commits the data to its storage location. This consumes `self`.
-    pub async fn commit(mut self, conf: &StorageConf) -> anyhow::Result<DataStorage> {
-        self.data.commit(conf).await?;
-
-        Ok(self.data)
+    pub fn new_walrus(data: Value) -> Self {
+        Self::from_json_value(StorageKind::Walrus, data)
     }
 
-    /// Convenience function that synchronously and infallibly creates a new
-    /// `NexusData` instance with inline data.
-    ///
-    /// This [`panic!`]s if used for any remote storage.
-    ///
-    /// Example:
-    ///
-    /// ```
-    /// use nexus_sdk::types::{NexusData, StorageKind, Storable};
-    ///
-    /// let data = NexusData::new_inline(serde_json::json!({"key": "value"})).commit_inline_plain();
-    ///
-    /// assert_eq!(data.as_json(), &serde_json::json!({"key": "value"}));
-    /// assert_eq!(data.storage_kind(), StorageKind::Inline);
-    /// ```
-    pub fn commit_inline_plain(self) -> DataStorage {
-        if self.data.storage_kind() != StorageKind::Inline {
+    pub fn commit_inline_plain(self) -> Self {
+        if self.storage_kind() != StorageKind::Inline {
             panic!("commit_inline_plain can only be used for inline data");
         }
-
-        self.data
-    }
-
-    pub fn new_inline(data: serde_json::Value) -> Self {
-        Self {
-            data: DataStorage::Inline(InlineStorage { data }),
-        }
-    }
-
-    pub fn new_walrus(data: serde_json::Value) -> Self {
-        Self {
-            data: DataStorage::Walrus(WalrusStorage { data }),
-        }
+        self
     }
 
     pub fn storage_kind(&self) -> StorageKind {
-        self.data.storage_kind()
-    }
-
-    pub fn as_json(&self) -> &serde_json::Value {
-        self.data.as_json()
-    }
-}
-
-// == DataStorage ==
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct StorageConf {
-    pub walrus_publisher_url: Option<String>,
-    pub walrus_aggregator_url: Option<String>,
-    pub walrus_save_for_epochs: Option<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[enum_dispatch(Storable)]
-pub enum DataStorage {
-    Inline(InlineStorage),
-    Walrus(WalrusStorage),
-}
-
-#[cfg(test)]
-impl TryFrom<serde_json::Value> for DataStorage {
-    type Error = anyhow::Error;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let kind = value
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'kind' field"))?;
-
-        let data = value
-            .get("data")
-            .ok_or_else(|| anyhow::anyhow!("Missing 'data' field"))?;
-
-        match kind {
-            "inline" => Ok(Self::Inline(InlineStorage { data: data.clone() })),
-            "walrus" => Ok(Self::Walrus(WalrusStorage { data: data.clone() })),
-            _ => Err(anyhow::anyhow!("Invalid 'kind' value")),
+        match self.storage.as_slice() {
+            NEXUS_DATA_INLINE_STORAGE_TAG => StorageKind::Inline,
+            NEXUS_DATA_WALRUS_STORAGE_TAG => StorageKind::Walrus,
+            other => panic!(
+                "unsupported NexusData storage kind '{}'",
+                String::from_utf8_lossy(other)
+            ),
         }
     }
-}
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct InlineStorage {
-    pub(super) data: serde_json::Value,
-}
+    pub fn as_json(&self) -> Value {
+        if self.one.is_empty() && self.many.is_empty() {
+            return Value::Array(vec![]);
+        }
 
-impl Storable for InlineStorage {
-    async fn fetch(&mut self, _: &StorageConf) -> anyhow::Result<()> {
-        Ok(())
+        if self.many.is_empty() {
+            return decode_nexus_data_json(&self.one);
+        }
+
+        Value::Array(
+            self.many
+                .iter()
+                .map(|bytes| decode_nexus_data_json(bytes))
+                .collect(),
+        )
     }
 
-    async fn commit(&mut self, _: &StorageConf) -> anyhow::Result<()> {
-        Ok(())
+    pub fn into_json(self) -> Value {
+        self.as_json()
     }
 
-    fn storage_kind(&self) -> StorageKind {
-        StorageKind::Inline
-    }
+    pub async fn fetch(mut self, conf: &StorageConf) -> anyhow::Result<Self> {
+        if self.storage_kind() != StorageKind::Walrus {
+            return Ok(self);
+        }
 
-    fn into_json(self) -> serde_json::Value {
-        self.data
-    }
-
-    fn as_json(&self) -> &serde_json::Value {
-        &self.data
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct WalrusStorage {
-    pub(super) data: serde_json::Value,
-}
-
-impl Storable for WalrusStorage {
-    async fn fetch(&mut self, conf: &StorageConf) -> anyhow::Result<()> {
         let walrus_aggregator_url = conf
             .walrus_aggregator_url
             .as_ref()
@@ -187,15 +84,10 @@ impl Storable for WalrusStorage {
             .with_aggregator_url(walrus_aggregator_url)
             .build();
 
-        // Fetch the data from Walrus using the client. The convention is that
-        // The key to read is either the data itself or the first element of
-        // the array if we're dealing with an array of values.
-        let blob_id = match &self.data {
-            serde_json::Value::Array(values) => {
+        let blob_id = match self.as_json() {
+            Value::Array(values) => {
                 if values.is_empty() {
-                    self.data = serde_json::Value::Array(vec![]);
-
-                    return Ok(());
+                    return Ok(Self::new_walrus(Value::Array(vec![])));
                 }
 
                 values[0]
@@ -205,20 +97,24 @@ impl Storable for WalrusStorage {
                     })?
                     .to_string()
             }
-            serde_json::Value::String(key) => key.clone(),
+            Value::String(key) => key,
             _ => {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Cannot fetch data from Walrus: expected string key or array of string keys"
-                ))
+                )
             }
         };
 
-        self.data = client.read_json::<serde_json::Value>(&blob_id).await?;
-
-        Ok(())
+        let data = client.read_json::<Value>(&blob_id).await?;
+        self = Self::new_walrus(data);
+        Ok(self)
     }
 
-    async fn commit(&mut self, conf: &StorageConf) -> anyhow::Result<()> {
+    pub async fn commit(mut self, conf: &StorageConf) -> anyhow::Result<Self> {
+        if self.storage_kind() != StorageKind::Walrus {
+            return Ok(self);
+        }
+
         let walrus_publisher_url = conf
             .walrus_publisher_url
             .as_ref()
@@ -229,115 +125,135 @@ impl Storable for WalrusStorage {
         })?;
 
         if store_for_epochs > WALRUS_MAX_EPOCHS {
-            return Err(anyhow::anyhow!(
-                "Walrus save for epochs exceeds maximum allowed ({WALRUS_MAX_EPOCHS})"
-            ));
+            anyhow::bail!("Walrus save for epochs exceeds maximum allowed ({WALRUS_MAX_EPOCHS})");
         }
 
-        let client = WalrusClient::builder()
-            .with_publisher_url(walrus_publisher_url)
-            .build();
-
-        // Store data on Walrus using the client. If it's an array, we store
-        // the entire array as a single blob and repeat the key N times where
-        // N is the length of the array. This is a storage optimization. while
-        // keeping the information about the length of the array.
-
-        // Figure out if we're dealing with a single value or an array of values.
+        let data = self.as_json();
         enum DataKind {
             One,
             Many(usize),
         }
 
-        let data_kind = match &self.data {
-            serde_json::Value::Array(values) => {
+        let data_kind = match &data {
+            Value::Array(values) => {
                 if values.is_empty() {
-                    // No need to store empty arrays.
-                    self.data = serde_json::Value::Array(vec![]);
-
-                    return Ok(());
+                    return Ok(Self::new_walrus(Value::Array(vec![])));
                 }
-
                 DataKind::Many(values.len())
             }
             _ => DataKind::One,
         };
 
-        // Make the request.
-        let response = client
-            .upload_json(&self.data, store_for_epochs, None)
-            .await?;
-
+        let client = WalrusClient::builder()
+            .with_publisher_url(walrus_publisher_url)
+            .build();
+        let response = client.upload_json(&data, store_for_epochs, None).await?;
         let Some(info) = response.newly_created else {
-            // This should never happen, we just uploaded.
-            return Err(anyhow::anyhow!(
-                "Failed to store data on Walrus: no newly created blob info"
-            ));
+            anyhow::bail!("Failed to store data on Walrus: no newly created blob info");
         };
 
-        // Now we have to return the key(s) referencing the data.
-        let data = match data_kind {
-            DataKind::One => serde_json::Value::String(info.blob_object.blob_id),
-            DataKind::Many(len) => serde_json::Value::Array(
-                std::iter::repeat_n(
-                    serde_json::Value::String(info.blob_object.blob_id.clone()),
-                    len,
-                )
-                .collect(),
+        let committed = match data_kind {
+            DataKind::One => Value::String(info.blob_object.blob_id),
+            DataKind::Many(len) => Value::Array(
+                std::iter::repeat_n(Value::String(info.blob_object.blob_id), len).collect(),
             ),
         };
 
-        self.data = data;
+        self = Self::new_walrus(committed);
+        Ok(self)
+    }
 
-        Ok(())
+    fn from_json_value(storage_kind: StorageKind, data: Value) -> Self {
+        let storage = match storage_kind {
+            StorageKind::Inline => NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
+            StorageKind::Walrus => NEXUS_DATA_WALRUS_STORAGE_TAG.to_vec(),
+        };
+
+        let (one, many) = match data {
+            Value::Array(values) => (
+                vec![],
+                values
+                    .into_iter()
+                    .map(|value| serde_json::to_vec(&value).expect("JSON value must encode"))
+                    .collect(),
+            ),
+            value => (
+                serde_json::to_vec(&value).expect("JSON value must encode"),
+                vec![],
+            ),
+        };
+
+        Self { storage, one, many }
+    }
+}
+
+impl TryFrom<Value> for crate::types::NexusData {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        let kind = value
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing or invalid 'kind' field"))?;
+
+        let data = value
+            .get("data")
+            .ok_or_else(|| anyhow::anyhow!("Missing 'data' field"))?
+            .clone();
+
+        match kind {
+            "inline" => Ok(Self::new_inline(data)),
+            "walrus" => Ok(Self::new_walrus(data)),
+            _ => anyhow::bail!("Invalid 'kind' value"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StorageConf {
+    pub walrus_publisher_url: Option<String>,
+    pub walrus_aggregator_url: Option<String>,
+    pub walrus_save_for_epochs: Option<u8>,
+}
+
+/// Trait defining storage helpers for generated Nexus data.
+#[allow(async_fn_in_trait)]
+pub trait Storable {
+    async fn fetch(self, conf: &StorageConf) -> anyhow::Result<crate::types::NexusData>;
+    async fn commit(self, conf: &StorageConf) -> anyhow::Result<crate::types::NexusData>;
+    fn storage_kind(&self) -> StorageKind;
+    fn into_json(self) -> Value;
+    fn as_json(&self) -> Value;
+}
+
+impl Storable for crate::types::NexusData {
+    async fn fetch(self, conf: &StorageConf) -> anyhow::Result<crate::types::NexusData> {
+        crate::types::NexusData::fetch(self, conf).await
+    }
+
+    async fn commit(self, conf: &StorageConf) -> anyhow::Result<crate::types::NexusData> {
+        crate::types::NexusData::commit(self, conf).await
     }
 
     fn storage_kind(&self) -> StorageKind {
-        StorageKind::Walrus
+        crate::types::NexusData::storage_kind(self)
     }
 
-    fn into_json(self) -> serde_json::Value {
-        self.data
+    fn into_json(self) -> Value {
+        crate::types::NexusData::into_json(self)
     }
 
-    fn as_json(&self) -> &serde_json::Value {
-        &self.data
+    fn as_json(&self) -> Value {
+        crate::types::NexusData::as_json(self)
     }
 }
-
-/// Trait defining two methods for accessing and saving data based on its storage
-/// type.
-#[enum_dispatch]
-#[allow(async_fn_in_trait)]
-pub trait Storable {
-    /// Fetch the data from its storage location.
-    async fn fetch(&mut self, conf: &StorageConf) -> anyhow::Result<()>;
-
-    /// Commit the data to its storage location.
-    async fn commit(&mut self, conf: &StorageConf) -> anyhow::Result<()>;
-
-    /// Get the kind of storage used.
-    fn storage_kind(&self) -> StorageKind;
-
-    /// Extract the inner JSON value.
-    fn into_json(self) -> serde_json::Value;
-
-    /// Get a reference to the inner JSON value.
-    fn as_json(&self) -> &serde_json::Value;
-}
-
-// == Helpers ==
 
 /// Take a [`serde_json::Value`] object, and create a [`HashMap<String, NexusData>`].
-///
-/// This helper also takes:
-/// - [`Vec<String>`] that indicates which fields should be stored remotely
-/// - [`Option<StorageKind>`] that indicates the preferred remote storage kind
 pub fn json_to_nexus_data_map(
-    json: &serde_json::Value,
+    json: &Value,
     remote_fields: &[String],
     preferred_remote_storage: Option<StorageKind>,
-) -> anyhow::Result<HashMap<String, NexusData>> {
+) -> anyhow::Result<HashMap<String, crate::types::NexusData>> {
     let preferred_remote_storage = preferred_remote_storage.unwrap_or(StorageKind::Walrus);
 
     let Some(obj) = json.as_object() else {
@@ -348,14 +264,13 @@ pub fn json_to_nexus_data_map(
 
     for (key, value) in obj {
         let remote = remote_fields.contains(key);
-
         let key = key.clone();
         let value = value.clone();
 
         match remote {
-            false => map.insert(key, NexusData::new_inline(value)),
+            false => map.insert(key, crate::types::NexusData::new_inline(value)),
             true => match preferred_remote_storage {
-                StorageKind::Walrus => map.insert(key, NexusData::new_walrus(value)),
+                StorageKind::Walrus => map.insert(key, crate::types::NexusData::new_walrus(value)),
                 StorageKind::Inline => {
                     anyhow::bail!("Cannot store data remotely using inline storage")
                 }
@@ -368,23 +283,16 @@ pub fn json_to_nexus_data_map(
 
 /// Take a [`serde_json::Value`] object, and hint the user which fields should
 /// be stored remotely to avoid exceeding [`crate::types::MAX_TRANSACTION_SIZE`].
-pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String>> {
+pub fn hint_remote_fields(json: &Value) -> anyhow::Result<Vec<String>> {
     let Some(obj) = json.as_object() else {
         anyhow::bail!("Expected JSON object");
     };
 
-    // Calculate the size of each field.
     let mut fields: Vec<(&String, usize)> = obj
         .iter()
-        .map(|(key, value)| {
-            let key_size = key.len();
-            let data_size = value.to_string().len();
-
-            (key, key_size + data_size)
-        })
+        .map(|(key, value)| (key, key.len() + value.to_string().len()))
         .collect();
 
-    // Sort them largest to smallest.
     fields.sort_by_key(|x| std::cmp::Reverse(x.1));
 
     let available_size = (MAX_TRANSACTION_SIZE - NEXUS_BASE_TRANSACTION_SIZE)
@@ -392,38 +300,26 @@ pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String
     let mut required_size = fields.iter().map(|(_, size)| size).sum::<usize>();
 
     if required_size <= available_size {
-        // All good, nothing to do.
         return Ok(vec![]);
     }
 
     let mut remote_fields = vec![];
-
     for (key, size) in fields {
         let key = key.clone();
         let value = obj.get(&key).expect("Key must exist");
-
-        // Storing plain values costs [`WALRUS_BLOB_ID_LENGTH`] bytes. Storing
-        // arrays costs [`WALRUS_BLOB_ID_LENGTH`] * N bytes where N is the
-        // length of the array.
         let storage_cost = match value {
-            serde_json::Value::Array(arr) => WALRUS_BLOB_ID_LENGTH * arr.len(),
+            Value::Array(arr) => WALRUS_BLOB_ID_LENGTH * arr.len(),
             _ => WALRUS_BLOB_ID_LENGTH,
         };
 
-        // Subtract the size of the field from the required size and add the
-        // storage cost.
         required_size = required_size.saturating_sub(size) + storage_cost;
-
-        // Add the field to the remote fields list.
         remote_fields.push(key);
 
-        // Check whether we need to continue.
         if required_size <= available_size {
             break;
         }
     }
 
-    // Check that we were successful.
     if required_size > available_size {
         anyhow::bail!(
             "Cannot fit data within max transaction size, even after storing all fields remotely"
@@ -433,24 +329,45 @@ pub fn hint_remote_fields(json: &serde_json::Value) -> anyhow::Result<Vec<String
     Ok(remote_fields)
 }
 
-/// Tests walrus integration and the helpers.
+fn decode_nexus_data_json(bytes: &[u8]) -> Value {
+    let text = std::str::from_utf8(bytes).expect("NexusData JSON bytes must be UTF-8");
+    let adjusted = wrap_large_numbers_as_string(text.trim());
+    serde_json::from_str(&adjusted).expect("NexusData must contain valid JSON")
+}
+
+fn is_large_number(s: &str) -> bool {
+    if let Some(stripped) = s.strip_prefix('-') {
+        stripped.chars().all(|c| c.is_ascii_digit()) && s.len() > 21
+    } else {
+        s.chars().all(|c| c.is_ascii_digit()) && s.len() > 20
+    }
+}
+
+fn wrap_large_numbers_as_string(value: &str) -> String {
+    if is_large_number(value) {
+        format!(r#""{value}""#)
+    } else {
+        value.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
+        crate::{
+            types::NexusData,
+            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
+        },
         assert_matches::assert_matches,
         mockito::{Server, ServerGuard},
-        serde_json::json,
+        serde_json::{json, Value},
     };
 
-    /// Setup mock server for Walrus testing
     async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
-        // Create mock server
         let server = Server::new_async().await;
         let server_url = server.url();
 
-        // Create a Walrus client that points to our mock server
         let storage_conf = StorageConf {
             walrus_publisher_url: Some(server_url.clone()),
             walrus_aggregator_url: Some(server_url),
@@ -460,46 +377,166 @@ mod tests {
         Ok((server, storage_conf))
     }
 
+    #[test]
+    fn inline_nexus_data_sers_and_desers() {
+        let data = json!({"key": "value"});
+        let nexus_data = NexusData::new_inline(data.clone());
+        let data_bytes = serde_json::to_vec(&data).unwrap();
+
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Inline);
+        assert_eq!(
+            serde_json::to_value(&nexus_data).unwrap(),
+            json!({
+                "storage": NEXUS_DATA_INLINE_STORAGE_TAG,
+                "one": data_bytes,
+                "many": []
+            })
+        );
+
+        let deserialized: NexusData =
+            serde_json::from_str(&serde_json::to_string(&nexus_data).unwrap()).unwrap();
+        assert_eq!(deserialized, nexus_data);
+        assert_eq!(deserialized.as_json(), data);
+
+        let array_data = json!([{ "key": "value" }, { "key": "value" }]);
+        let nexus_data = NexusData::new_inline(array_data.clone());
+        let array_item_bytes = serde_json::to_vec(&json!({ "key": "value" })).unwrap();
+
+        assert_eq!(nexus_data.as_json(), array_data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Inline);
+        assert_eq!(
+            serde_json::to_value(&nexus_data).unwrap(),
+            json!({
+                "storage": NEXUS_DATA_INLINE_STORAGE_TAG,
+                "one": [],
+                "many": [array_item_bytes.clone(), array_item_bytes]
+            })
+        );
+
+        let deserialized: NexusData =
+            serde_json::from_str(&serde_json::to_string(&nexus_data).unwrap()).unwrap();
+        assert_eq!(deserialized, nexus_data);
+        assert_eq!(deserialized.as_json(), array_data);
+    }
+
+    #[test]
+    fn nexus_data_deserializes_encoded_byte_fields() {
+        let deserialized: NexusData = serde_json::from_value(json!({
+            "storage": "aW5saW5l",
+            "one": "eyJyZXN0YXJ0LWFuZC13aXBlIjp0cnVlfQ==",
+            "many": []
+        }))
+        .unwrap();
+
+        assert_eq!(deserialized.storage_kind(), StorageKind::Inline);
+        assert_eq!(deserialized.as_json(), json!({ "restart-and-wipe": true }));
+    }
+
+    #[test]
+    fn walrus_nexus_data_sers_and_desers() {
+        let data = json!({"key": "value"});
+        let nexus_data = NexusData::new_walrus(data.clone());
+        let data_bytes = serde_json::to_vec(&data).unwrap();
+
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Walrus);
+        assert_eq!(
+            serde_json::to_value(&nexus_data).unwrap(),
+            json!({
+                "storage": NEXUS_DATA_WALRUS_STORAGE_TAG,
+                "one": data_bytes,
+                "many": []
+            })
+        );
+
+        let deserialized: NexusData =
+            serde_json::from_str(&serde_json::to_string(&nexus_data).unwrap()).unwrap();
+        assert_eq!(deserialized, nexus_data);
+        assert_eq!(deserialized.as_json(), data);
+
+        let array_data = json!([{ "key": "value" }, { "key": "value" }]);
+        let nexus_data = NexusData::new_walrus(array_data.clone());
+        let array_item_bytes = serde_json::to_vec(&json!({ "key": "value" })).unwrap();
+
+        assert_eq!(nexus_data.as_json(), array_data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Walrus);
+        assert_eq!(
+            serde_json::to_value(&nexus_data).unwrap(),
+            json!({
+                "storage": NEXUS_DATA_WALRUS_STORAGE_TAG,
+                "one": [],
+                "many": [array_item_bytes.clone(), array_item_bytes]
+            })
+        );
+
+        let deserialized: NexusData =
+            serde_json::from_str(&serde_json::to_string(&nexus_data).unwrap()).unwrap();
+        assert_eq!(deserialized, nexus_data);
+        assert_eq!(deserialized.as_json(), array_data);
+    }
+
+    #[test]
+    fn large_number_precision_preserved() {
+        for large_u256 in [
+            "105792089237316195563853351929625371316844592863025172891227567439681422591090",
+            "105792089237316195423570985008687907853410267032561502502939405359422902436090",
+        ] {
+            let raw_large_number = NexusData {
+                storage: NEXUS_DATA_INLINE_STORAGE_TAG.to_vec(),
+                one: large_u256.as_bytes().to_vec(),
+                many: vec![],
+            };
+
+            assert_eq!(
+                raw_large_number.as_json(),
+                Value::String(large_u256.to_string())
+            );
+
+            let nexus_data = NexusData::new_inline(Value::String(large_u256.to_string()));
+            let serialized = serde_json::to_string(&nexus_data).unwrap();
+            let deserialized: NexusData = serde_json::from_str(&serialized).unwrap();
+
+            assert_eq!(
+                deserialized.as_json(),
+                Value::String(large_u256.to_string())
+            );
+        }
+    }
+
     #[tokio::test]
-    async fn test_inline_plain_roundrip() {
+    async fn test_inline_plain_roundtrip() {
         let storage_conf = StorageConf::default();
         let data = json!({"key": "value"});
 
         let nexus_data = NexusData::new_inline(data.clone());
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Inline);
 
-        // Inspect the inner data.
-        assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Inline);
-
-        // Nothing should change when we commit as Nexus.
         let committed = nexus_data
             .commit(&storage_conf)
             .await
             .expect("Failed to commit data");
 
-        assert_eq!(committed.as_json(), &data);
+        assert_eq!(committed.as_json(), data);
         assert_eq!(committed.storage_kind(), StorageKind::Inline);
 
-        let committed_data: NexusData = committed.into();
-
-        // Nothing should change when we fetch as user.
-        let fetched = committed_data
+        let fetched = committed
             .fetch(&storage_conf)
             .await
             .expect("Failed to fetch data");
 
-        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.as_json(), data);
         assert_eq!(fetched.storage_kind(), StorageKind::Inline);
     }
 
     #[tokio::test]
-    async fn test_walrus_plain_roundrip() {
+    async fn test_walrus_plain_roundtrip() {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
         let data = json!({"key": "value"});
 
-        // Setup mock Walrus response
         let mock_put_response = StorageInfo {
             newly_created: Some(NewlyCreated {
                 blob_object: BlobObject {
@@ -528,39 +565,31 @@ mod tests {
             .await;
 
         let nexus_data = NexusData::new_walrus(data.clone());
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Walrus);
 
-        // Inspect the inner data.
-        assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
-
-        // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
             .commit(&storage_conf)
             .await
             .expect("Failed to commit data");
 
-        assert_ne!(committed.as_json(), &data);
+        assert_ne!(committed.as_json(), data);
         assert!(committed.as_json().is_string());
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        let committed_data: NexusData = committed.into();
-
-        // Data should be fetched from walrus when we fetch as user.
-        let fetched = committed_data
+        let fetched = committed
             .fetch(&storage_conf)
             .await
             .expect("Failed to fetch data");
 
-        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.as_json(), data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
-
-        // Verify the requests were made
         mock_put.assert_async().await;
         mock_get.assert_async().await;
     }
 
     #[tokio::test]
-    async fn test_walrus_empty_arr_plain_roundrip() {
+    async fn test_walrus_empty_arr_plain_roundtrip() {
         let storage_conf = StorageConf {
             walrus_publisher_url: Some("https://publisher.url".to_string()),
             walrus_aggregator_url: Some("https://aggregator.url".to_string()),
@@ -569,42 +598,33 @@ mod tests {
         let data = json!([]);
 
         let nexus_data = NexusData::new_walrus(data.clone());
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Walrus);
 
-        // Inspect the inner data.
-        assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
-
-        // Nothing should change when we commit as Nexus.
         let committed = nexus_data
             .commit(&storage_conf)
             .await
             .expect("Failed to commit data");
 
-        assert_eq!(committed.as_json(), &data);
+        assert_eq!(committed.as_json(), data);
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        let committed_data: NexusData = committed.into();
-
-        // Nothing should change when we fetch as user.
-        let fetched = committed_data
+        let fetched = committed
             .fetch(&storage_conf)
             .await
             .expect("Failed to fetch data");
 
-        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.as_json(), data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
     }
 
     #[tokio::test]
-    async fn test_walrus_array_plain_roundrip() {
+    async fn test_walrus_array_plain_roundtrip() {
         let (mut server, storage_conf) = setup_mock_server_and_conf()
             .await
             .expect("Mock server should start");
         let data = json!([{"key": "value"}, {"key": "value2"}]);
 
-        let nexus_data = NexusData::new_walrus(data.clone());
-
-        // Setup mock Walrus response
         let mock_put_response = StorageInfo {
             newly_created: Some(NewlyCreated {
                 blob_object: BlobObject {
@@ -632,17 +652,16 @@ mod tests {
             .create_async()
             .await;
 
-        // Inspect the inner data.
-        assert_eq!(nexus_data.data.as_json(), &data);
-        assert_eq!(nexus_data.data.storage_kind(), StorageKind::Walrus);
+        let nexus_data = NexusData::new_walrus(data.clone());
+        assert_eq!(nexus_data.as_json(), data);
+        assert_eq!(nexus_data.storage_kind(), StorageKind::Walrus);
 
-        // Data should be stored on walrus when we commit as Nexus.
         let committed = nexus_data
             .commit(&storage_conf)
             .await
             .expect("Failed to commit data");
 
-        assert_ne!(committed.as_json(), &data);
+        assert_ne!(committed.as_json(), data);
         assert!(committed.as_json().is_array());
         assert_eq!(
             committed.as_json().as_array().unwrap().len(),
@@ -650,18 +669,13 @@ mod tests {
         );
         assert_eq!(committed.storage_kind(), StorageKind::Walrus);
 
-        let committed_data: NexusData = committed.into();
-
-        // Data should be fetched from walrus when we fetch as user.
-        let fetched = committed_data
+        let fetched = committed
             .fetch(&storage_conf)
             .await
             .expect("Failed to fetch data");
 
-        assert_eq!(fetched.as_json(), &data);
+        assert_eq!(fetched.as_json(), data);
         assert_eq!(fetched.storage_kind(), StorageKind::Walrus);
-
-        // Verify the requests were made
         mock_put.assert_async().await;
         mock_get.assert_async().await;
     }
@@ -674,7 +688,6 @@ mod tests {
         });
 
         let remote_fields = vec!["plain_walrus".to_string()];
-
         let map = json_to_nexus_data_map(&json, &remote_fields, None).unwrap();
 
         assert_eq!(
@@ -690,19 +703,15 @@ mod tests {
     #[test]
     fn test_json_to_nexus_data_map_empty_object() {
         let json = json!({});
-        let remote_fields = vec![];
-
-        let map = json_to_nexus_data_map(&json, &remote_fields, None).unwrap();
+        let map = json_to_nexus_data_map(&json, &[], None).unwrap();
         assert!(map.is_empty());
     }
 
     #[test]
     fn test_json_to_nexus_data_map_non_object_error() {
         let json = json!(["not", "an", "object"]);
-        let remote_fields = vec![];
+        let result = json_to_nexus_data_map(&json, &[], None);
 
-        let result = json_to_nexus_data_map(&json, &remote_fields, None);
-        assert!(result.is_err());
         assert_matches!(
             result,
             Err(e) if e.to_string().contains("Expected JSON object")
@@ -711,14 +720,12 @@ mod tests {
 
     #[test]
     fn test_json_to_nexus_data_map_remote_inline_error() {
-        // Try to store data remotely using inline storage, which should error.
         let json = json!({
             "remote_inline": 42
         });
         let remote_fields = vec!["remote_inline".to_string()];
-        // Explicitly request Inline as preferred remote storage kind.
         let result = json_to_nexus_data_map(&json, &remote_fields, Some(StorageKind::Inline));
-        assert!(result.is_err());
+
         assert_matches!(
             result,
             Err(e) if e.to_string().contains("Cannot store data remotely using inline storage")
@@ -726,8 +733,30 @@ mod tests {
     }
 
     #[test]
+    fn test_try_from_json_value_all_branches() {
+        let inline = NexusData::try_from(json!({
+            "kind": "inline",
+            "data": { "key": "value" }
+        }))
+        .unwrap();
+        assert_eq!(inline.storage_kind(), StorageKind::Inline);
+        assert_eq!(inline.as_json(), json!({"key": "value"}));
+
+        let walrus = NexusData::try_from(json!({
+            "kind": "walrus",
+            "data": "blob_id"
+        }))
+        .unwrap();
+        assert_eq!(walrus.storage_kind(), StorageKind::Walrus);
+        assert_eq!(walrus.as_json(), json!("blob_id"));
+
+        assert!(NexusData::try_from(json!({"data": 1})).is_err());
+        assert!(NexusData::try_from(json!({"kind": "inline"})).is_err());
+        assert!(NexusData::try_from(json!({"kind": "unknown", "data": 1})).is_err());
+    }
+
+    #[test]
     fn test_hint_remote_fields_all_fit() {
-        // All fields fit within the transaction size.
         let json = json!({
             "a": "short",
             "b": 123,
@@ -739,76 +768,62 @@ mod tests {
 
     #[test]
     fn test_hint_remote_fields_one_field_overflows() {
-        // Create a large field to overflow the transaction size.
-        let mut large_string = String::new();
-        for _ in 0..(MAX_TRANSACTION_SIZE) {
-            large_string.push('x');
-        }
         let json = json!({
             "small": "ok",
-            "large": large_string
+            "large": "x".repeat(MAX_TRANSACTION_SIZE)
         });
         let result = hint_remote_fields(&json).unwrap();
-        // Only "large" should be hinted as remote.
         assert_eq!(result, vec!["large"]);
     }
 
     #[test]
     fn test_hint_remote_fields_multiple_fields_overflow() {
-        // Create several large fields to overflow the transaction size.
         let mut json_obj = serde_json::Map::new();
         let mut expected_remote = Vec::new();
         let field_count = 5;
         let field_size = MAX_TRANSACTION_SIZE / field_count;
+
         for i in 0..field_count {
-            let key = format!("field{}", i);
-            let value = "x".repeat(field_size);
-            json_obj.insert(key.clone(), serde_json::Value::String(value));
+            let key = format!("field{i}");
+            json_obj.insert(key.clone(), Value::String("x".repeat(field_size)));
             expected_remote.push(key);
         }
-        let json = serde_json::Value::Object(json_obj);
+
+        let json = Value::Object(json_obj);
         let result = hint_remote_fields(&json).unwrap();
-        // At least one field should be hinted as remote, possibly more.
         assert!(!result.is_empty());
-        // If all fields are large, all may be hinted.
-        assert!(expected_remote.iter().any(|k| result.contains(k)));
+        assert!(expected_remote.iter().any(|key| result.contains(key)));
     }
 
     #[test]
     fn test_hint_remote_fields_array_storage_cost() {
-        // Create a large array to overflow the transaction size.
         let effective_budget = MAX_TRANSACTION_SIZE
             .saturating_sub(NEXUS_BASE_TRANSACTION_SIZE)
             .saturating_sub(ENTRY_PORTS_RESERVED_BYTES);
         let arr_len = (effective_budget / WALRUS_BLOB_ID_LENGTH).saturating_sub(10);
-        let arr: Vec<serde_json::Value> = (0..arr_len)
-            // Make the data longer than the walrus key storage cost to ensure
-            // storing remotely is beneficial.
+        let arr: Vec<Value> = (0..arr_len)
             .map(|_| json!({"x": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"}))
             .collect();
         let json = json!({
             "big_array": arr,
             "small": "ok"
         });
+
         let result = hint_remote_fields(&json).unwrap();
-        // "big_array" should be hinted as remote.
         assert!(result.contains(&"big_array".to_string()));
     }
 
     #[test]
     fn test_hint_remote_fields_cannot_fit_even_if_all_remote() {
-        // Create fields so large that even storing all remotely can't fit.
-        let mut json_obj = serde_json::Map::new();
         let huge_arr_len = (MAX_TRANSACTION_SIZE * 2) / WALRUS_BLOB_ID_LENGTH;
-        let huge_arr: Vec<serde_json::Value> = (0..huge_arr_len)
-            // Make the data longer than the walrus key storage cost to ensure
-            // storing remotely is beneficial.
+        let huge_arr: Vec<Value> = (0..huge_arr_len)
             .map(|_| json!("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"))
             .collect();
-        json_obj.insert("huge_array".to_string(), serde_json::Value::Array(huge_arr));
-        let json = serde_json::Value::Object(json_obj);
+        let json = json!({
+            "huge_array": huge_arr
+        });
         let result = hint_remote_fields(&json);
-        assert!(result.is_err());
+
         assert_matches!(
             result,
             Err(e) if e.to_string().contains("Cannot fit data within max transaction size")
@@ -819,7 +834,7 @@ mod tests {
     fn test_hint_remote_fields_non_object_error() {
         let json = json!(["not", "an", "object"]);
         let result = hint_remote_fields(&json);
-        assert!(result.is_err());
+
         assert_matches!(
             result,
             Err(e) if e.to_string().contains("Expected JSON object")

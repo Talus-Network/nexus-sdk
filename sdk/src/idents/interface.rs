@@ -9,7 +9,7 @@ use crate::{
     idents::ModuleAndNameIdent,
     sui,
     types::{
-        EdgeKind,
+        interface::graph::EdgeKind,
         FailureEvidenceKind,
         PostFailureAction,
         RuntimeVertex,
@@ -44,9 +44,7 @@ impl Verifier {
     ) -> sui::tx::Argument {
         let ident = match mode {
             VerifierMode::None => Self::VERIFIER_MODE_NONE,
-            VerifierMode::LeaderRegisteredKey | VerifierMode::LeaderNautilusEnclave => {
-                Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION
-            }
+            VerifierMode::LeaderRegisteredKey => Self::VERIFIER_MODE_AUTHENTICATED_COMMUNICATION,
             VerifierMode::ToolVerifierContract => Self::VERIFIER_MODE_TOOL_VERIFIER_CONTRACT,
         };
         tx.move_call(
@@ -61,7 +59,7 @@ impl Verifier {
         config: &VerifierConfig,
     ) -> anyhow::Result<sui::tx::Argument> {
         let mode = Self::verifier_mode_from_enum(tx, interface_pkg_id, &config.mode);
-        let method = super::move_std::Ascii::ascii_string_from_str(tx, &config.method)?;
+        let method = super::move_std::Ascii::str_to_argument(tx, &config.method)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -79,7 +77,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+        let str = super::move_std::Ascii::str_to_argument(tx, str)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -95,7 +93,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+        let str = super::move_std::Ascii::str_to_argument(tx, str)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -111,7 +109,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+        let str = super::move_std::Ascii::str_to_argument(tx, str)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -127,7 +125,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+        let str = super::move_std::Ascii::str_to_argument(tx, str)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -143,7 +141,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         str: T,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, str)?;
+        let str = super::move_std::Ascii::str_to_argument(tx, str)?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -159,7 +157,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+        let str = super::move_std::Ascii::str_to_argument(tx, fqn.to_string())?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -175,7 +173,7 @@ impl Graph {
         interface_pkg_id: sui::types::Address,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::tx::Argument> {
-        let str = super::move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+        let str = super::move_std::Ascii::str_to_argument(tx, fqn.to_string())?;
         Ok(tx.move_call(
             sui::tx::Function::new(
                 interface_pkg_id,
@@ -227,7 +225,7 @@ impl Graph {
     ) -> anyhow::Result<sui::tx::Argument> {
         match runtime_vertex {
             RuntimeVertex::Plain { vertex } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let name = super::move_std::Ascii::str_to_argument(tx, vertex.name.as_ref())?;
                 Ok(tx.move_call(
                     sui::tx::Function::new(
                         interface_pkg_id,
@@ -242,7 +240,7 @@ impl Graph {
                 iteration,
                 out_of,
             } => {
-                let name = super::move_std::Ascii::ascii_string_from_str(tx, &vertex.name)?;
+                let name = super::move_std::Ascii::str_to_argument(tx, vertex.name.as_ref())?;
                 let iteration = tx.pure(iteration);
                 let out_of = tx.pure(out_of);
                 Ok(tx.move_call(

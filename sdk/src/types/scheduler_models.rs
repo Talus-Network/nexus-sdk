@@ -2,9 +2,12 @@
 //! It provides a way to serialize and deserialize the task and any helper structures.
 use {
     super::{
+        interface::version::InterfaceVersion,
+        primitives::policy::Symbol as PolicySymbol,
+        scheduler::scheduler::State as TaskState,
         serde_parsers::{deserialize_sui_u64, serialize_sui_u64},
         strip_fields_owned,
-        tap::{AgentId, InterfaceVersion, SkillId},
+        tap::{AgentId, SkillId},
         AgentVertexAuthorizationTemplate,
         MoveOption,
         TypeName,
@@ -19,6 +22,78 @@ use {
     },
     serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
+
+impl<'de> Deserialize<'de> for TaskState {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if !deserializer.is_human_readable() {
+            #[derive(Deserialize)]
+            enum Wire {
+                Active,
+                Paused,
+                Canceled,
+                Completed,
+                Failed,
+            }
+
+            return match Wire::deserialize(deserializer)? {
+                Wire::Active => Ok(Self::Active),
+                Wire::Paused => Ok(Self::Paused),
+                Wire::Canceled => Ok(Self::Canceled),
+                Wire::Completed => Ok(Self::Completed),
+                Wire::Failed => Ok(Self::Failed),
+            };
+        }
+
+        let value = serde_json::Value::deserialize(deserializer)?;
+        parse_task_state_value(value).map_err(serde::de::Error::custom)
+    }
+}
+
+fn parse_task_state_value(value: serde_json::Value) -> Result<TaskState, String> {
+    let value = strip_fields_owned(value);
+
+    if let serde_json::Value::String(name) = value {
+        return task_state_from_variant_name(&name);
+    }
+
+    let serde_json::Value::Object(object) = value else {
+        return Err("TaskState must be a string or Move enum object".to_string());
+    };
+
+    let variant = object
+        .get("_variant_name")
+        .or_else(|| object.get("@variant"))
+        .or_else(|| object.get("variant"))
+        .or_else(|| object.get("type"))
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            if object.len() == 1 {
+                object.keys().next().cloned()
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "TaskState missing variant tag".to_string())?;
+
+    task_state_from_variant_name(&variant)
+}
+
+fn task_state_from_variant_name(name: &str) -> Result<TaskState, String> {
+    match name {
+        "Active" => Ok(TaskState::Active),
+        "Paused" => Ok(TaskState::Paused),
+        "Canceled" => Ok(TaskState::Canceled),
+        "Completed" | "Exhausted" => Ok(TaskState::Completed),
+        "Failed" => Ok(TaskState::Failed),
+        other => Err(format!(
+            "unknown TaskState variant `{other}`, expected one of `Active`, `Paused`, `Canceled`, `Completed`, `Failed`"
+        )),
+    }
+}
 
 /// Representation of `nexus_interface::agent::ExecutionSelection`.
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -240,13 +315,6 @@ pub struct DeterministicAutomaton {
     pub start: u64,
 }
 
-/// Representation of `nexus_primitives::policy::Symbol`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum PolicySymbol {
-    Witness(TypeName),
-    Uid(sui::types::Address),
-}
-
 // TODO: BCS and JSON standardization
 // TODO: https://github.com/Talus-Network/nexus-sdk/issues/364
 impl<'de> Deserialize<'de> for PolicySymbol {
@@ -254,21 +322,19 @@ impl<'de> Deserialize<'de> for PolicySymbol {
     where
         D: Deserializer<'de>,
     {
-        // Non-human readable formats (BCS) use the standard enum layout.
         if !deserializer.is_human_readable() {
             #[derive(Deserialize)]
             enum Standard {
                 Witness(TypeName),
-                Uid(sui::types::Address),
+                Uid(crate::types::sui_framework::object::ID),
             }
 
             return match Standard::deserialize(deserializer)? {
-                Standard::Witness(name) => Ok(PolicySymbol::Witness(name)),
-                Standard::Uid(uid) => Ok(PolicySymbol::Uid(uid)),
+                Standard::Witness(pos0) => Ok(PolicySymbol::Witness { pos0 }),
+                Standard::Uid(pos0) => Ok(PolicySymbol::Uid { pos0 }),
             };
         }
 
-        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Deserialize)]
         struct Fields<T> {
             #[serde(rename = "pos0")]
@@ -303,12 +369,18 @@ impl<'de> Deserialize<'de> for PolicySymbol {
             "Witness" => {
                 let fields: Fields<TypeName> =
                     serde_json::from_value(fields).map_err(serde::de::Error::custom)?;
-                Ok(PolicySymbol::Witness(fields.pos0))
+                Ok(PolicySymbol::Witness { pos0: fields.pos0 })
             }
             "Uid" => {
-                let fields: Fields<sui::types::Address> =
+                let fields: Fields<serde_json::Value> =
                     serde_json::from_value(fields).map_err(serde::de::Error::custom)?;
-                Ok(PolicySymbol::Uid(fields.pos0))
+                let pos0 = serde_json::from_value(fields.pos0.clone()).or_else(|_| {
+                    crate::types::parse_address_value(&fields.pos0)
+                        .map_err(serde::de::Error::custom)?
+                        .map(crate::types::sui_address_to_id)
+                        .ok_or_else(|| serde::de::Error::custom("PolicySymbol Uid missing address"))
+                })?;
+                Ok(PolicySymbol::Uid { pos0 })
             }
             other => Err(serde::de::Error::custom(format!(
                 "Unknown policy symbol variant: {other}"
@@ -320,23 +392,21 @@ impl<'de> Deserialize<'de> for PolicySymbol {
 impl Serialize for PolicySymbol {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
-        // Non-human readable formats (BCS) use the standard enum layout.
         if !serializer.is_human_readable() {
             #[derive(Serialize)]
             enum Standard<'a> {
                 Witness(&'a TypeName),
-                Uid(sui::types::Address),
+                Uid(&'a crate::types::sui_framework::object::ID),
             }
 
             return match self {
-                PolicySymbol::Witness(name) => Standard::Witness(name).serialize(serializer),
-                PolicySymbol::Uid(uid) => Standard::Uid(*uid).serialize(serializer),
+                PolicySymbol::Witness { pos0 } => Standard::Witness(pos0).serialize(serializer),
+                PolicySymbol::Uid { pos0 } => Standard::Uid(pos0).serialize(serializer),
             };
         }
 
-        // Human readable formats (JSON) use the { variant, fields: { pos0 } } shape.
         #[derive(Serialize)]
         struct Fields<'a, T> {
             #[serde(rename = "pos0")]
@@ -350,14 +420,14 @@ impl Serialize for PolicySymbol {
         }
 
         match self {
-            PolicySymbol::Witness(name) => Tagged {
+            PolicySymbol::Witness { pos0 } => Tagged {
                 variant: "Witness",
-                fields: Fields { pos0: name },
+                fields: Fields { pos0 },
             }
             .serialize(serializer),
-            PolicySymbol::Uid(uid) => Tagged {
+            PolicySymbol::Uid { pos0 } => Tagged {
                 variant: "Uid",
-                fields: Fields { pos0: uid },
+                fields: Fields { pos0 },
             }
             .serialize(serializer),
         }
@@ -365,17 +435,27 @@ impl Serialize for PolicySymbol {
 }
 
 impl PolicySymbol {
+    pub fn witness(name: TypeName) -> Self {
+        Self::Witness { pos0: name }
+    }
+
+    pub fn uid(uid: sui::types::Address) -> Self {
+        Self::Uid {
+            pos0: crate::types::move_binding_support::sui_address_to_id(uid),
+        }
+    }
+
     pub fn as_witness(&self) -> Option<&TypeName> {
         match self {
-            PolicySymbol::Witness(name) => Some(name),
-            PolicySymbol::Uid(_) => None,
+            PolicySymbol::Witness { pos0 } => Some(pos0),
+            PolicySymbol::Uid { .. } => None,
         }
     }
 
     pub fn as_uid(&self) -> Option<&sui::types::Address> {
         match self {
-            PolicySymbol::Uid(uid) => Some(uid),
-            PolicySymbol::Witness(_) => None,
+            PolicySymbol::Uid { pos0 } => Some(&pos0.bytes),
+            PolicySymbol::Witness { .. } => None,
         }
     }
 
@@ -387,104 +467,17 @@ impl PolicySymbol {
     }
 }
 
-/// Scheduled task state.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TaskState {
-    Active,
-    Paused,
-    Canceled,
-    Completed,
-    Failed,
-}
-
-impl<'de> Deserialize<'de> for TaskState {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        enum Standard {
-            Active,
-            Paused,
-            Canceled,
-            Completed,
-            Failed,
-        }
-
-        if !deserializer.is_human_readable() {
-            return match Standard::deserialize(deserializer)? {
-                Standard::Active => Ok(TaskState::Active),
-                Standard::Paused => Ok(TaskState::Paused),
-                Standard::Canceled => Ok(TaskState::Canceled),
-                Standard::Completed => Ok(TaskState::Completed),
-                Standard::Failed => Ok(TaskState::Failed),
-            };
-        }
-
-        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
-
-        let variant = match value {
-            serde_json::Value::String(variant) => variant,
-            serde_json::Value::Object(object) => object
-                .get("variant")
-                .or_else(|| object.get("@variant"))
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| serde::de::Error::custom("TaskState missing variant tag"))?
-                .to_string(),
-            other => {
-                return Err(serde::de::Error::custom(format!(
-                    "unexpected value for TaskState: {other}"
-                )))
-            }
-        };
-
-        match variant.as_str() {
-            "Active" => Ok(TaskState::Active),
-            "Paused" => Ok(TaskState::Paused),
-            "Canceled" => Ok(TaskState::Canceled),
-            "Completed" => Ok(TaskState::Completed),
-            "Failed" => Ok(TaskState::Failed),
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["Active", "Paused", "Canceled", "Completed", "Failed"],
-            )),
-        }
-    }
-}
-
-impl Serialize for TaskState {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        #[derive(Serialize)]
-        enum Standard<'a> {
-            Active,
-            Paused,
-            Canceled,
-            Completed,
-            Failed,
-            #[allow(dead_code)]
-            #[serde(skip)]
-            _Marker(&'a ()),
-        }
-
-        if !serializer.is_human_readable() {
-            return match self {
-                TaskState::Active => Standard::Active.serialize(serializer),
-                TaskState::Paused => Standard::Paused.serialize(serializer),
-                TaskState::Canceled => Standard::Canceled.serialize(serializer),
-                TaskState::Completed => Standard::Completed.serialize(serializer),
-                TaskState::Failed => Standard::Failed.serialize(serializer),
-            };
-        }
-
+impl std::hash::Hash for PolicySymbol {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            TaskState::Active => "Active".serialize(serializer),
-            TaskState::Paused => "Paused".serialize(serializer),
-            TaskState::Canceled => "Canceled".serialize(serializer),
-            TaskState::Completed => "Completed".serialize(serializer),
-            TaskState::Failed => "Failed".serialize(serializer),
+            Self::Witness { pos0 } => {
+                0u8.hash(state);
+                pos0.hash(state);
+            }
+            Self::Uid { pos0 } => {
+                1u8.hash(state);
+                pos0.bytes.hash(state);
+            }
         }
     }
 }
@@ -570,14 +563,32 @@ mod tests {
             let from_string: TaskState = serde_json::from_value(json!(name)).unwrap();
             assert_eq!(from_string, expected);
 
-            let from_variant: TaskState = serde_json::from_value(json!({
-                "variant": name
-            }))
-            .unwrap();
-            assert_eq!(from_variant, expected);
+            let from_move_json: TaskState =
+                serde_json::from_value(json!({ "@variant": name })).unwrap();
+            assert_eq!(from_move_json, expected);
 
             assert_eq!(serde_json::to_value(&expected).unwrap(), json!(name));
         }
+    }
+
+    #[test]
+    fn task_state_deserializes_move_json_variant_wrappers() {
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "_variant_name": "Active" })).unwrap(),
+            TaskState::Active
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "variant": "Paused" })).unwrap(),
+            TaskState::Paused
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!({ "Canceled": {} })).unwrap(),
+            TaskState::Canceled
+        );
+        assert_eq!(
+            serde_json::from_value::<TaskState>(json!("Exhausted")).unwrap(),
+            TaskState::Completed
+        );
     }
 
     #[test]
@@ -678,8 +689,8 @@ mod tests {
             priority_fee_per_gas_unit: 1000,
             authorization_templates: vec![AgentVertexAuthorizationTemplate {
                 skill_id: 2,
-                vertex: "cap_first".to_string(),
-                recipient_id,
+                vertex: "cap_first".into(),
+                recipient_id: crate::types::move_binding_support::sui_address_to_id(recipient_id),
             }],
         };
 
@@ -737,7 +748,22 @@ mod tests {
         });
 
         let sym: PolicySymbol = serde_json::from_value(json).unwrap();
-        assert!(matches!(sym, PolicySymbol::Witness(name) if name.name == "0x1::module::Type"));
+        assert!(matches!(sym, PolicySymbol::Witness { pos0 } if pos0.name == "0x1::module::Type"));
+    }
+
+    #[test]
+    fn policy_symbol_deserializes_enum_witness_with_string_type_name() {
+        let json = json!({
+            "variant": "Witness",
+            "fields": { "pos0": "0xa5::scheduler::QueueGeneratorWitness" }
+        });
+
+        let sym: PolicySymbol = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            sym,
+            PolicySymbol::Witness { pos0 }
+                if pos0.name == "0xa5::scheduler::QueueGeneratorWitness"
+        ));
     }
 
     #[test]
@@ -750,25 +776,25 @@ mod tests {
         });
 
         let sym: PolicySymbol = serde_json::from_value(json).unwrap();
-        assert!(matches!(sym, PolicySymbol::Uid(uid) if uid == addr));
+        assert!(matches!(sym, PolicySymbol::Uid { pos0 } if pos0.bytes == addr));
     }
 
     #[test]
     fn policy_symbol_deserializes_bcs_witness() {
         let witness = TypeName::new("0x1::module::Type");
-        let bytes = bcs::to_bytes(&PolicySymbol::Witness(witness.clone())).unwrap();
+        let bytes = bcs::to_bytes(&PolicySymbol::witness(witness.clone())).unwrap();
 
         let parsed: PolicySymbol = bcs::from_bytes(&bytes).unwrap();
-        assert!(matches!(parsed, PolicySymbol::Witness(name) if name == witness));
+        assert!(matches!(parsed, PolicySymbol::Witness { pos0 } if pos0 == witness));
     }
 
     #[test]
     fn policy_symbol_deserializes_bcs_uid() {
         let mut rng = thread_rng();
         let addr = sui::types::Address::generate(&mut rng);
-        let bytes = bcs::to_bytes(&PolicySymbol::Uid(addr)).unwrap();
+        let bytes = bcs::to_bytes(&PolicySymbol::uid(addr)).unwrap();
 
         let parsed: PolicySymbol = bcs::from_bytes(&bytes).unwrap();
-        assert!(matches!(parsed, PolicySymbol::Uid(uid) if uid == addr));
+        assert!(matches!(parsed, PolicySymbol::Uid { pos0 } if pos0.bytes == addr));
     }
 }

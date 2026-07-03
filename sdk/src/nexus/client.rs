@@ -10,7 +10,7 @@ use {
             gas::GasActions,
             models::Dag,
             scheduler::SchedulerActions,
-            signer::Signer,
+            signer::{ExecutedTransaction, Signer},
             workflow::{fetch_dag_vertices_bcs, WorkflowActions},
         },
         sui,
@@ -268,6 +268,33 @@ impl NexusClient {
     /// Get the Nexus objects.
     pub fn get_nexus_objects(&self) -> Arc<NexusObjects> {
         Arc::clone(&self.nexus_objects)
+    }
+
+    /// Submit a transaction through this client's signer and gas pool.
+    pub(crate) async fn submit_transaction(
+        &self,
+        mut tx: sui::tx::TransactionBuilder,
+        address: sui::types::Address,
+    ) -> Result<ExecutedTransaction, NexusError> {
+        let mut gas_coin = self.gas.acquire_gas_coin().await;
+
+        tx.set_sender(address);
+        tx.set_gas_budget(self.gas.get_budget());
+        tx.set_gas_price(self.reference_gas_price);
+        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
+            *gas_coin.object_id(),
+            gas_coin.version(),
+            *gas_coin.digest(),
+        )]);
+
+        let tx = tx
+            .try_build()
+            .map_err(|error| NexusError::TransactionBuilding(error.into()))?;
+        let signature = self.signer.sign_tx(&tx).await?;
+        let response = self.signer.execute_tx(tx, signature, &mut gas_coin).await;
+
+        self.gas.release_gas_coin(gas_coin).await;
+        response
     }
 
     // == Helpers reused by multiple actions ==

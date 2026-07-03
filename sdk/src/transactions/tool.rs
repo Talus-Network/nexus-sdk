@@ -25,7 +25,7 @@ pub fn register_off_chain_for_self(
     ));
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, meta.fqn.to_string())?;
+    let fqn = move_std::Ascii::str_to_argument(tx, meta.fqn.to_string())?;
 
     // `url: vector<u8>`
     let url = tx.pure(&meta.url.to_string());
@@ -203,10 +203,10 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap(
     let package_addr = sui_framework::Address::address_from_type(tx, package_address)?;
 
     // `module_name: AsciiString`
-    let module_name = move_std::Ascii::ascii_string_from_str(tx, module_name)?;
+    let module_name = move_std::Ascii::str_to_argument(tx, module_name)?;
 
     // `fqn: AsciiString`
-    let fqn = move_std::Ascii::ascii_string_from_str(tx, fqn.to_string())?;
+    let fqn = move_std::Ascii::str_to_argument(tx, fqn.to_string())?;
 
     // `description: vector<u8>`
     let description = tx.pure(&description.as_bytes().to_vec());

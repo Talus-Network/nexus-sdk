@@ -224,16 +224,6 @@ pub fn abort_expired_execution_with_tool_gas(
         execution.version(),
         true,
     ));
-    let tool_registry_arg = tx.object(sui::tx::ObjectInput::shared(
-        *objects.tool_registry.object_id(),
-        objects.tool_registry.version(),
-        false,
-    ));
-    let leader_registry_arg = tx.object(sui::tx::ObjectInput::shared(
-        *objects.leader_registry.object_id(),
-        objects.leader_registry.version(),
-        false,
-    ));
     let clock_arg = tx.object(sui::tx::ObjectInput::shared(
         sui_framework::CLOCK_OBJECT_ID,
         1,
@@ -246,14 +236,7 @@ pub fn abort_expired_execution_with_tool_gas(
             workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.module,
             workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.name,
         ),
-        vec![
-            tool_gas_arg,
-            dag_arg,
-            execution_arg,
-            tool_registry_arg,
-            leader_registry_arg,
-            clock_arg,
-        ],
+        vec![tool_gas_arg, dag_arg, execution_arg, clock_arg],
     )
 }
 
@@ -674,7 +657,7 @@ mod tests {
             call.function,
             workflow::GasExtension::ABORT_EXPIRED_EXECUTION_WITH_TOOL_GAS.name
         );
-        assert_eq!(call.arguments.len(), 6);
+        assert_eq!(call.arguments.len(), 4);
 
         let expect_shared = |argument: &sui::types::Argument,
                              expected: &sui::types::ObjectReference,
@@ -707,9 +690,7 @@ mod tests {
         expect_shared(&call.arguments[0], &tool_gas, true);
         expect_shared(&call.arguments[1], &dag, false);
         expect_shared(&call.arguments[2], &execution, true);
-        expect_shared(&call.arguments[3], &objects.tool_registry, false);
-        expect_shared(&call.arguments[4], &objects.leader_registry, false);
-        expect_clock(&call.arguments[5]);
+        expect_clock(&call.arguments[3]);
     }
 
     #[test]

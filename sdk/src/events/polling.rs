@@ -12,7 +12,7 @@ use {
     },
     futures::TryStreamExt,
     std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, VecDeque},
         sync::Arc,
         time::{Duration, Instant},
     },
@@ -79,6 +79,25 @@ lazy_static::lazy_static! {
         "poller_tx_batch_flush_reason",
         "Reason each transaction batch was flushed",
         &["reason"]
+    ).unwrap();
+
+    /// Counter: [`tonic::Code::ResourceExhausted`] responses while fetching transaction batches.
+    static ref TX_BATCH_RESOURCE_EXHAUSTED: prometheus::Counter = prometheus::register_counter!(
+        "poller_tx_batch_resource_exhausted",
+        "Number of resource exhausted transaction batch responses"
+    ).unwrap();
+
+    /// Histogram: fallback batch size selected after [`tonic::Code::ResourceExhausted`].
+    static ref TX_BATCH_FALLBACK_SIZE: prometheus::Histogram = prometheus::register_histogram!(
+        "poller_tx_batch_fallback_size",
+        "Transaction batch size selected after resource exhausted fallback",
+        vec![1.0, 2.0, 5.0, 10.0, 15.0, 20.0]
+    ).unwrap();
+
+    /// Counter: single digest batches quarantined after [`tonic::Code::ResourceExhausted`].
+    static ref TX_DIGESTS_QUARANTINED: prometheus::Counter = prometheus::register_counter!(
+        "poller_tx_digests_quarantined",
+        "Number of single transaction digests dropped after resource exhausted responses"
     ).unwrap();
 
     // -- Channel backpressure metrics --
@@ -154,6 +173,14 @@ pub struct EventPage {
     pub checkpoint: u64,
 }
 
+#[derive(Debug, Clone)]
+struct PendingTransactionDigest {
+    digest: String,
+    checkpoint: u64,
+}
+
+const DEFAULT_TRANSACTIONS_MAX_DECODING_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct EventPoller {
     rpc_url: String,
@@ -169,6 +196,8 @@ pub struct EventPoller {
     /// How many consecutive failures to tolerato when fetching transaction
     /// batches.
     transactions_batch_max_retries: usize,
+    /// Maximum decompressed response size for [`sui::grpc::Client`] transaction fetches.
+    transactions_max_decoding_message_size: usize,
     /// How many checkpoints to fetch in parallel during catch-up.
     catchup_parallel_fetches: usize,
     cancellation_token: CancellationToken,
@@ -183,6 +212,7 @@ impl EventPoller {
             transactions_max_batch_size: 30,
             transactions_batch_max_wait: Duration::from_millis(200),
             transactions_batch_max_retries: 3,
+            transactions_max_decoding_message_size: DEFAULT_TRANSACTIONS_MAX_DECODING_MESSAGE_SIZE,
             catchup_parallel_fetches: 10,
             cancellation_token: CancellationToken::new(),
         }
@@ -208,6 +238,15 @@ impl EventPoller {
         self
     }
 
+    /// Set the maximum decompressed gRPC response size in bytes for transaction fetches.
+    ///
+    /// This is applied per [`EventPoller`] by forwarding to
+    /// [`sui::grpc::Client::with_max_decoding_message_size`].
+    pub fn with_transactions_max_decoding_message_size(mut self, limit_bytes: usize) -> Self {
+        self.transactions_max_decoding_message_size = limit_bytes;
+        self
+    }
+
     pub fn with_catchup_parallel_fetches(mut self, n: usize) -> Self {
         self.catchup_parallel_fetches = n.max(1);
         self
@@ -216,6 +255,10 @@ impl EventPoller {
     pub fn with_cancellation_token(mut self, cancellation_token: CancellationToken) -> Self {
         self.cancellation_token = cancellation_token;
         self
+    }
+
+    fn transaction_client(&self, client: sui::grpc::Client) -> sui::grpc::Client {
+        client.with_max_decoding_message_size(self.transactions_max_decoding_message_size)
     }
 
     /// Start polling Nexus events and tasks from the given checkpoint sequence
@@ -448,7 +491,14 @@ impl EventPoller {
                                 from_checkpoint = Some(seq);
                                 for digest in digests {
                                     let send_start = Instant::now();
-                                    if send_digest.send(digest).await.is_err() {
+                                    if send_digest
+                                        .send(PendingTransactionDigest {
+                                            digest,
+                                            checkpoint: seq,
+                                        })
+                                        .await
+                                        .is_err()
+                                    {
                                         break 'master;
                                     }
                                     SEND_DIGEST_BACKPRESSURE_DURATION
@@ -471,7 +521,14 @@ impl EventPoller {
 
                         for tx in checkpoint.transactions() {
                             let send_start = Instant::now();
-                            if send_digest.send(tx.digest().to_string()).await.is_err() {
+                            if send_digest
+                                .send(PendingTransactionDigest {
+                                    digest: tx.digest().to_string(),
+                                    checkpoint: checkpoint.sequence_number(),
+                                })
+                                .await
+                                .is_err()
+                            {
                                 break 'master;
                             }
                             SEND_DIGEST_BACKPRESSURE_DURATION
@@ -532,7 +589,10 @@ impl EventPoller {
                                 for tx in checkpoint.transactions() {
                                     let send_start = Instant::now();
                                     if send_digest
-                                        .send(tx.digest().to_string())
+                                        .send(PendingTransactionDigest {
+                                            digest: tx.digest().to_string(),
+                                            checkpoint: checkpoint.sequence_number(),
+                                        })
                                         .await
                                         .is_err()
                                     {
@@ -558,76 +618,79 @@ impl EventPoller {
     /// via another channel.
     async fn fetch_transactions_and_notify(
         &self,
-        mut next_digest: mpsc::Receiver<String>,
+        mut next_digest: mpsc::Receiver<PendingTransactionDigest>,
         send_page: mpsc::Sender<Result<EventPage, PollerError>>,
     ) -> Result<(), PollerError> {
-        let mut client = sui::grpc::Client::new(&self.rpc_url).map_err(|_| {
-            PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
-        })?;
+        let mut client = sui::grpc::Client::new(&self.rpc_url)
+            .map(|client| self.transaction_client(client))
+            .map_err(|_| {
+                PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
+            })?;
 
         let mut consecutive_failures = 0;
         let mut batch = Vec::with_capacity(self.transactions_max_batch_size);
+        let mut retry_batches = VecDeque::<Vec<PendingTransactionDigest>>::new();
         let mut last_fetched_at = Instant::now();
 
         loop {
-            // Compute the remaining time before the batch should be flushed.
-            let flush_deadline = self
-                .transactions_batch_max_wait
-                .saturating_sub(last_fetched_at.elapsed());
+            let (digests, flush_reason) = if let Some(digests) = retry_batches.pop_front() {
+                (digests, "retry")
+            } else {
+                // Compute the remaining time before the batch should be flushed.
+                let flush_deadline = self
+                    .transactions_batch_max_wait
+                    .saturating_sub(last_fetched_at.elapsed());
 
-            let flush_reason;
+                let flush_reason;
 
-            tokio::select! {
-                _ = self.cancellation_token.cancelled() => {
-                    break;
-                }
-
-                // Flush partial batch when the timeout fires, even if no
-                // new digest has arrived.
-                _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {
-                    flush_reason = "timeout";
-                }
-
-                Some(digest) = next_digest.recv() => {
-                    batch.push(digest);
-
-                    // Only fetch if the batch size is reached or if the max
-                    // wait was exceeded.
-                    if batch.len() < self.transactions_max_batch_size
-                        && last_fetched_at.elapsed() < self.transactions_batch_max_wait
-                    {
-                        continue;
+                tokio::select! {
+                    _ = self.cancellation_token.cancelled() => {
+                        break;
                     }
 
-                    flush_reason = if batch.len() >= self.transactions_max_batch_size {
-                        "full"
-                    } else {
-                        "timeout"
-                    };
+                    // Flush partial batch when the timeout fires, even if no
+                    // new digest has arrived.
+                    _ = tokio::time::sleep(flush_deadline), if !batch.is_empty() => {
+                        flush_reason = "timeout";
+                    }
+
+                    Some(digest) = next_digest.recv() => {
+                        batch.push(digest);
+
+                        // Only fetch if the batch size is reached or if the max
+                        // wait was exceeded.
+                        if batch.len() < self.transactions_max_batch_size
+                            && last_fetched_at.elapsed() < self.transactions_batch_max_wait
+                        {
+                            continue;
+                        }
+
+                        flush_reason = if batch.len() >= self.transactions_max_batch_size {
+                            "full"
+                        } else {
+                            "timeout"
+                        };
+                    }
                 }
-            }
 
-            if batch.is_empty() {
-                continue;
-            }
+                if batch.is_empty() {
+                    continue;
+                }
 
-            // Record batch metrics.
+                let digests = batch
+                    .drain(..batch.len().min(self.transactions_max_batch_size))
+                    .collect::<Vec<_>>();
+                (digests, flush_reason)
+            };
+
             TX_BATCH_FLUSH_REASON
                 .with_label_values(&[flush_reason])
                 .inc();
-            TX_BATCH_SIZE.observe(batch.len() as f64);
+            TX_BATCH_SIZE.observe(digests.len() as f64);
             DIGEST_CHANNEL_LEN.set(next_digest.len() as f64);
 
-            // Drain the batch, preserving the checkpoint each digest
-            // belongs to so that EventPages carry the correct value.
-            // Only drain as many digests as the max batch size. There can be
-            // more should the RPC calls fail.
-            let digests = batch
-                .drain(..batch.len().min(self.transactions_max_batch_size))
-                .collect::<Vec<_>>();
-
             let request = sui::grpc::BatchGetTransactionsRequest::default()
-                .with_digests(digests.clone())
+                .with_digests(digests.iter().map(|tx| tx.digest.clone()).collect())
                 .with_read_mask(sui::grpc::FieldMask::from_paths([
                     "events.events",
                     "digest",
@@ -655,20 +718,46 @@ impl EventPoller {
                         break;
                     }
 
-                    // Avoid trying to re-fetch a batch too many times.
-                    consecutive_failures += 1;
+                    // Avoid trying to fetch the same batch too many times.
+                    if e.code() == tonic::Code::ResourceExhausted {
+                        TX_BATCH_RESOURCE_EXHAUSTED.inc();
 
-                    if consecutive_failures < self.transactions_batch_max_retries {
-                        // On fetch error, we return the digests back to
-                        // the batch and recreate the client so DNS is
-                        // re-resolved and stale connections are discarded.
-                        //
-                        // If this batch failed too many times, we drop it.
-                        batch.splice(0..0, digests);
+                        if digests.len() > 1 {
+                            let fallback_size = digests.len().div_ceil(2);
+                            TX_BATCH_FALLBACK_SIZE.observe(fallback_size as f64);
+
+                            let mut left = digests;
+                            let right = left.split_off(fallback_size);
+                            retry_batches.push_front(right);
+                            retry_batches.push_front(left);
+                        } else if let Some(tx) = digests.first() {
+                            TX_DIGESTS_QUARANTINED.inc();
+                            tracing::error!(
+                                digest = %tx.digest,
+                                checkpoint = tx.checkpoint,
+                                "Quarantining transaction digest after resource exhausted response"
+                            );
+                        }
+
                         consecutive_failures = 0;
+                    } else {
+                        consecutive_failures += 1;
+
+                        if consecutive_failures < self.transactions_batch_max_retries {
+                            retry_batches.push_front(digests);
+                        } else {
+                            tracing::error!(
+                                batch_size = digests.len(),
+                                attempts = consecutive_failures,
+                                "Dropping transaction batch after retry limit"
+                            );
+                            consecutive_failures = 0;
+                        }
                     }
 
-                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url) {
+                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url)
+                        .map(|client| self.transaction_client(client))
+                    {
                         client = new_client;
                     }
 
@@ -738,37 +827,80 @@ impl EventPoller {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test_utils"))]
 mod tests {
     use {
         super::*,
-        crate::{events::NexusEventKind, test_utils::sui_mocks},
-        std::sync::Arc,
+        crate::{
+            events::NexusEventKind,
+            test_utils::sui_mocks,
+            types::{
+                interface::graph::OutputVariant,
+                sui_framework::object::ID,
+                workflow::execution_events::WalkAdvancedEvent,
+                MoveString,
+                RuntimeVertex,
+            },
+        },
+        std::{
+            sync::{
+                atomic::{AtomicUsize, Ordering},
+                Arc,
+                Mutex,
+            },
+            time::Duration,
+        },
+        tokio::{sync::mpsc, time::timeout},
     };
 
+    fn id(bytes: sui::types::Address) -> ID {
+        ID { bytes }
+    }
+
+    fn empty_transaction_response(digests: Vec<String>) -> sui::grpc::BatchGetTransactionsResponse {
+        let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+        let transactions = digests
+            .into_iter()
+            .enumerate()
+            .map(|(index, digest)| {
+                let mut result = sui::grpc::GetTransactionResult::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(digest);
+                transaction.set_checkpoint(index as u64 + 1);
+                transaction.set_events(sui::grpc::TransactionEvents::default());
+                result.set_transaction(transaction);
+                result
+            })
+            .collect();
+
+        response.set_transactions(transactions);
+        response
+    }
+
     #[tokio::test]
-    async fn test_event_poller_receives_events() {
+    async fn event_poller_receives_events() {
         let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        // Create a mock event
-        let walk_advanced_event = NexusEventKind::WalkAdvanced(crate::events::WalkAdvancedEvent {
-            dag: sui_mocks::mock_sui_address(),
-            execution: sui_mocks::mock_sui_address(),
+        let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+            dag: id(sui_mocks::mock_sui_address()),
+            execution: id(sui_mocks::mock_sui_address()),
             walk_index: 0,
-            vertex: crate::events::RuntimeVertex::Plain {
-                vertex: crate::events::TypeName::new("v"),
+            vertex: RuntimeVertex::plain("v"),
+            variant: OutputVariant {
+                name: MoveString::from("ok"),
             },
-            variant: crate::events::TypeName::new("ok"),
-            variant_ports_to_data: crate::events::PortsData::from_map(Default::default()),
+            variant_ports_to_data: crate::types::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
         });
 
         sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
         sui_mocks::grpc::mock_events_get_checkpoint(
             &mut ledger_service_mock,
             (*nexus_objects).clone(),
-            vec![walk_advanced_event.clone()],
+            vec![walk_advanced_event],
             1,
         );
 
@@ -781,7 +913,7 @@ mod tests {
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
             .with_transactions_max_batch_size(1)
-            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+            .with_transactions_batch_max_wait(Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
         let page = receiver
@@ -789,16 +921,17 @@ mod tests {
             .await
             .expect("should receive a page")
             .expect("no error");
+
         assert_eq!(page.checkpoint, 1);
         assert_eq!(page.events.len(), 1);
-        match &page.events[0].data {
-            NexusEventKind::WalkAdvanced(_) => {}
-            _ => panic!("Expected WalkAdvanced event"),
-        }
+        assert!(matches!(
+            &page.events[0].data,
+            NexusEventKind::WalkAdvanced(_)
+        ));
     }
 
     #[tokio::test]
-    async fn test_event_poller_empty_events() {
+    async fn event_poller_preserves_empty_event_pages() {
         let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -820,7 +953,7 @@ mod tests {
         let poller = EventPoller::new(&rpc_url, nexus_objects)
             .with_channel_capacity(2)
             .with_transactions_max_batch_size(1)
-            .with_transactions_batch_max_wait(std::time::Duration::from_millis(50));
+            .with_transactions_batch_max_wait(Duration::from_millis(50));
 
         let mut receiver = poller.start_polling(Some(1)).expect("poller should start");
         let page = receiver
@@ -828,7 +961,220 @@ mod tests {
             .await
             .expect("should receive a page")
             .expect("no error");
+
         assert_eq!(page.checkpoint, 1);
         assert!(page.events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resource_exhausted_batches_are_retried_with_smaller_batches() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let attempts = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+
+        ledger_service_mock
+            .expect_batch_get_transactions()
+            .returning({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    let digests = request.into_inner().digests;
+                    attempts.lock().unwrap().push(digests.clone());
+
+                    if digests.len() > 1 {
+                        Err(tonic::Status::resource_exhausted("batch too large"))
+                    } else {
+                        Ok(tonic::Response::new(empty_transaction_response(digests)))
+                    }
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+
+        let cancellation_token = CancellationToken::new();
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_transactions_max_batch_size(2)
+            .with_transactions_batch_max_wait(Duration::from_millis(10))
+            .with_cancellation_token(cancellation_token.clone());
+
+        let (send_digest, next_digest) = mpsc::channel(4);
+        let (send_page, mut next_page) = mpsc::channel(4);
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx1".to_string(),
+                checkpoint: 1,
+            })
+            .await
+            .unwrap();
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx2".to_string(),
+                checkpoint: 1,
+            })
+            .await
+            .unwrap();
+
+        let handle = tokio::spawn(async move {
+            poller
+                .fetch_transactions_and_notify(next_digest, send_page)
+                .await
+        });
+
+        timeout(Duration::from_secs(3), async {
+            let mut received_pages = 0;
+            while received_pages < 2 {
+                if let Ok(page) = next_page.recv().await.expect("page channel closed") {
+                    assert!(page.events.is_empty());
+                    received_pages += 1;
+                }
+            }
+        })
+        .await
+        .expect("timed out waiting for split batch");
+
+        cancellation_token.cancel();
+        handle.await.unwrap().unwrap();
+
+        let attempts = attempts.lock().unwrap().clone();
+        assert_eq!(
+            attempts,
+            vec![
+                vec!["tx1".to_string(), "tx2".to_string()],
+                vec!["tx1".to_string()],
+                vec!["tx2".to_string()],
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_batches_stop_retrying_after_max_retries() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+
+        ledger_service_mock
+            .expect_batch_get_transactions()
+            .returning({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    assert_eq!(request.into_inner().digests.len(), 2);
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err(tonic::Status::unavailable("rpc down"))
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_transactions_max_batch_size(2)
+            .with_transactions_batch_max_wait(Duration::from_millis(10))
+            .with_transactions_batch_max_retries(2);
+
+        let (send_digest, next_digest) = mpsc::channel(4);
+        let (send_page, mut next_page) = mpsc::channel(4);
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx1".to_string(),
+                checkpoint: 1,
+            })
+            .await
+            .unwrap();
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx2".to_string(),
+                checkpoint: 1,
+            })
+            .await
+            .unwrap();
+
+        let handle = tokio::spawn(async move {
+            poller
+                .fetch_transactions_and_notify(next_digest, send_page)
+                .await
+        });
+
+        for _ in 0..2 {
+            assert!(timeout(Duration::from_secs(3), next_page.recv())
+                .await
+                .expect("timed out waiting for expected retry")
+                .expect("page channel closed")
+                .is_err());
+        }
+
+        assert!(
+            timeout(Duration::from_millis(1200), next_page.recv())
+                .await
+                .is_err(),
+            "batch was retried after the configured retry limit"
+        );
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn single_resource_exhausted_digest_is_not_retried_forever() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+
+        ledger_service_mock
+            .expect_batch_get_transactions()
+            .returning({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    assert_eq!(request.into_inner().digests.len(), 1);
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err(tonic::Status::resource_exhausted(
+                        "single transaction too large",
+                    ))
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_transactions_max_batch_size(1)
+            .with_transactions_batch_max_wait(Duration::from_millis(10));
+
+        let (send_digest, next_digest) = mpsc::channel(2);
+        let (send_page, mut next_page) = mpsc::channel(2);
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx1".to_string(),
+                checkpoint: 1,
+            })
+            .await
+            .unwrap();
+
+        let handle = tokio::spawn(async move {
+            poller
+                .fetch_transactions_and_notify(next_digest, send_page)
+                .await
+        });
+
+        assert!(timeout(Duration::from_secs(3), next_page.recv())
+            .await
+            .expect("timed out waiting for expected resource exhausted error")
+            .expect("page channel closed")
+            .is_err());
+
+        assert!(
+            timeout(Duration::from_millis(1200), next_page.recv())
+                .await
+                .is_err(),
+            "oversized single digest was retried after being quarantined"
+        );
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+        handle.abort();
     }
 }

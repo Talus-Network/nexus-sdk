@@ -52,7 +52,13 @@ sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64", "sui-move-codegen
 # Binding codegen feature gates the `generate_binding` binary, the network half
 # of the Move-binding identifier pipeline. It needs a full Tokio runtime to drive
 # the gRPC fetch; the offline render in `build.rs` requires none of this.
-binding_codegen = ["sui_types", "tokio/full", "sui-move-codegen"]
+binding_codegen = [
+    "sui_types",
+    "tokio/full",
+    "sui-move-codegen",
+    "serde_json",
+    "serde_json/preserve_order",
+]
 
 # Walrus client feature enables the use of the `walrus` module, providing
 # integration with the Walrus decentralized blob storage system.
@@ -62,6 +68,8 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 types = [
     "sui_types",
     "sui_idents",
+    "sui-move",
+    "sui-move-call",
     "enum_dispatch",
     "walrus",
     "futures",
@@ -73,7 +81,7 @@ types = [
 ]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing"]
+events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -294,6 +302,17 @@ git = "https://github.com/Talus-Network/move-binding"
 tag = "v0.1.0"
 optional = true
 
+[dependencies.sui-move]
+git = "https://github.com/Talus-Network/move-binding"
+tag = "v0.1.0"
+features = ["derive"]
+optional = true
+
+[dependencies.sui-move-call]
+git = "https://github.com/Talus-Network/move-binding"
+tag = "v0.1.0"
+optional = true
+
 # === Sui deps ===
 [dependencies.sui-rpc]
 version = "0.3.1"
@@ -358,6 +377,10 @@ tonic.workspace = true
 [build-dependencies]
 toml.workspace = true
 serde_json.workspace = true
+
+[build-dependencies.sui-move-codegen]
+git = "https://github.com/Talus-Network/move-binding"
+tag = "v0.1.0"
 
 [dependencies.blake3]
 version = "1.3"

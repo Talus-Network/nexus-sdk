@@ -1,6 +1,12 @@
 use {
     super::*,
-    nexus_sdk::nexus::tap::{fetch_execution_payment, AccomplishExecutionPaymentParams},
+    crate::tap::tap_output::payment_refill_result_json,
+    nexus_sdk::nexus::tap::{
+        fetch_execution_payment,
+        AccomplishExecutionPaymentParams,
+        RefillExecutionPaymentFromAgentVaultParams,
+        RefillExecutionPaymentParams,
+    },
     std::time::Duration,
 };
 
@@ -29,6 +35,23 @@ pub(crate) async fn handle_payments_command(
         } => {
             resolve_payment(
                 execution_id,
+                alias,
+                agent_id,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+        PaymentsCommand::Refill {
+            execution_id,
+            amount,
+            alias,
+            agent_id,
+            gas,
+        } => {
+            refill_payment(
+                execution_id,
+                amount,
                 alias,
                 agent_id,
                 gas.sui_gas_coin,
@@ -176,6 +199,53 @@ async fn resolve_payment(
     );
 
     json_output(&payment_resolve_result_json(&result))
+}
+
+async fn refill_payment(
+    execution_id: sui::types::Address,
+    amount: u64,
+    alias: Option<String>,
+    agent_id: Option<sui::types::Address>,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Refilling standard TAP execution payment for DAGExecution '{execution_id}'");
+
+    let conf = CliConf::load().await.unwrap_or_default();
+    let resolved_agent_id = if alias.is_some() || agent_id.is_some() {
+        Some(agent_id_from_alias_or_arg(&conf, alias, agent_id)?)
+    } else {
+        None
+    };
+
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let result = if let Some(agent_id) = resolved_agent_id {
+        ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
+        nexus_client
+            .tap()
+            .refill_execution_payment_from_agent_vault(RefillExecutionPaymentFromAgentVaultParams {
+                execution_id,
+                agent_id,
+                amount,
+            })
+            .await
+    } else {
+        nexus_client
+            .tap()
+            .refill_execution_payment(RefillExecutionPaymentParams {
+                execution_id,
+                amount,
+            })
+            .await
+    }
+    .map_err(NexusCliError::Nexus)?;
+
+    notify_success!(
+        "Refill transaction submitted: {digest}",
+        digest = result.tx_digest.to_string().truecolor(100, 100, 100),
+    );
+
+    json_output(&payment_refill_result_json(&result))
 }
 
 #[cfg(test)]
