@@ -1,7 +1,7 @@
 # Offchain Tool Development Guide
 
 This guide walks you through building, running, registering, and operating an
-*offchain tool* for Nexus end to end. Offchain tools are HTTP services that the
+_offchain tool_ for Nexus end to end. Offchain tools are HTTP services that the
 Nexus Leader invokes during a workflow execution — they are where you wrap
 external APIs, run arbitrary computation, or talk to any system the chain cannot
 reach directly.
@@ -32,19 +32,19 @@ implementation into a server that exposes three endpoints:
 The Leader calls these endpoints; you never call them by hand in production. How
 offchain tools compare to onchain tools:
 
-| Aspect | Offchain tool | Onchain tool |
-| --- | --- | --- |
-| Runtime | HTTP service (Rust) | Sui Move module |
-| Execution | Leader invokes over HTTPS | Runs on Sui as part of the PTB |
-| Output schema | Derived from your Rust `Output` enum | Derived from the Move `Output` enum |
-| Best for | External APIs, LLMs, arbitrary compute | On-chain state changes, asset moves |
+| Aspect        | Offchain tool                          | Onchain tool                        |
+| ------------- | -------------------------------------- | ----------------------------------- |
+| Runtime       | HTTP service (Rust)                    | Sui Move module                     |
+| Execution     | Leader invokes over HTTPS              | Runs on Sui as part of the PTB      |
+| Output schema | Derived from your Rust `Output` enum   | Derived from the Move `Output` enum |
+| Best for      | External APIs, LLMs, arbitrary compute | On-chain state changes, asset moves |
 
 If you need to mutate on-chain state instead, see the
 [Onchain Tool Development Guide](onchain-tool-development.md).
 
 ## 2. Tool FQN and Metadata Model
 
-Every tool is identified by a *fully qualified name* (FQN) with the shape
+Every tool is identified by a _fully qualified name_ (FQN) with the shape
 `domain.name@version`, for example `xyz.your-domain.exchanges.coinbase.spot-price@1`:
 
 - the domain has at least two dot-separated parts,
@@ -56,17 +56,17 @@ The `fqn!` macro validates this at compile time; the parsing rules live in
 [sdk/src/tool_fqn.rs](../../sdk/src/tool_fqn.rs).
 
 Everything the network needs to discover and call your tool is captured in its
-*metadata*, served from `GET /meta` and modeled by `ToolMeta` in
+_metadata_, served from `GET /meta` and modeled by `ToolMeta` in
 [sdk/src/types/tool_meta.rs](../../sdk/src/types/tool_meta.rs):
 
-| Field | Meaning |
-| --- | --- |
-| `fqn` | The tool's fully qualified name. |
-| `url` | The base URL the Leader invokes. |
-| `description` | Human-readable summary. |
-| `timeout` | How long the Leader waits for `/invoke` (milliseconds on the wire). |
-| `input_schema` | JSON Schema (draft 2020-12) generated from your `Input`. |
-| `output_schema` | JSON Schema generated from your `Output` enum. |
+| Field           | Meaning                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `fqn`           | The tool's fully qualified name.                                    |
+| `url`           | The base URL the Leader invokes.                                    |
+| `description`   | Human-readable summary.                                             |
+| `timeout`       | How long the Leader waits for `/invoke` (milliseconds on the wire). |
+| `input_schema`  | JSON Schema (draft 2020-12) generated from your `Input`.            |
+| `output_schema` | JSON Schema generated from your `Output` enum.                      |
 
 The toolkit derives both schemas for you from the Rust types — you never write
 JSON Schema by hand.
@@ -98,9 +98,9 @@ serde_json = "1"
 
 ## 4. Design the Input and Output Schemas
 
-The tool's input and output types *are* its interface: the `Input` fields become
-the tool's *input ports*, and each `Output` enum variant becomes an *output
-variant* whose fields become *output ports*.
+The tool's input and output types _are_ its interface: the `Input` fields become
+the tool's _input ports_, and each `Output` enum variant becomes an _output
+variant_ whose fields become _output ports_.
 
 ```rust
 /// Input ports for the spot-price tool.
@@ -212,7 +212,7 @@ impl NexusTool for SpotPrice {
 
 {% hint style="info" %}
 Notice that `invoke` returns `Self::Output`, never a `Result`. Errors are valid
-*output variants* in Nexus, so the tool catches every failure and returns it as
+_output variants_ in Nexus, so the tool catches every failure and returns it as
 an `err` variant rather than panicking or bubbling up an error. Any variant whose
 name starts with `err` has all of its ports forwarded on-chain automatically, so
 downstream vertices can branch on the failure.
@@ -292,7 +292,7 @@ nexus tool validate offchain --url http://localhost:8080
 
 ## 9. Register the Tool
 
-Registration writes your tool's metadata into the on-chain *tool registry* so
+Registration writes your tool's metadata into the on-chain _tool registry_ so
 that workflows can discover and price it. The CLI fetches `GET /meta`, then
 submits the registration transaction:
 
@@ -305,16 +305,11 @@ Useful flags:
 - `--from-meta <FILE|->` — register from a metadata JSON file (as produced by
   `cargo run -- --meta`) or stdin instead of a live URL. This skips the live
   HTTP validation step, which is handy in CI where the tool isn't running.
-- `--batch` — register *every* tool served by the webserver at the URL at once.
+- `--batch` — register _every_ tool served by the webserver at the URL at once.
 - `--invocation-cost <MIST>` — the per-invocation cost charged to callers
   (defaults to `0`).
 - `--collateral-coin <OBJECT_ID>` — the coin object to use as collateral (the
   second gas coin is chosen automatically if omitted).
-
-{% hint style="info" %}
-Tool registration is currently restricted during the beta phase. To register
-your tool, please contact the team to be added to the allow list.
-{% endhint %}
 
 ### How registration maps to the tool registry and SDK types
 
@@ -353,8 +348,8 @@ When a workflow reaches your tool's vertex, the Leader:
 1. converts that variant and its ports into Nexus data and submits it on-chain,
    where it becomes the input for downstream vertices connected by edges.
 
-So the *variant you return* selects which downstream edges fire, and the *ports
-in that variant* become the values flowing along those edges. Keep ports flat
+So the _variant you return_ selects which downstream edges fire, and the _ports
+in that variant_ become the values flowing along those edges. Keep ports flat
 and typed so they can be wired directly into the next tool's input ports.
 
 ## 11. Signed HTTP: Authentication and Replay Protection
@@ -364,11 +359,18 @@ HTTP** — application-layer Ed25519 signatures carried in `X-Nexus-Sig-*`
 headers. This is what lets a tool trust the caller and lets the Leader trust the
 response, independently of TLS.
 
+Think of it as a verifiable **evidence layer** for correct invocation: each
+signed request-and-response pair is durable proof that a specific, qualified
+Leader invoked your tool and that your tool produced a given result. Whether
+signed HTTP is _required_ is a per-tool policy — the tool operator turns it on
+(`signed_http.mode = "required"`) or leaves it off — and agents building DAGs can
+take that policy into account when deciding which tools to depend on.
+
 The request carries three headers (see the
 [Tool Communication guide](tool-communication.md) for the full spec):
 
 - `X-Nexus-Sig-V` — protocol version (currently `"1"`).
-- `X-Nexus-Sig-Input` — base64url of the raw JSON *claims* bytes.
+- `X-Nexus-Sig-Input` — base64url of the raw JSON _claims_ bytes.
 - `X-Nexus-Sig` — base64url of the 64-byte Ed25519 signature.
 
 The claims bind the request and give it a validity window: `iat_ms`/`exp_ms`
@@ -381,7 +383,7 @@ same way and echo the nonce.
   `nexus tool auth export-allowed-leaders`), so no on-chain read is needed at
   runtime.
 - **Replay protection:** the tool tracks `(tool_id, nonce)`. A repeat with the
-  *same* request identity is a safe retry; a repeat with a *different* identity
+  _same_ request identity is a safe retry; a repeat with a _different_ identity
   is a conflicting replay and must be rejected.
 - **Signing keys:** generate and register a key with
   `nexus tool auth keygen` and `nexus tool auth register-key`. The signed-HTTP
@@ -423,6 +425,30 @@ Because old versions remain in the registry, existing DAGs that pin `…@1` keep
 working when you ship `…@2`. Update `docs`/`README.md` for the new version and
 register it like any other tool.
 
+### Retiring an old version
+
+When a version is truly obsolete — no DAG depends on it anymore — remove it from
+the registry with `nexus tool unregister`:
+
+```bash
+nexus tool unregister --tool-fqn "xyz.your-domain.exchanges.coinbase.spot-price@1"
+```
+
+- `--owner-cap <OBJECT_ID>` — the `OwnerCap<OverTool>` authorizing the removal.
+  You only need to pass it if the CLI didn't save the cap locally at registration
+  time (it defaults to the saved config for this tool).
+- `--yes` — skip the confirmation prompt (useful in scripts).
+
+{% hint style="warning" %}
+Unregistering is not versioning. Only retire a version once you've confirmed no
+active DAG references it — unregistering a tool that a running or scheduled
+workflow still pins will make those executions fail to resolve it. Prefer
+publishing a new version and leaving the old one registered until it is drained.
+{% endhint %}
+
+Before unregistering, reclaim any locked collateral with
+`nexus tool claim-collateral --tool-fqn "…@1"`.
+
 ## 14. Use the Tool in a Workflow
 
 Once registered, reference the tool from a DAG by its FQN with the `off_chain`
@@ -453,16 +479,16 @@ output ports, which you can wire into downstream tools via edges. See the
 
 ## 15. Troubleshooting
 
-| Symptom | Likely cause and fix |
-| --- | --- |
-| `FQN mismatch` / tool not found | The FQN in `fqn!` differs from the one you registered or referenced in the DAG. They must match exactly, version included. |
+| Symptom                          | Likely cause and fix                                                                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FQN mismatch` / tool not found  | The FQN in `fqn!` differs from the one you registered or referenced in the DAG. They must match exactly, version included.                                           |
 | Schema mismatch / input rejected | The DAG supplies ports that don't match `input_schema`, or the response doesn't match `output_schema`. Re-check with `cargo run -- --meta` and `nexus tool inspect`. |
-| Signature verification failure | The Leader isn't in the tool's allowlist, keys are stale, clocks are skewed, or a proxy stripped/altered the `X-Nexus-Sig-*` headers or body. |
-| Wrong network/package config | The CLI is pointed at the wrong network. Re-check `nexus conf` and the `~/.nexus/objects.*.toml` you configured in the [setup guide](setup.md). |
-| Unsupported output type | The output isn't an `enum` (no top-level `oneOf`), or a port serializes to a shape Nexus can't carry. Keep ports flat and JSON-scalar where possible. |
-| Stale tool registration | You changed the schema without bumping the version. Register a new `@version` (see [Versioning](#13-versioning-your-tool)). |
-| Insufficient payment | The caller can't cover the tool's `invocation-cost`. Lower it with `nexus tool set-invocation-cost`, or fund the caller's Nexus gas budget (see the setup guide). |
-| Verifier rejection | The response failed verification (bad signature, replayed nonce, or expired window). Confirm signing config and host clock. |
+| Signature verification failure   | The Leader isn't in the tool's allowlist, keys are stale, clocks are skewed, or a proxy stripped/altered the `X-Nexus-Sig-*` headers or body.                        |
+| Wrong network/package config     | The CLI is pointed at the wrong network. Re-check `nexus conf` and the `~/.nexus/objects.*.toml` you configured in the [setup guide](setup.md).                      |
+| Unsupported output type          | The output isn't an `enum` (no top-level `oneOf`), or a port serializes to a shape Nexus can't carry. Keep ports flat and JSON-scalar where possible.                |
+| Stale tool registration          | You changed the schema without bumping the version. Register a new `@version` (see [Versioning](#13-versioning-your-tool)).                                          |
+| Insufficient payment             | The caller can't cover the tool's `invocation-cost`. Lower it with `nexus tool set-invocation-cost`, or fund the caller's Nexus gas budget (see the setup guide).    |
+| Verifier rejection               | The response failed verification (bad signature, replayed nonce, or expired window). Confirm signing config and host clock.                                          |
 
 ## 16. Acceptance Checklist
 
