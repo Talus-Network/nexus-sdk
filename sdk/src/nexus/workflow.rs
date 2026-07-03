@@ -13,8 +13,6 @@ use {
             crawler::{Crawler, Response},
             error::NexusError,
             models::{
-                BcsMap,
-                CommittedToolResultLeaderRecordBcs,
                 Dag,
                 DagEdge,
                 DagEdgeBcs,
@@ -25,7 +23,6 @@ use {
                 DagVertexInfoBcs,
                 DagVertexInputPort,
                 LinkedTableNodeBcs,
-                RawNexusDataBcs,
             },
             tap,
         },
@@ -53,7 +50,6 @@ use {
             Dag as JsonDag,
             DefaultDagExecutorRecord,
             FailureEvidenceKind,
-            MoveOption,
             NexusData,
             NexusObjects,
             PortsData,
@@ -248,26 +244,8 @@ pub struct RecordCommittedToolResultGasChargeResult {
 }
 
 /// Dynamic-field key for `DAGExecution` committed tool results.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct CommittedToolResultKey {
-    pub walk_index: u64,
-}
-
-#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
-struct CommittedToolResultBcs {
-    expected_vertex: RuntimeVertex,
-    #[allow(dead_code)]
-    variant: TypeName,
-    #[allow(dead_code)]
-    variant_ports_to_data: BcsMap<TypeName, RawNexusDataBcs>,
-    #[allow(dead_code)]
-    failure_evidence_kind: MoveOption<FailureEvidenceKind>,
-    primary_failure_evidence_kind: MoveOption<FailureEvidenceKind>,
-    secondary_failure_evidence_kind: MoveOption<FailureEvidenceKind>,
-    current_leader_cap_id: sui::types::Address,
-    has_finalized_onchain_payload: bool,
-    leader_records: BcsMap<sui::types::Address, CommittedToolResultLeaderRecordBcs>,
-}
+pub type CommittedToolResultKey = crate::types::workflow::execution::CommittedToolResultKey;
+type CommittedToolResult = crate::types::workflow::execution::CommittedToolResult;
 
 /// Narrowed committed-result view for off-chain freshness checks.
 ///
@@ -304,15 +282,11 @@ pub struct CommittedToolResultLeaderRecordView {
 }
 
 pub use crate::types::primitives::onchain_tool_result::OnchainToolResult;
+type ExecutionPaymentInsufficientSettlement =
+    crate::types::workflow::execution::ExecutionPaymentInsufficientSettlement;
+type ExecutionPaymentInsufficientSettlementFieldKey =
+    crate::types::workflow::execution::ExecutionPaymentInsufficientSettlementFieldKey;
 type OnchainToolResultKey = crate::types::workflow::execution::OnchainToolResultKey;
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-struct ExecutionPaymentInsufficientSettlementFieldKey {}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-struct ExecutionPaymentInsufficientSettlementBcs {
-    walks: Vec<u64>,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct InsufficientSettlementMarkerView {
@@ -370,20 +344,20 @@ fn onchain_tool_result_is_finalized(result: &OnchainToolResult) -> bool {
         && result.finalize_recipient.0.is_some()
 }
 
-impl From<CommittedToolResultBcs> for CommittedToolResultView {
-    fn from(value: CommittedToolResultBcs) -> Self {
+impl From<CommittedToolResult> for CommittedToolResultView {
+    fn from(value: CommittedToolResult) -> Self {
         Self {
             expected_vertex: value.expected_vertex,
             primary_failure_evidence_kind: value.primary_failure_evidence_kind.0,
             secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.0,
-            current_leader_cap_id: value.current_leader_cap_id,
+            current_leader_cap_id: value.current_leader_cap_id.bytes,
             has_finalized_onchain_payload: value.has_finalized_onchain_payload,
             leader_records: value
                 .leader_records
                 .contents
                 .into_iter()
                 .map(|entry| CommittedToolResultLeaderRecordView {
-                    leader_cap_id: entry.key,
+                    leader_cap_id: entry.key.bytes,
                     commit_tx_digest: entry.value.commit_tx_digest,
                     recipient: entry.value.recipient,
                     commit_gas_charge: entry.value.commit_gas_charge.0,
@@ -625,19 +599,13 @@ pub async fn fetch_dag_vertices_bcs(
 /// Returns `Ok(None)` when `CommittedToolResultKey { walk_index }` is absent.
 pub async fn fetch_committed_tool_result_for_walk(
     crawler: &Crawler,
-    nexus_objects: &NexusObjects,
     execution_id: sui::types::Address,
     walk_index: u64,
 ) -> anyhow::Result<Option<CommittedToolResultView>> {
-    let expected_value_types = committed_tool_result_value_types(nexus_objects);
     crawler
-        .get_optional_dynamic_field_bcs_matching_value_type::<
-            CommittedToolResultKey,
-            CommittedToolResultBcs,
-        >(
+        .get_optional_dynamic_field_bcs::<CommittedToolResultKey, CommittedToolResult>(
             execution_id,
             CommittedToolResultKey { walk_index },
-            &expected_value_types,
         )
         .await
         .map(|value| value.map(CommittedToolResultView::from))
@@ -692,7 +660,6 @@ pub async fn inspect_expired_walk_resolution_at(
 
     match fetch_onchain_tool_result_state_for_walk(
         crawler,
-        objects,
         params.dag_execution_id,
         params.walk_index,
     )
@@ -863,18 +830,19 @@ async fn finalized_onchain_result_resolution_kind(
 
 pub async fn fetch_onchain_tool_result_state_for_walk(
     crawler: &Crawler,
-    nexus_objects: &NexusObjects,
     execution_id: sui::types::Address,
     walk_index: u64,
 ) -> anyhow::Result<OnchainToolResultState> {
     let committed_result =
-        fetch_committed_tool_result_for_walk(crawler, nexus_objects, execution_id, walk_index)
-            .await?;
+        fetch_committed_tool_result_for_walk(crawler, execution_id, walk_index).await?;
     let insufficient_settlement = crawler
         .get_optional_dynamic_field_bcs::<
             ExecutionPaymentInsufficientSettlementFieldKey,
-            ExecutionPaymentInsufficientSettlementBcs,
-        >(execution_id, ExecutionPaymentInsufficientSettlementFieldKey {})
+            ExecutionPaymentInsufficientSettlement,
+        >(
+            execution_id,
+            insufficient_settlement_field_key(),
+        )
         .await?;
 
     if let Some(marker) = insufficient_settlement {
@@ -919,23 +887,8 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     }
 }
 
-fn committed_tool_result_value_types(nexus_objects: &NexusObjects) -> Vec<String> {
-    let mut value_types = vec![committed_tool_result_value_type(
-        nexus_objects.workflow_type_origin_pkg_id(),
-    )];
-    let current = committed_tool_result_value_type(nexus_objects.workflow_pkg_id);
-    if !value_types.contains(&current) {
-        value_types.push(current);
-    }
-    value_types
-}
-
-fn committed_tool_result_value_type(workflow_pkg_id: sui::types::Address) -> String {
-    format!(
-        "{workflow_pkg_id}::{}::{}",
-        workflow::Execution::COMMITTED_TOOL_RESULT.module,
-        workflow::Execution::COMMITTED_TOOL_RESULT.name
-    )
+fn insufficient_settlement_field_key() -> ExecutionPaymentInsufficientSettlementFieldKey {
+    ExecutionPaymentInsufficientSettlementFieldKey { dummy_field: false }
 }
 
 pub async fn fetch_dag_default_values_bcs<T>(
@@ -2354,6 +2307,7 @@ mod tests {
                 },
                 AgentRegistrySnapshot,
                 DefaultDagExecutorTarget,
+                MoveOption,
                 MoveString,
                 MoveTable,
                 NexusData,
@@ -2390,20 +2344,22 @@ mod tests {
         _secondary_leader: sui::types::Address,
         primary_failure: Option<FailureEvidenceKind>,
         secondary_failure: Option<FailureEvidenceKind>,
-    ) -> CommittedToolResultBcs {
-        CommittedToolResultBcs {
+    ) -> CommittedToolResult {
+        CommittedToolResult {
             expected_vertex,
-            variant: TypeName::new("ok"),
-            variant_ports_to_data: BcsMap { contents: vec![] },
+            variant: output_variant("ok"),
+            variant_ports_to_data: crate::types::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
             failure_evidence_kind: MoveOption(primary_failure.clone()),
             primary_failure_evidence_kind: MoveOption(primary_failure),
             secondary_failure_evidence_kind: MoveOption(secondary_failure),
-            current_leader_cap_id: primary_leader,
+            current_leader_cap_id: object_id(primary_leader),
             has_finalized_onchain_payload: true,
-            leader_records: BcsMap {
-                contents: vec![crate::nexus::models::BcsMapEntry {
-                    key: primary_leader,
-                    value: CommittedToolResultLeaderRecordBcs {
+            leader_records: crate::types::sui_framework::vec_map::VecMap {
+                contents: vec![crate::types::sui_framework::vec_map::Entry {
+                    key: object_id(primary_leader),
+                    value: crate::types::workflow::execution::CommittedToolResultLeaderRecord {
                         commit_tx_digest: vec![1, 2, 3],
                         recipient: sui::types::Address::from_static("0x44"),
                         commit_gas_charge: MoveOption(Some(10)),
@@ -2414,8 +2370,8 @@ mod tests {
         }
     }
 
-    fn raw_inline_nexus_data_bcs(one: impl Into<Vec<u8>>) -> RawNexusDataBcs {
-        RawNexusDataBcs {
+    fn raw_inline_nexus_data_bcs(one: impl Into<Vec<u8>>) -> NexusData {
+        NexusData {
             storage: b"inline".to_vec(),
             one: one.into(),
             many: vec![],
@@ -2464,6 +2420,23 @@ mod tests {
             sui::types::Identifier::from_static("Field"),
             vec![],
         )
+    }
+
+    #[test]
+    fn committed_tool_result_key_uses_generated_u64_shape() {
+        let key = CommittedToolResultKey { walk_index: 7 };
+        let bytes = bcs::to_bytes(&key).expect("generated committed key bcs");
+
+        assert_eq!(bytes, bcs::to_bytes(&7_u64).expect("u64 bcs"));
+    }
+
+    #[test]
+    fn insufficient_settlement_field_key_uses_generated_bool_shape() {
+        let key = insufficient_settlement_field_key();
+        let bytes = bcs::to_bytes(&key).expect("generated key bcs");
+
+        assert_eq!(key.dummy_field, false);
+        assert_eq!(bytes, vec![0]);
     }
 
     fn onchain_tool_result_bcs(
@@ -2517,48 +2490,10 @@ mod tests {
             state_service_mock,
         )
         .await;
-        let nexus_objects = sui_mocks::mock_nexus_objects();
 
-        let result =
-            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("fetch should succeed");
-
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn fetch_committed_tool_result_for_walk_ignores_same_shape_foreign_field() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf9"));
-        let field_id = *field_ref.object_id();
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-
-        state_service_mock
-            .expect_list_dynamic_fields()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
-                let mut same_shape_foreign = sui::grpc::DynamicField::default();
-                same_shape_foreign.set_field_id(field_id.to_string());
-                same_shape_foreign.set_name(
-                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
-                        .expect("committed key bcs"),
-                );
-                same_shape_foreign.set_value_type("0xbad::execution::ForeignCommittedToolResult");
-                response.set_dynamic_fields(vec![same_shape_foreign]);
-                Ok(tonic::Response::new(response))
-            });
-
-        ledger_service_mock.expect_get_object().times(0);
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let result =
-            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("foreign same-shape field should not block lookup");
+        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("fetch should succeed");
 
         assert!(result.is_none());
     }
@@ -2570,9 +2505,6 @@ mod tests {
         let field_id = *field_ref.object_id();
         let primary_leader = sui::types::Address::from_static("0xa1");
         let secondary_leader = sui::types::Address::from_static("0xa2");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let committed_value_type =
-            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
         let committed = committed_tool_result_bcs(
             RuntimeVertex::plain("retryable"),
             primary_leader,
@@ -2605,7 +2537,6 @@ mod tests {
                     bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
-                wanted.set_value_type(committed_value_type.clone());
                 response.set_dynamic_fields(vec![unrelated, wanted]);
                 Ok(tonic::Response::new(response))
             });
@@ -2624,11 +2555,10 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let result =
-            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("fetch should succeed")
-                .expect("committed result should exist");
+        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("fetch should succeed")
+            .expect("committed result should exist");
 
         assert_eq!(result.expected_vertex, RuntimeVertex::plain("retryable"));
         assert_eq!(
@@ -2647,9 +2577,6 @@ mod tests {
         let field_id = *field_ref.object_id();
         let primary_leader = sui::types::Address::from_static("0xa1");
         let secondary_leader = sui::types::Address::from_static("0xa2");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let committed_value_type =
-            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
         let mut committed = committed_tool_result_bcs(
             RuntimeVertex::plain("retryable"),
             primary_leader,
@@ -2657,9 +2584,11 @@ mod tests {
             Some(FailureEvidenceKind::ToolEvidence),
             None,
         );
-        committed.variant_ports_to_data = BcsMap {
-            contents: vec![crate::nexus::models::BcsMapEntry {
-                key: TypeName::new("reason"),
+        committed.variant_ports_to_data = crate::types::sui_framework::vec_map::VecMap {
+            contents: vec![crate::types::sui_framework::vec_map::Entry {
+                key: crate::types::interface::graph::OutputPort {
+                    name: MoveString::from("reason"),
+                },
                 value: raw_inline_nexus_data_bcs(b"not-json".to_vec()),
             }],
         };
@@ -2682,7 +2611,6 @@ mod tests {
                     bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
-                wanted.set_value_type(committed_value_type.clone());
                 response.set_dynamic_fields(vec![wanted]);
                 Ok(tonic::Response::new(response))
             });
@@ -2701,11 +2629,10 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let result =
-            fetch_committed_tool_result_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("fetch should ignore raw output payload bytes")
-                .expect("committed result should exist");
+        let result = fetch_committed_tool_result_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("fetch should ignore raw output payload bytes")
+            .expect("committed result should exist");
 
         assert_eq!(result.expected_vertex, RuntimeVertex::plain("retryable"));
         assert_eq!(
@@ -2722,9 +2649,6 @@ mod tests {
         let execution_id = sui::types::Address::from_static("0xe1");
         let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf1"));
         let field_id = *field_ref.object_id();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let committed_value_type =
-            committed_tool_result_value_type(nexus_objects.workflow_type_origin_pkg_id());
         let committed = committed_tool_result_bcs(
             RuntimeVertex::plain("done"),
             sui::types::Address::from_static("0xa1"),
@@ -2750,7 +2674,6 @@ mod tests {
                     bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
-                wanted.set_value_type(committed_value_type.clone());
                 response.set_dynamic_fields(vec![wanted]);
                 Ok(tonic::Response::new(response))
             });
@@ -2767,10 +2690,9 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let state =
-            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("state fetch should succeed");
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("state fetch should succeed");
 
         assert!(matches!(state, OnchainToolResultState::Committed { .. }));
     }
@@ -2787,7 +2709,6 @@ mod tests {
             name: OnchainToolResultKey { walk_index: 7 },
             value: object_id(result_id),
         };
-        let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
@@ -2827,10 +2748,9 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let state =
-            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("state fetch should succeed");
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("state fetch should succeed");
 
         let (consume_ready, consume_ref) = state
             .consume_ready_result()
@@ -3074,7 +2994,6 @@ mod tests {
             name: OnchainToolResultKey { walk_index: 7 },
             value: object_id(result_id),
         };
-        let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
@@ -3114,10 +3033,9 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let state =
-            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("state fetch should succeed");
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("state fetch should succeed");
 
         assert!(state.consume_ready_result().is_none());
         assert!(state.consume_object_input().is_none());
@@ -3131,12 +3049,13 @@ mod tests {
     async fn fetch_onchain_tool_result_state_surfaces_insufficient_settlement_marker() {
         let execution_id = sui::types::Address::from_static("0xe1");
         let marker_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
+        let marker_field_id = *marker_ref.object_id();
+        let marker_key = insufficient_settlement_field_key();
         let field_value = DynamicFieldValueBcs {
-            id: *marker_ref.object_id(),
-            name: ExecutionPaymentInsufficientSettlementFieldKey {},
-            value: ExecutionPaymentInsufficientSettlementBcs { walks: vec![7] },
+            id: marker_field_id,
+            name: marker_key.clone(),
+            value: ExecutionPaymentInsufficientSettlement { walks: vec![7] },
         };
-        let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
@@ -3145,10 +3064,7 @@ mod tests {
         );
         sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
             &mut state_service_mock,
-            vec![(
-                ExecutionPaymentInsufficientSettlementFieldKey {},
-                *marker_ref.object_id(),
-            )],
+            vec![(marker_key, marker_field_id)],
         );
         sui_mocks::grpc::mock_get_object_bcs_for(
             &mut ledger_service_mock,
@@ -3159,10 +3075,9 @@ mod tests {
         );
         let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
 
-        let state =
-            fetch_onchain_tool_result_state_for_walk(&crawler, &nexus_objects, execution_id, 7)
-                .await
-                .expect("state fetch should succeed");
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("state fetch should succeed");
 
         assert!(matches!(
             state,

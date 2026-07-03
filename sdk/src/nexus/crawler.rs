@@ -556,25 +556,6 @@ impl Crawler {
         K: Eq + DeserializeOwned,
         V: DeserializeOwned,
     {
-        self.get_optional_dynamic_field_bcs_matching_value_type(parent_id, key, &[])
-            .await
-    }
-
-    /// Fetch one dynamic field by BCS key and optional value type, returning `Ok(None)` when
-    /// no compatible key/value-type pair exists.
-    ///
-    /// The optional value-type filter mirrors Move's `dynamic_field::exists_with_type` and
-    /// prevents same-key-shape fields from forcing an incompatible value decode.
-    pub async fn get_optional_dynamic_field_bcs_matching_value_type<K, V>(
-        &self,
-        parent_id: sui::types::Address,
-        key: K,
-        expected_value_types: &[String],
-    ) -> anyhow::Result<Option<V>>
-    where
-        K: Eq + DeserializeOwned,
-        V: DeserializeOwned,
-    {
         #[derive(Clone, Debug, Deserialize)]
         struct DynamicFieldValueBcs<K, V> {
             #[allow(dead_code)]
@@ -585,7 +566,7 @@ impl Crawler {
         }
 
         let mut page_token = None;
-        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id", "value_type"]);
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id"]);
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -619,15 +600,6 @@ impl Crawler {
                     continue;
                 };
                 if parsed_name != key {
-                    continue;
-                }
-                if !expected_value_types.is_empty()
-                    && !field.value_type_opt().is_some_and(|value_type| {
-                        expected_value_types
-                            .iter()
-                            .any(|expected| expected == value_type)
-                    })
-                {
                     continue;
                 }
 
