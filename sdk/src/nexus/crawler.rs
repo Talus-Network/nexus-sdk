@@ -556,6 +556,24 @@ impl Crawler {
         K: Eq + DeserializeOwned,
         V: DeserializeOwned,
     {
+        self.get_optional_dynamic_field_bcs_matching_value_type(parent_id, key, None)
+            .await
+    }
+
+    /// Fetch one dynamic field by BCS key and optional value-type suffix.
+    ///
+    /// Sui dynamic fields can use keys with the same BCS shape under one parent. The value type
+    /// lets callers disambiguate those namespaces before fetching and decoding the field object.
+    pub async fn get_optional_dynamic_field_bcs_matching_value_type<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        key: K,
+        value_type_suffix: Option<&str>,
+    ) -> anyhow::Result<Option<V>>
+    where
+        K: Eq + DeserializeOwned,
+        V: DeserializeOwned,
+    {
         #[derive(Clone, Debug, Deserialize)]
         struct DynamicFieldValueBcs<K, V> {
             #[allow(dead_code)]
@@ -566,7 +584,7 @@ impl Crawler {
         }
 
         let mut page_token = None;
-        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id"]);
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id", "value_type"]);
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -593,6 +611,14 @@ impl Crawler {
             page_token = response.next_page_token;
 
             for field in response.dynamic_fields {
+                if let (Some(expected_suffix), Some(value_type)) =
+                    (value_type_suffix, field.value_type.as_deref())
+                {
+                    if !value_type.ends_with(expected_suffix) {
+                        continue;
+                    }
+                }
+
                 let Some(name) = field.name_opt() else {
                     continue;
                 };

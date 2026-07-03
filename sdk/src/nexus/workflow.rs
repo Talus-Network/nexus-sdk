@@ -75,6 +75,11 @@ use {
     },
 };
 
+const COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX: &str = "::execution::CommittedToolResult";
+const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
+    "::execution::ExecutionPaymentInsufficientSettlement";
+const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
+
 #[derive(Clone, Debug)]
 pub struct PublishResult {
     pub tx_digest: sui::types::Digest,
@@ -603,9 +608,13 @@ pub async fn fetch_committed_tool_result_for_walk(
     walk_index: u64,
 ) -> anyhow::Result<Option<CommittedToolResultView>> {
     crawler
-        .get_optional_dynamic_field_bcs::<CommittedToolResultKey, CommittedToolResult>(
+        .get_optional_dynamic_field_bcs_matching_value_type::<
+            CommittedToolResultKey,
+            CommittedToolResult,
+        >(
             execution_id,
             CommittedToolResultKey { walk_index },
+            Some(COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX),
         )
         .await
         .map(|value| value.map(CommittedToolResultView::from))
@@ -836,12 +845,13 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     let committed_result =
         fetch_committed_tool_result_for_walk(crawler, execution_id, walk_index).await?;
     let insufficient_settlement = crawler
-        .get_optional_dynamic_field_bcs::<
+        .get_optional_dynamic_field_bcs_matching_value_type::<
             ExecutionPaymentInsufficientSettlementFieldKey,
             ExecutionPaymentInsufficientSettlement,
         >(
             execution_id,
             insufficient_settlement_field_key(),
+            Some(EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX),
         )
         .await?;
 
@@ -861,9 +871,13 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     }
 
     let result_id = crawler
-        .get_optional_dynamic_field_bcs::<OnchainToolResultKey, crate::types::ID>(
+        .get_optional_dynamic_field_bcs_matching_value_type::<
+            OnchainToolResultKey,
+            crate::types::ID,
+        >(
             execution_id,
             OnchainToolResultKey { walk_index },
+            Some(ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX),
         )
         .await?;
     let Some(result_id) = result_id else {
@@ -2437,6 +2451,47 @@ mod tests {
 
         assert_eq!(key.dummy_field, false);
         assert_eq!(bytes, vec![0]);
+    }
+
+    #[tokio::test]
+    async fn fetch_onchain_tool_result_state_skips_same_key_wrong_value_type() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let wrong_field_id = sui::types::Address::from_static("0xf4");
+        let marker_key = insufficient_settlement_field_key();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut wrong_type = sui::grpc::DynamicField::default();
+                wrong_type.set_field_id(wrong_field_id.to_string());
+                wrong_type
+                    .set_name(bcs::to_bytes(&marker_key).expect("insufficient settlement key bcs"));
+                wrong_type.set_value_type("0x2::object::ID");
+                response.set_dynamic_fields(vec![wrong_type]);
+                Ok(tonic::Response::new(response))
+            });
+        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        let crawler = crawler_from_mocks(
+            sui_mocks::grpc::MockLedgerService::new(),
+            state_service_mock,
+        )
+        .await;
+
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("state fetch should skip wrong dynamic-field value type");
+
+        assert!(matches!(state, OnchainToolResultState::NoResult));
     }
 
     fn onchain_tool_result_bcs(
