@@ -88,7 +88,7 @@ sequenceDiagram
 
 ## How leader-side response verification decides
 
-This diagram captures the leader’s runtime behavior when signed HTTP is enabled.
+This diagram captures the leader's runtime behavior when signed HTTP is enabled.
 
 ```mermaid
 %% Declares the leader-side signed HTTP response decision sequence.
@@ -197,11 +197,11 @@ mTLS and support for self-signed tool certificates are expected later. Today, us
 
 Tools do not need to implement TLS themselves. Common production deployments run the tool server behind a TLS terminating reverse proxy / load balancer:
 
-- **Caddy**: https://caddyserver.com/docs/automatic-https
-- **Nginx + Certbot (Let’s Encrypt)**: https://certbot.eff.org/instructions?ws=nginx
-- **Traefik (ACME)**: https://doc.traefik.io/traefik/https/acme/
+- **Caddy**: <https://caddyserver.com/docs/automatic-https>
+- **Nginx + Certbot (Let's Encrypt)**: <https://certbot.eff.org/instructions?ws=nginx>
+- **Traefik (ACME)**: <https://doc.traefik.io/traefik/https/acme/>
 - **Cloud load balancers** (AWS ALB/ACM, GCP HTTPS LB, etc.)
-- **Cloudflare** (CDN/proxy + TLS): https://developers.cloudflare.com/ssl/
+- **Cloudflare** (CDN/proxy + TLS): <https://developers.cloudflare.com/ssl/>
 
 Operational notes:
 
@@ -255,9 +255,9 @@ Verifiers enforce:
 
 ### Tool-side request authentication
 
-Signed HTTP is bidirectional: tools should verify the **leader’s request signature** before executing work when they require leader-only access.
+Signed HTTP is bidirectional: tools should verify the **leader's request signature** before executing work when they require leader-only access.
 
-To verify a leader request, the tool needs the leader’s public key for `(leader_id, leader_kid)`. Common approaches:
+To verify a leader request, the tool needs the leader's public key for `(leader_id, leader_kid)`. Common approaches:
 
 - **On-chain discovery**: read the active leader key from `network_auth` and cache it locally (recommended when you want to accept requests from “any Leader node”).
 - **Static allowlist**: configure an allowlist of `(leader_id, leader_kid, public_key)` in the tool deployment (recommended when you want strict control over which leaders can call the tool).
@@ -359,7 +359,7 @@ Important edge case:
 
 If signed HTTP is enabled and the response includes signature headers:
 
-- the leader verifies the response using the tool’s active key from `network_auth`
+- the leader verifies the response using the tool's active key from `network_auth`
 - the key is cached in Redis
 - if verification fails with `UnknownToolKey` (kid mismatch), the leader refreshes the key from chain and retries verification once (supports key rotation)
 
@@ -403,14 +403,14 @@ To reduce stampedes inside one leader process, refresh is deduplicated per tool 
 
 Common failures and what they usually mean:
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `refusing to invoke tool http://tool.internal/invoke over plaintext HTTP URL` | tool URL is `http://` but internal HTTP is disabled, signed HTTP is not required, or the destination is not internal | expose the tool via HTTPS, or enable internal HTTP only for internal destinations with `EXECUTOR_SIGNED_HTTP_MODE=required` |
-| `refusing to invoke tool ftp://tool.example/invoke over unsupported URL scheme` | tool URL is neither `https://` nor policy-allowed `http://` | register an HTTPS URL or an allowed internal HTTP URL |
-| `missing signed_http headers` | tool didn’t sign response or proxy stripped headers | ensure tool signs; ensure proxy forwards `X-Nexus-Sig-*` |
-| `unknown tool key` | tool key not registered/active on-chain, or rotation mismatch | register/activate tool key; retry after propagation |
-| `invalid signature` | tool signed with wrong key, wrong `kid`, or claims mismatch | verify tool is using the active key and correct `tool_id` |
-| `response body exceeded limit` | response too large | reduce response size or raise `EXECUTOR_TOOL_MAX_RESPONSE_BYTES` |
+| Symptom                                                                         | Likely cause                                                                                                         | Fix                                                                                                                         |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `refusing to invoke tool http://tool.internal/invoke over plaintext HTTP URL`   | tool URL is `http://` but internal HTTP is disabled, signed HTTP is not required, or the destination is not internal | expose the tool via HTTPS, or enable internal HTTP only for internal destinations with `EXECUTOR_SIGNED_HTTP_MODE=required` |
+| `refusing to invoke tool ftp://tool.example/invoke over unsupported URL scheme` | tool URL is neither `https://` nor policy-allowed `http://`                                                          | register an HTTPS URL or an allowed internal HTTP URL                                                                       |
+| `missing signed_http headers`                                                   | tool didn't sign response or proxy stripped headers                                                                  | ensure tool signs; ensure proxy forwards `X-Nexus-Sig-*`                                                                    |
+| `unknown tool key`                                                              | tool key not registered/active on-chain, or rotation mismatch                                                        | register/activate tool key; retry after propagation                                                                         |
+| `invalid signature`                                                             | tool signed with wrong key, wrong `kid`, or claims mismatch                                                          | verify tool is using the active key and correct `tool_id`                                                                   |
+| `response body exceeded limit`                                                  | response too large                                                                                                   | reduce response size or raise `EXECUTOR_TOOL_MAX_RESPONSE_BYTES`                                                            |
 
 {% hint style="info" %}
 Signature errors can also be caused by clock skew. Keep leader and tool clocks synchronized with NTP and avoid oversized validity windows.
