@@ -132,6 +132,7 @@ pub struct AbortExecutionResult {
     pub tx_checkpoint: u64,
     pub dag_id: sui::types::Address,
     pub dag_execution_id: sui::types::Address,
+    pub cleaned_broken_onchain_results: Vec<BrokenOnchainToolResultCleanup>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -237,6 +238,14 @@ pub struct CommittedToolResultSettlementResult {
     pub dag_id: sui::types::Address,
     pub dag_execution_id: sui::types::Address,
     pub walk_index: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BrokenOnchainToolResultCleanup {
+    pub walk_index: u64,
+    pub result_ref: sui::types::ObjectReference,
+    pub expected_vertex: RuntimeVertex,
+    pub tool_witness_id: sui::types::Address,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -690,7 +699,7 @@ pub async fn inspect_expired_walk_resolution_at(
                 objects,
                 &vertices,
                 timeout_vertex.clone(),
-                result,
+                &result,
                 object_ref,
             )
             .await?;
@@ -798,7 +807,7 @@ async fn finalized_onchain_result_resolution_kind(
     objects: &NexusObjects,
     vertices: &HashMap<TypeName, DagVertexInfo>,
     timeout_vertex: RuntimeVertex,
-    result: OnchainToolResult,
+    result: &OnchainToolResult,
     object_ref: sui::types::ObjectReference,
 ) -> anyhow::Result<ExpiredWalkResolutionKind> {
     let vertex_info = vertices.get(&timeout_vertex.name()).ok_or_else(|| {
@@ -827,6 +836,7 @@ async fn finalized_onchain_result_resolution_kind(
     let finalize_tx_digest = result
         .finalize_tx_digest
         .0
+        .clone()
         .ok_or_else(|| anyhow!("finalized on-chain result is missing finalize_tx_digest"))?;
 
     Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
@@ -835,6 +845,105 @@ async fn finalized_onchain_result_resolution_kind(
         tool_witness_id,
         finalize_tx_digest,
     })
+}
+
+async fn broken_onchain_result_cleanups_for_abort(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    execution_id: sui::types::Address,
+    execution: &DagExecution,
+    clock_ms: u64,
+) -> anyhow::Result<Vec<BrokenOnchainToolResultCleanup>> {
+    let mut vertices = None;
+    let mut cleanups = Vec::new();
+
+    for (walk_index, walk) in execution.walks.iter().enumerate() {
+        let Some(timeout_vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
+            continue;
+        };
+        let walk_index = u64::try_from(walk_index)?;
+        match fetch_onchain_tool_result_state_for_walk(crawler, execution_id, walk_index).await? {
+            OnchainToolResultState::Finalized { result, object_ref } => {
+                if vertices.is_none() {
+                    let dag = crawler.get_object::<Dag>(execution.dag_id).await?;
+                    vertices = Some(fetch_dag_vertices_bcs(crawler, &dag.data).await?);
+                }
+                let vertices = vertices.as_ref().expect("vertices were just fetched");
+                let kind = finalized_onchain_result_resolution_kind(
+                    crawler,
+                    objects,
+                    vertices,
+                    timeout_vertex.clone(),
+                    &result,
+                    object_ref.clone(),
+                )
+                .await?;
+                let ExpiredWalkResolutionKind::SettledOnchainResult {
+                    expected_vertex,
+                    tool_witness_id,
+                    ..
+                } = kind
+                else {
+                    return Err(anyhow!(
+                        "expired abort is blocked by finalized on-chain result for walk {walk_index} that cannot be cleaned by the Sui-tool cleanup path"
+                    ));
+                };
+                if onchain_tool_result_has_required_stamps(
+                    &result,
+                    execution_id,
+                    *objects.leader_registry.object_id(),
+                    tool_witness_id,
+                ) {
+                    return Err(anyhow!(
+                        "expired abort is blocked by consumable on-chain result for walk {walk_index}; settle the on-chain result before aborting"
+                    ));
+                }
+                cleanups.push(BrokenOnchainToolResultCleanup {
+                    walk_index,
+                    result_ref: object_ref,
+                    expected_vertex,
+                    tool_witness_id,
+                });
+            }
+            OnchainToolResultState::InvalidEmpty { result_id, .. } => {
+                return Err(anyhow!(
+                    "expired abort is blocked by unfinalized on-chain result {result_id} for walk {walk_index}"
+                ));
+            }
+            OnchainToolResultState::NoResult
+            | OnchainToolResultState::Committed { .. }
+            | OnchainToolResultState::InsufficientSettlement { .. } => {}
+        }
+    }
+
+    Ok(cleanups)
+}
+
+fn onchain_tool_result_has_required_stamps(
+    result: &OnchainToolResult,
+    execution_id: sui::types::Address,
+    leader_registry_id: sui::types::Address,
+    tool_witness_id: sui::types::Address,
+) -> bool {
+    let Some(stamps) = result.stamps.0.as_ref() else {
+        return false;
+    };
+    let execution_id = crate::types::sui_address_to_id(execution_id);
+    let leader_registry_id = crate::types::sui_address_to_id(leader_registry_id);
+    let tool_witness_id = crate::types::sui_address_to_id(tool_witness_id);
+
+    stamps
+        .contents
+        .iter()
+        .any(|entry| entry.key == execution_id)
+        && stamps
+            .contents
+            .iter()
+            .any(|entry| entry.key == leader_registry_id)
+        && stamps
+            .contents
+            .iter()
+            .any(|entry| entry.key == tool_witness_id)
 }
 
 pub async fn fetch_onchain_tool_result_state_for_walk(
@@ -1694,8 +1803,9 @@ impl WorkflowActions {
 
     /// Submit the current permissionless expired-execution abort entry.
     ///
-    /// This wraps `execution_settlement::abort_expired_execution`; it does not
-    /// discover or submit ToolGas candidates.
+    /// If a double-expired active walk is blocked by a finalized on-chain
+    /// result whose required stamps are insufficient, this prepends the
+    /// self-validating broken-result cleanup call before aborting.
     pub async fn abort_expired_execution(
         &self,
         dag_execution_id: sui::types::Address,
@@ -1706,6 +1816,20 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
+        let clock = crawler
+            .get_object::<SuiClock>(sui_framework::CLOCK_OBJECT_ID)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let cleaned_broken_onchain_results = broken_onchain_result_cleanups_for_abort(
+            crawler,
+            &self.client.nexus_objects,
+            dag_execution_id,
+            &execution,
+            clock.timestamp_ms,
+        )
+        .await
+        .map_err(NexusError::TransactionBuilding)?;
         let dag_ref = crawler
             .get_object_metadata(execution.dag_id)
             .await
@@ -1719,12 +1843,64 @@ impl WorkflowActions {
 
         let address = self.client.signer.get_active_address();
         let mut tx = sui::tx::TransactionBuilder::new();
-        dag::abort_expired_execution(
-            &mut tx,
-            &self.client.nexus_objects,
-            &dag_ref,
-            &execution_ref,
-        );
+        let objects = &self.client.nexus_objects;
+        if cleaned_broken_onchain_results.is_empty() {
+            dag::abort_expired_execution(&mut tx, objects, &dag_ref, &execution_ref);
+        } else {
+            let dag = tx.object(sui::tx::ObjectInput::shared(
+                *dag_ref.object_id(),
+                dag_ref.version(),
+                false,
+            ));
+            let execution_arg = tx.object(sui::tx::ObjectInput::shared(
+                *execution_ref.object_id(),
+                execution_ref.version(),
+                true,
+            ));
+            let tool_registry = tx.object(sui::tx::ObjectInput::shared(
+                *objects.tool_registry.object_id(),
+                objects.tool_registry.version(),
+                false,
+            ));
+            let leader_registry = tx.object(sui::tx::ObjectInput::shared(
+                *objects.leader_registry.object_id(),
+                objects.leader_registry.version(),
+                false,
+            ));
+            let clock = tx.object(sui::tx::ObjectInput::shared(
+                sui_framework::CLOCK_OBJECT_ID,
+                1,
+                false,
+            ));
+            for cleanup in &cleaned_broken_onchain_results {
+                let result = tx.object(sui::tx::ObjectInput::shared(
+                    *cleanup.result_ref.object_id(),
+                    cleanup.result_ref.version(),
+                    true,
+                ));
+                dag::cleanup_broken_onchain_tool_result(
+                    &mut tx,
+                    objects,
+                    dag,
+                    execution_arg,
+                    tool_registry,
+                    result,
+                    leader_registry,
+                    cleanup.walk_index,
+                    cleanup.tool_witness_id,
+                    clock,
+                )
+                .map_err(NexusError::TransactionBuilding)?;
+            }
+            tx.move_call(
+                sui::tx::Function::new(
+                    objects.workflow_pkg_id,
+                    workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.module,
+                    workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name,
+                ),
+                vec![dag, execution_arg, clock],
+            );
+        }
         let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(AbortExecutionResult {
@@ -1732,6 +1908,7 @@ impl WorkflowActions {
             tx_checkpoint: response.checkpoint,
             dag_id: execution.dag_id,
             dag_execution_id,
+            cleaned_broken_onchain_results,
         })
     }
 
@@ -4750,6 +4927,16 @@ mod tests {
             sui::types::Owner::Shared(execution_ref.version()),
             mock_execution_json(&dag_ref),
         );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                sui_framework::CLOCK_OBJECT_ID,
+                1,
+                sui::types::Digest::from([1; 32]),
+            ),
+            sui::types::Owner::Shared(1),
+            json!({ "timestamp_ms": "61000" }),
+        );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
             dag_ref.clone(),
@@ -4791,6 +4978,7 @@ mod tests {
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
+        assert!(result.cleaned_broken_onchain_results.is_empty());
     }
 
     #[tokio::test]

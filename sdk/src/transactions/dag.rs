@@ -1576,6 +1576,43 @@ pub fn settle_onchain_tool_result_for_walk(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn cleanup_broken_onchain_tool_result(
+    tx: &mut sui::tx::TransactionBuilder,
+    objects: &NexusObjects,
+    dag: sui::tx::Argument,
+    execution: sui::tx::Argument,
+    tool_registry: sui::tx::Argument,
+    result: sui::tx::Argument,
+    leader_registry: sui::tx::Argument,
+    walk_index: u64,
+    tool_witness_id: sui::types::Address,
+    clock: sui::tx::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.pure(&walk_index);
+    let tool_witness_id = sui_framework::Object::id_from_object_id(tx, tool_witness_id)?;
+
+    tx.move_call(
+        sui::tx::Function::new(
+            objects.workflow_pkg_id,
+            workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.module,
+            workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.name,
+        ),
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            walk_index,
+            tool_witness_id,
+            clock,
+        ],
+    );
+
+    Ok(())
+}
+
 pub fn emit_payment_ready_walk_requests(
     tx: &mut sui::tx::TransactionBuilder,
     objects: &NexusObjects,
@@ -3544,6 +3581,58 @@ mod tests {
         assert_eq!(call.arguments.len(), 9);
         assert!(matches!(call.arguments[6], sui::types::Argument::Result(_)));
         let tool_witness_id = match call.arguments[7] {
+            sui::types::Argument::Result(index) => inspector.move_call(index as usize),
+            other => panic!("expected tool witness ID to be a command result, got {other:?}"),
+        };
+        assert_eq!(tool_witness_id.package, sui_framework::PACKAGE_ID);
+        assert_eq!(
+            tool_witness_id.function,
+            sui_framework::Object::ID_FROM_ADDRESS.name
+        );
+        inspector.expect_address(&tool_witness_id.arguments[0], witness);
+        inspector.expect_u64(&call.arguments[5], 9);
+    }
+
+    #[test]
+    fn test_cleanup_broken_onchain_tool_result_uses_execution_settlement_module_and_witness() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let witness = sui_mocks::mock_sui_address();
+        let mut tx = sui::tx::TransactionBuilder::new();
+        let dag = tx.pure(&0u64);
+        let execution = tx.pure(&1u64);
+        let tool_registry = tx.pure(&2u64);
+        let result = tx.pure(&3u64);
+        let leader_registry = tx.pure(&4u64);
+        let clock = tx.pure(&5u64);
+
+        cleanup_broken_onchain_tool_result(
+            &mut tx,
+            &objects,
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            9,
+            witness,
+            clock,
+        )
+        .unwrap();
+
+        let inspector = TxInspector::new(sui_mocks::mock_finish_transaction(tx));
+        let call = inspector.move_call(inspector.commands().len() - 1);
+
+        assert_eq!(call.package, objects.workflow_pkg_id);
+        assert_eq!(
+            call.module,
+            workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.module
+        );
+        assert_eq!(
+            call.function,
+            workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.name
+        );
+        assert_eq!(call.arguments.len(), 8);
+        let tool_witness_id = match call.arguments[6] {
             sui::types::Argument::Result(index) => inspector.move_call(index as usize),
             other => panic!("expected tool witness ID to be a command result, got {other:?}"),
         };
