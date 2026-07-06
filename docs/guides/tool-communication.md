@@ -1,416 +1,435 @@
-# Tool Communication (HTTPS + Signed HTTP)
+# Tool communication (transport + signed HTTP)
 
-This guide explains how Nexus communicates with off-chain Tools (via its Leader nodes), why Nexus requires both **HTTPS** and **signed HTTP messages**, and what Tool developers/operators must do to deploy Tools correctly.
+This guide is for tool developers, leader operators, and runtime integrators who need to understand how Nexus **Leader nodes** invoke **offchain tools**, how tool invocations are secured, and how public keys are discovered and cached for signature verification.
 
-It is written for:
+It is the implementation contract for:
 
-- **Tool developers** (build the Tool binary and its schemas).
-- **Tool operators** (deploy the Tool and manage keys/certs).
-- **Agent developers** (understand what guarantees Tool calls do and do not provide).
-
----
-
-## TL;DR (what Nexus expects)
-
-1. **Tools are HTTP servers** that expose (at minimum) `GET /health`, `GET /meta`, and `POST /invoke`.
-1. **Nexus Leader nodes call Tools over HTTPS** and validate the Tool’s TLS certificate using the **system root store** (the same trust model as `curl`).
-   - Your Tool must present a certificate chain that validates against standard roots.
-1. **Tool invocations are signed** at the application layer (a.k.a. “signed HTTP”):
-   - Leader node → Tool requests carry `X-Nexus-Sig-*` headers that authenticate the calling Leader node, bind the request metadata, and bind the request body bytes.
-   - Tool → Leader node responses also carry `X-Nexus-Sig-*` headers so the Leader node can verify provenance and bind the response to the exact request.
-1. **Tools should not do on-chain reads at runtime** to validate Leader nodes. Instead, the Tool operator exports a local allowlist file of permitted Leader nodes and deploys it next to the Tool.
-1. **DAGs that require on-chain registered-key verification** set `leader_verifier.mode = "leader_registered_key"` and `method = "signed_http_v1"`. In that mode, the leader builds workflow proof from the signed HTTP transcript, so the Tool must have an active registered key and must sign the exact `/invoke` response body.
+- tool developers who need to implement the HTTP server contract and key-rotation flow
+- operators and deployers who need to terminate TLS, decide when internal HTTP is allowed, and configure accepted certificates
+- anyone integrating another runtime (what headers/claims must be produced and verified)
 
 {% hint style="info" %}
-Terminology: a **Leader node** is the Nexus node calling the Tool. In signed HTTP claims, `leader_id` identifies the Leader node (a Sui like `address`) that signed the request.
+This guide is about **offchain** tools, which are HTTP services registered in the tool registry. Onchain tool execution is a separate mechanism.
 {% endhint %}
 
----
+## How offchain tool invocation works
 
-## Terminology: “TLS termination”
+Offchain tools are **HTTP servers**. Leader nodes invoke tools by sending:
 
-Tools are plain HTTP servers. Run them behind a reverse proxy / gateway / load balancer that serves **HTTPS** on the ingress and forwards requests to the Tool over HTTP.
+- `POST /invoke` with a JSON body (tool input)
 
-This setup is commonly called **TLS termination** (sometimes people informally say “HTTPS terminal”).
+Leader nodes connect to tools over **HTTPS** and validate the tool certificate against **system root certificates** plus an optional extra root bundle. The current leader also supports plaintext `http://` only for internal destinations when `EXECUTOR_TOOL_ALLOW_INTERNAL_HTTP=true` and `EXECUTOR_SIGNED_HTTP_MODE=required`; all other plaintext or unsupported schemes are rejected before invocation.
 
----
+Additionally, invocations can use **signed HTTP**: an application layer Ed25519 signature carried in `X-Nexus-Sig-*` headers. Signed HTTP provides:
 
-## Architecture overview
+- authentication / provenance (“who authored this request/response”)
+- integrity binding to the HTTP message and body
+- replay resistance (time bounded validity + nonce)
 
-### Actors and their responsibilities
+Signed HTTP keys are discovered via the on-chain `nexus_registry::network_auth` registry and cached in Redis by the leader.
 
-- **Leader node**
-  - Discovers Tool URL from the on-chain Tool Registry.
-  - Calls the Tool over HTTPS (certificate validated via system roots).
-  - Signs `/invoke` requests with the Leader node message-signing key.
-  - Verifies signed `/invoke` responses using the Tool message-signing public key registered on-chain.
+## Terminology and identifiers
 
-- **Tool**
-  - Runs an HTTP server that implements the Nexus Tool interface.
-  - Verifies signed `/invoke` requests using a local allowlist of Leader node public keys.
-  - Signs `/invoke` responses with its Tool message-signing key.
+- **Tool id**: the tool fully qualified name (FQN), e.g. `xyz.taluslabs.llm.openai-chat-completion@1`. This is the `tool_id` used in signed HTTP claims.
+- **Leader id**: the leader capability object ID encoded in address form, used as `leader_id` in signed HTTP claims. This is the same identity family as `network_auth::IdentityKey::Leader { leader_cap_id }`; it is not the operator account address.
+- **`kid`**: a monotonically increasing key identifier (`u64`) used to support key rotation. Verifiers accept signatures from the *active* `kid` only.
+- **TLS termination**: a reverse proxy or load balancer that speaks HTTPS to the internet and forwards plaintext HTTP to your tool server, so your tool code can remain an HTTP server.
 
----
+## How a leader invokes a tool
 
-## Why both HTTPS and signed HTTP?
+```mermaid
+%% Declares the signed HTTP invocation sequence; see `be/leader/src/executor` signed HTTP handling and `nexus_registry::network_auth`.
+sequenceDiagram
+    %% `LD` is the leader node that invokes an offchain tool.
+    participant LD as Leader node
+    %% `RS` is Redis, used as the leader-side tool key cache.
+    participant RS as Redis
+    %% `NA` is the onchain network-auth registry used for active key discovery.
+    participant NA as Sui network_auth
+    %% `TL` is the HTTP tool runtime that implements `/invoke`.
+    participant TL as Tool (HTTP server)
 
-Nexus uses two layers because they solve different problems.
+    %% The leader canonicalizes the registered tool URL before sending the request.
+    LD->>LD: build invoke URL = base_path + "/invoke" (clear query/fragment)
+    %% The leader sends the JSON request body to the canonical `/invoke` path.
+    LD->>TL: POST /invoke (JSON body)
+    %% The transport must be HTTPS, or policy-allowed internal HTTP with signed HTTP required.
+    Note over LD,TL: HTTPS with TLS validation, or policy-allowed internal HTTP when signed HTTP is required
 
-### HTTPS (TLS) solves transport security
+    %% This optional branch runs when signed HTTP request signing is enabled.
+    opt signed HTTP enabled
+        %% The leader signs the request into `X-Nexus-Sig-*` headers.
+        Note over LD,TL: LD signs request (X-Nexus-Sig-*)
+        %% The tool verifies the leader signature when its deployment policy requires it.
+        TL-->>TL: verify leader signature (policy)
+    %% This line closes the signed-HTTP request branch.
+    end
 
-HTTPS provides:
+    %% The tool returns the normal JSON response body.
+    TL->>LD: HTTP response (JSON body)
 
-- **Confidentiality**: protects Tool inputs/outputs from passive observers.
-- **Integrity**: prevents tampering in transit.
-- **Server authentication**: a Leader node can verify it is talking to the expected server for `https://your-tool-domain/...`.
-
-TLS authenticates the Tool endpoint to the Leader node. Nexus Leader nodes do not currently present client certificates when calling Tools, so Tools cannot authenticate callers at the TLS layer (no mTLS client authentication today).
-
-{% hint style="info" %}
-Nexus currently relies on system-root certificate validation and signed HTTP for Tool authentication.
-In a future update, Nexus will support self-signed certificates and TLS client authentication (mTLS) for Tool communication.
-{% endhint %}
-
-### Certificate verification policy
-
-Leader nodes validate Tool certificates using the **system root CA store** (similar to `curl`). Tool operators must:
-
-- use a publicly trusted certificate (e.g., Let’s Encrypt, cloud managed cert)
-
-### Signed HTTP solves identity, auditability, and replay resistance
-
-Signed HTTP provides:
-
-- **Strong identity binding**: “this invocation was signed by Leader node `0x...` using key id `kid`”.
-- **Request/response binding**: “this response corresponds to this specific request”.
-- **Body integrity at the application layer**: binds the exact body bytes via SHA-256.
-- **Replay resistance**: prevents an attacker from replaying old requests, while still allowing safe retries.
-- **Auditability / dispute support**: the signed claims are small and can be logged and verified later.
-
-Signed HTTP is Nexus’ authentication mechanism for `POST /invoke`:
-
-- Tools authenticate the calling Leader node by verifying the request signature.
-- Leader nodes authenticate Tool responses by verifying the response signature (and binding it to the request).
-
-{% hint style="info" %}
-Signed HTTP does **not** guarantee that a Tool’s output is correct or safe. It only proves who signed the message and what bytes they signed. Nexus uses collateral + slashing as an after-the-fact enforcement mechanism for malicious behavior.
-{% endhint %}
-
-{% hint style="info" %}
-Signed HTTP verification happens after the TLS handshake. If you want to reduce unwanted TLS handshakes/traffic, apply policy at your TLS terminator / edge (rate limiting, firewall/WAF, mTLS, or private ingress such as Cloudflare Tunnel).
-{% endhint %}
-
----
-
-## Signed HTTP protocol (v1) – what is signed?
-
-Signed HTTP uses three headers on every signed request/response:
-
-- `X-Nexus-Sig-V`: protocol version (currently `"1"`).
-- `X-Nexus-Sig-Input`: base64url (no padding) of the raw JSON “claims” bytes.
-- `X-Nexus-Sig`: base64url (no padding) of the 64-byte Ed25519 signature.
-
-The signature is computed over:
-
-- a protocol-specific **domain separator** (request vs response), and
-- the exact `sig_input` bytes (the JSON-encoded claims).
-
-This avoids fragile “HTTP canonicalization” and keeps Tool schemas unchanged: the Tool input/output remains the normal HTTP body.
-
-### Request claims (Leader node → Tool)
-
-The signed request claims include:
-
-- `leader_id`, `leader_kid`: identify the calling Leader node and its active signing key id.
-- `tool_id`: the Tool’s on-chain identifier (typically the Tool FQN string form).
-- `iat_ms`, `exp_ms`: a validity window (milliseconds since the Unix epoch, UTC).
-- `nonce`: unique token per invocation to prevent replay (UUID/random is fine).
-- `method`, `path`, `query`: bind the HTTP request target.
-- `body_sha256`: hex-encoded SHA-256 of the raw request body bytes.
-
-### Response claims (Tool → Leader node)
-
-The signed response claims include:
-
-- `tool_id`, `tool_kid`: identify the Tool and its signing key id.
-- `owner_leader_id`: Leader node id that currently “owns” the nonce (for observability / failover).
-- `iat_ms`, `exp_ms`: a validity window.
-- `nonce`: echo of the request nonce.
-- `req_sig_input_sha256`: hex-encoded SHA-256 of the **request** `sig_input` bytes (binds response to the exact request).
-- `status`: HTTP status code the Tool claims it produced.
-- `body_sha256`: hex-encoded SHA-256 of the raw response body bytes.
-
-### Replay rules (how retries stay safe)
-
-Tools MUST track nonce usage (keyed by `(tool_id, nonce)`):
-
-- If a request with the same `(tool_id, nonce)` arrives and the request identity matches (`method`, `path`, `query`, `body_sha256`), it is a safe **retry** (including Leader failover).
-- If the same `(tool_id, nonce)` is used with a different request identity, it is a **conflicting replay** and MUST be rejected.
-
-The Rust toolkit runtime implements this in-memory for you.
-
----
-
-## Key registration and rotation (Network Auth)
-
-Signed HTTP requires public keys to be discoverable and verifiable.
-
-Nexus uses an on-chain **Network Auth registry** to bind identities to message-signing public keys:
-
-- **Leader node identity**: a Sui address (the Leader node’s on-chain identifier).
-- **Tool identity**: the Tool FQN (the Tool’s on-chain identifier).
-
-Each identity has:
-
-- a `next_key_id` counter (key id / `kid`),
-- a set of keys,
-- an optional active key id,
-- optional metadata (e.g., description).
-
-Registration uses a **proof-of-possession** (PoP) signature so the chain can verify the registrant actually controls the private key corresponding to the public key being registered.
-
-## On-chain registered-key verification
-
-Signed HTTP is the transport/session contract. The DAG can require that same signed session to be proven on chain by using registered-key verifier policy:
-
-```json
-{
-  "leader_verifier": {
-    "mode": "leader_registered_key",
-    "method": "signed_http_v1"
-  }
-}
+    %% This optional branch runs when the response includes signed HTTP headers.
+    opt tool responds with signature headers
+        %% The leader first tries to load the active tool key from Redis.
+        LD->>RS: get cached tool key (kid, pk)
+        %% On cache miss or stale cache, the leader refreshes from onchain network-auth.
+        alt cache miss / stale
+            %% The leader reads the active tool key binding from Sui.
+            LD->>NA: read active tool key from on-chain binding
+            %% The leader caches the positive key or negative lookup result.
+            LD->>RS: cache tool key (+ optional negative cache)
+        %% This line closes the response-key refresh branch.
+        end
+        %% The leader verifies the tool response signature against claims and body hash.
+        LD-->>LD: verify tool response signature
+    %% This line closes the signed-HTTP response branch.
+    end
 ```
 
-This policy is configured as a `leader_verifier`, not a `tool_verifier`. A `tool_verifier` with `mode = "tool_verifier_contract"` is for a custom verifier package registered in the verifier registry.
+## How leader-side response verification decides
 
-When `leader_registered_key` is active for a vertex, the leader submits a verifier-aware workflow transaction with proof derived from the signed HTTP request and response. Missing or invalid proof is handled as a verifier failure and routed through `_err_eval`; the no-verifier route is only valid when the effective policy is `None`.
+This diagram captures the leader’s runtime behavior when signed HTTP is enabled.
 
-For the Tool, this means:
+```mermaid
+%% Declares the leader-side signed HTTP response decision sequence.
+sequenceDiagram
+    %% The offchain tool returns an HTTP response to the leader.
+    participant Tool as HTTP response from tool
+    %% The leader applies its signed HTTP policy.
+    participant Leader as Leader signed HTTP policy
+    %% Redis caches active tool signing keys.
+    participant Redis as Redis key cache
+    %% NetworkAuth stores active onchain tool keys.
+    participant NetworkAuth as onchain network_auth
+    %% The workflow receives accepted output or invocation failure evidence.
+    participant Workflow as Workflow submission path
+    %% Start with the HTTP response returned by the offchain tool.
+    Tool-->>Leader: Return response body and headers
+    %% The leader first checks whether signed HTTP verification is enabled.
+    alt signed HTTP disabled
+        %% When signed HTTP is disabled, no response signature check is performed.
+        Leader-->>Workflow: Accept response without signature checks
+    %% This branch covers enabled signed HTTP policy.
+    else signed HTTP enabled
+        %% When signed HTTP is enabled, inspect whether signature headers are present.
+        alt no X-Nexus-Sig headers
+            %% Missing headers in required mode fail closed.
+            alt mode required
+                %% Required mode records a missing-header invocation failure.
+                Leader-->>Workflow: Fail missing signed HTTP headers
+            %% Optional mode accepts an unsigned response with a warning.
+            else mode optional
+                %% Optional mode accepts an unsigned response with a warning.
+                Leader-->>Workflow: Warn and accept unsigned response
+            %% This line closes the missing-header policy branch.
+            end
+        %% This branch covers responses with signature headers.
+        else signature headers present
+            %% Present headers require key resolution before cryptographic verification.
+            Leader->>Redis: Resolve cached tool key
+            %% Cache misses or stale key IDs refresh from NetworkAuth.
+            opt cache miss or unknown key
+                %% Unknown key IDs trigger one active-key refresh from chain.
+                Leader->>NetworkAuth: Refresh active key from chain
+                %% The refreshed key is cached for later tool responses.
+                NetworkAuth-->>Redis: Store active tool key
+            %% This line closes the key-refresh option.
+            end
+            %% Verification checks signature, claims, body hash, nonce, and timing.
+            Leader->>Leader: Verify signature and claims
+            %% Verification outcome decides whether the response is accepted or treated by policy.
+            alt verification ok
+                %% Successful verification accepts the response.
+                Leader-->>Workflow: Accept response
+            %% UnknownToolKey can trigger one active-key refresh and retry.
+            else UnknownToolKey
+                %% Unknown key IDs trigger one active-key refresh from chain.
+                Leader->>NetworkAuth: Refresh active key from chain
+                %% Verification is retried after refresh.
+                Leader->>Leader: Verify again
+                %% A successful retry accepts the response.
+                alt retry ok
+                    %% A successful retry accepts the response.
+                    Leader-->>Workflow: Accept response
+                %% A failed retry falls through to mode-dependent failure handling.
+                else retry err
+                    %% Required mode fails the tool invocation.
+                    Leader-->>Workflow: Fail or warn according to required mode
+                %% This line closes the retry outcome branch.
+                end
+            %% Non-key verification failures also use the same mode-dependent handling.
+            else other verification error
+                %% Required mode fails, while optional mode logs and accepts the response.
+                Leader-->>Workflow: Fail required mode or warn and accept optional mode
+            %% This line closes the verification outcome branch.
+            end
+        %% This line closes the signature-header branch.
+        end
+    %% This line closes the signed HTTP policy branch.
+    end
+```
 
-- register the Tool message-signing public key on chain with `nexus tool auth register-key`;
-- configure the runtime with the returned `tool_kid` and matching private signing key;
-- keep `allowed_leaders.json` synced so the Tool verifies incoming Leader requests locally;
-- ensure the reverse proxy preserves all `X-Nexus-Sig-*` headers and does not rewrite bodies;
-- sign the exact response body sent to the Leader, including `_err_eval` bodies.
+## Transport and TLS policy
 
-If you implement a custom runtime instead of using `nexus-toolkit`, use the body-aware signed HTTP response signer. Status-only response signing is deprecated because a 2xx HTTP response can still carry an `_err_eval` outcome in the body.
+Leader nodes prefer HTTPS for tool invocation. TLS provides confidentiality and integrity in transit; signed HTTP provides application-layer authentication, provenance, body binding, and replay resistance.
 
----
+### Transport rules the leader enforces
 
-## How to deploy a Tool (end-to-end checklist)
+- **HTTPS is always allowed**: `https://` tool URLs use the leader's rustls-backed HTTP client.
+- **Internal HTTP is conditional**: `http://` tool URLs are allowed only when `EXECUTOR_TOOL_ALLOW_INTERNAL_HTTP=true`, signed HTTP is enabled in `required` mode, and the destination is internal. Internal destinations are loopback hosts, private IP literals, or hostnames under configured internal DNS suffixes that resolve only to private IPs.
+- **Other schemes are rejected**: unsupported schemes fail before the request is sent.
+- **TLS baseline for HTTPS**: the current client enforces TLS 1.2 or newer.
+- **Certificate validation for HTTPS**: the tool's certificate chain is validated using **system roots** (like `curl`).
+- **Optional extra root for HTTPS**: you can add a PEM bundle via `EXECUTOR_TOOL_TLS_ROOT_PEM_PATH` (e.g. private PKI).
 
-### 1) Implement the Tool as an HTTP server
+### Current TLS limitation: no client authentication
 
-Use `nexus-toolkit` to implement the `NexusTool` trait and bootstrap an HTTP server.
+Leader nodes currently do **not** authenticate themselves to tools at the TLS layer (no mTLS). That means:
 
-- `/health` and `/meta` stay unsigned.
-- `/invoke` is the authenticated endpoint and is signed when enabled.
+- tools cannot rely on TLS client certificates to authenticate the caller
+- tools that want “only Leader nodes can call me” must enforce this at the application layer (signed HTTP verification + policy)
 
-### 2) Put the Tool behind HTTPS (TLS termination)
+{% hint style="info" %}
+mTLS and support for self-signed tool certificates are expected later. Today, use standard CA-signed certificates or provide a private root bundle to the leader.
+{% endhint %}
 
-The toolkit runtime is an **HTTP server**. Run it behind a reverse proxy / load balancer that provides TLS and forwards requests to the Tool over HTTP.
+### TLS termination patterns for tool deployment
 
-Common options:
+Tools do not need to implement TLS themselves. Common production deployments run the tool server behind a TLS terminating reverse proxy / load balancer:
 
-- **Caddy (recommended for simplicity)** – automatic HTTPS (Let’s Encrypt): [Automatic HTTPS](https://caddyserver.com/docs/automatic-https)
-- **Nginx + Certbot (Let’s Encrypt)**: [Certbot instructions](https://certbot.eff.org/instructions?ws=nginx)
-- **Traefik (ACME)**: [ACME](https://doc.traefik.io/traefik/https/acme/)
-- **Cloudflare (Proxy / Tunnel)**: [SSL](https://developers.cloudflare.com/ssl/) and [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+- **Caddy**: https://caddyserver.com/docs/automatic-https
+- **Nginx + Certbot (Let’s Encrypt)**: https://certbot.eff.org/instructions?ws=nginx
+- **Traefik (ACME)**: https://doc.traefik.io/traefik/https/acme/
 - **Cloud load balancers** (AWS ALB/ACM, GCP HTTPS LB, etc.)
-
-Local certificate option (useful for local testing):
-
-- **mkcert** (local trusted dev certs): [mkcert](https://github.com/FiloSottile/mkcert)
-
-{% hint style="warning" %}
-If you use a self-signed certificate, Leader nodes will reject it unless the Nexus deployment is explicitly configured to trust your CA. Use a publicly trusted cert whenever possible.
-{% endhint %}
-
-#### TLS termination example (Caddy)
-
-If your Tool listens on `127.0.0.1:8080` and you want to serve it at `https://tool.example.com`, a minimal `Caddyfile` looks like:
-
-```caddyfile
-tool.example.com {
-  reverse_proxy 127.0.0.1:8080
-}
-```
-
-Then run:
-
-```bash
-sudo caddy run --config ./Caddyfile
-```
+- **Cloudflare** (CDN/proxy + TLS): https://developers.cloudflare.com/ssl/
 
 Operational notes:
 
-- Ensure your proxy forwards `X-Nexus-Sig-*` headers (most do by default; but some “API gateways” may drop unknown headers).
-- Avoid middleware that rewrites request/response bodies. The signature binds the raw body bytes.
+- ensure your proxy forwards `X-Nexus-Sig-*` headers (some hardening configs strip unknown headers)
+- set request/response size limits at the proxy layer (DoS/abuse protection)
+- enable keep alives (reduces TLS handshake overhead)
 
-### 3) Generate a Tool message-signing keypair
+## Signed HTTP (application layer signatures)
 
-You need an Ed25519 keypair dedicated to signing Tool responses.
+Signed HTTP v1 uses Ed25519 signatures carried in headers. The tool request/response body remains the normal tool JSON schema; signatures do not wrap the body in an envelope.
 
-Using the CLI:
+### Signed HTTP headers
 
-```bash
-nexus tool auth keygen --out ./tool_keypair.json
+Every signed request/response carries these headers:
+
+- `X-Nexus-Sig-V`: protocol version (`"1"`)
+- `X-Nexus-Sig-Input`: base64url(no pad) of raw JSON claims bytes
+- `X-Nexus-Sig`: base64url(no pad) of the 64 byte Ed25519 signature
+
+If your proxy drops these headers, signed HTTP will fail (and in `required` mode, tool invocation fails closed).
+
+### Data that signed HTTP signs
+
+The signature is over a protocol specific domain separator (request vs response) plus the exact `sig_input` bytes (the JSON encoding of the claims). Claims bind:
+
+- the sender identity + `kid`
+- request intent metadata (method/path/query)
+- body integrity (`sha256(body_bytes)`)
+- freshness (`iat_ms`, `exp_ms`)
+- uniqueness / replay resistance (`nonce`)
+- for responses: binding to a specific request (`req_sig_input_sha256` + `nonce`)
+
+### Time-window fields
+
+Signed HTTP uses millisecond timestamps (UTC) since Unix epoch:
+
+- `iat_ms`: **issued at** / start of validity window
+- `exp_ms`: **expiry** / end of validity window
+
+Verifiers enforce:
+
+- allowed clock skew (`max_clock_skew_ms`)
+- maximum validity window (`max_validity_ms`)
+
+### Replay resistance
+
+`nonce` is the replay key. Tools should track nonce usage (commonly keyed by `(leader_id, nonce)`) so that:
+
+- identical retries are allowed (same nonce + same request binding)
+- conflicting replays are rejected (same nonce used for a different request)
+
+### Tool-side request authentication
+
+Signed HTTP is bidirectional: tools should verify the **leader’s request signature** before executing work when they require leader-only access.
+
+To verify a leader request, the tool needs the leader’s public key for `(leader_id, leader_kid)`. Common approaches:
+
+- **On-chain discovery**: read the active leader key from `network_auth` and cache it locally (recommended when you want to accept requests from “any Leader node”).
+- **Static allowlist**: configure an allowlist of `(leader_id, leader_kid, public_key)` in the tool deployment (recommended when you want strict control over which leaders can call the tool).
+
+Leader nodes register (and rotate) their message signing keys on-chain when signed HTTP is enabled, so tools can discover them via `network_auth` when using the on-chain approach.
+
+## Key discovery through onchain `network_auth`
+
+`nexus_registry::network_auth` is a trusted on-chain binding registry from identity → Ed25519 public keys used for message signing and verification.
+
+It provides:
+
+- key discovery (active key)
+- key rotation (multiple `kid`s, only one active)
+- key revocation
+
+Reference:
+
+- [`nexus_registry::network_auth`](../../nexus-next/packages/reference/nexus_registry/network_auth.md)
+
+## How key rotation works
+
+Key rotation is designed to be seamless for callers/verifiers: the on-chain registry advances `kid`, and verifiers accept signatures from the active `kid` only.
+
+```mermaid
+%% Declares the key rotation sequence for tool response signing.
+sequenceDiagram
+    %% `OP` is the operator controlling the tool's signing key lifecycle.
+    participant OP as Tool operator
+    %% `NA` is the onchain network-auth registry that stores active keys.
+    participant NA as Sui network_auth
+    %% `RS` is Redis cache inside the leader infrastructure.
+    participant RS as Redis
+    %% `LD` is a leader node that verifies tool responses.
+    participant LD as Leader node
+    %% `TL` is the tool runtime using the rotated signing key.
+    participant TL as Tool runtime
+
+    %% The operator registers and activates a new key ID onchain.
+    OP->>NA: register new tool key (kid = 1) + set active
+    %% The operator deploys the tool runtime configured with the same key ID.
+    OP->>TL: deploy tool runtime with signing key kid = 1
+
+    %% The leader invokes the tool as usual.
+    LD->>TL: POST /invoke
+    %% The tool signs the response with the new active key ID.
+    TL->>LD: signed response (tool_kid = 1)
+
+    %% The leader cache may still hold the prior key ID.
+    Note over LD,RS: cached key still at kid = 0
+    %% Verification fails with an unknown-key classification rather than a final signature failure.
+    LD-->>LD: verify fails: UnknownToolKey
+    %% The leader refreshes the active key binding from chain.
+    LD->>NA: refresh active key from chain
+    %% The leader updates Redis with the active key ID and public key.
+    LD->>RS: cache active key (kid = 1)
+    %% The leader retries verification and accepts the response when it matches the refreshed key.
+    LD-->>LD: verify succeeds on retry
 ```
 
-Store the private key securely. Treat it like an API credential.
+## Leader runtime behavior that tools rely on
 
-### 4) Register the Tool in the Tool Registry (off-chain Tool)
+This section documents what the leader does today so tool developers can integrate reliably.
 
-Register the Tool URL and schema on-chain. The CLI persists the resulting OwnerCaps locally (unless `--no-save`), so you can reuse them for future operations:
+### Invoke URL canonicalization
 
-```bash
-nexus tool register --off-chain https://tool.example.com/ \
-  --collateral-coin 0x... \
-  --invocation-cost 0
-```
+Given a tool base URL, the leader computes the invoke URL as:
 
-The Tool URL should be `https://...`.
+- `invoke_path = base_path.trim_end_matches('/') + "/invoke"`
+- query and fragment are cleared (ignored)
 
-### 5) Register the Tool message-signing public key on-chain (Network Auth)
+Examples:
 
-Using the CLI (requires the tool’s OwnerCap object id and a gas coin):
+- `https://api.example.com/tool` → `https://api.example.com/tool/invoke`
+- `https://api.example.com/tool/` → `https://api.example.com/tool/invoke`
 
-```bash
-nexus tool auth register-key \
-  --tool-fqn com.example.my-tool@1 \
-  --owner-cap 0x... \
-  --signing-key ./tool_signing_key.hex \
-  --sui-gas-coin 0x... \
-  --sui-gas-budget 50000000
-```
+### Response size limiting
 
-Notes:
+Leader nodes read tool responses with a hard size limit:
 
-- `--signing-key` can be a hex/base64/base64url private key string **or** a path to a file containing it.
-- If `--owner-cap` is omitted, the CLI will try to use the OwnerCap saved in the CLI config for that Tool.
+- `EXECUTOR_TOOL_MAX_RESPONSE_BYTES` (default `10 MiB`)
+- set to `0` to disable the limit
 
-This creates (or updates) the Tool’s key binding in `network_auth` and returns the `tool_kid` you must configure in the Tool runtime.
+This is a safety guard against accidental or malicious large responses.
 
-If an Agent developer configures `leader_verifier.mode = "leader_registered_key"` with method `signed_http_v1`, this registered key is also the key used by the workflow proof path. A stale `tool_kid`, inactive key, body-rewriting proxy, or unsigned response will prevent the leader from producing valid registered-key proof.
+### Signed HTTP mode behavior
 
-### 6) Export `allowed_leaders.json` for Tool-side verification
+Leader nodes support:
 
-Tools should not RPC to Sui on every request. Instead, generate a local allowlist file of permitted Leader nodes:
+- `EXECUTOR_SIGNED_HTTP_MODE=disabled`: do not sign requests; do not verify responses
+- `EXECUTOR_SIGNED_HTTP_MODE=optional`: sign/verify when configured, but tolerate missing/invalid signatures (log and accept)
+- `EXECUTOR_SIGNED_HTTP_MODE=required`: missing/invalid signatures fail the invocation
 
-```bash
-nexus tool auth export-allowed-leaders \
-  --all \
-  --out ./allowed_leaders.json
-```
+Important edge case:
 
-Deploy `allowed_leaders.json` next to your Tool.
+- `optional` mode **without** `EXECUTOR_SIGNED_HTTP_SIGNING_KEY` falls back to **unsigned** tool calls (request not signed, response not verified).
 
-If you want this file to stay up-to-date automatically, run the syncer (polling):
+### Response verification strategy
 
-```bash
-nexus tool auth sync-allowed-leaders \
-  --out ./allowed_leaders.json \
-  --interval 30s
-```
+If signed HTTP is enabled and the response includes signature headers:
 
-### 7) Configure the toolkit runtime to require signed HTTP
+- the leader verifies the response using the tool’s active key from `network_auth`
+- the key is cached in Redis
+- if verification fails with `UnknownToolKey` (kid mismatch), the leader refreshes the key from chain and retries verification once (supports key rotation)
 
-Set `NEXUS_TOOLKIT_CONFIG_PATH` to point at a JSON config file that includes:
+In `optional` mode, verification failures are logged and the response is accepted.
 
-- the allowlist file (`allowed_leaders_path`), and
-- the Tool signing key + `tool_kid`.
+### Tool key caching (Redis)
 
-Example `toolkit.json`:
+Leader nodes cache tool keys in Redis:
 
-```json
-{
-  "version": 1,
-  "invoke_max_body_bytes": 10485760,
-  "signed_http": {
-    "mode": "required",
-    "allowed_leaders_path": "./allowed_leaders.json",
-    "tools": {
-      "com.example.my-tool@1": {
-        "tool_kid": 0,
-        "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
-      }
-    }
-  }
-}
-```
+- positive cache entry: `{ kid, public_key, cached_at_ms }`
+- negative cache entry: “tool has no active key” marker
 
-Then run your Tool with:
+Knobs:
 
-```bash
-export NEXUS_TOOLKIT_CONFIG_PATH=./toolkit.json
-./my-tool-binary
-```
+- `EXECUTOR_TOOL_KEY_CACHE_TTL`
+- `EXECUTOR_TOOL_KEY_NEGATIVE_CACHE_TTL`
+- `EXECUTOR_TOOL_KEY_CACHE_MAX_STALENESS`
+
+To reduce stampedes inside one leader process, refresh is deduplicated per tool id using sharded in process locks (not a distributed lock).
+
+## Tool expectations for developers and operators
+
+### Tool developer checklist
+
+- Implement `GET /health`, `GET /meta`, `POST /invoke` (see [Tools](../../nexus-next/concepts/03-tools.md)).
+- Enforce input/output schema validation (recommended) and reject invalid requests.
+- If you require “only Leader nodes can call me”, verify signed HTTP requests and apply a policy (allowlist, rate limits, etc).
+- If you produce signed HTTP responses, ensure `tool_id` in claims exactly matches your registered tool FQN.
+
+### Tool operator checklist
+
+- Expose public tools via HTTPS (TLS termination proxy/LB in front of your HTTP server). Use plaintext HTTP only for internal destinations and only with leader signed HTTP in `required` mode.
+- Ensure `X-Nexus-Sig-*` headers are forwarded.
+- Set request size limits and rate limits at the edge to protect the tool.
+- Manage key rotation:
+  - register a new key on-chain (new `kid`)
+  - deploy the tool runtime using the new signing key
+  - keep the previous key available only for the transition period if needed
+
+## Troubleshoot tool invocation failures
+
+Common failures and what they usually mean:
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `refusing to invoke tool http://tool.internal/invoke over plaintext HTTP URL` | tool URL is `http://` but internal HTTP is disabled, signed HTTP is not required, or the destination is not internal | expose the tool via HTTPS, or enable internal HTTP only for internal destinations with `EXECUTOR_SIGNED_HTTP_MODE=required` |
+| `refusing to invoke tool ftp://tool.example/invoke over unsupported URL scheme` | tool URL is neither `https://` nor policy-allowed `http://` | register an HTTPS URL or an allowed internal HTTP URL |
+| `missing signed_http headers` | tool didn’t sign response or proxy stripped headers | ensure tool signs; ensure proxy forwards `X-Nexus-Sig-*` |
+| `unknown tool key` | tool key not registered/active on-chain, or rotation mismatch | register/activate tool key; retry after propagation |
+| `invalid signature` | tool signed with wrong key, wrong `kid`, or claims mismatch | verify tool is using the active key and correct `tool_id` |
+| `response body exceeded limit` | response too large | reduce response size or raise `EXECUTOR_TOOL_MAX_RESPONSE_BYTES` |
 
 {% hint style="info" %}
-If you run multiple tools on the same server, add each tool id under `signed_http.tools` with its own signing key and `tool_kid`.
+Signature errors can also be caused by clock skew. Keep leader and tool clocks synchronized with NTP and avoid oversized validity windows.
 {% endhint %}
 
-### 8) Configure DAG verification when you want on-chain proof
+## Configuration reference for leader nodes
 
-Add the registered-key leader verifier to the DAG or to the specific vertex that requires proof:
+Tool communication is primarily configured via these environment variables:
 
-```json
-{
-  "leader_verifier": {
-    "mode": "leader_registered_key",
-    "method": "signed_http_v1"
-  }
-}
-```
-
-Use DAG-level configuration when every off-chain vertex should require the same proof policy. Use vertex-level configuration when only selected tool calls need the registered-key requirement.
-
----
-
-## Optional: additional Tool-side authorization
-
-Signed HTTP tells the Tool “this request was signed by Leader node `X`”. Tool authors may still want additional policy:
-
-- allow only a subset of Leader nodes (beyond the allowlist file),
-- add rate limiting, allow only certain task types, etc.
-
-`nexus-toolkit` exposes an `authorize(ctx)` hook (and an `AuthContext`) for this.
-
----
-
-## Troubleshooting
-
-### Tool rejects all requests (401 auth_failed)
-
-Common causes:
-
-- Reverse proxy is stripping `X-Nexus-Sig-*` headers.
-- Tool has the wrong `allowed_leaders.json` file (missing Leader node key).
-- Clock skew is too high (Tool host time is wrong).
-- `tool_id` mismatch (Tool is configured for a different Tool FQN / id).
-
-### Leader node rejects Tool responses
-
-Common causes:
-
-- Tool is using the wrong signing key or `tool_kid`.
-- Tool key is not registered (or not the active key) on-chain.
-- Tool response body is being modified by middleware.
-
-### Registered-key verifier proof fails
-
-Common causes:
-
-- DAG or vertex uses `leader_verifier.mode = "leader_registered_key"` but the Tool response is unsigned.
-- The Tool signed with a stale `tool_kid` or a key that is not active in Network Auth.
-- Middleware changed the response body after signing.
-- Custom runtime used status-only response signing instead of body-aware response signing.
-
-### TLS / certificate errors from Leader nodes
-
-Common causes:
-
-- Certificate is self-signed or missing intermediate chain.
-- Certificate hostname does not match the Tool URL.
-- Leader node environment does not include the required root CA (custom CA deployments).
+- `ENVIRONMENT`
+- `EXECUTOR_TOOL_MAX_RESPONSE_BYTES`
+- `EXECUTOR_TOOL_TLS_ROOT_PEM_PATH`
+- `EXECUTOR_TOOL_ALLOW_INTERNAL_HTTP`
+- `EXECUTOR_TOOL_INTERNAL_DNS_SUFFIXES`
+- `EXECUTOR_SIGNED_HTTP_MODE`
+- `EXECUTOR_SIGNED_HTTP_SIGNING_KEY`
+- `EXECUTOR_SIGNED_HTTP_LEADER_KID`
+- `EXECUTOR_SIGNED_HTTP_MAX_CLOCK_SKEW_MS`
+- `EXECUTOR_SIGNED_HTTP_MAX_VALIDITY_MS`
+- `EXECUTOR_TOOL_KEY_CACHE_TTL`
+- `EXECUTOR_TOOL_KEY_NEGATIVE_CACHE_TTL`
+- `EXECUTOR_TOOL_KEY_CACHE_MAX_STALENESS`

@@ -32,6 +32,23 @@ Docs:
 - [TAP Development Guide](guides/1-tap-development.md)
 - [Nexus Client (Rust)](client.md)
 
+## Agent and workflow guides
+
+These guides cover the higher-level Nexus flows that use the SDK, CLI, Move packages, and leader execution path together.
+
+Docs:
+
+- [Agent development](guides/agent-development.md)
+- [Build an agent package and workflow](guides/build-agent-package-and-workflow.md)
+- [Build a TAP Move package](guides/build-tap-move-package.md)
+- [Register a skill package](guides/register-skill-package.md)
+- [Execute and settle an agent](guides/execute-and-settle-agent.md)
+- [Schedule an asset-management flow](guides/schedule-asset-management-flow.md)
+- [Cap-gated tool authorization](guides/cap-gated-tool-authorization.md)
+- [Verify an offchain tool result](guides/verify-offchain-tool-result.md)
+- [Inspect and debug executions](guides/inspect-and-debug-executions.md)
+- [Policy DFA](guides/policy.md)
+
 ## Toolkit
 
 Toolkit is an SDK for Tool Developers. It helps provide boilerplate code for creating Tools that adhere to the Nexus-defined interface schema.
