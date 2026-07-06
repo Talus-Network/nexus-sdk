@@ -4982,6 +4982,303 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_abort_expired_execution_cleans_broken_finalized_onchain_result_before_abort() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let execution_ref = sui_mocks::mock_sui_object_ref();
+        let result_id = sui::types::Address::from_static("0xbeef");
+        let result_ref = sui_mocks::object_ref_for_id(result_id);
+        let result_field_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
+        let vertex_field_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
+        let tool_witness_id = sui::types::Address::from_static("0x777");
+        let tool_fqn = fqn!("xyz.taluslabs.onchain@1");
+        let tool_id = derive_tool_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
+            .expect("tool id derives");
+        let vertex = RuntimeVertex::plain("onchain");
+        let dag = Dag {
+            vertices: DynamicMap::new(sui::types::Address::from_static("0x900"), 1),
+            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        };
+        let result_field_value = DynamicFieldValueBcs {
+            id: *result_field_ref.object_id(),
+            name: OnchainToolResultKey { walk_index: 0 },
+            value: object_id(result_id),
+        };
+        let vertex_node = LinkedTableNodeBcs {
+            prev: crate::types::MoveOption(None::<TypeName>),
+            next: crate::types::MoveOption(None::<TypeName>),
+            value: DagVertexInfoBcs {
+                kind: crate::nexus::models::DagVertexKindBcs::OnChain {
+                    _variant_name: "OnChain".to_string(),
+                    tool_fqn: tool_fqn.to_string(),
+                },
+                input_ports: crate::types::MoveVecSet { contents: vec![] },
+                post_failure_action: crate::types::MoveOption(
+                    None::<crate::nexus::models::PostFailureActionBcs>,
+                ),
+                leader_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+                tool_verifier: crate::types::MoveOption(
+                    None::<crate::nexus::models::VerifierConfigBcs>,
+                ),
+            },
+        };
+        let tool = crate::types::Tool {
+            id: tool_id,
+            fqn: tool_fqn,
+            reference: ToolRef::Sui {
+                package_address: sui::types::Address::from_static("0x42"),
+                module_name: sui::types::Identifier::from_static("tool"),
+                tool_witness_id,
+            },
+            description: "on-chain tool".to_string(),
+            input_schema: json!({}),
+            output_schema: json!({}),
+            workflow_authorization_cap_first: false,
+            registered_at: chrono::DateTime::from_timestamp_millis(1_000).unwrap(),
+            unregistered_at: None,
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(execution_ref.version()),
+            json!({
+                "invoker": "0x1",
+                "dag": dag_ref.object_id().to_string(),
+                "agent_id": "0xa",
+                "skill_id": "11",
+                "interface_version": "7",
+                "scheduled_task_id": { "vec": [] },
+                "scheduled_occurrence_index": { "vec": [] },
+                "walks": [{
+                    "Active": {
+                        "next_vertex": { "Plain": { "vertex": { "name": "onchain" } } },
+                        "timeout_ms": "30000",
+                        "created_at": "1000"
+                    }
+                }]
+            }),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                sui_framework::CLOCK_OBJECT_ID,
+                1,
+                sui::types::Digest::from([1; 32]),
+            ),
+            sui::types::Owner::Shared(1),
+            json!({ "timestamp_ms": "61000" }),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
+            &mut state_service_mock,
+            vec![],
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
+            &mut state_service_mock,
+            vec![(
+                OnchainToolResultKey { walk_index: 0 },
+                *result_field_ref.object_id(),
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_field_ref,
+            sui::types::Owner::Shared(0),
+            bcs::to_bytes(&result_field_value).expect("result field bcs"),
+            dynamic_field_struct_tag(),
+        );
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            result_ref.clone(),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&onchain_tool_result_bcs(
+                result_id,
+                *execution_ref.object_id(),
+                true,
+            ))
+            .expect("result bcs"),
+            sui::types::StructTag::new(
+                sui::types::Address::from_static("0xa1"),
+                sui::types::Identifier::from_static("onchain_tool_result"),
+                sui::types::Identifier::from_static("OnchainToolResult"),
+                vec![],
+            ),
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+        );
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(TypeName::new("onchain"), *vertex_field_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                vertex_field_ref,
+                sui::types::Owner::Shared(1),
+                TypeName::new("onchain"),
+                vertex_node,
+            )],
+        );
+        sui_mocks::grpc::mock_get_object_json(
+            &mut ledger_service_mock,
+            sui_mocks::object_ref_for_id(tool_id),
+            sui::types::Owner::Shared(0),
+            serde_json::to_value(tool).expect("tool JSON should serialize"),
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            execution_ref.clone(),
+            sui::types::Owner::Shared(execution_ref.version()),
+            None,
+        );
+
+        let expected_result_ref = result_ref.clone();
+        let expected_workflow_pkg_id = nexus_objects.workflow_pkg_id;
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref.clone(),
+            vec![],
+            vec![],
+            vec![],
+            move |request| {
+                let submitted = request
+                    .transaction
+                    .as_ref()
+                    .expect("execute request should include transaction");
+                let submitted = sui::types::Transaction::try_from(submitted)
+                    .expect("submitted transaction should decode");
+                let sui::types::TransactionKind::ProgrammableTransaction(
+                    sui::types::ProgrammableTransaction { commands, inputs },
+                ) = submitted.kind
+                else {
+                    panic!("expected programmable transaction");
+                };
+                let cleanup_index = commands
+                    .iter()
+                    .position(|command| matches!(
+                        command,
+                        sui::types::Command::MoveCall(call)
+                            if call.package == expected_workflow_pkg_id
+                                && call.module == workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.module
+                                && call.function == workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.name
+                    ))
+                    .expect("submitted PTB should cleanup broken on-chain result");
+                let abort_index = commands
+                    .iter()
+                    .position(|command| matches!(
+                        command,
+                        sui::types::Command::MoveCall(call)
+                            if call.package == expected_workflow_pkg_id
+                                && call.module == workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.module
+                                && call.function == workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name
+                    ))
+                    .expect("submitted PTB should abort expired execution");
+                assert!(cleanup_index < abort_index);
+                assert_eq!(abort_index, commands.len() - 1);
+
+                let cleanup_call = match &commands[cleanup_index] {
+                    sui::types::Command::MoveCall(call) => call,
+                    other => panic!("expected cleanup move call, got {other:?}"),
+                };
+                let result_input = match cleanup_call.arguments[3] {
+                    sui::types::Argument::Input(index) => inputs
+                        .get(index as usize)
+                        .unwrap_or_else(|| panic!("missing result input at index {index}")),
+                    ref other => panic!("expected result input argument, got {other:?}"),
+                };
+                let sui::types::Input::Shared(shared_result) = result_input else {
+                    panic!("expected cleanup result input to be shared, got {result_input:?}");
+                };
+                assert_eq!(shared_result.object_id(), *expected_result_ref.object_id());
+                assert_eq!(shared_result.version(), expected_result_ref.version());
+                assert!(shared_result.mutability().is_mutable());
+
+                let walk_index_input = match cleanup_call.arguments[5] {
+                    sui::types::Argument::Input(index) => inputs
+                        .get(index as usize)
+                        .unwrap_or_else(|| panic!("missing walk index input at index {index}")),
+                    ref other => panic!("expected walk index input argument, got {other:?}"),
+                };
+                let sui::types::Input::Pure(walk_index_bytes) = walk_index_input else {
+                    panic!("expected walk index pure input, got {walk_index_input:?}");
+                };
+                let walk_index: u64 =
+                    bcs::from_bytes(walk_index_bytes).expect("walk index should decode");
+                assert_eq!(walk_index, 0);
+            },
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            state_service_mock: Some(state_service_mock),
+        });
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(nexus_objects)
+            .with_gas(vec![gas_coin_ref], 1000)
+            .build()
+            .await
+            .expect("mock client should build");
+
+        let result = client
+            .workflow()
+            .abort_expired_execution(*execution_ref.object_id())
+            .await
+            .expect("abort transaction should submit with cleanup");
+
+        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_checkpoint, 1);
+        assert_eq!(result.dag_id, *dag_ref.object_id());
+        assert_eq!(result.dag_execution_id, *execution_ref.object_id());
+        assert_eq!(
+            result.cleaned_broken_onchain_results,
+            vec![BrokenOnchainToolResultCleanup {
+                walk_index: 0,
+                result_ref,
+                expected_vertex: vertex,
+                tool_witness_id,
+            }]
+        );
+    }
+
+    #[tokio::test]
     async fn test_settle_committed_tool_result_for_walk_submits_workflow_transaction() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
