@@ -12,6 +12,7 @@ use {
             encode_signature_headers_v1,
             now_ms,
             parse_hex_32,
+            request_body_sha256_matches,
             request_signature_message_v1,
             response_body_sha256_for_claim,
             sha256,
@@ -1064,10 +1065,29 @@ impl SignedHttpResponderV1 {
         body: &[u8],
         headers: SignatureHeadersRef<'_>,
     ) -> Result<ResponderDecisionV1, SignedHttpError> {
+        self.authenticate_invoke_with_body_sha256_candidates(
+            http,
+            body,
+            headers,
+            std::iter::empty(),
+        )
+    }
+
+    /// Authenticate a signed invocation request with caller-derived request hash candidates.
+    ///
+    /// This keeps the base signed HTTP verifier strict by default while allowing runtime adapters
+    /// to accept protocol-specific canonical hashes that they independently derive from `body`.
+    pub fn authenticate_invoke_with_body_sha256_candidates(
+        &self,
+        http: HttpRequestMeta<'_>,
+        body: &[u8],
+        headers: SignatureHeadersRef<'_>,
+        accepted_body_sha256es: impl IntoIterator<Item = [u8; 32]>,
+    ) -> Result<ResponderDecisionV1, SignedHttpError> {
         let decoded =
             decode_signature_headers_v1(headers.sig_v, headers.sig_input_b64, headers.sig_b64)?;
 
-        let verified = self.verify_inbound_request(decoded, http, body)?;
+        let verified = self.verify_inbound_request(decoded, http, body, accepted_body_sha256es)?;
         // Length-prefix encoding avoids accidental collisions if callers supply custom nonces.
         // (E.g., `{tool_id}:{nonce}` can collide if a nonce contains `:`.)
         let invocation_key = format!(
@@ -1156,6 +1176,7 @@ impl SignedHttpResponderV1 {
         decoded: DecodedSignatureV1,
         http: HttpRequestMeta<'_>,
         body: &[u8],
+        accepted_body_sha256es: impl IntoIterator<Item = [u8; 32]>,
     ) -> Result<VerifiedInboundRequestV1, SignedHttpError> {
         let claims: InvokeRequestClaimsV1 = serde_json::from_slice(&decoded.sig_input)
             .map_err(SignedHttpError::InvalidSignedInputJson)?;
@@ -1190,7 +1211,7 @@ impl SignedHttpResponderV1 {
 
         let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
             .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-        if claimed_body_sha256 != sha256(body) {
+        if !request_body_sha256_matches(claimed_body_sha256, body, accepted_body_sha256es) {
             return Err(SignedHttpError::BodyHashMismatch);
         }
 

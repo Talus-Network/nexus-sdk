@@ -217,6 +217,114 @@ fn engine_authenticate_invoke_rejects_replayed_signature_with_different_body() {
 }
 
 #[test]
+fn canonical_input_body_sha256_is_order_stable_and_requires_object() {
+    let ordered = br#"{"a":"one","b":["two",3]}"#;
+    let shuffled = br#"{"b":["two",3],"a":"one"}"#;
+
+    assert_eq!(
+        canonical_input_body_sha256_from_json_bytes(ordered).unwrap(),
+        canonical_input_body_sha256_from_json_bytes(shuffled).unwrap(),
+    );
+    assert_ne!(
+        canonical_input_body_sha256_from_json_bytes(ordered).unwrap(),
+        sha256(ordered),
+    );
+    assert!(canonical_input_body_sha256_from_json_bytes(br#"["not","ports"]"#).is_err());
+}
+
+#[test]
+fn engine_authenticate_invoke_accepts_caller_derived_body_hash_candidate() {
+    let leader_id = "0x1111";
+    let tool_id = "demo::tool::1.0.0";
+
+    let leader_sk = sk_from_byte(7);
+    let leader_pk = leader_sk.verifying_key().to_bytes();
+
+    let tool_sk = sk_from_byte(9);
+
+    let allowed = AllowedLeadersV1::try_from(AllowedLeadersFileV1 {
+        version: 1,
+        leaders: vec![AllowedLeaderFileV1 {
+            leader_id: leader_id.to_string(),
+            keys: vec![AllowedLeaderKeyFileV1 {
+                kid: 0,
+                public_key: hex::encode(leader_pk),
+            }],
+        }],
+    })
+    .unwrap();
+
+    let engine = SignedHttpEngineV1::with_clock(
+        SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        },
+        FixedClockV1 { now_ms: 1_500 },
+    );
+
+    let invoker = engine.invoker(leader_id.to_string(), 0, leader_sk);
+    let responder =
+        engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+    let req_body = br#"{"a":"one","b":["two",3]}"#.to_vec();
+    let request_body_sha256 = canonical_input_body_sha256_from_json_bytes(&req_body).unwrap();
+    let http = HttpRequestMeta {
+        method: "POST",
+        path: "/invoke",
+        query: "",
+    };
+
+    let outbound = invoker
+        .begin_invoke_with_nonce_and_body_sha256(
+            tool_id.to_string(),
+            http.clone(),
+            hex::encode(request_body_sha256),
+            "abc".to_string(),
+        )
+        .unwrap();
+
+    let default_err = match responder.authenticate_invoke(
+        http.clone(),
+        &req_body,
+        headers_ref_for_encoded(outbound.request_headers()),
+    ) {
+        Ok(_) => panic!("expected BodyHashMismatch"),
+        Err(err) => err,
+    };
+    assert!(matches!(default_err, SignedHttpError::BodyHashMismatch));
+
+    let wrong_candidate_err = match responder.authenticate_invoke_with_body_sha256_candidates(
+        http.clone(),
+        &req_body,
+        headers_ref_for_encoded(outbound.request_headers()),
+        [[9; 32]],
+    ) {
+        Ok(_) => panic!("expected BodyHashMismatch"),
+        Err(err) => err,
+    };
+    assert!(matches!(
+        wrong_candidate_err,
+        SignedHttpError::BodyHashMismatch
+    ));
+
+    let decision = responder
+        .authenticate_invoke_with_body_sha256_candidates(
+            http,
+            &req_body,
+            headers_ref_for_encoded(outbound.request_headers()),
+            [request_body_sha256],
+        )
+        .unwrap();
+
+    let inbound = match decision {
+        ResponderDecisionV1::Proceed(session) => session,
+        _ => panic!("expected Proceed"),
+    };
+    assert_eq!(inbound.auth_context().invoker_id, leader_id);
+}
+
+#[test]
 fn engine_end_to_end_roundtrip_happy_path() {
     let leader_id = "0x1111";
     let tool_id = "demo::tool::1.0.0";

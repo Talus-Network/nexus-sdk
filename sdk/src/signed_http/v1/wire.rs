@@ -246,6 +246,32 @@ pub fn verify_invoke_request_v1(
     allowed_leaders: &AllowedLeadersV1,
     opts: &VerifyOptions,
 ) -> Result<VerifiedInvokeRequestV1, SignedHttpError> {
+    verify_invoke_request_v1_with_body_sha256_candidates(
+        decoded,
+        http,
+        body,
+        expected_tool_id,
+        allowed_leaders,
+        opts,
+        std::iter::empty(),
+    )
+}
+
+/// Verify a signed invocation request while allowing caller-derived body-hash candidates.
+///
+/// The default verifier requires `body_sha256 == sha256(body)`. Runtime adapters that can
+/// independently derive a protocol-specific canonical request hash from `body` may pass that hash
+/// here as an additional accepted candidate. Do not pass hashes that were only copied from signed
+/// claims or other untrusted request metadata.
+pub fn verify_invoke_request_v1_with_body_sha256_candidates(
+    decoded: DecodedSignatureV1,
+    http: HttpRequestMeta<'_>,
+    body: &[u8],
+    expected_tool_id: &str,
+    allowed_leaders: &AllowedLeadersV1,
+    opts: &VerifyOptions,
+    accepted_body_sha256es: impl IntoIterator<Item = [u8; 32]>,
+) -> Result<VerifiedInvokeRequestV1, SignedHttpError> {
     let claims: InvokeRequestClaimsV1 = serde_json::from_slice(&decoded.sig_input)
         .map_err(SignedHttpError::InvalidSignedInputJson)?;
 
@@ -279,7 +305,7 @@ pub fn verify_invoke_request_v1(
 
     let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
         .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-    if claimed_body_sha256 != sha256(body) {
+    if !request_body_sha256_matches(claimed_body_sha256, body, accepted_body_sha256es) {
         return Err(SignedHttpError::BodyHashMismatch);
     }
 
@@ -540,6 +566,39 @@ pub fn response_body_sha256_for_claim(body: &[u8]) -> [u8; 32] {
     canonical_output_body_sha256_from_json_bytes(body).unwrap_or_else(|_| sha256(body))
 }
 
+pub fn canonical_input_body_sha256_from_json_bytes(
+    body: &[u8],
+) -> Result<[u8; 32], serde_json::Error> {
+    let value = serde_json::from_slice::<serde_json::Value>(body)?;
+    canonical_input_body_sha256_from_json_value(&value)
+}
+
+fn canonical_input_body_sha256_from_json_value(
+    value: &serde_json::Value,
+) -> Result<[u8; 32], serde_json::Error> {
+    let Some(ports) = value.as_object() else {
+        return Err(serde_json::Error::custom(
+            "canonical input body must be a JSON object",
+        ));
+    };
+
+    let mut bytes = Vec::new();
+    let mut port_names = ports.keys().cloned().collect::<Vec<_>>();
+    port_names.sort();
+
+    for port_name in port_names {
+        bytes.extend_from_slice(
+            &bcs::to_bytes(&port_name.as_bytes().to_vec()).expect("Vec<u8> BCS"),
+        );
+        bytes.extend_from_slice(
+            &bcs::to_bytes(&inline_nexus_data_wire(ports.get(&port_name).unwrap())?)
+                .expect("inline nexus data BCS"),
+        );
+    }
+
+    Ok(sha256(&bytes))
+}
+
 fn canonical_output_body_sha256_from_json_value(
     value: &serde_json::Value,
 ) -> Result<[u8; 32], serde_json::Error> {
@@ -653,6 +712,17 @@ pub(super) fn validate_time_window(
 pub(super) fn parse_hex_32(s: &str) -> Result<[u8; 32], ()> {
     let bytes = hex::decode(s).map_err(|_| ())?;
     bytes.try_into().map_err(|_| ())
+}
+
+pub(super) fn request_body_sha256_matches(
+    claimed_body_sha256: [u8; 32],
+    body: &[u8],
+    accepted_body_sha256es: impl IntoIterator<Item = [u8; 32]>,
+) -> bool {
+    claimed_body_sha256 == sha256(body)
+        || accepted_body_sha256es
+            .into_iter()
+            .any(|accepted| accepted == claimed_body_sha256)
 }
 
 /// Current wall-clock time in milliseconds since UNIX epoch.

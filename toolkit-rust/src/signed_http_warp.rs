@@ -19,7 +19,7 @@ use {
             SignedResponseV1,
         },
         error::SignedHttpError,
-        wire::{AllowedLeadersV1, HttpRequestMeta},
+        wire::{canonical_input_body_sha256_from_json_bytes, AllowedLeadersV1, HttpRequestMeta},
     },
     serde_json::json,
     std::{
@@ -210,7 +210,14 @@ where
         InvokeAuthRuntime::Signed(ref responder) => {
             let sig_headers = SignatureHeadersRef::from_getter(|name| header_str(&headers, name));
 
-            let decision = match responder.authenticate_invoke(http, &body_bytes, sig_headers) {
+            let accepted_request_body_sha256 =
+                canonical_input_body_sha256_from_json_bytes(&body_bytes).ok();
+            let decision = match responder.authenticate_invoke_with_body_sha256_candidates(
+                http,
+                &body_bytes,
+                sig_headers,
+                accepted_request_body_sha256.into_iter(),
+            ) {
                 Ok(d) => d,
                 Err(e) => return auth_failed(e),
             };
@@ -337,6 +344,7 @@ mod tests {
         nexus_sdk::signed_http::v1::{
             engine::{SignedHttpEngineV1, SignedHttpInvokerV1, SignedHttpPolicyV1},
             wire::{
+                canonical_input_body_sha256_from_json_bytes,
                 AllowedLeaderFileV1,
                 AllowedLeaderKeyFileV1,
                 AllowedLeadersFileV1,
@@ -534,6 +542,65 @@ mod tests {
 
         assert_eq!(resp_two.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(run_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn signed_invoke_accepts_canonical_input_body_hash_claim() {
+        let leader_id = "0x1111";
+        let tool_id = "demo::tool::1.0.0";
+
+        let leader_sk = SigningKey::from_bytes(&[7u8; 32]);
+        let leader_pk = leader_sk.verifying_key().to_bytes();
+        let tool_sk = SigningKey::from_bytes(&[9u8; 32]);
+
+        let allowed = make_allowed_leaders(leader_id, leader_pk);
+        let engine = SignedHttpEngineV1::new(SignedHttpPolicyV1 {
+            max_clock_skew_ms: 0,
+            max_validity_ms: 10_000,
+            ..Default::default()
+        });
+        let invoker = build_invoker(&engine, leader_id, &leader_sk);
+        let responder =
+            engine.responder_with_in_memory_replay(tool_id.to_string(), 0, tool_sk, allowed);
+
+        let http = HttpRequestMeta {
+            method: "POST",
+            path: "/invoke",
+            query: "",
+        };
+
+        let body = br#"{"a":"one","b":["two",3]}"#.to_vec();
+        let request_body_sha256 = canonical_input_body_sha256_from_json_bytes(&body).unwrap();
+        assert_ne!(
+            request_body_sha256,
+            nexus_sdk::signed_http::v1::wire::sha256(&body)
+        );
+
+        let outbound = invoker
+            .begin_invoke_with_nonce_and_body_sha256(
+                tool_id.to_string(),
+                http.clone(),
+                hex::encode(request_body_sha256),
+                "nonce-proof".to_string(),
+            )
+            .unwrap();
+
+        let auth = InvokeAuthRuntime::Signed(Box::new(responder));
+        let resp = handle_invoke(
+            &auth,
+            http,
+            request_headers(outbound.request_headers()),
+            body.clone(),
+            move |ctx, request_body| async move {
+                assert!(ctx.is_some());
+                assert_eq!(request_body, body);
+                (StatusCode::OK, br#"{"ok":true}"#.to_vec())
+            },
+        )
+        .await;
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(resp.headers().contains_key(HEADER_SIG_INPUT));
     }
 
     #[allow(clippy::await_holding_lock)]
