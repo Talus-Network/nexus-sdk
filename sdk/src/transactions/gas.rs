@@ -128,20 +128,11 @@ pub fn abort_expired_execution_with_tool_gas_ptb(
         let tool_gas = tx.shared_object(tool_gas, true)?;
         let dag = tx.shared_object(dag, false)?;
         let execution = tx.shared_object(execution, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
 
         tx.call_target(
             gas_extension_binding::abort_expired_execution_with_tool_gas_target,
-            vec![
-                tool_gas,
-                dag,
-                execution,
-                tool_registry,
-                leader_registry,
-                clock,
-            ],
+            vec![tool_gas, dag, execution, clock],
         )?;
         Ok(())
     })
@@ -207,4 +198,72 @@ pub(crate) fn buy_limited_invocations_gas_ticket_ptb(
         )?;
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::types::DefaultDagExecutorTarget, sui::types::Command};
+
+    fn addr(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    fn object_ref(value: &'static str, version: u64, digest: u8) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(
+            addr(value),
+            version,
+            sui::types::Digest::from([digest; 32]),
+        )
+    }
+
+    fn nexus_objects() -> NexusObjects {
+        NexusObjects {
+            workflow_pkg_id: addr("0x1"),
+            scheduler_pkg_id: addr("0x11"),
+            primitives_pkg_id: addr("0x2"),
+            interface_pkg_id: addr("0x3"),
+            network_id: addr("0x4"),
+            registry_pkg_id: addr("0x5"),
+            tool_registry: object_ref("0x6", 1, 6),
+            verifier_registry: object_ref("0x7", 1, 7),
+            network_auth: object_ref("0x8", 1, 8),
+            agent_registry: object_ref("0xc", 1, 12),
+            default_dag_executor: DefaultDagExecutorTarget {
+                agent_id: addr("0xa1"),
+                skill_id: 177,
+            },
+            gas_service: object_ref("0xd", 1, 13),
+            leader_registry: object_ref("0xe", 1, 14),
+            workflow_original_pkg_id: None,
+            scheduler_original_pkg_id: None,
+        }
+    }
+
+    #[test]
+    fn abort_expired_execution_with_tool_gas_uses_current_move_signature() {
+        let objects = nexus_objects();
+        let ptb = abort_expired_execution_with_tool_gas_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+            &object_ref("0x22", 4, 22),
+        )
+        .expect("ptb should build");
+
+        let call = ptb
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::MoveCall(call)
+                    if call.module.as_str() == "gas_extension"
+                        && call.function.as_str() == "abort_expired_execution_with_tool_gas" =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .expect("abort move call should exist");
+
+        assert_eq!(call.arguments.len(), 4);
+    }
 }
