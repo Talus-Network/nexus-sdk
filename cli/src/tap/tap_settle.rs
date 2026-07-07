@@ -130,7 +130,7 @@ async fn abort_execution(
     command_title!("Aborting expired TAP DAGExecution '{execution_id}'");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let handle = loading!("Submitting permissionless execution abort transaction...");
+    let handle = loading!("Checking for broken on-chain result cleanup, then submitting abort...");
     let result = match nexus_client
         .workflow()
         .abort_expired_execution(execution_id)

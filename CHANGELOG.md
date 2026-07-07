@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tap create-skill-artifact` command that builds the current skill `TapPublishArtifact` JSON from explicit skill inputs and a read-only published-DAG fetch for `requirements.input_schema_commitment`.
 - `tap update-skill` command that updates an existing agent skill from a publish artifact and reports the resulting current interface revision, DAG binding, and requirements.
 - `tap scheduled-task pause|resume|cancel` commands for explicit-agent scheduled task state changes with required `--agent-id`.
-- `tap execution settle` and `tap execution abort` commands for permissionless committed-result settlement and expired execution abort flows.
+- `tap execution settle` and `tap execution abort` commands for permissionless committed-result settlement and expired execution abort flows, with abort automatically cleaning finalized tracked on-chain results whose required stamps are insufficient after double expiry before submitting the abort.
 - `tap execution resolve-expired-walk` command that classifies one double-timeout walk and submits committed-result settlement, plain abort, or ToolGas-assisted abort through the shared SDK helper.
 - `tap payments refill` command for coin top-ups and agent-vault-funded execution payment refills.
 - `DagExecution` decoding now exposes execution walk summary counters: `active_walks`, `pending_abort_walks`, `successful_walks`, `failed_walks`, `aborted_walks`, `consumed_walks`, and `cancelled_walks`.
@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `WorkflowActions::resolve_expired_walk` and `inspect_expired_walk_resolution` classify timeout-expired walks into settlement, plain abort, ToolGas abort, or skipped outcomes without adding new Move entrypoints.
 - `inspect_expired_walk_resolution` now classifies finalized raw `OnchainToolResult` evidence as a leader-authenticated consume-and-settle branch before no-result abort planning.
 - `WorkflowActions::resolve_expired_walk` and the raw on-chain result settlement PTB builder now submit finalized `OnchainToolResult` settlement permissionlessly without a leader cap or leader gas-charge arguments.
+- `WorkflowActions::abort_expired_execution` can prepend the `cleanup_broken_onchain_tool_result` PTB call for double-expired finalized on-chain results with insufficient required stamps before submitting the abort.
 - Receipt lifecycle event decoding for `ExecutionPaymentReceiptCreatedEvent`, `ExecutionPaymentReceiptResolvedEvent`, and `ScheduledPaymentReserveReceiptCreatedEvent`.
 - `SchedulerActions::create_task` (via `CreateTaskParams::agent_id` and `CreateTaskParams::skill_id`) now routes through `transactions::scheduler::new_agent_execution_policy` (`BeginAgentExecutionWitness`) when both ids are supplied, so callers can register an agent-bound scheduled task without dropping to a raw PTB. Half-supplied bindings (one id without the other) fail locally with `NexusError::Configuration`.
 - Scheduler PTB builders for settling finished scheduled TAP execution payments from task-owned address-funded or agent-vault reserves.
@@ -111,6 +112,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- CLI docs now describe `tap execution abort` automatic broken on-chain result cleanup and its JSON fields.
 - TAP CLI and tutorial docs now describe the simplified current-skill model, `tap create-skill-artifact`, `tap update-skill`, default-agent inspection, simplified payment and schedule policies, fixed-tool requirements, and scheduled task reserve flows.
 - Tool communication docs now cover registered-key leader verifier proof requirements for signed HTTP DAGs.
 
