@@ -2,20 +2,29 @@
 
 use {
     nexus_sdk::{
-        move_bindings::sui_framework::{
-            bag::Bag,
-            linked_table::{LinkedTable, Node as LinkedTableNode},
-            object_bag::ObjectBag,
-            object_table::ObjectTable,
-            table_vec::TableVec,
+        move_bindings::{
+            move_std::ascii::String as MoveString,
+            sui_framework::{
+                bag::Bag,
+                linked_table::{LinkedTable, Node as LinkedTableNode},
+                object_bag::ObjectBag,
+                object_table::ObjectTable,
+                table_vec::TableVec,
+                vec_map::VecMap,
+                vec_set::VecSet,
+            },
         },
-        nexus::crawler::{Crawler, Map, Set},
+        nexus::crawler::{Crawler, Map},
         sui,
         test_utils,
     },
     serde::{Deserialize, Serialize},
     serde_json::json,
-    std::{collections::HashMap, str::FromStr, sync::Arc},
+    std::{
+        collections::{HashMap, HashSet},
+        str::FromStr,
+        sync::Arc,
+    },
     tokio::sync::Mutex,
 };
 
@@ -26,14 +35,14 @@ struct Guy {
     id: sui::types::Address,
     name: String,
     age: u8,
-    hobbies: Set<String>,
-    groups: Map<Name, Vec<Name>>,
+    hobbies: VecSet<MoveString>,
+    groups: VecMap<Name, Vec<Name>>,
     timetable: ObjectTable<Name, Value>,
     friends: ObjectBag,
     bag: Bag,
     heterogeneous: Bag,
-    linked_table: LinkedTable<Name, Name>,
     sequence: TableVec<Name>,
+    linked_table: LinkedTable<Name, Name>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -95,15 +104,7 @@ struct AnotherPlainValue {
     another_value: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-enum HeterogeneousValue {
-    Value(PlainValue),
-    AnotherValue(AnotherPlainValue),
-}
-
 #[tokio::test]
-#[ignore = "requires a Docker-backed Sui test container"]
 async fn test_object_crawler() {
     // Spin up the Sui instance.
     let test_utils::containers::SuiInstance {
@@ -176,14 +177,18 @@ async fn test_object_crawler() {
     assert_eq!(guy.name, "John Doe");
     assert_eq!(guy.age, 30);
     assert_eq!(
-        guy.hobbies.into_inner(),
+        guy.hobbies
+            .contents
+            .into_iter()
+            .map(MoveString::into_string)
+            .collect::<HashSet<_>>(),
         vec!["Reading".to_string(), "Swimming".to_string()]
             .into_iter()
             .collect()
     );
 
     // Check map and nested vector fetched correctly.
-    let groups = guy.groups.into_inner();
+    let groups = guy.groups.into_hash_map();
     assert_eq!(groups.len(), 2);
 
     // Contains book club with the correct people.
@@ -306,25 +311,26 @@ async fn test_object_crawler() {
     // Fetch heterogeneous Bag.
     assert_eq!(guy.heterogeneous.size(), 2);
     let heterogeneous = crawler
-        .get_dynamic_fields::<Name, HeterogeneousValue>(
-            guy.heterogeneous.id(),
-            guy.heterogeneous.size(),
-        )
+        .get_dynamic_field_refs_matching_key::<Name>(guy.heterogeneous.id())
         .await
         .unwrap();
-    assert!(heterogeneous.len() == 2);
+    assert_eq!(heterogeneous.len(), 2);
 
-    for (key, value) in heterogeneous {
-        if key.name == "Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::Value(v) if v.value.clone() == b"Bag Data")
-            );
-        } else if key.name == "Another Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone() == b"Another Bag Data")
-            );
+    for field in heterogeneous {
+        if field.name.name == "Bag Item" {
+            let value = crawler
+                .get_dynamic_field_value_by_id::<Name, PlainValue>(field.field_id)
+                .await
+                .unwrap();
+            assert_eq!(value.value, b"Bag Data");
+        } else if field.name.name == "Another Bag Item" {
+            let value = crawler
+                .get_dynamic_field_value_by_id::<Name, AnotherPlainValue>(field.field_id)
+                .await
+                .unwrap();
+            assert_eq!(value.another_value, b"Another Bag Data");
         } else {
-            panic!("Unexpected key in heterogeneous bag: {:?}", key);
+            panic!("Unexpected key in heterogeneous bag: {:?}", field.name);
         }
     }
 
@@ -394,7 +400,6 @@ fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
 /// previous_transaction → checkpoint` rather than just reading the
 /// object's current `previous_transaction`.
 #[tokio::test]
-#[ignore = "requires a Docker-backed Sui test container"]
 async fn test_object_crawler_get_object_creation_checkpoint() {
     use nexus_sdk::{nexus::signer::Signer, test_utils::sui_mocks};
 

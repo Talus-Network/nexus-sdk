@@ -205,7 +205,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a Docker-backed Sui test container"]
+    #[cfg(feature = "test_utils")]
     async fn test_generate_input_schema_from_published_package() {
         use crate::test_utils;
 
