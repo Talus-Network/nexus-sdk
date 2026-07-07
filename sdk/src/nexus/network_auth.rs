@@ -19,7 +19,9 @@
 
 #[cfg(feature = "signed_http")]
 use crate::signed_http::v1::wire::{
-    AllowedLeaderFileV1, AllowedLeaderKeyFileV1, AllowedLeadersFileV1,
+    AllowedLeaderFileV1,
+    AllowedLeaderKeyFileV1,
+    AllowedLeadersFileV1,
 };
 use {
     crate::{
@@ -29,7 +31,8 @@ use {
             crawler::{Crawler, Response},
             error::NexusError,
         },
-        sui, transactions,
+        sui,
+        transactions,
         types::Tool,
         ToolFqn,
     },
@@ -861,7 +864,8 @@ mod tests {
             super::*,
             crate::{
                 move_bindings::{
-                    registry::network_auth::KeyRecord, sui_framework::table::Table as MoveTable,
+                    registry::network_auth::KeyRecord,
+                    sui_framework::table::Table as MoveTable,
                 },
                 test_utils::sui_mocks,
             },

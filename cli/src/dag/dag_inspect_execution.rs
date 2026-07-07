@@ -1,7 +1,13 @@
 use {
     crate::{
-        command_title, display::json_output, item, nexus_data_json::nexus_data_to_json_value,
-        notify_error, notify_success, prelude::*, sui::*,
+        command_title,
+        display::json_output,
+        item,
+        nexus_data_json::nexus_data_to_json_value,
+        notify_error,
+        notify_success,
+        prelude::*,
+        sui::*,
     },
     nexus_sdk::{events::NexusEventKind, sui},
 };
@@ -241,7 +247,9 @@ mod tests {
         nexus_sdk::move_bindings::{
             interface::graph::{PostFailureAction, RuntimeVertex},
             move_std::{
-                ascii::String as MoveString, option::Option as MoveOption, type_name::TypeName,
+                ascii::String as MoveString,
+                option::Option as MoveOption,
+                type_name::TypeName,
             },
             workflow::execution_failure::WorkflowFailureClass,
         },

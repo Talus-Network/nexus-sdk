@@ -1,6 +1,8 @@
 use serde::{
     de::{DeserializeOwned, Deserializer},
-    Deserialize, Serialize, Serializer,
+    Deserialize,
+    Serialize,
+    Serializer,
 };
 
 /// A generic wrapper type that transparently serializes and deserializes the inner type `T`.

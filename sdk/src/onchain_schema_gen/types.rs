@@ -4,9 +4,7 @@ use {
     crate::{
         move_bindings::{
             interface::authorization::AgentVertexAuthorization,
-            primitives::{
-                authorization::ProvenValue, onchain_tool_result::OnchainToolResult,
-            },
+            primitives::{authorization::ProvenValue, onchain_tool_result::OnchainToolResult},
             struct_shape_matches,
         },
         sui,
@@ -203,9 +201,7 @@ fn is_proof_of_uid_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     struct_tag.module().as_str() == "proof_of_uid" && struct_tag.name().as_str() == "ProofOfUID"
 }
 
-pub fn is_agent_vertex_authorization_proof_param(
-    move_type: &sui::grpc::OpenSignatureBody,
-) -> bool {
+pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };

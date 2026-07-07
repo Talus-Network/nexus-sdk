@@ -2,8 +2,10 @@ use {
     super::*,
     crate::tap::tap_output::payment_refill_result_json,
     nexus_sdk::nexus::tap::{
-        fetch_execution_payment, AccomplishExecutionPaymentParams,
-        RefillExecutionPaymentFromAgentVaultParams, RefillExecutionPaymentParams,
+        fetch_execution_payment,
+        AccomplishExecutionPaymentParams,
+        RefillExecutionPaymentFromAgentVaultParams,
+        RefillExecutionPaymentParams,
     },
     std::time::Duration,
 };

@@ -1,6 +1,7 @@
 use crate::{
     move_bindings::{
-        interface::agent as agent_move, move_std::type_name::TypeName,
+        interface::agent as agent_move,
+        move_std::type_name::TypeName,
         primitives::policy::Symbol as PolicySymbol,
     },
     sui,

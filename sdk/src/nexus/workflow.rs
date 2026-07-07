@@ -8,9 +8,15 @@
 use crate::{
     move_bindings::interface::{agent::SkillDagBinding, graph::InputPort},
     types::{
-        payment_source_from_address, resolve_active_tap_skill_execution_target,
-        resolve_default_tap_dag_executor, validate_execution_payment_options, AgentId,
-        AgentRegistrySnapshot, DefaultDagExecutorRecord, SkillId, SkillRevisionLookupKey,
+        payment_source_from_address,
+        resolve_active_tap_skill_execution_target,
+        resolve_default_tap_dag_executor,
+        validate_execution_payment_options,
+        AgentId,
+        AgentRegistrySnapshot,
+        DefaultDagExecutorRecord,
+        SkillId,
+        SkillRevisionLookupKey,
         DEFAULT_ENTRY_GROUP,
     },
     walrus::StorageConf,
@@ -26,12 +32,14 @@ use {
                 verifier::{FailureEvidenceKind, VerifierConfig, VerifierMode},
             },
             move_std::type_name::TypeName,
-            primitives::data::NexusData,
-            sui_framework::{linked_table, vec_map::VecMap},
+            primitives::{data::NexusData, onchain_tool_result::OnchainToolResult},
+            sui_framework::{linked_table, object::ID, vec_map::VecMap},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
                 execution_events::{
-                    EndStateReachedEvent, ExecutionFinishedEvent, TerminalErrEvalRecordedEvent,
+                    EndStateReachedEvent,
+                    ExecutionFinishedEvent,
+                    TerminalErrEvalRecordedEvent,
                 },
                 execution_failure::WorkflowFailureClass,
             },
@@ -40,7 +48,7 @@ use {
         nexus::{client::NexusClient, crawler::Crawler, error::NexusError, tap},
         sui,
         transactions::{dag, gas},
-        types::DagSpec,
+        types::{DagSpec, NexusObjects, Tool, ToolRef},
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
@@ -51,6 +59,11 @@ use {
         time::Duration,
     },
 };
+
+const COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX: &str = "::execution::CommittedToolResult";
+const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
+    "::execution::ExecutionPaymentInsufficientSettlement";
+const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
 
 #[derive(Clone, Debug)]
 pub struct PublishResult {
@@ -77,14 +90,14 @@ pub struct TapExecutionSubmitMetadata {
     pub payment_max_budget: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ToolGasAbortCandidate {
     pub tool_fqn: crate::ToolFqn,
     pub tool_gas_ref: sui::types::ObjectReference,
     pub matching_walks: Vec<ToolGasAbortCandidateWalk>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct ToolGasAbortCandidateWalk {
     pub walk_index: usize,
     pub vertex: RuntimeVertex,
@@ -106,12 +119,83 @@ pub struct AbortExecutionResult {
     pub tx_checkpoint: u64,
     pub dag_id: sui::types::Address,
     pub dag_execution_id: sui::types::Address,
+    pub cleaned_broken_onchain_results: Vec<BrokenOnchainToolResultCleanup>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SettleCommittedToolResultParams {
     pub dag_execution_id: sui::types::Address,
     pub walk_index: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolveExpiredWalkParams {
+    pub dag_execution_id: sui::types::Address,
+    pub walk_index: u64,
+    pub tool_gas_id: Option<sui::types::Address>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExpiredWalkResolutionKind {
+    Settled,
+    SettledOnchainResult {
+        result_ref: sui::types::ObjectReference,
+        expected_vertex: RuntimeVertex,
+        tool_witness_id: sui::types::Address,
+        finalize_tx_digest: Vec<u8>,
+    },
+    Aborted,
+    AbortedWithToolGas {
+        selected_candidate: ToolGasAbortCandidate,
+    },
+    Skipped {
+        reason: String,
+    },
+}
+
+impl ExpiredWalkResolutionKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Settled => "settled",
+            Self::SettledOnchainResult { .. } => "settled_onchain_result",
+            Self::Aborted => "aborted",
+            Self::AbortedWithToolGas { .. } => "aborted_with_tool_gas",
+            Self::Skipped { .. } => "skipped",
+        }
+    }
+
+    pub fn selected_candidate(&self) -> Option<&ToolGasAbortCandidate> {
+        match self {
+            Self::AbortedWithToolGas { selected_candidate } => Some(selected_candidate),
+            _ => None,
+        }
+    }
+
+    pub fn skip_reason(&self) -> Option<&str> {
+        match self {
+            Self::Skipped { reason } => Some(reason),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpiredWalkResolutionPlan {
+    pub dag_id: sui::types::Address,
+    pub dag_execution_id: sui::types::Address,
+    pub walk_index: u64,
+    pub kind: ExpiredWalkResolutionKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExpiredWalkResolutionResult {
+    pub tx_digest: Option<sui::types::Digest>,
+    pub tx_checkpoint: Option<u64>,
+    pub dag_id: sui::types::Address,
+    pub dag_execution_id: sui::types::Address,
+    pub walk_index: u64,
+    pub resolution_kind: ExpiredWalkResolutionKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -144,6 +228,14 @@ pub struct CommittedToolResultSettlementResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BrokenOnchainToolResultCleanup {
+    pub walk_index: u64,
+    pub result_ref: sui::types::ObjectReference,
+    pub expected_vertex: RuntimeVertex,
+    pub tool_witness_id: sui::types::Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordCommittedToolResultGasChargeResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
@@ -162,6 +254,7 @@ pub struct CommittedToolResultView {
     pub primary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub secondary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub current_leader_cap_id: sui::types::Address,
+    pub has_finalized_onchain_payload: bool,
     pub leader_records: Vec<CommittedToolResultLeaderRecordView>,
 }
 
@@ -185,6 +278,66 @@ pub struct CommittedToolResultLeaderRecordView {
     pub settlement_gas_charge: Option<u64>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct InsufficientSettlementMarkerView {
+    pub walks: Vec<u64>,
+}
+
+pub enum OnchainToolResultState {
+    NoResult,
+    Finalized {
+        result: OnchainToolResult,
+        object_ref: sui::types::ObjectReference,
+    },
+    Committed {
+        committed_result: CommittedToolResultView,
+    },
+    InsufficientSettlement {
+        committed_result: Option<CommittedToolResultView>,
+        marker: InsufficientSettlementMarkerView,
+    },
+    InvalidEmpty {
+        result_id: sui::types::Address,
+        object_ref: sui::types::ObjectReference,
+    },
+}
+
+impl OnchainToolResultState {
+    /// Return the fetched generated result and object metadata that let a
+    /// retrying leader skip execution and build the consume+settle transaction.
+    pub fn consume_ready_result(
+        &self,
+    ) -> Option<(&OnchainToolResult, &sui::types::ObjectReference)> {
+        match self {
+            Self::Finalized { result, object_ref } => Some((result, object_ref)),
+            Self::NoResult
+            | Self::Committed { .. }
+            | Self::InsufficientSettlement { .. }
+            | Self::InvalidEmpty { .. } => None,
+        }
+    }
+
+    /// Build the mutable shared-object input expected by
+    /// `consume_on_chain_tool_result_for_walk`.
+    pub fn consume_object_input(&self) -> Option<sui_move_call::CallArg> {
+        self.consume_ready_result().map(|(_, object_ref)| {
+            sui_move_call::CallArg::Shared(sui::types::SharedInput::new(
+                *object_ref.object_id(),
+                object_ref.version(),
+                true,
+            ))
+        })
+    }
+}
+
+fn onchain_tool_result_is_finalized(result: &OnchainToolResult) -> bool {
+    result.finalized
+        && result.tag.as_option().is_some()
+        && result.named_payload.as_option().is_some()
+        && result.finalize_tx_digest.as_option().is_some()
+        && result.finalize_recipient.as_option().is_some()
+}
+
 impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
     fn from(value: execution_move::CommittedToolResult) -> Self {
         Self {
@@ -192,6 +345,7 @@ impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
             primary_failure_evidence_kind: value.primary_failure_evidence_kind.into_option(),
             secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.into_option(),
             current_leader_cap_id: value.current_leader_cap_id.bytes,
+            has_finalized_onchain_payload: value.has_finalized_onchain_payload,
             leader_records: value
                 .leader_records
                 .contents
@@ -421,15 +575,401 @@ pub async fn fetch_committed_tool_result_for_walk(
     walk_index: u64,
 ) -> anyhow::Result<Option<CommittedToolResultView>> {
     crawler
-        .get_optional_dynamic_field::<
+        .get_optional_dynamic_field_matching_value_type::<
             execution_move::CommittedToolResultKey,
             execution_move::CommittedToolResult,
         >(
             execution_id,
             execution_move::CommittedToolResultKey { walk_index },
+            Some(COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX),
         )
         .await
         .map(|value| value.map(CommittedToolResultView::from))
+}
+
+pub async fn inspect_expired_walk_resolution(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    params: ResolveExpiredWalkParams,
+) -> anyhow::Result<ExpiredWalkResolutionPlan> {
+    let clock = crawler
+        .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
+        .await?
+        .data;
+    inspect_expired_walk_resolution_at(crawler, objects, params, clock.timestamp_ms).await
+}
+
+pub async fn inspect_expired_walk_resolution_at(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    params: ResolveExpiredWalkParams,
+    clock_ms: u64,
+) -> anyhow::Result<ExpiredWalkResolutionPlan> {
+    let execution = crawler
+        .get_object::<DAGExecution>(params.dag_execution_id)
+        .await?
+        .data;
+    let Some(walk) = usize::try_from(params.walk_index)
+        .ok()
+        .and_then(|index| execution.walks.get(index))
+    else {
+        return Ok(ExpiredWalkResolutionPlan {
+            dag_id: execution.dag_id(),
+            dag_execution_id: params.dag_execution_id,
+            walk_index: params.walk_index,
+            kind: ExpiredWalkResolutionKind::Skipped {
+                reason: "walk index no longer exists in execution".to_string(),
+            },
+        });
+    };
+
+    let Some(timeout_vertex) = walk.timeout_expired_vertex(clock_ms) else {
+        return Ok(ExpiredWalkResolutionPlan {
+            dag_id: execution.dag_id(),
+            dag_execution_id: params.dag_execution_id,
+            walk_index: params.walk_index,
+            kind: ExpiredWalkResolutionKind::Skipped {
+                reason: "walk is not double-timeout expired or is already terminal".to_string(),
+            },
+        });
+    };
+
+    match fetch_onchain_tool_result_state_for_walk(
+        crawler,
+        params.dag_execution_id,
+        params.walk_index,
+    )
+    .await?
+    {
+        OnchainToolResultState::Committed { .. } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id(),
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Settled,
+            });
+        }
+        OnchainToolResultState::Finalized { result, object_ref } => {
+            let dag = crawler
+                .get_object::<dag_move::DAG>(execution.dag_id())
+                .await?;
+            let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
+            let kind = finalized_onchain_result_resolution_kind(
+                crawler,
+                objects,
+                &vertices,
+                timeout_vertex.clone(),
+                &result,
+                object_ref,
+            )
+            .await?;
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id(),
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind,
+            });
+        }
+        OnchainToolResultState::InsufficientSettlement { .. } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id(),
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Skipped {
+                    reason: "walk has committed result with insufficient settlement".to_string(),
+                },
+            });
+        }
+        OnchainToolResultState::InvalidEmpty {
+            result_id,
+            object_ref,
+        } => {
+            return Ok(ExpiredWalkResolutionPlan {
+                dag_id: execution.dag_id(),
+                dag_execution_id: params.dag_execution_id,
+                walk_index: params.walk_index,
+                kind: ExpiredWalkResolutionKind::Skipped {
+                    reason: format!(
+                        "stored on-chain tool result {result_id}@{} is not finalized",
+                        object_ref.version()
+                    ),
+                },
+            });
+        }
+        OnchainToolResultState::NoResult => {}
+    }
+
+    let Some(abort_vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
+        return Ok(ExpiredWalkResolutionPlan {
+            dag_id: execution.dag_id(),
+            dag_execution_id: params.dag_execution_id,
+            walk_index: params.walk_index,
+            kind: ExpiredWalkResolutionKind::Skipped {
+                reason: format!(
+                    "timeout-expired walk at vertex '{}' is not abortable without a committed result",
+                    timeout_vertex.vertex_name()
+                ),
+            },
+        });
+    };
+
+    let payment = tap::fetch_execution_payment_for_execution(crawler, params.dag_execution_id)
+        .await?
+        .data;
+    let dag = crawler
+        .get_object::<dag_move::DAG>(execution.dag_id())
+        .await?;
+    let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
+    let vertex_info = vertices.get(abort_vertex.vertex()).ok_or_else(|| {
+        anyhow!(
+            "DAG vertex '{}' missing from fetched DAG",
+            abort_vertex.vertex_name()
+        )
+    })?;
+    let tool_fqn = vertex_info.kind.tool_fqn()?;
+    let vertex_key = payment_vertex_key(params.dag_execution_id, abort_vertex, &tool_fqn)?;
+    let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
+    let locked = payment
+        .locked_vertices
+        .iter()
+        .any(|lock| lock.vertex_key == vertex_key && lock.tool_fqn == tool_fqn_bytes);
+
+    if !locked {
+        return Ok(ExpiredWalkResolutionPlan {
+            dag_id: execution.dag_id(),
+            dag_execution_id: params.dag_execution_id,
+            walk_index: params.walk_index,
+            kind: ExpiredWalkResolutionKind::Aborted,
+        });
+    }
+
+    let candidate_walk = ToolGasAbortCandidateWalk {
+        walk_index: usize::try_from(params.walk_index)?,
+        vertex: abort_vertex.clone(),
+        payment_vertex_key: vertex_key,
+    };
+    let candidates = fetch_tool_gas_refs_for_abort_candidates(
+        crawler,
+        *objects.gas_service.object_id(),
+        HashMap::from([(tool_fqn, vec![candidate_walk])]),
+    )
+    .await?;
+    let selected_candidate = select_tool_gas_abort_candidate(candidates, params.tool_gas_id)?;
+
+    Ok(ExpiredWalkResolutionPlan {
+        dag_id: execution.dag_id(),
+        dag_execution_id: params.dag_execution_id,
+        walk_index: params.walk_index,
+        kind: ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate },
+    })
+}
+
+async fn finalized_onchain_result_resolution_kind(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
+    timeout_vertex: RuntimeVertex,
+    result: &OnchainToolResult,
+    object_ref: sui::types::ObjectReference,
+) -> anyhow::Result<ExpiredWalkResolutionKind> {
+    let vertex_info = vertices.get(timeout_vertex.vertex()).ok_or_else(|| {
+        anyhow!(
+            "DAG vertex '{}' missing from fetched DAG",
+            timeout_vertex.vertex_name()
+        )
+    })?;
+    let tool_fqn = vertex_info.kind.tool_fqn()?;
+    let tool_id =
+        crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)?;
+    let tool = crawler.get_object::<Tool>(tool_id).await?.data;
+    let ToolRef::Sui {
+        tool_witness_id, ..
+    } = tool.reference()
+    else {
+        return Ok(ExpiredWalkResolutionKind::Skipped {
+            reason: format!(
+                "finalized on-chain result exists for non-Sui tool vertex '{}'",
+                timeout_vertex.vertex_name()
+            ),
+        });
+    };
+    let finalize_tx_digest = result
+        .finalize_tx_digest
+        .as_option()
+        .cloned()
+        .ok_or_else(|| anyhow!("finalized on-chain result is missing finalize_tx_digest"))?;
+
+    Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
+        result_ref: object_ref,
+        expected_vertex: timeout_vertex,
+        tool_witness_id: tool_witness_id.bytes,
+        finalize_tx_digest,
+    })
+}
+
+async fn broken_onchain_result_cleanups_for_abort(
+    crawler: &Crawler,
+    objects: &NexusObjects,
+    execution_id: sui::types::Address,
+    execution: &DAGExecution,
+    clock_ms: u64,
+) -> anyhow::Result<Vec<BrokenOnchainToolResultCleanup>> {
+    let mut vertices = None;
+    let mut cleanups = Vec::new();
+
+    for (walk_index, walk) in execution.walks.iter().enumerate() {
+        let Some(timeout_vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
+            continue;
+        };
+        let walk_index = u64::try_from(walk_index)?;
+        match fetch_onchain_tool_result_state_for_walk(crawler, execution_id, walk_index).await? {
+            OnchainToolResultState::Finalized { result, object_ref } => {
+                if vertices.is_none() {
+                    let dag = crawler
+                        .get_object::<dag_move::DAG>(execution.dag_id())
+                        .await?;
+                    vertices = Some(fetch_dag_vertices_bcs(crawler, &dag.data).await?);
+                }
+                let vertices = vertices.as_ref().expect("vertices were just fetched");
+                let kind = finalized_onchain_result_resolution_kind(
+                    crawler,
+                    objects,
+                    vertices,
+                    timeout_vertex.clone(),
+                    &result,
+                    object_ref.clone(),
+                )
+                .await?;
+                let ExpiredWalkResolutionKind::SettledOnchainResult {
+                    expected_vertex,
+                    tool_witness_id,
+                    ..
+                } = kind
+                else {
+                    return Err(anyhow!(
+                        "expired abort is blocked by finalized on-chain result for walk {walk_index} that cannot be cleaned by the Sui-tool cleanup path"
+                    ));
+                };
+                if onchain_tool_result_has_required_stamps(
+                    &result,
+                    execution_id,
+                    *objects.leader_registry.object_id(),
+                    tool_witness_id,
+                ) {
+                    return Err(anyhow!(
+                        "expired abort is blocked by consumable on-chain result for walk {walk_index}; settle the on-chain result before aborting"
+                    ));
+                }
+                cleanups.push(BrokenOnchainToolResultCleanup {
+                    walk_index,
+                    result_ref: object_ref,
+                    expected_vertex,
+                    tool_witness_id,
+                });
+            }
+            OnchainToolResultState::InvalidEmpty { result_id, .. } => {
+                return Err(anyhow!(
+                    "expired abort is blocked by unfinalized on-chain result {result_id} for walk {walk_index}"
+                ));
+            }
+            OnchainToolResultState::NoResult
+            | OnchainToolResultState::Committed { .. }
+            | OnchainToolResultState::InsufficientSettlement { .. } => {}
+        }
+    }
+
+    Ok(cleanups)
+}
+
+fn onchain_tool_result_has_required_stamps(
+    result: &OnchainToolResult,
+    execution_id: sui::types::Address,
+    leader_registry_id: sui::types::Address,
+    tool_witness_id: sui::types::Address,
+) -> bool {
+    let Some(stamps) = result.stamps.as_option() else {
+        return false;
+    };
+    let execution_id = ID::new(execution_id);
+    let leader_registry_id = ID::new(leader_registry_id);
+    let tool_witness_id = ID::new(tool_witness_id);
+
+    stamps
+        .contents
+        .iter()
+        .any(|entry| entry.key == execution_id)
+        && stamps
+            .contents
+            .iter()
+            .any(|entry| entry.key == leader_registry_id)
+        && stamps
+            .contents
+            .iter()
+            .any(|entry| entry.key == tool_witness_id)
+}
+
+pub async fn fetch_onchain_tool_result_state_for_walk(
+    crawler: &Crawler,
+    execution_id: sui::types::Address,
+    walk_index: u64,
+) -> anyhow::Result<OnchainToolResultState> {
+    let committed_result =
+        fetch_committed_tool_result_for_walk(crawler, execution_id, walk_index).await?;
+    let insufficient_settlement = crawler
+        .get_optional_dynamic_field_matching_value_type::<
+            execution_move::ExecutionPaymentInsufficientSettlementFieldKey,
+            execution_move::ExecutionPaymentInsufficientSettlement,
+        >(
+            execution_id,
+            insufficient_settlement_field_key(),
+            Some(EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX),
+        )
+        .await?;
+
+    if let Some(marker) = insufficient_settlement {
+        if marker.walks.contains(&walk_index) {
+            return Ok(OnchainToolResultState::InsufficientSettlement {
+                committed_result,
+                marker: InsufficientSettlementMarkerView {
+                    walks: marker.walks,
+                },
+            });
+        }
+    }
+
+    if let Some(committed_result) = committed_result {
+        return Ok(OnchainToolResultState::Committed { committed_result });
+    }
+
+    let result_id = crawler
+        .get_optional_dynamic_field_matching_value_type::<execution_move::OnchainToolResultKey, ID>(
+            execution_id,
+            execution_move::OnchainToolResultKey { walk_index },
+            Some(ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX),
+        )
+        .await?;
+    let Some(result_id) = result_id else {
+        return Ok(OnchainToolResultState::NoResult);
+    };
+
+    let result_id = result_id.bytes;
+    let result_response = crawler.get_object::<OnchainToolResult>(result_id).await?;
+    let object_ref = result_response.object_ref();
+    let result = result_response.data;
+
+    if onchain_tool_result_is_finalized(&result) {
+        Ok(OnchainToolResultState::Finalized { result, object_ref })
+    } else {
+        Ok(OnchainToolResultState::InvalidEmpty {
+            result_id,
+            object_ref,
+        })
+    }
+}
+
+fn insufficient_settlement_field_key(
+) -> execution_move::ExecutionPaymentInsufficientSettlementFieldKey {
+    execution_move::ExecutionPaymentInsufficientSettlementFieldKey { dummy_field: false }
 }
 
 pub async fn fetch_dag_default_values_bcs<T>(
@@ -1075,6 +1615,10 @@ impl WorkflowActions {
     ///
     /// This wraps `execution_settlement::abort_expired_execution`; it does not
     /// discover or submit ToolGas candidates.
+    ///
+    /// If a double-expired active walk is blocked by a finalized on-chain
+    /// result whose required stamps are insufficient, this prepends the
+    /// self-validating broken-result cleanup call before aborting.
     pub async fn abort_expired_execution(
         &self,
         dag_execution_id: sui::types::Address,
@@ -1085,6 +1629,20 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
+        let clock = crawler
+            .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let cleaned_broken_onchain_results = broken_onchain_result_cleanups_for_abort(
+            crawler,
+            &self.client.nexus_objects,
+            dag_execution_id,
+            &execution,
+            clock.timestamp_ms,
+        )
+        .await
+        .map_err(NexusError::TransactionBuilding)?;
         let dag_ref = crawler
             .get_object_metadata(execution.dag_id())
             .await
@@ -1101,6 +1659,14 @@ impl WorkflowActions {
             &self.client.nexus_objects,
             &dag_ref,
             &execution_ref,
+            &cleaned_broken_onchain_results
+                .iter()
+                .map(|cleanup| dag::BrokenOnchainToolResultCleanupInput {
+                    walk_index: cleanup.walk_index,
+                    result_ref: cleanup.result_ref.clone(),
+                    tool_witness_id: cleanup.tool_witness_id,
+                })
+                .collect::<Vec<_>>(),
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
@@ -1110,6 +1676,7 @@ impl WorkflowActions {
             tx_checkpoint: response.checkpoint,
             dag_id: execution.dag_id(),
             dag_execution_id,
+            cleaned_broken_onchain_results,
         })
     }
 
@@ -1243,6 +1810,122 @@ impl WorkflowActions {
             leader_cap_id: params.leader_cap_id,
             walk_index: params.walk_index,
         })
+    }
+
+    /// Classify what the SDK would submit for one expired walk without sending it.
+    pub async fn inspect_expired_walk_resolution(
+        &self,
+        params: ResolveExpiredWalkParams,
+    ) -> Result<ExpiredWalkResolutionPlan, NexusError> {
+        inspect_expired_walk_resolution(self.client.crawler(), &self.client.nexus_objects, params)
+            .await
+            .map_err(NexusError::Rpc)
+    }
+
+    /// Classify and submit the existing Move entry that matches one expired walk.
+    pub async fn resolve_expired_walk(
+        &self,
+        params: ResolveExpiredWalkParams,
+    ) -> Result<ExpiredWalkResolutionResult, NexusError> {
+        let plan = self.inspect_expired_walk_resolution(params).await?;
+        let base = |resolution_kind| ExpiredWalkResolutionResult {
+            tx_digest: None,
+            tx_checkpoint: None,
+            dag_id: plan.dag_id,
+            dag_execution_id: plan.dag_execution_id,
+            walk_index: plan.walk_index,
+            resolution_kind,
+        };
+
+        match plan.kind {
+            ExpiredWalkResolutionKind::Settled => {
+                let settled = self
+                    .settle_committed_tool_result_for_walk(SettleCommittedToolResultParams {
+                        dag_execution_id: plan.dag_execution_id,
+                        walk_index: plan.walk_index,
+                    })
+                    .await?;
+                Ok(ExpiredWalkResolutionResult {
+                    tx_digest: Some(settled.tx_digest),
+                    tx_checkpoint: Some(settled.tx_checkpoint),
+                    ..base(ExpiredWalkResolutionKind::Settled)
+                })
+            }
+            ExpiredWalkResolutionKind::SettledOnchainResult {
+                result_ref,
+                expected_vertex,
+                tool_witness_id,
+                finalize_tx_digest,
+            } => {
+                let crawler = self.client.crawler();
+                let dag_ref = crawler
+                    .get_object_metadata(plan.dag_id)
+                    .await
+                    .map_err(NexusError::Rpc)?
+                    .object_ref();
+                let execution_ref = crawler
+                    .get_object_metadata(plan.dag_execution_id)
+                    .await
+                    .map_err(NexusError::Rpc)?
+                    .object_ref();
+                let address = self.client.signer.get_active_address();
+                let objects = &self.client.nexus_objects;
+                let tx = move_boundary::ptb(objects, |tx| {
+                    let dag = tx.shared_object(&dag_ref, false)?;
+                    let execution = tx.shared_object(&execution_ref, true)?;
+                    let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+                    let result = tx.shared_object(&result_ref, true)?;
+                    let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+                    let clock = tx.clock()?;
+                    dag::settle_onchain_tool_result_for_walk(
+                        tx,
+                        dag,
+                        execution,
+                        tool_registry,
+                        result,
+                        leader_registry,
+                        plan.walk_index,
+                        &expected_vertex,
+                        tool_witness_id,
+                        clock,
+                    )
+                })
+                .map_err(NexusError::TransactionBuilding)?;
+                let response = self.client.submit_transaction(tx, address).await?;
+                Ok(ExpiredWalkResolutionResult {
+                    tx_digest: Some(response.digest),
+                    tx_checkpoint: Some(response.checkpoint),
+                    ..base(ExpiredWalkResolutionKind::SettledOnchainResult {
+                        result_ref,
+                        expected_vertex,
+                        tool_witness_id,
+                        finalize_tx_digest,
+                    })
+                })
+            }
+            ExpiredWalkResolutionKind::Aborted => {
+                let aborted = self.abort_expired_execution(plan.dag_execution_id).await?;
+                Ok(ExpiredWalkResolutionResult {
+                    tx_digest: Some(aborted.tx_digest),
+                    tx_checkpoint: Some(aborted.tx_checkpoint),
+                    ..base(ExpiredWalkResolutionKind::Aborted)
+                })
+            }
+            ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate } => {
+                let tool_gas_id = *selected_candidate.tool_gas_ref.object_id();
+                let aborted = self
+                    .abort_expired_execution_with_tool_gas(plan.dag_execution_id, Some(tool_gas_id))
+                    .await?;
+                Ok(ExpiredWalkResolutionResult {
+                    tx_digest: Some(aborted.tx_digest),
+                    tx_checkpoint: Some(aborted.tx_checkpoint),
+                    ..base(ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate })
+                })
+            }
+            ExpiredWalkResolutionKind::Skipped { reason } => {
+                Ok(base(ExpiredWalkResolutionKind::Skipped { reason }))
+            }
+        }
     }
 
     /// Return ToolGas refs that can be passed to
@@ -1402,7 +2085,7 @@ fn filter_tool_gas_abort_candidate_walks(
 ) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>> {
     let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>::new();
     for (walk_index, walk) in walks.iter().enumerate() {
-        let Some(vertex) = walk.expired_active_vertex(clock_ms) else {
+        let Some(vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
             continue;
         };
         let vertex_info = vertices.get(vertex.vertex()).ok_or_else(|| {
@@ -1468,25 +2151,33 @@ mod tests {
                     dag as dag_move,
                     graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
-                        ExecutionPaymentFinalState, SkillPaymentPolicy,
+                        ExecutionPaymentFinalState,
+                        SkillPaymentPolicy,
                         VertexExecutionPaymentSettlementKind,
                     },
                     verifier::{VerifierConfig, VerifierMode},
                     version::InterfaceVersion,
                 },
                 move_std::{
-                    ascii::String as MoveString, option::Option as MoveOption, type_name::TypeName,
+                    ascii::String as MoveString,
+                    option::Option as MoveOption,
+                    type_name::TypeName,
                 },
                 primitives::data::NexusData,
                 registry::agent_registry::{
-                    AgentRecord, AgentRegistry, DefaultDagExecutor, DefaultDagExecutorFieldKey,
+                    AgentRecord,
+                    AgentRegistry,
+                    DefaultDagExecutor,
+                    DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet},
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
-                        EndStateReachedEvent, ExecutionFinishedEvent, TerminalErrEvalRecordedEvent,
+                        EndStateReachedEvent,
+                        ExecutionFinishedEvent,
+                        TerminalErrEvalRecordedEvent,
                         WalkAdvancedEvent,
                     },
                     execution_failure::WorkflowFailureClass,
@@ -1534,6 +2225,7 @@ mod tests {
             primary_failure_evidence_kind: MoveOption::from_option(primary_failure),
             secondary_failure_evidence_kind: MoveOption::from_option(secondary_failure),
             current_leader_cap_id: object_id(primary_leader),
+            has_finalized_onchain_payload: false,
             leader_records: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
                     key: object_id(primary_leader),

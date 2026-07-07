@@ -95,6 +95,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Rebased the Move-binding migration on the current split workflow/on-chain result surface, keeping generated binding types and PTB builders as the SDK boundary for local and on-chain tool result flows.
 - On-chain tool result inspection now filters same-shape dynamic-field keys by value type before BCS decoding, avoiding false settlement-marker reads from unrelated execution fields.
 - Verification verdict event parsing now accepts string-valued Move-JSON option payloads for checked leader/tool key ids, matching transaction event JSON emitted by current workflow contracts.
 - `TerminalErrEvalRecordedEvent.outcome` is now optional so SDK, CLI, and parser callers can represent primary retry `_err_eval` records before a post-failure action is resolved.

@@ -4,7 +4,8 @@ use {
     anyhow::{anyhow, bail, Context, Result},
     std::{
         collections::BTreeMap,
-        env, fs,
+        env,
+        fs,
         path::{Path, PathBuf},
         str::FromStr,
     },
@@ -126,7 +127,13 @@ mod tests {
     use {
         super::*,
         sui_move_codegen::ir::{
-            Datatype, DatatypeKind, Function, FunctionParam, NormalizedModule, TypeName, TypeRef,
+            Datatype,
+            DatatypeKind,
+            Function,
+            FunctionParam,
+            NormalizedModule,
+            TypeName,
+            TypeRef,
             Visibility,
         },
     };

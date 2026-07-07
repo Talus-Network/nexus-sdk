@@ -8,7 +8,8 @@ pub use tool_registry::{Tool, ToolRef};
 use {
     crate::{
         move_bindings::{move_std::ascii, registry::tool_registry},
-        sui, ToolFqn,
+        sui,
+        ToolFqn,
     },
     anyhow::{anyhow, bail, Context as _},
     chrono::{DateTime, Utc},
@@ -44,6 +45,32 @@ impl Tool {
 
     pub fn reference(&self) -> &ToolRef {
         &self.r#ref
+    }
+
+    pub fn input_schema_json(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::from_slice(&self.input_schema).context("Tool input schema is not valid JSON")
+    }
+
+    pub fn output_schema_json(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::from_slice(&self.output_schema).context("Tool output schema is not valid JSON")
+    }
+
+    /// Validate the provided JSON input against the tool's input schema.
+    pub fn validate_input(&self, data: &serde_json::Value) -> anyhow::Result<()> {
+        let schema = self.input_schema_json()?;
+        match jsonschema::draft202012::validate(&schema, data) {
+            Ok(()) => Ok(()),
+            Err(error) => anyhow::bail!("Input data does not match the input schema: {error}"),
+        }
+    }
+
+    /// Validate the provided JSON output against the tool's output schema.
+    pub fn validate_output(&self, data: &serde_json::Value) -> anyhow::Result<()> {
+        let schema = self.output_schema_json()?;
+        match jsonschema::draft202012::validate(&schema, data) {
+            Ok(()) => Ok(()),
+            Err(error) => anyhow::bail!("Output data does not match the output schema: {error}"),
+        }
     }
 
     pub fn description_string(&self) -> anyhow::Result<String> {

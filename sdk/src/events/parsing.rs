@@ -6,7 +6,8 @@ use {
     crate::{
         events::{parse_bcs, NexusEvent},
         move_bindings::primitives::{
-            data::NexusData as MoveNexusData, distributed_event as distributed_event_move,
+            data::NexusData as MoveNexusData,
+            distributed_event as distributed_event_move,
             event as event_move,
         },
         sui,
@@ -189,10 +190,13 @@ mod direct_event_tests {
                     dag::*,
                     graph::{PostFailureAction, RuntimeVertex},
                     payment::{self as payment_types, *},
-                    scheduled_request, version,
+                    scheduled_request,
+                    version,
                 },
                 move_std::{
-                    ascii::String as MoveString, option::Option as MoveOption, type_name::TypeName,
+                    ascii::String as MoveString,
+                    option::Option as MoveOption,
+                    type_name::TypeName,
                 },
                 primitives::policy::Symbol as PolicySymbol,
                 registry::{agent_registry::*, leader::*, leader_cap::*, tool_registry::*},

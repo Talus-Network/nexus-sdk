@@ -2,15 +2,19 @@
 //! generated during Nexus package deployment.
 #[cfg(test)]
 use crate::move_bindings::{
-    primitives::event as event_move, registry::agent_registry as agent_registry_move,
+    primitives::event as event_move,
+    registry::agent_registry as agent_registry_move,
     workflow::execution as execution_move,
 };
 use {
     crate::{
         move_bindings::{
             interface::{
-                agent as agent_move, authorization as authorization_move, dag as dag_move,
-                payment as payment_move, version as version_move,
+                agent as agent_move,
+                authorization as authorization_move,
+                dag as dag_move,
+                payment as payment_move,
+                version as version_move,
             },
             move_std::type_name::TypeName,
             primitives::policy::Symbol as PolicySymbol,

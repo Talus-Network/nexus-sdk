@@ -74,11 +74,13 @@ types = [
     "zeroize",
     "bcs",
     "hex",
+    "jsonschema",
+    "serde_json",
     "sha2",
 ]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing"]
+events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -159,6 +161,10 @@ optional = true
 
 [dependencies.hex]
 version = "0.4"
+optional = true
+
+[dependencies.jsonschema]
+workspace = true
 optional = true
 
 [dependencies.lazy_static]

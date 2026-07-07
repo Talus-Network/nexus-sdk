@@ -2,9 +2,11 @@ use {
     crate::{
         move_bindings::{
             registry::tool_registry as tool_registry_binding,
-            sui_framework::transfer as transfer_binding, workflow::gas as gas_binding,
+            sui_framework::transfer as transfer_binding,
+            workflow::gas as gas_binding,
         },
-        move_boundary, sui,
+        move_boundary,
+        sui,
         types::{NexusObjects, ToolMeta},
         ToolFqn,
     },

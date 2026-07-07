@@ -24,6 +24,8 @@ use sui_move_ptb::{BuildError, PtbBuilder};
 use sui_sdk_types::Argument;
 
 #[cfg(feature = "transactions")]
+pub const RANDOM_OBJECT_ID: sui::types::Address = sui::types::Address::from_static("0x8");
+#[cfg(feature = "transactions")]
 const MAX_PURE_INPUT_BYTES: usize = 16_384;
 #[cfg(feature = "transactions")]
 const MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS: usize = 64;

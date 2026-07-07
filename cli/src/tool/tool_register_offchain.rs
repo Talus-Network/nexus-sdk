@@ -2,17 +2,23 @@ use {
     crate::{
         command_title,
         display::json_output,
-        loading, notify_error, notify_success,
+        loading,
+        notify_error,
+        notify_success,
         prelude::*,
         sui::*,
         tool::tool_validate::{
-            output_schema_has_top_level_one_of, parse_tool_meta_json, validate_off_chain_tool,
+            output_schema_has_top_level_one_of,
+            parse_tool_meta_json,
+            validate_off_chain_tool,
         },
     },
     nexus_sdk::{
         move_bindings::{
-            primitives::owner_cap::CloneableOwnerCap, registry::tool_registry::OverTool,
-            struct_tag_matches, workflow::gas::OverGas,
+            primitives::owner_cap::CloneableOwnerCap,
+            registry::tool_registry::OverTool,
+            struct_tag_matches,
+            workflow::gas::OverGas,
         },
         nexus::{client::NexusClient, error::NexusError},
         transactions::tool,
