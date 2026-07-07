@@ -3,7 +3,8 @@ use {
     crate::{
         command_title,
         display::json_output,
-        loading, notify_success,
+        loading,
+        notify_success,
         prelude::*,
         sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
     },

@@ -180,7 +180,8 @@ mod tests {
         super::*,
         crate::{
             move_bindings::{
-                move_std::ascii::String as MoveString, sui_framework::vec_map::Entry as VecMapEntry,
+                move_std::ascii::String as MoveString,
+                sui_framework::vec_map::Entry as VecMapEntry,
             },
             walrus::{BlobObject, BlobStorage, NewlyCreated},
         },

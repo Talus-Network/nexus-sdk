@@ -1,13 +1,22 @@
 use {
     crate::{
-        command_title, display::json_output, loading, notify_success, prelude::*,
-        scheduler::helpers, sui::get_nexus_client, workflow,
+        command_title,
+        display::json_output,
+        loading,
+        notify_success,
+        prelude::*,
+        scheduler::helpers,
+        sui::get_nexus_client,
+        workflow,
     },
     nexus_sdk::{
         events::NexusEventKind,
         move_bindings::primitives::policy::Symbol,
         nexus::scheduler::{
-            CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest,
+            CreateTaskParams,
+            CreateTaskTapPayment,
+            GeneratorKind,
+            OccurrenceRequest,
         },
         walrus::StorageConf,
     },

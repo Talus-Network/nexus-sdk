@@ -264,7 +264,8 @@ impl GasActions {
 #[cfg(test)]
 mod tests {
     use crate::{
-        fqn, sui,
+        fqn,
+        sui,
         test_utils::{nexus_mocks, sui_mocks},
     };
 

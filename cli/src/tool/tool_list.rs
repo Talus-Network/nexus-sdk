@@ -2,7 +2,8 @@ use {
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
     nexus_sdk::{
         move_bindings::{
-            move_std::ascii::String as MoveAsciiString, registry::tool_registry::ToolRegistry,
+            move_std::ascii::String as MoveAsciiString,
+            registry::tool_registry::ToolRegistry,
             sui_framework::linked_table::Node as LinkedTableNode,
         },
         types::Tool,

@@ -6,7 +6,6 @@ use {
                 graph::{self as graph_move, RuntimeVertex},
             },
             primitives::data::NexusData,
-            workflow::execution as execution_move,
         },
         nexus::crawler::Crawler,
         sui::types::Address,
@@ -74,7 +73,7 @@ pub async fn derive_onchain_request_body_sha256(
     declared_input_ports: &HashSet<String>,
 ) -> anyhow::Result<[u8; 32]> {
     let evaluations_response = crawler
-        .get_object::<execution_move::VertexEvaluations>(evaluations_object_id)
+        .get_object::<graph_move::VertexEvaluations>(evaluations_object_id)
         .await?;
     let default_values = crawler
         .get_dynamic_fields::<graph_move::VertexInputPort, NexusData>(
@@ -175,14 +174,14 @@ pub fn encode_registered_key_transcript(
 fn runtime_vertex_input(
     expected_vertex: &RuntimeVertex,
     declared_port_name: &str,
-    evaluations: &HashMap<graph_move::InputPort, execution_move::PortData>,
+    evaluations: &HashMap<graph_move::InputPort, graph_move::PortData>,
     default_values: &HashMap<graph_move::VertexInputPort, NexusData>,
 ) -> anyhow::Result<NexusData> {
     let port_key = graph_move::InputPort::new(declared_port_name);
     if let Some(port_data) = evaluations.get(&port_key) {
         return match port_data {
-            execution_move::PortData::Single { data, .. } => Ok(data.clone()),
-            execution_move::PortData::Many { data, .. } => {
+            graph_move::PortData::Single { data, .. } => Ok(data.clone()),
+            graph_move::PortData::Many { data, .. } => {
                 let RuntimeVertex::WithIterator { iteration, .. } = expected_vertex else {
                     bail!("Expected single data for port '{declared_port_name}' in evaluations");
                 };
@@ -206,7 +205,7 @@ fn runtime_vertex_input(
 fn derive_request_body_sha256_from_onchain_data(
     expected_vertex: &RuntimeVertex,
     declared_input_ports: &HashSet<String>,
-    evaluations: &HashMap<graph_move::InputPort, execution_move::PortData>,
+    evaluations: &HashMap<graph_move::InputPort, graph_move::PortData>,
     default_values: &HashMap<graph_move::VertexInputPort, NexusData>,
 ) -> anyhow::Result<[u8; 32]> {
     let mut bytes = Vec::new();
@@ -343,7 +342,7 @@ mod tests {
         let evaluations = HashMap::from([
             (
                 graph_move::InputPort::new("iter"),
-                execution_move::PortData::Many {
+                graph_move::PortData::Many {
                     _variant_name: "Many".into(),
                     data: crate::move_bindings::sui_framework::vec_map::VecMap {
                         contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
@@ -356,7 +355,7 @@ mod tests {
             ),
             (
                 graph_move::InputPort::new("single"),
-                execution_move::PortData::Single {
+                graph_move::PortData::Single {
                     _variant_name: "Single".into(),
                     data: single_value.clone(),
                     is_static: false,

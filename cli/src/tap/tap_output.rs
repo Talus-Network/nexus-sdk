@@ -14,8 +14,11 @@ use {
         nexus::{
             scheduler::CreateTaskResult,
             tap::{
-                AccomplishExecutionPaymentResult, BindAgentSkillResult, DepositAgentVaultResult,
-                RefillExecutionPaymentResult, WaitForPaymentResult,
+                AccomplishExecutionPaymentResult,
+                BindAgentSkillResult,
+                DepositAgentVaultResult,
+                RefillExecutionPaymentResult,
+                WaitForPaymentResult,
             },
             workflow::{AbortExecutionResult, CommittedToolResultSettlementResult, ExecuteResult},
         },
@@ -408,7 +411,9 @@ mod tests {
                 workflow::{PublishResult, TapExecutionSubmitMetadata},
             },
             types::{
-                DefaultDagExecutorTarget, SkillRecordContext, SkillRevisionContext,
+                DefaultDagExecutorTarget,
+                SkillRecordContext,
+                SkillRevisionContext,
                 SkillRevisionLookupKey,
             },
         },

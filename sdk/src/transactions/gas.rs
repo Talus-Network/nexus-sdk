@@ -1,7 +1,8 @@
 use {
     crate::{
         move_bindings::workflow::{gas as gas_binding, gas_extension as gas_extension_binding},
-        move_boundary, sui,
+        move_boundary,
+        sui,
         types::NexusObjects,
     },
     sui::types::{Argument, ProgrammableTransaction},
@@ -117,7 +118,7 @@ pub(crate) fn settle_payment_state_for_vertex(
 /// PTB template to abort an expired execution by first unlocking/refunding the
 /// matching ToolGas vertex payment.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn abort_expired_execution_with_tool_gas_ptb(
+pub fn abort_expired_execution_with_tool_gas_ptb(
     objects: &NexusObjects,
     tool_gas: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,

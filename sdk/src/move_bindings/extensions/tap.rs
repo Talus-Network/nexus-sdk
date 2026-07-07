@@ -5,14 +5,22 @@ use {
         move_bindings::{
             interface::{
                 agent::{
-                    Agent, AgentPaymentVault, AgentVaultFieldKey, FixedTool, SkillDagBinding,
-                    SkillRecurrenceKind, SkillRequirement, SkillSchedulePolicy,
+                    Agent,
+                    AgentPaymentVault,
+                    AgentVaultFieldKey,
+                    FixedTool,
+                    SkillDagBinding,
+                    SkillRecurrenceKind,
+                    SkillRequirement,
+                    SkillSchedulePolicy,
                 },
                 payment::{PaymentSourceKind, SkillPaymentPolicy},
                 version::InterfaceVersion,
             },
             registry::agent_registry::{
-                DefaultDagExecutor, DefaultDagExecutorFieldKey, SkillRecord,
+                DefaultDagExecutor,
+                DefaultDagExecutorFieldKey,
+                SkillRecord,
             },
             sui_framework::object::{ID, UID},
             workflow::execution::DagExecutionPaymentFieldKey,

@@ -530,7 +530,8 @@ mod tests {
             interface::{
                 agent::{Agent, SkillSchedulePolicy},
                 payment::{
-                    ExecutionPaymentFinalState, ScheduledOccurrenceFinalState,
+                    ExecutionPaymentFinalState,
+                    ScheduledOccurrenceFinalState,
                     VertexExecutionPaymentSettlementKind,
                 },
             },

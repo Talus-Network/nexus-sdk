@@ -109,7 +109,27 @@ impl DAGExecution {
 }
 
 impl DAGWalk {
-    pub fn expired_active_vertex(&self, clock_ms: u64) -> Option<&RuntimeVertex> {
+    pub fn timeout_expired_vertex(&self, clock_ms: u64) -> Option<&RuntimeVertex> {
+        match self {
+            Self::Active {
+                next_vertex,
+                timeout_ms,
+                created_at,
+                ..
+            }
+            | Self::PendingSettlement {
+                next_vertex,
+                timeout_ms,
+                created_at,
+                ..
+            } if clock_ms >= created_at.saturating_add(timeout_ms.saturating_mul(2)) => {
+                Some(next_vertex)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn abortable_timeout_expired_vertex(&self, clock_ms: u64) -> Option<&RuntimeVertex> {
         match self {
             Self::Active {
                 next_vertex,
@@ -121,5 +141,9 @@ impl DAGWalk {
             }
             _ => None,
         }
+    }
+
+    pub fn expired_active_vertex(&self, clock_ms: u64) -> Option<&RuntimeVertex> {
+        self.abortable_timeout_expired_vertex(clock_ms)
     }
 }

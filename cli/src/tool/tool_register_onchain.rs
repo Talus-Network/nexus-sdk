@@ -1,12 +1,19 @@
 use {
     crate::{
-        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
+        command_title,
+        display::json_output,
+        loading,
+        notify_error,
+        notify_success,
+        prelude::*,
         sui::*,
     },
     nexus_sdk::{
         move_bindings::{
-            primitives::owner_cap::CloneableOwnerCap, registry::tool_registry::OverTool,
-            struct_tag_matches, workflow::gas::OverGas,
+            primitives::owner_cap::CloneableOwnerCap,
+            registry::tool_registry::OverTool,
+            struct_tag_matches,
+            workflow::gas::OverGas,
         },
         nexus::error::NexusError,
         sui,
@@ -611,7 +618,9 @@ fn customize_output_variant(
 #[cfg(test)]
 mod tests {
     use {
-        super::*, nexus_sdk::test_utils::sui_mocks, serial_test::serial,
+        super::*,
+        nexus_sdk::test_utils::sui_mocks,
+        serial_test::serial,
         std::sync::atomic::Ordering,
     };
 

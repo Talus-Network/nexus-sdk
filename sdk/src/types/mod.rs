@@ -16,7 +16,10 @@ pub use {
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
     workflow_models::{
-        AuthenticatedOffchainRequestEvidence, AuthenticatedOffchainVerifierEvidence,
-        ExecutionTerminalRecord, ExternalVerifierRuntimeCall, RequestWalkContext,
+        AuthenticatedOffchainRequestEvidence,
+        AuthenticatedOffchainVerifierEvidence,
+        ExecutionTerminalRecord,
+        ExternalVerifierRuntimeCall,
+        RequestWalkContext,
     },
 };

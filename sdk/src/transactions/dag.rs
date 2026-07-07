@@ -5,31 +5,59 @@ use {
                 authorization::AgentVertexAuthorizationTemplate,
                 dag as dag_binding,
                 graph::{
-                    self as graph_binding, OutputPort, PostFailureAction, RuntimeVertex,
+                    self as graph_binding,
+                    PostFailureAction,
+                    RuntimeVertex,
                     Vertex as GraphVertex,
                 },
                 verifier::{
-                    self as verifier_binding, ExternalVerifierSubmitEvidence, FailureEvidenceKind,
-                    OffChainToolResultAuxiliary, OffChainVerifierProof, OffchainResponseEvidence,
-                    PreparedToolOutput, PreparedToolOutputPort, VerificationSubmissionKind,
-                    VerifierConfig, VerifierContractResult, VerifierDecision,
+                    self as verifier_binding,
+                    ExternalVerifierSubmitEvidence,
+                    FailureEvidenceKind,
+                    OffChainToolResultAuxiliary,
+                    OffChainVerifierProof,
+                    OffchainResponseEvidence,
+                    PreparedToolOutput,
+                    PreparedToolOutputPort,
+                    VerificationSubmissionKind,
+                    VerifierConfig,
+                    VerifierContractResult,
+                    VerifierDecision,
                 },
             },
-            primitives::data::NexusData,
+            primitives::{
+                data::{self as data_binding, NexusData},
+                onchain_tool_result as onchain_tool_result_binding,
+                tagged_output as tagged_output_binding,
+            },
             registry::verifier_registry as verifier_registry_binding,
-            sui_framework::{transfer as transfer_binding, vec_map as vec_map_binding},
+            sui_framework::transfer as transfer_binding,
             workflow::{
-                execution as execution_binding, execution_entries as execution_entries_binding,
+                execution as execution_binding,
+                execution_entries as execution_entries_binding,
                 execution_settlement as execution_settlement_binding,
-                execution_submission as execution_submission_binding, gas as gas_binding,
+                execution_submission as execution_submission_binding,
+                gas as gas_binding,
             },
         },
-        move_boundary, sui,
+        move_boundary,
+        sui,
         transactions::{agent_input::AgentInput, scheduler, tap},
         types::{
-            AgentId, AuthenticatedOffchainRequestEvidence, AuthenticatedOffchainVerifierEvidence,
-            DagDefaultValue, DagEdge, DagEntryPort, DagOutput, DagSpec, DagVertex, DagVertexKind,
-            ExternalVerifierRuntimeCall, NexusObjects, SkillId, DEFAULT_ENTRY_GROUP,
+            AgentId,
+            AuthenticatedOffchainRequestEvidence,
+            AuthenticatedOffchainVerifierEvidence,
+            DagDefaultValue,
+            DagEdge,
+            DagEntryPort,
+            DagOutput,
+            DagSpec,
+            DagVertex,
+            DagVertexKind,
+            ExternalVerifierRuntimeCall,
+            NexusObjects,
+            SkillId,
+            DEFAULT_ENTRY_GROUP,
         },
     },
     std::collections::{HashMap, HashSet},
@@ -209,6 +237,13 @@ pub enum PreparedOnchainToolResultSubmission {
         failure_evidence_kind: FailureEvidenceKind,
         submitted_failure_reason: Option<Vec<u8>>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BrokenOnchainToolResultCleanupInput {
+    pub walk_index: u64,
+    pub result_ref: sui::types::ObjectReference,
+    pub tool_witness_id: sui::types::Address,
 }
 
 fn build_runtime_tool_result_worksheet(
@@ -716,46 +751,36 @@ fn commit_prepared_onchain_tool_execution(
     expected_vertex: sui::types::Argument,
     pre_allocated: &HashMap<sui::types::Address, sui::types::Argument>,
 ) -> anyhow::Result<()> {
-    let user_args = prepare_onchain_tool_arguments(tx, &execution_plan.arguments, pre_allocated)?;
-    let mut tool_args = if execution_plan.requires_authorization_cap {
-        let authorization = release_vertex_authorization_for_onchain_walk(
-            tx, dag, execution, worksheet, leader_cap, walk_index,
-        )?;
-        vec![authorization, worksheet]
-    } else {
-        vec![worksheet]
-    };
-    tool_args.extend(user_args);
-
-    let tool_output = tx.call_function(
-        execution_plan.package,
-        execution_plan.module.as_str(),
-        "execute",
-        tool_args,
-    )?;
-    let conversion_result = tx.call_target(
-        graph_binding::tagged_output_to_dag_types_target,
-        vec![tool_output],
-    )?;
-    let output_variant = tx.nested_result(conversion_result, 0)?;
-    let output_ports_data = tx.nested_result(conversion_result, 1)?;
-
-    commit_on_chain_tool_result_for_walk_v1_with_args(
+    let result = create_on_chain_tool_result_for_walk(
         tx,
         dag,
         execution,
-        tool_registry,
         worksheet,
         leader_cap,
         leader_registry,
         walk_index,
         expected_vertex,
-        output_variant,
-        output_ports_data,
-        None,
-        None,
-        execution_plan.tool_witness_id,
-    )
+    )?;
+    let user_args = prepare_onchain_tool_arguments(tx, &execution_plan.arguments, pre_allocated)?;
+    let mut tool_args = if execution_plan.requires_authorization_cap {
+        let authorization = release_vertex_authorization_for_onchain_walk(
+            tx, dag, execution, worksheet, leader_cap, walk_index,
+        )?;
+        vec![authorization, worksheet, result]
+    } else {
+        vec![worksheet, result]
+    };
+    tool_args.extend(user_args);
+
+    tx.call_function(
+        execution_plan.package,
+        execution_plan.module.as_str(),
+        "execute",
+        tool_args,
+    )?;
+    let _ = tool_registry;
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -965,30 +990,84 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             }
             PreparedOnchainToolResultSubmission::TerminalErrEval {
                 output,
-                failure_evidence_kind,
-                submitted_failure_reason,
+                failure_evidence_kind: _,
+                submitted_failure_reason: _,
             } => {
-                let (output_variant, output_ports_data) = prepare_tool_output(tx, output)?;
-                commit_on_chain_tool_result_for_walk_v1_with_args(
+                let result = create_on_chain_tool_result_for_walk(
                     tx,
                     dag_arg,
                     execution_arg,
-                    tool_registry,
                     worksheet,
                     leader_cap,
                     leader_registry,
                     walk_index,
                     expected_vertex,
-                    output_variant,
-                    output_ports_data,
-                    Some(failure_evidence_kind),
-                    submitted_failure_reason.clone(),
-                    sui::types::Address::ZERO,
                 )?;
+                finalize_onchain_tool_result_output(tx, result, worksheet, output)?;
             }
         }
 
         lock_payment_state_for_tools(tx, lock_tool_gas_args, dag_arg, execution_arg)?;
+
+        Ok(())
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn consume_on_chain_tool_result_for_walk_ptb(
+    objects: &NexusObjects,
+    dag: (sui::types::Address, sui::types::Version),
+    execution: (sui::types::Address, sui::types::Version),
+    leader_cap: &sui::types::ObjectReference,
+    tools_gas: &[RuntimeToolGasRef],
+    walk_index: u64,
+    next_vertex: &RuntimeVertex,
+    result: (sui::types::Address, sui::types::Version),
+    tool_witness_id: sui::types::Address,
+    finalize_gas_charge: u64,
+    settlement_gas_charge: u64,
+    scheduled_payment_settlement: Option<(
+        &sui::types::ObjectReference,
+        &sui::types::ObjectReference,
+    )>,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let leader_cap = tx.shared_object(leader_cap, false)?;
+        let dag = tx.shared_object_by_id(dag.0, dag.1, false)?;
+        let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
+        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let result = tx.shared_object_by_id(result.0, result.1, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+
+        consume_on_chain_tool_result_for_walk(
+            tx,
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_cap,
+            leader_registry,
+            walk_index,
+            next_vertex,
+            tool_witness_id,
+            finalize_gas_charge,
+            settlement_gas_charge,
+            clock,
+        )?;
+
+        let tools_gas =
+            runtime_tool_gas_args(tx, tools_gas, next_vertex, false, dag, execution, None)?;
+        lock_payment_state_for_tools(tx, tools_gas, dag, execution)?;
+        emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
+
+        if let Some((task, scheduled_execution)) = scheduled_payment_settlement {
+            scheduler::settle_finished_scheduled_execution_payment_if_ready(
+                tx,
+                task,
+                scheduled_execution,
+            )?;
+        }
 
         Ok(())
     })
@@ -1076,39 +1155,6 @@ pub(crate) fn refill_tap_execution_payment_from_agent_vault_for_self_ptb(
     })
 }
 
-/// PTB template for creating a failure evidence kind from an enum.
-fn create_failure_evidence_kind(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    evidence_kind: &FailureEvidenceKind,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.failure_evidence_kind(evidence_kind)
-}
-
-fn prepare_tool_output(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    prepared: &PreparedOnchainToolOutput,
-) -> anyhow::Result<(sui::types::Argument, sui::types::Argument)> {
-    let output_variant = tx.graph_output_variant(&prepared.output_variant)?;
-
-    let output_ports_data = tx.call_target(
-        vec_map_binding::empty_target::<OutputPort, NexusData>,
-        vec![],
-    )?;
-
-    for (output_port, dag_data) in &prepared.output_ports_data {
-        let output_port = tx.graph_output_port(output_port)?;
-
-        let value = tx.nexus_data(dag_data)?;
-
-        tx.call_target(
-            vec_map_binding::insert_target::<OutputPort, NexusData>,
-            vec![output_ports_data, output_port, value],
-        )?;
-    }
-
-    Ok((output_variant, output_ports_data))
-}
-
 fn prepare_offchain_tool_result_bytes(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     result: &PreparedToolOutput,
@@ -1148,19 +1194,6 @@ fn prepare_move_option_vec_u8(
         None => None,
     };
     Ok(tx.option::<Vec<u8>>(value)?)
-}
-
-fn prepare_move_option_failure_evidence_kind(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    value: Option<&FailureEvidenceKind>,
-) -> anyhow::Result<sui::types::Argument> {
-    match value {
-        Some(value) => {
-            let kind = create_failure_evidence_kind(tx, value)?;
-            Ok(tx.option::<FailureEvidenceKind>(Some(kind))?)
-        }
-        None => Ok(tx.option::<FailureEvidenceKind>(None)?),
-    }
 }
 
 fn prepare_submission_kind(
@@ -1554,48 +1587,113 @@ fn release_vertex_authorization_for_onchain_walk(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn commit_on_chain_tool_result_for_walk_v1_with_args(
+pub fn create_on_chain_tool_result_for_walk(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
-    tool_registry: sui::types::Argument,
     worksheet: sui::types::Argument,
     leader_cap: sui::types::Argument,
     leader_registry: sui::types::Argument,
     walk_index: u64,
     expected_vertex: sui::types::Argument,
-    output_variant: sui::types::Argument,
-    output_ports_data: sui::types::Argument,
-    failure_evidence_kind: Option<&FailureEvidenceKind>,
-    submitted_failure_reason: Option<Vec<u8>>,
-    tool_witness_id: sui::types::Address,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<sui::types::Argument> {
     let walk_index = tx.arg(&walk_index)?;
-    let failure_evidence_kind =
-        prepare_move_option_failure_evidence_kind(tx, failure_evidence_kind)?;
-    let submitted_failure_reason = prepare_move_option_vec_u8(tx, &submitted_failure_reason)?;
-    let tool_witness_id = tx.object_id(tool_witness_id)?;
 
     tx.call_target(
-        execution_submission_binding::commit_on_chain_tool_result_for_walk_v1_target,
+        execution_submission_binding::create_on_chain_tool_result_for_walk_target,
         vec![
             dag,
             execution,
-            tool_registry,
             worksheet,
             leader_cap,
             leader_registry,
             walk_index,
             expected_vertex,
-            output_variant,
-            output_ports_data,
-            failure_evidence_kind,
-            submitted_failure_reason,
+        ],
+    )
+}
+
+pub fn framework_random_object(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+) -> anyhow::Result<sui::types::Argument> {
+    Ok(tx.shared_object_by_id(move_boundary::RANDOM_OBJECT_ID, 1, false)?)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn consume_on_chain_tool_result_for_walk(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    result: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    tool_witness_id: sui::types::Address,
+    commit_gas_charge: u64,
+    settlement_gas_charge: u64,
+    clock: sui::types::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.arg(&walk_index)?;
+    let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+    let tool_witness_id = tx.object_id(tool_witness_id)?;
+    let commit_gas_charge = tx.arg(&commit_gas_charge)?;
+    let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
+
+    tx.call_target(
+        execution_submission_binding::consume_on_chain_tool_result_for_walk_target,
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_cap,
+            leader_registry,
+            walk_index,
+            expected_vertex,
             tool_witness_id,
+            commit_gas_charge,
+            settlement_gas_charge,
+            clock,
         ],
     )?;
 
     Ok(())
+}
+
+fn finalize_onchain_tool_result_output(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    result: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    output: &PreparedOnchainToolOutput,
+) -> anyhow::Result<()> {
+    let output = prepare_tagged_tool_output(tx, output)?;
+    tx.call_target(
+        onchain_tool_result_binding::finalize_and_share_target,
+        vec![result, worksheet, output],
+    )?;
+    Ok(())
+}
+
+fn prepare_tagged_tool_output(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    prepared: &PreparedOnchainToolOutput,
+) -> anyhow::Result<sui::types::Argument> {
+    let variant = tx.arg(&prepared.output_variant.as_bytes().to_vec())?;
+    let mut tagged_output = tx.call_target(tagged_output_binding::new_target, vec![variant])?;
+
+    for (output_port, dag_data) in &prepared.output_ports_data {
+        let port = tx.arg(&output_port.as_bytes().to_vec())?;
+        let value = tx.nexus_data(dag_data)?;
+        let typed_value = tx.call_target(data_binding::as_raw_target, vec![value])?;
+        tagged_output = tx.call_target(
+            tagged_output_binding::with_named_payload_target,
+            vec![tagged_output, port, typed_value],
+        )?;
+    }
+
+    Ok(tagged_output)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1745,28 +1843,47 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
 }
 
 /// Build a PTB that aborts an expired DAG execution.
-pub(crate) fn abort_expired_execution_for_self_ptb(
+pub fn abort_expired_execution_for_self_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
+    broken_onchain_result_cleanups: &[BrokenOnchainToolResultCleanupInput],
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.shared_object(dag, false)?;
         let execution = tx.shared_object(execution, true)?;
-        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
+
+        if !broken_onchain_result_cleanups.is_empty() {
+            let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+            let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+
+            for cleanup in broken_onchain_result_cleanups {
+                let result = tx.shared_object(&cleanup.result_ref, true)?;
+                cleanup_broken_onchain_tool_result(
+                    tx,
+                    dag,
+                    execution,
+                    tool_registry,
+                    result,
+                    leader_registry,
+                    cleanup.walk_index,
+                    cleanup.tool_witness_id,
+                    clock,
+                )?;
+            }
+        }
 
         tx.call_target(
             execution_settlement_binding::abort_expired_execution_target,
-            vec![dag, execution, tool_registry, leader_registry, clock],
+            vec![dag, execution, clock],
         )?;
         Ok(())
     })
 }
 
 /// Build a PTB that settles a committed tool result for one walk.
-pub(crate) fn settle_committed_tool_result_for_walk_for_self_ptb(
+pub fn settle_committed_tool_result_for_walk_for_self_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
@@ -1785,6 +1902,108 @@ pub(crate) fn settle_committed_tool_result_for_walk_for_self_ptb(
         )?;
         Ok(())
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn settle_onchain_tool_result_for_walk(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    result: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    tool_witness_id: sui::types::Address,
+    clock: sui::types::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.arg(&walk_index)?;
+    let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+    let tool_witness_id = tx.object_id(tool_witness_id)?;
+
+    tx.call_target(
+        execution_settlement_binding::settle_onchain_tool_result_for_walk_target,
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            walk_index,
+            expected_vertex,
+            tool_witness_id,
+            clock,
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Build a PTB that settles a finalized on-chain tool result for one walk.
+pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
+    objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
+    execution: &sui::types::ObjectReference,
+    result: &sui::types::ObjectReference,
+    walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    tool_witness_id: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let dag = tx.shared_object(dag, false)?;
+        let execution = tx.shared_object(execution, true)?;
+        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let result = tx.shared_object(result, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+
+        settle_onchain_tool_result_for_walk(
+            tx,
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            walk_index,
+            expected_vertex,
+            tool_witness_id,
+            clock,
+        )?;
+
+        Ok(())
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn cleanup_broken_onchain_tool_result(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    result: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    walk_index: u64,
+    tool_witness_id: sui::types::Address,
+    clock: sui::types::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.arg(&walk_index)?;
+    let tool_witness_id = tx.object_id(tool_witness_id)?;
+
+    tx.call_target(
+        execution_settlement_binding::cleanup_broken_onchain_tool_result_target,
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            result,
+            leader_registry,
+            walk_index,
+            tool_witness_id,
+            clock,
+        ],
+    )?;
+
+    Ok(())
 }
 
 /// Build a PTB that settles a committed tool result with leader gas accounting.

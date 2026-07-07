@@ -2,7 +2,9 @@
 
 use {
     super::types::{
-        convert_move_signature_to_schema, is_hidden_internal_tool_param,
+        convert_move_signature_to_schema,
+        is_hidden_internal_tool_param,
+        is_onchain_tool_result_param,
         is_workflow_dag_execution_param,
     },
     crate::sui,
@@ -58,6 +60,7 @@ pub async fn generate_input_schema(
         .ok_or_else(|| {
             anyhow!("Function '{execute_function}' not found in module '{module_name}'")
         })?;
+    validate_execute_signature(execute_func, module_name, execute_function)?;
 
     // Parse function parameters.
     let mut schema_map = Map::new();
@@ -112,9 +115,94 @@ pub async fn generate_input_schema(
     Ok(schema_string)
 }
 
+fn validate_execute_signature(
+    execute_func: &sui::grpc::FunctionDescriptor,
+    module_name: &str,
+    execute_function: &str,
+) -> AnyResult<()> {
+    if !execute_func.is_entry() {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must be an entry function"
+        );
+    }
+    if !execute_func.returns().is_empty() {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must not return values; finalize output through an owned OnchainToolResult argument"
+        );
+    }
+    let has_owned_result_arg = execute_func.parameters().iter().any(|param| {
+        param.reference.is_none()
+            && param
+                .body_opt()
+                .map(is_onchain_tool_result_param)
+                .unwrap_or(false)
+    });
+    if !has_owned_result_arg {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must accept result: OnchainToolResult"
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, sui::grpc::open_signature_body::Type};
+
+    fn owned_onchain_tool_result_signature() -> sui::grpc::OpenSignature {
+        sui::grpc::OpenSignature::default().with_body(
+            sui::grpc::OpenSignatureBody::default()
+                .with_type(Type::Datatype)
+                .with_type_name("0x42::onchain_tool_result::OnchainToolResult"),
+        )
+    }
+
+    fn referenced_onchain_tool_result_signature(
+        reference: sui::grpc::open_signature::Reference,
+    ) -> sui::grpc::OpenSignature {
+        owned_onchain_tool_result_signature().with_reference(reference)
+    }
+
+    fn valid_execute_descriptor() -> sui::grpc::FunctionDescriptor {
+        sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![owned_onchain_tool_result_signature()])
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_non_entry_function() {
+        let descriptor = valid_execute_descriptor().with_is_entry(false);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must be an entry function"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_return_values() {
+        let descriptor =
+            valid_execute_descriptor().with_returns(vec![sui::grpc::OpenSignature::default()
+                .with_body(sui::grpc::OpenSignatureBody::default().with_type(Type::U64))]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must not return values"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_referenced_onchain_tool_result() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![referenced_onchain_tool_result_signature(
+                sui::grpc::open_signature::Reference::Immutable,
+            )]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("must accept result: OnchainToolResult"));
+    }
+
+    #[test]
+    fn validate_execute_signature_accepts_entry_no_return_owned_result() {
+        validate_execute_signature(&valid_execute_descriptor(), "tool", "execute").unwrap();
+    }
 
     #[tokio::test]
     #[ignore = "requires a Docker-backed Sui test container"]

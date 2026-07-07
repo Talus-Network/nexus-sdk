@@ -7,7 +7,9 @@ use {
             interface::{agent as agent_move, authorization::AgentVertexAuthorizationTemplate},
             move_std::type_name::TypeName,
             primitives::{
-                automaton as automaton_move, data::NexusData, policy::Symbol as PolicySymbol,
+                automaton as automaton_move,
+                data::NexusData,
+                policy::Symbol as PolicySymbol,
             },
             scheduler::{scheduler as scheduler_move, scheduler::Task},
             workflow::execution_entries as execution_entries_move,
@@ -914,12 +916,15 @@ mod tests {
             move_bindings::{
                 interface::{
                     agent::{AgentExecutionConfig, ExecutionSelection},
-                    graph as graph_move, scheduled_request,
+                    graph as graph_move,
+                    scheduled_request,
                 },
                 move_std::{ascii::String as MoveString, option::Option as MoveOption},
                 primitives::{
                     automaton::{
-                        ConfiguredAutomaton, DeterministicAutomaton, TransitionConfigKey,
+                        ConfiguredAutomaton,
+                        DeterministicAutomaton,
+                        TransitionConfigKey,
                         TransitionKey,
                     },
                     data::NexusData,
@@ -927,8 +932,13 @@ mod tests {
                     policy::{Policy, Symbol as PolicySymbol},
                 },
                 scheduler::scheduler::{
-                    Constraints, Execution, Metadata, OccurrenceScheduledEvent,
-                    ScheduledSkillExecutionCreatedEvent, State as TaskState, Task,
+                    Constraints,
+                    Execution,
+                    Metadata,
+                    OccurrenceScheduledEvent,
+                    ScheduledSkillExecutionCreatedEvent,
+                    State as TaskState,
+                    Task,
                 },
                 sui_framework::vec_map,
             },

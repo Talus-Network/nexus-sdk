@@ -6,7 +6,9 @@ use {
     },
     anyhow::anyhow,
     nexus_sdk::move_bindings::{
-        interface::graph::InputPort, primitives::data::NexusData, sui_framework::vec_map::VecMap,
+        interface::graph::InputPort,
+        primitives::data::NexusData,
+        sui_framework::vec_map::VecMap,
     },
     serde_json::Value,
     std::collections::{HashMap, HashSet},

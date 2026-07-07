@@ -1,6 +1,12 @@
 use {
     crate::{
-        command_title, display::json_output, item, loading, notify_success, prelude::*, sui::*,
+        command_title,
+        display::json_output,
+        item,
+        loading,
+        notify_success,
+        prelude::*,
+        sui::*,
     },
     nexus_sdk::move_bindings::scheduler::scheduler::Task,
     serde_json::json,

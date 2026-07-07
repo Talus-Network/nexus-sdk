@@ -1,6 +1,8 @@
 use {
-    crate::cli_conf::StorageKind, nexus_sdk::move_bindings::primitives::data::NexusData,
-    serde_json::Value, std::collections::HashMap,
+    crate::cli_conf::StorageKind,
+    nexus_sdk::move_bindings::primitives::data::NexusData,
+    serde_json::Value,
+    std::collections::HashMap,
 };
 
 const NEXUS_BASE_TRANSACTION_SIZE: usize = 8 * 1024;

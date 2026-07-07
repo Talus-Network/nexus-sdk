@@ -36,7 +36,9 @@ mod tests {
         crate::{
             move_bindings::{
                 move_std::{
-                    ascii::String as MoveString, option::Option as MoveOption, type_name::TypeName,
+                    ascii::String as MoveString,
+                    option::Option as MoveOption,
+                    type_name::TypeName,
                 },
                 sui_framework::{
                     bag::Bag,
@@ -118,7 +120,11 @@ mod tests {
     #[test]
     fn framework_types_consume_bcs_layout_bytes() {
         use crate::move_bindings::sui_framework::{
-            balance, object_table, sui as sui_module, table_vec, vec_map,
+            balance,
+            object_table,
+            sui as sui_module,
+            table_vec,
+            vec_map,
         };
 
         #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
