@@ -895,6 +895,7 @@ mod tests {
             tx_checkpoint: 9,
             dag_id: sui::types::Address::from_static("0xda6"),
             dag_execution_id: sui::types::Address::from_static("0xe"),
+            cleaned_broken_onchain_results: Vec::new(),
         };
 
         let json = execution_abort_result_json(&result);
