@@ -1,6 +1,6 @@
 use {crate::ToolFqn, std::time::Duration};
 
-/// Byte-owned tool metadata used to register an off-chain tool.
+/// Byte owned tool metadata used to register an off chain tool.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolMeta {
     pub fqn: ToolFqn,

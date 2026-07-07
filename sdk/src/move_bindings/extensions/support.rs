@@ -1,8 +1,9 @@
-//! SDK-only helpers around generated Move binding types.
+//! Shared SDK helpers for generated Move binding types.
 //!
-//! General Move/Sui helper impls belong in `move-binding` codegen. This module keeps only the
-//! small Nexus-specific constructors and domain helpers that are not part of the generated ABI
-//! surface.
+//! This module holds small projections that are not specific to one Move package, such as reading
+//! a [`ToolFqn`] from a generated vertex kind or listing declared input port names. General Move
+//! and Sui behavior belongs in the Move binding code generator; code here must stay tied to Nexus
+//! domain meaning.
 
 use crate::ToolFqn;
 

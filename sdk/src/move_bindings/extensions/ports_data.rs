@@ -1,4 +1,10 @@
-//! Helpers for generated input/output port data maps.
+//! Map helpers for generated port data values.
+//!
+//! Move stores ports as [`crate::move_bindings::sui_framework::vec_map::VecMap`] entries keyed by
+//! generated [`crate::move_bindings::interface::graph::InputPort`] and
+//! [`crate::move_bindings::interface::graph::OutputPort`] values. SDK callers usually operate on
+//! [`std::collections::HashMap`] names, so this module only performs that key projection while
+//! leaving [`crate::move_bindings::primitives::data::NexusData`] payloads untouched.
 
 use {
     crate::move_bindings::{

@@ -29,7 +29,7 @@ mod move_boundary;
 #[cfg(feature = "dag")]
 pub mod dag;
 
-/// Move module introspection helpers for on-chain tool schema generation.
+/// Move module introspection helpers for on chain tool schema generation.
 #[cfg(feature = "onchain_schema_gen")]
 pub mod onchain_schema_gen;
 

@@ -1,4 +1,8 @@
-//! SDK helpers for generated workflow and verifier bindings.
+//! SDK conveniences for generated workflow and verifier bindings.
+//!
+//! Workflow code turns generated events and execution objects into SDK lookup keys, display
+//! values, and timeout decisions. These helpers keep that translation local to generated types so
+//! BCS layout and runtime behavior remain coupled to the Move ABI.
 
 use crate::{
     move_bindings::{

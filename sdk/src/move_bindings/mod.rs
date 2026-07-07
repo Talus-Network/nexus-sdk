@@ -1,8 +1,8 @@
 //! Generated Move package bindings.
 //!
-//! This is the SDK's generated ABI boundary: package-scoped Move types, type tags, BCS/serde
-//! implementations, and generated call targets come from here. Hand-written SDK domain
-//! types may re-export selected modules, but they should not duplicate Move ABI logic.
+//! This is the SDK generated ABI boundary: Move types scoped by package, type tags, BCS and serde
+//! implementations, and generated call targets come from here. Rust domain types may reexport
+//! selected modules, but they should not duplicate Move ABI logic.
 
 mod extensions;
 
@@ -93,7 +93,7 @@ where
     with_nexus_scope(objects, T::struct_tag_static)
 }
 
-/// Return whether `tag` matches the deployment-scoped identity of generated struct `T`.
+/// Return whether `tag` matches the generated struct `T` identity scoped to this deployment.
 pub fn struct_tag_matches<T>(objects: &NexusObjects, tag: &sui::types::StructTag) -> bool
 where
     T: sui_move::MoveStruct,
@@ -133,7 +133,7 @@ where
     )
 }
 
-/// Fully-qualified generated Move struct name scoped to this Nexus deployment.
+/// Qualified generated Move struct name scoped to this Nexus deployment.
 pub(crate) fn struct_type_name<T>(objects: &NexusObjects) -> String
 where
     T: sui_move::MoveStruct,
@@ -141,7 +141,7 @@ where
     qualified_struct_name(&struct_tag::<T>(objects))
 }
 
-/// Fully-qualified generated Move struct name with a specific package address.
+/// Qualified generated Move struct name with a specific package address.
 pub(crate) fn struct_type_name_with_package<T>(
     objects: &NexusObjects,
     package: sui::types::Address,
@@ -156,7 +156,7 @@ fn qualified_struct_name(tag: &sui::types::StructTag) -> String {
     format!("{}::{}::{}", tag.address(), tag.module(), tag.name())
 }
 
-/// Derive the on-chain `Tool` object ID for a tool FQN.
+/// Derive the on chain [`registry::tool_registry::Tool`] object ID for a tool FQN.
 pub fn derive_tool_id(
     tool_registry: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -170,7 +170,7 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the on-chain `ToolGas` object ID for a tool FQN.
+/// Derive the on chain [`workflow::gas::ToolGas`] object ID for a tool FQN.
 pub fn derive_tool_gas_id(
     gas_service: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -194,7 +194,7 @@ pub(crate) fn derive_network_auth_binding_id(
     derive_object_id(network_auth_object_id, &key_type, identity)
 }
 
-/// Derive the task ID associated with a walk-execution request event.
+/// Derive the task ID associated with a walk execution request event.
 pub fn derive_walk_execution_event_task_id(
     interface_pkg_id: sui::types::Address,
     execution: sui::types::Address,

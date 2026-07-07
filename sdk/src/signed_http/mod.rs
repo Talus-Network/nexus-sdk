@@ -21,13 +21,13 @@
 //!
 //! Instead, Nexus signs a small, explicit JSON claims blob that contains:
 //! - the HTTP method + path + query string,
-//! - a SHA-256 hash of the raw body bytes,
+//! - a SHA 256 hash of the raw body bytes,
 //! - a time window (`iat_ms`/`exp_ms`) and `nonce`,
 //! - the `LeaderId`/`ToolId` identifiers and key ids.
 //!
 //! The request signature covers the request claims hash; response signatures cover the request
-//! binding, response body hash, status, and outcome used by on-chain verification. This ensures:
-//! - tool input/output schemas remain unchanged,
+//! binding, response body hash, status, and outcome used by on chain verification. This ensures:
+//! - tool input and output schemas remain unchanged,
 //! - no bespoke body canonicalization is required,
 //! - the signature is stable and auditable (store claims bytes + signature).
 //!

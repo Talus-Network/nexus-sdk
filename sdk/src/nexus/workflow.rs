@@ -244,9 +244,9 @@ pub struct RecordCommittedToolResultGasChargeResult {
     pub walk_index: u64,
 }
 
-/// Narrowed committed-result view for off-chain freshness checks.
+/// Narrowed committed result view for off chain freshness checks.
 ///
-/// This is separate from `DAGExecution` because callers only need committed-result state and
+/// This is separate from [`DAGExecution`] because callers only need committed result state and
 /// should not read or decode the full execution object for early wake decisions.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct CommittedToolResultView {
@@ -1722,7 +1722,7 @@ impl WorkflowActions {
         })
     }
 
-    /// Submit leader-authenticated committed-result settlement with the leader's commit gas charge.
+    /// Submit leader authenticated committed result settlement with the leader commit gas charge.
     pub async fn settle_committed_tool_result_for_walk_by_leader(
         &self,
         params: SettleCommittedToolResultByLeaderParams,

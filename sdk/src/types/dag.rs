@@ -12,7 +12,7 @@ use crate::{
 /// Name of the default entry group.
 pub const DEFAULT_ENTRY_GROUP: &str = "_default_group";
 
-/// Normalized typed specification for constructing a Nexus DAG on-chain.
+/// Normalized typed specification for constructing a Nexus DAG on chain.
 #[derive(Clone, Debug, Default)]
 pub struct DagSpec {
     pub vertices: Vec<DagVertex>,

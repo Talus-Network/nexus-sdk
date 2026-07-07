@@ -16,7 +16,7 @@ pub enum AgentInput {
 }
 
 impl AgentInput {
-    /// Export this object as a mutable generated-boundary PTB argument.
+    /// Export this object as a mutable generated boundary PTB argument.
     pub(crate) fn mutable_ptb_argument(
         self,
         tx: &mut move_boundary::NexusPtbBuilder<'_>,
@@ -31,7 +31,7 @@ impl AgentInput {
         }
     }
 
-    /// Export this object as an immutable generated-boundary PTB argument.
+    /// Export this object as an immutable generated boundary PTB argument.
     pub(crate) fn immutable_ptb_argument(
         self,
         tx: &mut move_boundary::NexusPtbBuilder<'_>,

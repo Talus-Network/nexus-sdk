@@ -495,7 +495,7 @@ pub(crate) fn cancel_task_for_self_ptb(
     })
 }
 
-/// Build a PTB that pauses an explicit-agent task.
+/// Build a PTB that pauses an explicit agent task.
 pub(crate) fn pause_agent_task_for_self_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -512,7 +512,7 @@ pub(crate) fn pause_agent_task_for_self_ptb(
     })
 }
 
-/// Build a PTB that resumes an explicit-agent task.
+/// Build a PTB that resumes an explicit agent task.
 pub(crate) fn resume_agent_task_for_self_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -529,7 +529,7 @@ pub(crate) fn resume_agent_task_for_self_ptb(
     })
 }
 
-/// Build a PTB that cancels an explicit-agent task.
+/// Build a PTB that cancels an explicit agent task.
 pub(crate) fn cancel_agent_task_for_self_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -607,7 +607,7 @@ pub(crate) fn add_occurrence_relative_for_task_for_self_ptb(
     })
 }
 
-/// Build a PTB that enqueues a relative occurrence for an explicit-agent task.
+/// Build a PTB that enqueues a relative occurrence for an explicit agent task.
 pub(crate) fn add_occurrence_relative_for_agent_task_for_self_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,

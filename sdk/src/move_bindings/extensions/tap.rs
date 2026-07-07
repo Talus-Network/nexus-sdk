@@ -1,4 +1,8 @@
-//! SDK helpers for generated TAP bindings.
+//! SDK conveniences for generated TAP and agent registry bindings.
+//!
+//! TAP values span interface, registry, and workflow packages. This module keeps Rust behavior on
+//! the generated types themselves: defaults, display output, identity accessors, and payment
+//! balance views. It must not redefine persisted shapes generated from Move.
 
 use {
     crate::{

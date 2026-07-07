@@ -1939,7 +1939,7 @@ pub fn settle_onchain_tool_result_for_walk(
     Ok(())
 }
 
-/// Build a PTB that settles a finalized on-chain tool result for one walk.
+/// Build a PTB that settles a finalized on chain tool result for one walk.
 pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,

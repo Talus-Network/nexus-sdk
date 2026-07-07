@@ -31,7 +31,7 @@
 //! in headers so tools do not need to wrap or change their JSON schemas.
 //!
 //! This format is compact, easy to forward through HTTP infrastructure, and widely supported
-//! (it is the same byte-to-header encoding used by JWTs).
+//! (it is the same byte to header encoding used by JWTs).
 //!
 //! ## Why headers (not an "envelope" body)?
 //! Nexus intentionally does not wrap the application payload in a signed envelope object.

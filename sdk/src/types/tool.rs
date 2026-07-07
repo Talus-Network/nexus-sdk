@@ -1,4 +1,5 @@
-//! Nexus helpers for the generated on-chain `Tool` representation.
+//! Nexus helpers for the generated on chain [`crate::move_bindings::registry::tool_registry::Tool`]
+//! representation.
 //!
 //! The persisted object shape is generated from Move. This module must not
 //! duplicate that shape; it only adds SDK projections that are not part of the

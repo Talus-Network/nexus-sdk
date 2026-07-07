@@ -1,3 +1,11 @@
+//! SDK accessors for generated scheduler and policy model types.
+//!
+//! The helpers in this module read addresses, entry group names, and policy symbol views directly
+//! from generated Move structs and enums such as
+//! [`crate::move_bindings::interface::agent::ExecutionSelection`] and
+//! [`crate::move_bindings::primitives::policy::Symbol`]. They stay small so scheduler code can
+//! query generated values without copying them into another model.
+
 use crate::{
     move_bindings::{
         interface::agent as agent_move,

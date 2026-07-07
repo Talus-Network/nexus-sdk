@@ -1,8 +1,9 @@
-//! SDK-owned extension impls for generated Move bindings.
+//! Extension methods for generated Move binding types.
 //!
-//! The generated ABI types remain under `crate::move_bindings::*`; these private modules attach
-//! Nexus-specific helpers to those generated types without making `crate::types` a second ABI
-//! namespace.
+//! The generated ABI types remain under [`crate::move_bindings`]. These private modules attach
+//! SDK domain behavior to those generated values without making [`crate::types`] another ABI
+//! namespace. Code here should decode generated data, derive SDK views from it, or construct
+//! values that preserve the generated BCS layout.
 
 mod leader_registry;
 mod network_auth;

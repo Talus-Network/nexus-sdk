@@ -1,4 +1,9 @@
-//! Companion helpers for generated `nexus_interface::payment` types.
+//! SDK projections for generated execution payment values.
+//!
+//! [`crate::move_bindings::interface::payment::ExecutionPayment`] remains the persisted payment
+//! object shape. Settlement code uses these helpers to read object identity, derive
+//! [`crate::types::SkillRevisionLookupKey`], and inspect lock counts without copying payment data
+//! into another model.
 
 use crate::move_bindings::interface::payment::ExecutionPayment;
 

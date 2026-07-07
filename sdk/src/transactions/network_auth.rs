@@ -90,7 +90,7 @@ fn share_binding(
     Ok(())
 }
 
-/// Create a new off-chain tool key binding and register the first key.
+/// Create a new off chain tool key binding and register the first key.
 ///
 /// This is used when the binding object does not yet exist.
 #[allow(clippy::too_many_arguments)]

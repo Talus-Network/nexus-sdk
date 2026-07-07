@@ -1,4 +1,11 @@
-//! Public SDK helpers for generated `nexus_registry::network_auth` Move types.
+//! SDK projections for generated network auth Move types.
+//!
+//! The key shapes are [`crate::move_bindings::registry::network_auth::IdentityKey`],
+//! [`crate::move_bindings::registry::network_auth::KeyBinding`],
+//! [`crate::move_bindings::registry::network_auth::KeyRecord`], and
+//! [`crate::move_bindings::registry::network_auth::NetworkAuth`]. This module adds constructors
+//! and accessors used by SDK services while preserving the enum variants, table metadata, and
+//! optional fields generated from normalized package IR.
 
 #[cfg(test)]
 use crate::move_bindings::{

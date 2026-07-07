@@ -455,7 +455,7 @@ impl Crawler {
 
     /// Fetch dynamic field references whose BCS names decode as `K`.
     ///
-    /// This is the right shape for heterogeneous dynamic-field parents: inspect
+    /// This is the right shape for heterogeneous dynamic field parents: inspect
     /// names first, then fetch the selected field object with the expected value type.
     pub async fn get_dynamic_field_refs_matching_key<K>(
         &self,
@@ -495,9 +495,9 @@ impl Crawler {
 
     /// Fetch one dynamic field by BCS key, returning `Ok(None)` when that key is absent.
     ///
-    /// Unlike [`Crawler::get_dynamic_fields`], this skips unrelated dynamic-field key
+    /// Unlike [`Crawler::get_dynamic_fields`], this skips unrelated dynamic field key
     /// namespaces under the same parent. That is useful for Sui objects that store several
-    /// unrelated dynamic-field types directly under one UID.
+    /// unrelated dynamic field types directly under one UID.
     pub async fn get_optional_dynamic_field<K, V>(
         &self,
         parent_id: sui::types::Address,

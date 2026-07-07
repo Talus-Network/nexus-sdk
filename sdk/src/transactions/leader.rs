@@ -25,7 +25,7 @@ pub fn over_network_cap_struct_tag(objects: &NexusObjects) -> sui::types::Struct
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
 }
 
-/// Register the transaction sender as a leader using sender address-balance funds.
+/// Register the transaction sender as a leader using sender address balance funds.
 pub fn register_for_self_ptb(
     objects: &NexusObjects,
     stake_mist: u64,

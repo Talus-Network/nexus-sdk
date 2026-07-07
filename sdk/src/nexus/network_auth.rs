@@ -1,21 +1,21 @@
-//! Tool-focused helpers for `nexus_registry::network_auth`.
+//! Tool focused helpers for the `nexus_registry::network_auth` package.
 //!
-//! This module is designed for tool operators and other off-chain clients that need to:
-//! - register/rotate a ToolId message-signing key on-chain, and
-//! - export a tool-side allowlist of permitted Leaders (public keys) for the signed HTTP runtime.
+//! This module is designed for tool operators and other off chain clients that need to:
+//! - register or rotate a ToolId message signing key on chain, and
+//! - export a tool side allowlist of permitted leaders for the signed HTTP runtime.
 //!
-//! # Background: what is registered on-chain?
-//! `nexus_registry::network_auth` binds an off-chain identity (Leader address or Tool FQN) to an
+//! # Background: what is registered on chain?
+//! `nexus_registry::network_auth` binds an off chain identity, leader address or tool FQN, to an
 //! Ed25519 public key used for signed HTTP.
 //!
-//! Registration requires a proof-of-possession (PoP) signature:
+//! Registration requires a proof of possession signature:
 //! `POP_DOMAIN || bcs(IdentityKey) || bcs(key_id) || public_key`
 //!
-//! Where `key_id` is the binding's current `next_key_id` (making PoP signatures one-time-use).
+//! Where `key_id` is the binding current `next_key_id`, which makes each signature single use.
 //!
 //! # Tool runtime (no RPC)
 //! Tools must not perform RPC calls at runtime. With the `signed_http` feature, a tool operator
-//! can export the typed allowlist data consumed by `nexus-toolkit`.
+//! can export the typed allowlist data consumed by nexus toolkit.
 
 #[cfg(feature = "signed_http")]
 use crate::signed_http::v1::wire::{
@@ -103,7 +103,7 @@ pub struct NetworkAuthActions {
 }
 
 impl NetworkAuthActions {
-    /// Derive the deterministic `KeyBinding` object ID for a network-auth identity.
+    /// Derive the deterministic [`KeyBinding`] object ID for a network auth identity.
     pub fn binding_object_id(
         &self,
         identity: &IdentityKey,
@@ -265,11 +265,12 @@ impl NetworkAuthActions {
         }))
     }
 
-    /// Export tool-side allowlist data containing the active key for each leader.
+    /// Export tool side allowlist data containing the active key for each leader.
     ///
-    /// The returned file model matches `nexus_sdk::signed_http::v1::AllowedLeadersFileV1`.
+    /// The returned file model matches [`crate::signed_http::v1::wire::AllowedLeadersFileV1`].
     ///
-    /// `leader_cap_ids` are leader capability ID (`leader_cap::OverNetwork` object IDs)
+    /// `leader_cap_ids` are leader capability ID values for
+    /// [`crate::move_bindings::registry::leader_cap::OverNetwork`] objects.
     #[cfg(feature = "signed_http")]
     pub async fn export_allowed_leaders_file_v1(
         &self,
@@ -380,7 +381,7 @@ impl NetworkAuthActions {
         Ok(out)
     }
 
-    /// Export tool-side allowlist data containing the active key for every Leader identity
+    /// Export tool side allowlist data containing the active key for every leader identity
     /// found in `network_auth.identities`.
     ///
     /// Leaders that do not have an active key are skipped.
@@ -593,7 +594,7 @@ impl NetworkAuthReader {
         Ok(out)
     }
 
-    /// Export tool-side allowlist data containing the active key for every Leader identity
+    /// Export tool side allowlist data containing the active key for every leader identity
     /// found in `network_auth.identities`.
     ///
     /// Leaders that do not have an active key are skipped.

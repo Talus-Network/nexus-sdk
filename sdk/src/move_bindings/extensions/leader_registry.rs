@@ -1,4 +1,9 @@
-//! SDK helpers for `nexus_registry::leader` generated object data.
+//! SDK projections for generated leader registry object data.
+//!
+//! The primary shapes are [`crate::move_bindings::registry::leader::LeaderRegistry`] and
+//! [`crate::move_bindings::registry::leader::CapabilityManger`]. These helpers expose decoded
+//! addresses and budget values while keeping BCS bytes and generated fields as the source of
+//! truth.
 
 #[cfg(test)]
 use crate::move_bindings::{
@@ -107,8 +112,8 @@ fn leader_cap_issuer_for_test(
 mod tests {
     use super::*;
 
-    /// Round-trip the empty `new_for_test` payload: BCS-encode, decode via
-    /// `from_bcs`, then re-encode and assert the byte stream is bit-identical
+    /// Round trip the empty [`LeaderRegistry::new_for_test`] payload: encode as BCS, decode via
+    /// [`LeaderRegistry::from_bcs`], then encode again and assert the byte stream is identical
     /// to the input.
     #[test]
     fn from_bcs_round_trips_empty_registry_payload() {

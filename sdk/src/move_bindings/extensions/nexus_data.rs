@@ -1,4 +1,8 @@
-//! Raw helpers for generated `nexus_primitives::data::NexusData`.
+//! Constructors and accessors for generated Nexus data values.
+//!
+//! [`crate::move_bindings::primitives::data::NexusData`] is persisted as raw storage tag bytes
+//! plus one or many payload byte arrays. These helpers name the tag values used by Nexus and make
+//! common inline and Walrus layouts explicit without introducing another data container.
 
 const NEXUS_DATA_INLINE_STORAGE_TAG: &[u8] = b"inline";
 const NEXUS_DATA_WALRUS_STORAGE_TAG: &[u8] = b"walrus";

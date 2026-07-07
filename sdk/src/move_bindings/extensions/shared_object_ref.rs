@@ -1,4 +1,8 @@
-//! SDK helpers for generated `nexus_primitives::shared_object::SharedObjectRef`.
+//! Constructors for generated shared object references.
+//!
+//! [`crate::move_bindings::primitives::shared_object::SharedObjectRef`] records whether a shared
+//! object is borrowed mutably or immutably inside a PTB. This module encodes that choice in the
+//! generated Move shape and exposes the underlying object address for callers.
 
 use crate::{
     move_bindings::{primitives::shared_object::SharedObjectRef, sui_framework::object::ID},

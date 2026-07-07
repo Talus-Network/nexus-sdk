@@ -1,4 +1,10 @@
-//! SDK helpers for generated `nexus_interface::graph::RuntimeVertex`.
+//! Constructors and display helpers for generated runtime vertices.
+//!
+//! [`crate::move_bindings::interface::graph::RuntimeVertex`] is the Move representation of a DAG
+//! vertex during execution. This module gives Rust callers stable constructors for plain and
+//! iterator vertices, plus conversions to the generated
+//! [`crate::move_bindings::interface::graph::Vertex`] and
+//! [`crate::move_bindings::move_std::type_name::TypeName`] shapes used in BCS.
 
 use crate::move_bindings::{
     interface::graph::{RuntimeVertex, Vertex},
