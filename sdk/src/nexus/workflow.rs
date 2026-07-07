@@ -64,6 +64,9 @@ const COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX: &str = "::execution::CommittedToo
 const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
     "::execution::ExecutionPaymentInsufficientSettlement";
 const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
+pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
+    "walk is not double timeout expired";
+pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
 
 #[derive(Clone, Debug)]
 pub struct PublishResult {
@@ -629,7 +632,7 @@ pub async fn inspect_expired_walk_resolution_at(
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Skipped {
-                reason: "walk is not double-timeout expired or is already terminal".to_string(),
+                reason: unresolved_timeout_skip_reason(walk).to_string(),
             },
         });
     };
@@ -762,6 +765,15 @@ pub async fn inspect_expired_walk_resolution_at(
         walk_index: params.walk_index,
         kind: ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate },
     })
+}
+
+fn unresolved_timeout_skip_reason(walk: &DAGWalk) -> &'static str {
+    match walk {
+        DAGWalk::Active { .. } | DAGWalk::PendingSettlement { .. } => {
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        }
+        _ => EXPIRED_WALK_ALREADY_TERMINAL_REASON,
+    }
 }
 
 async fn finalized_onchain_result_resolution_kind(
@@ -2201,6 +2213,35 @@ mod tests {
 
     fn inline_bytes(value: &'static [u8]) -> NexusData {
         NexusData::inline_one(value.to_vec())
+    }
+
+    #[test]
+    fn unresolved_timeout_skip_reason_distinguishes_pending_from_terminal_walks() {
+        let active = DAGWalk::Active {
+            next_vertex: RuntimeVertex::plain("tool"),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+        let pending_settlement = DAGWalk::PendingSettlement {
+            next_vertex: RuntimeVertex::plain("tool"),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+
+        assert_eq!(
+            unresolved_timeout_skip_reason(&active),
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        );
+        assert_eq!(
+            unresolved_timeout_skip_reason(&pending_settlement),
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        );
+        assert_eq!(
+            unresolved_timeout_skip_reason(&DAGWalk::Successful),
+            EXPIRED_WALK_ALREADY_TERMINAL_REASON
+        );
     }
 
     #[derive(Clone, Debug, Serialize)]
