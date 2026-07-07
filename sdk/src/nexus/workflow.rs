@@ -4087,6 +4087,16 @@ mod tests {
             &dag_ref,
             vec![],
         );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger_service_mock,
+            sui::types::ObjectReference::new(
+                move_boundary::CLOCK_OBJECT_ID,
+                1,
+                sui::types::Digest::from([1; 32]),
+            ),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&61_000u64).expect("clock BCS should serialize"),
+        );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
             dag_ref.clone(),
@@ -4128,6 +4138,7 @@ mod tests {
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
+        assert!(result.cleaned_broken_onchain_results.is_empty());
     }
 
     #[tokio::test]

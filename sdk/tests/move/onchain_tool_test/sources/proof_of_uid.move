@@ -4,3 +4,8 @@ module onchain_tool::proof_of_uid;
 public struct ProofOfUID {
     id: UID,
 }
+
+public fun delete(proof: ProofOfUID) {
+    let ProofOfUID { id } = proof;
+    id.delete();
+}
