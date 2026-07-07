@@ -291,20 +291,24 @@ optional = true
 
 # === Move binding ===
 [dependencies.sui-move-codegen]
-path = "../../move-binding/sui-move-codegen"
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 optional = true
 
 [dependencies.sui-move]
-path = "../../move-binding/sui-move"
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 features = ["derive"]
 optional = true
 
 [dependencies.sui-move-call]
-path = "../../move-binding/sui-move-call"
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 optional = true
 
 [dependencies.sui-move-ptb]
-path = "../../move-binding/sui-move-ptb"
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 optional = true
 
 # === Sui deps ===
@@ -373,7 +377,8 @@ toml.workspace = true
 toml.workspace = true
 
 [build-dependencies.sui-move-codegen]
-path = "../../move-binding/sui-move-codegen"
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 
 [dependencies.blake3]
 version = "1.3"
