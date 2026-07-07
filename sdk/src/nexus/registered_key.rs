@@ -17,6 +17,7 @@ use {
 };
 
 const ERR_EVAL_VARIANT: &str = "_err_eval";
+const FALLBACK_TERMINAL_ERR_EVAL_REASON: &[u8] = b"Post-failure action terminated _err_eval";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct RegisteredKeyTranscriptV1Wire {
@@ -250,7 +251,25 @@ fn terminal_err_eval_reason_bytes(
     let Some(reason) = reason.inline_one_bytes() else {
         bail!("terminal err_eval reason must be inline bytes in the one field");
     };
-    Ok(reason.to_vec())
+    Ok(normalized_terminal_err_eval_reason_bytes(reason))
+}
+
+fn normalized_terminal_err_eval_reason_bytes(reason: &[u8]) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(reason) else {
+        return FALLBACK_TERMINAL_ERR_EVAL_REASON.to_vec();
+    };
+
+    if let Ok(decoded) = serde_json::from_str::<String>(text) {
+        if decoded.is_ascii() {
+            return decoded.into_bytes();
+        }
+    }
+
+    if text.is_ascii() {
+        return reason.to_vec();
+    }
+
+    FALLBACK_TERMINAL_ERR_EVAL_REASON.to_vec()
 }
 
 #[cfg(test)]
@@ -319,6 +338,20 @@ mod tests {
         let output_ports_data = HashMap::from([(
             "reason".to_string(),
             NexusData::inline_one(b"failure".to_vec()),
+        )]);
+
+        assert_eq!(
+            registered_key_payload_sha256(ERR_EVAL_VARIANT, &output_ports_data)
+                .expect("payload hash"),
+            hash_bytes(b"failure"),
+        );
+    }
+
+    #[test]
+    fn registered_key_payload_sha256_normalizes_json_reason_for_err_eval() {
+        let output_ports_data = HashMap::from([(
+            "reason".to_string(),
+            NexusData::inline_one(serde_json::to_vec("failure").expect("JSON encodes")),
         )]);
 
         assert_eq!(

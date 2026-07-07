@@ -330,7 +330,6 @@ pub(crate) async fn get_nexus_client(
 mod tests {
     use {super::*, rstest::rstest};
 
-    #[ignore]
     #[rstest]
     #[tokio::test]
     async fn test_fetch_devnet_objects() {
@@ -341,6 +340,7 @@ mod tests {
                 primitives_pkg_id = "0x1"
                 workflow_pkg_id = "0x2"
                 interface_pkg_id = "0x3"
+                scheduler_pkg_id = "0x13"
                 registry_pkg_id = "0x11"
                 network_id = "0x4"
 
@@ -397,13 +397,12 @@ mod tests {
         )
         .await;
 
-        assert!(res.is_ok());
-
-        let objects = res.unwrap();
+        let objects = res.expect("mock object document should match NexusObjects");
 
         assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
         assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
+        assert_eq!(objects.scheduler_pkg_id, "0x13".parse().unwrap());
         assert_eq!(objects.registry_pkg_id, "0x11".parse().unwrap());
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(
