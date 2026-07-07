@@ -20,7 +20,12 @@ use {
                 RefillExecutionPaymentResult,
                 WaitForPaymentResult,
             },
-            workflow::{AbortExecutionResult, CommittedToolResultSettlementResult, ExecuteResult},
+            workflow::{
+                AbortExecutionResult,
+                CommittedToolResultSettlementResult,
+                ExecuteResult,
+                ExpiredWalkResolutionResult,
+            },
         },
         types::{AgentId, AgentRegistrySnapshot, DefaultDagExecutorRecord, SkillConfig},
     },
@@ -212,6 +217,22 @@ pub(crate) fn execution_settle_result_json(
         "dag_id": result.dag_id,
         "execution_id": result.dag_execution_id,
         "walk_index": result.walk_index,
+    })
+}
+
+pub(crate) fn execution_resolve_expired_walk_result_json(
+    result: &ExpiredWalkResolutionResult,
+) -> serde_json::Value {
+    json!({
+        "function": "resolve_expired_walk",
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "dag_id": result.dag_id,
+        "execution_id": result.dag_execution_id,
+        "walk_index": result.walk_index,
+        "resolution_kind": result.resolution_kind.as_str(),
+        "resolution": result.resolution_kind,
+        "skip_reason": result.resolution_kind.skip_reason(),
     })
 }
 
@@ -408,7 +429,7 @@ mod tests {
             },
             nexus::{
                 tap::TapPackagePublishResult,
-                workflow::{PublishResult, TapExecutionSubmitMetadata},
+                workflow::{ExpiredWalkResolutionKind, PublishResult, TapExecutionSubmitMetadata},
             },
             types::{
                 DefaultDagExecutorTarget,
@@ -843,6 +864,28 @@ mod tests {
             sui::types::Address::from_static("0xe").to_string()
         );
         assert_eq!(json["walk_index"], 3);
+    }
+
+    #[test]
+    fn execution_resolve_expired_walk_result_json_includes_resolution_fields() {
+        let result = ExpiredWalkResolutionResult {
+            tx_digest: None,
+            tx_checkpoint: None,
+            dag_id: sui::types::Address::from_static("0xda6"),
+            dag_execution_id: sui::types::Address::from_static("0xe"),
+            walk_index: 4,
+            resolution_kind: ExpiredWalkResolutionKind::Skipped {
+                reason: "not expired".to_string(),
+            },
+        };
+
+        let json = execution_resolve_expired_walk_result_json(&result);
+
+        assert_eq!(json["function"], "resolve_expired_walk");
+        assert_eq!(json["resolution_kind"], "skipped");
+        assert_eq!(json["resolution"]["kind"], "skipped");
+        assert_eq!(json["skip_reason"], "not expired");
+        assert_eq!(json["walk_index"], 4);
     }
 
     #[test]
