@@ -21,6 +21,7 @@ use {
             },
             workflow::{
                 AbortExecutionResult,
+                BrokenOnchainToolResultCleanup,
                 CommittedToolResultSettlementResult,
                 ExecuteResult,
                 ExpiredWalkResolutionResult,
@@ -242,6 +243,23 @@ pub(crate) fn execution_abort_result_json(result: &AbortExecutionResult) -> serd
         "tx_checkpoint": result.tx_checkpoint,
         "dag_id": result.dag_id,
         "execution_id": result.dag_execution_id,
+        "cleaned_broken_onchain_results": result
+            .cleaned_broken_onchain_results
+            .iter()
+            .map(broken_onchain_result_cleanup_json)
+            .collect::<Vec<_>>(),
+    })
+}
+
+fn broken_onchain_result_cleanup_json(
+    cleanup: &BrokenOnchainToolResultCleanup,
+) -> serde_json::Value {
+    json!({
+        "walk_index": cleanup.walk_index,
+        "result_id": cleanup.result_ref.object_id(),
+        "result_version": cleanup.result_ref.version(),
+        "expected_vertex": cleanup.expected_vertex.to_string(),
+        "tool_witness_id": cleanup.tool_witness_id,
     })
 }
 
@@ -427,6 +445,7 @@ mod tests {
                 },
                 registry::agent_registry::SkillRecord,
                 DefaultDagExecutorTarget,
+                RuntimeVertex,
                 SkillRecordContext,
                 SkillRevisionContext,
                 SkillRevisionLookupKey,
@@ -881,11 +900,22 @@ mod tests {
 
     #[test]
     fn execution_abort_result_json_includes_stable_fields() {
+        let result_ref = sui::types::ObjectReference::new(
+            sui::types::Address::from_static("0xbeef"),
+            12,
+            sui::types::Digest::from([7; 32]),
+        );
         let result = AbortExecutionResult {
             tx_digest: sui::types::Digest::default(),
             tx_checkpoint: 9,
             dag_id: sui::types::Address::from_static("0xda6"),
             dag_execution_id: sui::types::Address::from_static("0xe"),
+            cleaned_broken_onchain_results: vec![BrokenOnchainToolResultCleanup {
+                walk_index: 3,
+                result_ref,
+                expected_vertex: RuntimeVertex::plain("onchain"),
+                tool_witness_id: sui::types::Address::from_static("0x777"),
+            }],
         };
 
         let json = execution_abort_result_json(&result);
@@ -899,6 +929,23 @@ mod tests {
         assert_eq!(
             json["execution_id"],
             sui::types::Address::from_static("0xe").to_string()
+        );
+        assert_eq!(json["cleaned_broken_onchain_results"][0]["walk_index"], 3);
+        assert_eq!(
+            json["cleaned_broken_onchain_results"][0]["result_id"],
+            sui::types::Address::from_static("0xbeef").to_string()
+        );
+        assert_eq!(
+            json["cleaned_broken_onchain_results"][0]["result_version"],
+            12
+        );
+        assert_eq!(
+            json["cleaned_broken_onchain_results"][0]["expected_vertex"],
+            "Plain(onchain)"
+        );
+        assert_eq!(
+            json["cleaned_broken_onchain_results"][0]["tool_witness_id"],
+            sui::types::Address::from_static("0x777").to_string()
         );
     }
 

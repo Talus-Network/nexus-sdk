@@ -719,9 +719,9 @@ This command requires that a wallet is connected to the CLI and holds sufficient
 
 **`nexus tap execution abort --execution-id <OBJECT_ID>`**
 
-Permissionlessly aborts an expired TAP DAG execution through the current workflow settlement abort entry. This is distinct from `nexus dag abort-expired-execution`, which still discovers and submits a ToolGas-assisted abort candidate.
+Permissionlessly aborts an expired TAP DAG execution through the current workflow settlement abort entry. Before submitting the abort, the SDK checks double-expired active walks for tracked finalized on-chain results; if a result is broken because its required stamps are insufficient, the transaction first calls `cleanup_broken_onchain_tool_result` and then aborts. Consumable finalized results are not cleaned and must use normal on-chain result settlement. This is distinct from `nexus dag abort-expired-execution`, which still discovers and submits a ToolGas-assisted abort candidate.
 
-JSON output includes the `function`, `dag_id`, `execution_id`, and transaction `digest`/`tx_checkpoint`.
+JSON output includes the `function`, `dag_id`, `execution_id`, `cleaned_broken_onchain_results`, and transaction `digest`/`tx_checkpoint`.
 
 {% hint style="info" %}
 This command requires that a wallet is connected to the CLI and holds sufficient SUI for gas.
