@@ -974,6 +974,7 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
                     tool_registry,
                     leader_registry,
                 );
+                lock_payment_state_for_tools(tx, lock_tool_gas_args, dag_arg, execution_arg)?;
                 commit_prepared_onchain_tool_execution(
                     tx,
                     execution_plan,
@@ -1004,10 +1005,9 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
                     expected_vertex,
                 )?;
                 finalize_onchain_tool_result_output(tx, result, worksheet, output)?;
+                lock_payment_state_for_tools(tx, lock_tool_gas_args, dag_arg, execution_arg)?;
             }
         }
-
-        lock_payment_state_for_tools(tx, lock_tool_gas_args, dag_arg, execution_arg)?;
 
         Ok(())
     })
@@ -2499,4 +2499,101 @@ fn execute_agent_dag_internal(
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::types::DefaultDagExecutorTarget, sui::types::Command};
+
+    fn addr(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    fn object_ref(value: &'static str, version: u64, digest: u8) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(
+            addr(value),
+            version,
+            sui::types::Digest::from([digest; 32]),
+        )
+    }
+
+    fn nexus_objects() -> NexusObjects {
+        NexusObjects {
+            workflow_pkg_id: addr("0x1"),
+            scheduler_pkg_id: addr("0x11"),
+            primitives_pkg_id: addr("0x2"),
+            interface_pkg_id: addr("0x3"),
+            network_id: addr("0x4"),
+            registry_pkg_id: addr("0x5"),
+            tool_registry: object_ref("0x6", 1, 6),
+            verifier_registry: object_ref("0x7", 1, 7),
+            network_auth: object_ref("0x8", 1, 8),
+            agent_registry: object_ref("0xc", 1, 12),
+            default_dag_executor: DefaultDagExecutorTarget {
+                agent_id: addr("0xa1"),
+                skill_id: 177,
+            },
+            gas_service: object_ref("0xd", 1, 13),
+            leader_registry: object_ref("0xe", 1, 14),
+            workflow_original_pkg_id: None,
+            scheduler_original_pkg_id: None,
+        }
+    }
+
+    fn move_call_index(
+        ptb: &ProgrammableTransaction,
+        package: Option<sui::types::Address>,
+        module: &str,
+        function: &str,
+    ) -> usize {
+        ptb.commands
+            .iter()
+            .position(|command| {
+                let Command::MoveCall(call) = command else {
+                    return false;
+                };
+                package.is_none_or(|package| call.package == package)
+                    && call.module.as_str() == module
+                    && call.function.as_str() == function
+            })
+            .unwrap_or_else(|| panic!("missing move call {module}::{function}"))
+    }
+
+    #[test]
+    fn onchain_tool_execution_locks_payment_before_execute() {
+        let objects = nexus_objects();
+        let next_vertex = RuntimeVertex::plain("counter_increment");
+        let tool_package = addr("0x40");
+        let submission =
+            PreparedOnchainToolResultSubmission::Execute(PreparedOnchainToolExecution {
+                package: tool_package,
+                module: "tool".to_string(),
+                tool_witness_id: addr("0x41"),
+                requires_authorization_cap: false,
+                arguments: vec![],
+            });
+
+        let ptb = submit_on_chain_tool_result_for_walk_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            &[RuntimeToolGasRef {
+                vertex: next_vertex.vertex().clone(),
+                object_id: addr("0x30"),
+                version: 9,
+            }],
+            0,
+            &next_vertex,
+            true,
+            &submission,
+        )
+        .unwrap();
+
+        let lock_payment = move_call_index(&ptb, None, "gas", "lock_payment_state_for_tool");
+        let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
+
+        assert!(lock_payment < execute);
+        assert_eq!(execute, ptb.commands.len() - 1);
+    }
 }
