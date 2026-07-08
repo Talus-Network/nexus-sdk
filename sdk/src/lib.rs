@@ -12,6 +12,9 @@ pub use tool_fqn::*;
 #[cfg(feature = "sui_types")]
 pub mod sui;
 
+#[cfg(feature = "sui_types")]
+pub use sui_transaction_builder;
+
 /// Generated Move package bindings used as the SDK's Move ABI boundary.
 #[cfg(feature = "types")]
 pub mod move_bindings;

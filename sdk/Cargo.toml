@@ -39,6 +39,7 @@ sui_types = [
     "sui-rpc",
     "sui-sdk-types",
     "sui-crypto",
+    "sui-transaction-builder",
 ]
 
 # Move package publishing support for deployment tooling. Runtime/full users
