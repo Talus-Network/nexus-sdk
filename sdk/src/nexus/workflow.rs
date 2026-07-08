@@ -33,7 +33,7 @@ use {
             },
             move_std::type_name::TypeName,
             primitives::{data::NexusData, onchain_tool_result::OnchainToolResult},
-            sui_framework::{linked_table, object::ID, vec_map::VecMap},
+            sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
                 execution_events::{
@@ -363,11 +363,6 @@ impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
                 .collect(),
         }
     }
-}
-
-#[derive(Clone, Debug, serde::Deserialize)]
-struct SuiClock {
-    timestamp_ms: u64,
 }
 
 #[cfg(feature = "walrus")]
@@ -2215,6 +2210,21 @@ mod tests {
         NexusData::inline_one(value.to_vec())
     }
 
+    fn clock_bcs(timestamp_ms: u64) -> Vec<u8> {
+        bcs::to_bytes(&SuiClock::new(move_boundary::CLOCK_OBJECT_ID, timestamp_ms))
+            .expect("clock BCS should serialize")
+    }
+
+    #[test]
+    fn generated_sui_clock_bcs_matches_live_object_shape() {
+        let bytes = clock_bcs(61_000);
+
+        assert_eq!(bytes.len(), 40);
+        let clock = bcs::from_bytes::<SuiClock>(&bytes).expect("clock BCS should decode");
+        assert_eq!(clock.id.address(), move_boundary::CLOCK_OBJECT_ID);
+        assert_eq!(clock.timestamp_ms, 61_000);
+    }
+
     #[test]
     fn unresolved_timeout_skip_reason_distinguishes_pending_from_terminal_walks() {
         let active = DAGWalk::Active {
@@ -3829,7 +3839,7 @@ mod tests {
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            bcs::to_bytes(&61_000u64).expect("clock BCS should serialize"),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_list_dynamic_object_fields(
             &mut state_service_mock,
@@ -3966,7 +3976,7 @@ mod tests {
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            bcs::to_bytes(&61_000u64).expect("clock BCS should serialize"),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_list_dynamic_object_fields(
             &mut state_service_mock,
@@ -4136,7 +4146,7 @@ mod tests {
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            bcs::to_bytes(&61_000u64).expect("clock BCS should serialize"),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
