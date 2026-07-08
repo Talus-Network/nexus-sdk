@@ -210,17 +210,41 @@ pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSign
         return false;
     };
 
-    is_agent_vertex_authorization_proof_struct(&struct_tag)
-}
-
-fn is_agent_vertex_authorization_proof_struct(struct_tag: &sui::types::StructTag) -> bool {
-    if !struct_shape_matches::<ProvenValue<AgentVertexAuthorization>>(struct_tag) {
+    if !struct_shape_matches::<ProvenValue<AgentVertexAuthorization>>(&struct_tag) {
         return false;
     }
-    let Some(sui::types::TypeTag::Struct(inner)) = struct_tag.type_params().first() else {
+
+    let parsed_type_param = struct_tag
+        .type_params()
+        .first()
+        .is_some_and(type_tag_is_agent_vertex_authorization);
+    if parsed_type_param {
+        return true;
+    }
+
+    move_type
+        .type_parameter_instantiation
+        .first()
+        .is_some_and(signature_body_is_agent_vertex_authorization)
+}
+
+fn type_tag_is_agent_vertex_authorization(type_tag: &sui::types::TypeTag) -> bool {
+    let sui::types::TypeTag::Struct(inner) = type_tag else {
         return false;
     };
     struct_shape_matches::<AgentVertexAuthorization>(inner)
+}
+
+fn signature_body_is_agent_vertex_authorization(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
+    };
+
+    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
+        return false;
+    };
+
+    struct_shape_matches::<AgentVertexAuthorization>(&struct_tag)
 }
 
 pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
@@ -364,6 +388,18 @@ mod tests {
         assert!(is_hidden_internal_tool_param(&authorization_proof));
         assert!(is_agent_vertex_authorization_proof_param(
             &authorization_proof
+        ));
+        let split_authorization_proof = sui::grpc::OpenSignatureBody::default()
+            .with_type(Type::Datatype)
+            .with_type_name("0x42::authorization::ProvenValue")
+            .with_type_parameter_instantiation(vec![make_struct(
+                "0x43",
+                "authorization",
+                "AgentVertexAuthorization",
+            )]);
+        assert!(is_hidden_internal_tool_param(&split_authorization_proof));
+        assert!(is_agent_vertex_authorization_proof_param(
+            &split_authorization_proof
         ));
         assert!(!is_hidden_internal_tool_param(&make_struct(
             "0x45",
