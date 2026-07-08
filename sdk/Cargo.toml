@@ -13,8 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [[bin]]
-name = "generate_binding"
-path = "src/bin/generate_binding.rs"
+name = "regenerate_bindings"
+path = "src/bin/regenerate_bindings.rs"
 required-features = ["binding_codegen"]
 
 [features]
@@ -27,6 +27,12 @@ tool_fqn = ["regex", "lazy-regex"]
 # Signed HTTP feature enables application-layer Ed25519 signatures for HTTP
 # requests/responses (headers + signed claims).
 signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand", "bcs"]
+
+# DAG authoring helpers: JSON parser and static validator for the typed SDK `DagSpec`.
+dag = ["types", "serde_json", "petgraph"]
+
+# On-chain tool schema generation by introspecting published Move modules.
+onchain_schema_gen = ["types", "sui_types", "serde_json", "tokio"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
@@ -45,19 +51,13 @@ move_publish = [
     "move_package_alt",
 ]
 
-# Sui idents feature enables the use of the `idents` module and adds sui-sdk
-# and move-core-types as dependencies.
-sui_idents = ["tool_fqn", "sui_types", "serde_json", "base64", "sui-move-codegen"]
-
-# Binding codegen feature gates the `generate_binding` binary, the network half
-# of the Move-binding identifier pipeline. It needs a full Tokio runtime to drive
+# Binding codegen feature gates the `regenerate_bindings` binary, the network half
+# of the Move binding package IR pipeline. It needs a full Tokio runtime to drive
 # the gRPC fetch; the offline render in `build.rs` requires none of this.
 binding_codegen = [
-    "sui_types",
     "tokio/full",
     "sui-move-codegen",
-    "serde_json",
-    "serde_json/preserve_order",
+    "sui-sdk-types",
 ]
 
 # Walrus client feature enables the use of the `walrus` module, providing
@@ -66,43 +66,37 @@ walrus = ["reqwest", "futures-util", "tokio", "serde_json", "thiserror"]
 
 # Types feature enables the use of the `types` module.
 types = [
+    "tool_fqn",
     "sui_types",
-    "sui_idents",
     "sui-move",
     "sui-move-call",
+    "sui-move-ptb",
     "enum_dispatch",
-    "walrus",
-    "futures",
-    "jsonschema",
     "zeroize",
     "bcs",
     "hex",
+    "jsonschema",
+    "serde_json",
     "sha2",
 ]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
+events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["sui_idents", "types"]
-
-# Provides DAG-related utilities.
-dag = ["petgraph"]
-
-# Schema generation feature enables automatic schema generation from Move modules.
-# Used for onchain tool registration.
-schema_gen = ["sui_types", "serde_json"]
+transactions = ["types", "sui-move-ptb"]
 
 # Provides various Nexus runtime utilities like execution of workflows. Move
 # package publishing helpers require the explicit `move_publish` feature.
 nexus = [
     "transactions",
     "events",
-    "dag",
     "bcs",
+    "ed25519-dalek",
     "prost-types",
-    "signed_http",
+    "thiserror",
+    "tokio",
 ]
 
 # Test utils feature enables the use of the `test_utils` module. Also adds
@@ -110,6 +104,7 @@ nexus = [
 # testcontainers-modules as dependencies.
 test_utils = [
     "types",
+    "sui-transaction-builder",
     "tempfile",
     "tokio-retry",
     "tokio-stream",
@@ -130,14 +125,13 @@ full = [
     "tool_fqn",
     "signed_http",
     "sui_types",
-    "sui_idents",
     "types",
+    "dag",
     "events",
     "transactions",
     "walrus",
-    "dag",
-    "schema_gen",
     "nexus",
+    "onchain_schema_gen",
 ]
 
 [dependencies]
@@ -170,15 +164,19 @@ optional = true
 version = "0.4"
 optional = true
 
+[dependencies.jsonschema]
+workspace = true
+optional = true
+
 [dependencies.lazy_static]
 version = "1.5"
 optional = true
 
-[dependencies.petgraph]
+[dependencies.prometheus]
 workspace = true
 optional = true
 
-[dependencies.prometheus]
+[dependencies.petgraph]
 workspace = true
 optional = true
 
@@ -225,10 +223,6 @@ optional = true
 # === Optional deps ===
 [dependencies.futures-util]
 version = "0.3"
-optional = true
-
-[dependencies.jsonschema]
-workspace = true
 optional = true
 
 [dependencies.lazy-regex]
@@ -299,18 +293,23 @@ optional = true
 # === Move binding ===
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-tag = "v0.1.0"
+branch = "feat/runtime_package"
 optional = true
 
 [dependencies.sui-move]
 git = "https://github.com/Talus-Network/move-binding"
-tag = "v0.1.0"
+branch = "feat/runtime_package"
 features = ["derive"]
 optional = true
 
 [dependencies.sui-move-call]
 git = "https://github.com/Talus-Network/move-binding"
-tag = "v0.1.0"
+branch = "feat/runtime_package"
+optional = true
+
+[dependencies.sui-move-ptb]
+git = "https://github.com/Talus-Network/move-binding"
+branch = "feat/runtime_package"
 optional = true
 
 # === Sui deps ===
@@ -372,15 +371,15 @@ mockito.workspace = true
 portpicker.workspace = true
 tempfile.workspace = true
 tonic.workspace = true
+toml.workspace = true
 
 # === Build deps ===
 [build-dependencies]
 toml.workspace = true
-serde_json.workspace = true
 
 [build-dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-tag = "v0.1.0"
+branch = "feat/runtime_package"
 
 [dependencies.blake3]
 version = "1.3"

@@ -2,10 +2,10 @@ mod conf_get;
 mod conf_set;
 
 use {
-    crate::{display::json_output, prelude::*},
+    crate::{cli_conf::StorageKind, display::json_output, prelude::*},
     conf_get::*,
     conf_set::*,
-    nexus_sdk::{types::StorageKind, walrus::WALRUS_MAX_EPOCHS},
+    nexus_sdk::walrus::WALRUS_MAX_EPOCHS,
 };
 
 #[allow(clippy::large_enum_variant)]

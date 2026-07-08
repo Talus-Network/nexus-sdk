@@ -5,6 +5,7 @@ mod dag;
 mod display;
 mod error;
 mod gas;
+mod nexus_data_json;
 mod prelude;
 mod scheduler;
 mod sui;

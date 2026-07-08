@@ -59,44 +59,11 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
+        let tx =
+            gas::enable_expiry_ptb(nexus_objects, &tool_gas, &tool, &owner_cap, cost_per_minute)
+                .map_err(NexusError::TransactionBuilding)?;
 
-        if let Err(e) = gas::enable_expiry(
-            &mut tx,
-            nexus_objects,
-            &tool_gas,
-            &tool,
-            &owner_cap,
-            cost_per_minute,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(EnableExpiryExtensionResult {
             tx_digest: response.digest,
@@ -126,37 +93,10 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
+        let tx = gas::disable_expiry_ptb(nexus_objects, &tool_gas, &tool, &owner_cap)
+            .map_err(NexusError::TransactionBuilding)?;
 
-        if let Err(e) = gas::disable_expiry(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(DisableExpiryExtensionResult {
             tx_digest: response.digest,
@@ -187,44 +127,16 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        if let Err(e) = gas::buy_limited_invocations_gas_ticket(
-            &mut tx,
+        let tx = gas::buy_limited_invocations_gas_ticket_ptb(
             nexus_objects,
             &tool_gas,
             &tool,
             &pay_with_coin,
             invocations,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(BuyLimitedInvocationsTicketResult {
             tx_digest: response.digest,
@@ -257,10 +169,7 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        if let Err(e) = gas::enable_limited_invocations(
-            &mut tx,
+        let tx = gas::enable_limited_invocations_ptb(
             nexus_objects,
             &tool_gas,
             &tool,
@@ -268,35 +177,10 @@ impl GasActions {
             cost_per_invocation,
             min_invocations,
             max_invocations,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(EnableLimitedInvocationsExtensionResult {
             tx_digest: response.digest,
@@ -326,39 +210,10 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
+        let tx = gas::disable_limited_invocations_ptb(nexus_objects, &tool_gas, &tool, &owner_cap)
+            .map_err(NexusError::TransactionBuilding)?;
 
-        if let Err(e) =
-            gas::disable_limited_invocations(&mut tx, nexus_objects, &tool_gas, &tool, &owner_cap)
-        {
-            return Err(NexusError::TransactionBuilding(e));
-        }
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(DisableLimitedInvocationsExtensionResult {
             tx_digest: response.digest,
@@ -389,45 +244,16 @@ impl GasActions {
         let tool = self.client.fetch_tool(&tool_fqn).await?;
         let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
 
-        // Craft the transaction.
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        if let Err(e) = gas::buy_expiry_gas_ticket(
-            &mut tx,
+        let tx = gas::buy_expiry_gas_ticket_ptb(
             nexus_objects,
             &tool_gas,
             &tool,
             &pay_with_coin,
             minutes,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(BuyExpiryTicketResult {
             tx_digest: response.digest,

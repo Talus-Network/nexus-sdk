@@ -4,6 +4,7 @@ use onchain_tool::onchain_tool_result::{Self as onchain_tool_result, OnchainTool
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
+use onchain_tool::proof_of_uid::{Self as proof_of_uid, ProofOfUID};
 
 /// One-time witness for package initialization.
 public struct ONCHAIN_TOOL has drop {}
@@ -19,11 +20,6 @@ public struct RandomCounter has key {
     count: u64,
     /// Store the witness object that identifies this tool.
     witness: Bag,
-}
-
-/// Placeholder for ProofOfUID.
-public struct ProofOfUID {
-    id: UID,
 }
 
 /// Tool execution output variants.
@@ -80,8 +76,7 @@ entry fun execute(
     _ctx: &mut TxContext,
 ) {
     let old_count = counter.count;
-    let ProofOfUID { id } = worksheet;
-    object::delete(id);
+    proof_of_uid::delete(worksheet);
     onchain_tool_result::delete_for_testing(result);
     let _ = old_count;
     let _ = increase_with;

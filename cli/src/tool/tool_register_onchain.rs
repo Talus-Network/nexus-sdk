@@ -9,7 +9,12 @@ use {
         sui::*,
     },
     nexus_sdk::{
-        idents::{primitives, registry, workflow as workflow_idents},
+        move_bindings::{
+            primitives::owner_cap::CloneableOwnerCap,
+            registry::tool_registry::OverTool,
+            struct_tag_matches,
+            workflow::gas::OverGas,
+        },
         nexus::error::NexusError,
         sui,
         transactions::tool,
@@ -55,7 +60,6 @@ pub(crate) async fn register_onchain_tool(
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let signer = nexus_client.signer();
-    let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let conf = CliConf::load().await.unwrap_or_default();
@@ -69,10 +73,7 @@ pub(crate) async fn register_onchain_tool(
 
     let tx_handle = loading!("Crafting transaction...");
 
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    if let Err(e) = tool::register_on_chain_for_self_with_workflow_authorization_cap(
-        &mut tx,
+    let tx = match tool::register_on_chain_for_self_with_workflow_authorization_cap_ptb(
         nexus_objects,
         package,
         module.as_str(),
@@ -86,41 +87,21 @@ pub(crate) async fn register_onchain_tool(
         address,
         workflow_authorization_cap_first,
     ) {
-        tx_handle.error();
-
-        return Err(NexusCliError::Any(e));
-    }
+        Ok(tx) => tx,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     tx_handle.success();
 
-    let mut gas_coin = gas_config.acquire_gas_coin().await;
-
-    tx.set_sender(address);
-    tx.set_gas_budget(gas_config.get_budget());
-    tx.set_gas_price(nexus_client.get_reference_gas_price());
-
-    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.try_build().map_err(|e| NexusCliError::Any(e.into()))?;
-
-    let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
-
     // Sign and submit the TX.
-    let response = match signer.execute_tx(tx, signature, &mut gas_coin).await {
-        Ok(response) => {
-            gas_config.release_gas_coin(gas_coin).await;
-
-            response
-        }
+    let response = match nexus_client.submit_transaction(tx, address).await {
+        Ok(response) => response,
         // If the tool is already registered, we don't want to fail the
         // command.
         Err(NexusError::Wallet(e)) if e.to_string().contains("register_tool_") => {
-            gas_config.release_gas_coin(gas_coin).await;
-
             notify_error!(
                 "Tool '{fqn}' is already registered.",
                 fqn = fqn.to_string().truecolor(100, 100, 100)
@@ -136,8 +117,6 @@ pub(crate) async fn register_onchain_tool(
         // Any other error fails the tool registration but continues the
         // loop.
         Err(e) => {
-            gas_config.release_gas_coin(gas_coin).await;
-
             notify_error!(
                 "Failed to register tool '{fqn}': {error}",
                 fqn = fqn.to_string().truecolor(100, 100, 100),
@@ -253,10 +232,7 @@ fn extract_owner_caps(
             continue;
         };
 
-        if *object_type.address() != nexus_objects.primitives_pkg_id
-            || *object_type.module() != primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
-            || *object_type.name() != primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
-        {
+        if !struct_tag_matches::<CloneableOwnerCap<OverTool>>(nexus_objects, &object_type) {
             continue;
         }
 
@@ -269,15 +245,9 @@ fn extract_owner_caps(
             continue;
         };
 
-        if *inner.address() == nexus_objects.registry_pkg_id
-            && *inner.module() == registry::ToolRegistry::OVER_TOOL.module
-            && *inner.name() == registry::ToolRegistry::OVER_TOOL.name
-        {
+        if struct_tag_matches::<OverTool>(nexus_objects, inner) {
             over_tool = Some(obj.object_id());
-        } else if *inner.address() == nexus_objects.workflow_pkg_id
-            && *inner.module() == workflow_idents::Gas::OVER_GAS.module
-            && *inner.name() == workflow_idents::Gas::OVER_GAS.name
-        {
+        } else if struct_tag_matches::<OverGas>(nexus_objects, inner) {
             over_gas = Some(obj.object_id());
         }
     }
@@ -1224,16 +1194,13 @@ mod tests {
     fn cloneable_owner_cap(
         rng: &mut rand::rngs::ThreadRng,
         nexus_objects: &NexusObjects,
-        inner_pkg_id: sui::types::Address,
-        inner_module: sui::types::Identifier,
-        inner_name: sui::types::Identifier,
+        inner: sui::types::StructTag,
         owner_cap_id: sui::types::Address,
     ) -> sui::types::Object {
-        let inner = sui::types::StructTag::new(inner_pkg_id, inner_module, inner_name, vec![]);
         let cap_tag = sui::types::StructTag::new(
             nexus_objects.primitives_pkg_id,
-            primitives::OwnerCap::CLONEABLE_OWNER_CAP.module,
-            primitives::OwnerCap::CLONEABLE_OWNER_CAP.name,
+            cloneable_owner_cap_tag(nexus_objects).module().clone(),
+            cloneable_owner_cap_tag(nexus_objects).name().clone(),
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
         );
 
@@ -1248,6 +1215,18 @@ mod tests {
         )
     }
 
+    fn cloneable_owner_cap_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<CloneableOwnerCap<OverTool>>(nexus_objects)
+    }
+
+    fn over_tool_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverTool>(nexus_objects)
+    }
+
+    fn over_gas_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverGas>(nexus_objects)
+    }
+
     #[test]
     fn test_extract_owner_caps_over_tool_only() {
         let mut rng = rand::thread_rng();
@@ -1259,9 +1238,7 @@ mod tests {
         let objects = vec![cloneable_owner_cap(
             &mut rng,
             &nexus_objects,
-            nexus_objects.registry_pkg_id,
-            registry::ToolRegistry::OVER_TOOL.module,
-            registry::ToolRegistry::OVER_TOOL.name,
+            over_tool_tag(&nexus_objects),
             owner_cap_id,
         )];
 
@@ -1282,9 +1259,7 @@ mod tests {
         let objects = vec![cloneable_owner_cap(
             &mut rng,
             &nexus_objects,
-            nexus_objects.workflow_pkg_id,
-            workflow_idents::Gas::OVER_GAS.module,
-            workflow_idents::Gas::OVER_GAS.name,
+            over_gas_tag(&nexus_objects),
             over_gas_id,
         )];
 
@@ -1309,17 +1284,13 @@ mod tests {
             cloneable_owner_cap(
                 &mut rng,
                 &nexus_objects,
-                nexus_objects.workflow_pkg_id,
-                workflow_idents::Gas::OVER_GAS.module,
-                workflow_idents::Gas::OVER_GAS.name,
+                over_gas_tag(&nexus_objects),
                 over_gas_id,
             ),
             cloneable_owner_cap(
                 &mut rng,
                 &nexus_objects,
-                nexus_objects.registry_pkg_id,
-                registry::ToolRegistry::OVER_TOOL.module,
-                registry::ToolRegistry::OVER_TOOL.name,
+                over_tool_tag(&nexus_objects),
                 over_tool_id,
             ),
         ];

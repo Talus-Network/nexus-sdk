@@ -7,7 +7,7 @@
     "MD033": false,
     "MD041": false,
     "MD026": { "punctuation": ".,;:!" },
-    "MD029": { "style": "one" },
+    "MD029": { "style": "one_or_ordered" },
     "MD007": { "indent": 2 },
     "no-hard-tabs": true,
     "no-trailing-spaces": true 

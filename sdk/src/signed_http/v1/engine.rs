@@ -8,23 +8,25 @@ use {
     super::{
         error::SignedHttpError,
         wire::{
+            decode_invoke_request_claims_v1,
             decode_signature_headers_v1,
             encode_signature_headers_v1,
             now_ms,
             parse_hex_32,
-            request_signature_message_v1,
             response_body_sha256_for_claim,
             sha256,
             sign_invoke_request_v1,
             sign_invoke_response_with_body_v1,
-            validate_time_window,
-            verify_invoke_response_v1,
+            verify_invoke_request_with_key_resolver_v1,
+            verify_invoke_response_with_key_resolver_v1,
             AllowedLeadersV1,
             DecodedSignatureV1,
             EncodedSignatureHeadersV1,
             HttpRequestMeta,
             InvokeRequestClaimsV1,
             InvokeResponseClaimsV1,
+            VerifiedInvokeRequestV1,
+            VerifiedInvokeResponseV1,
             VerifyOptions,
             HEADER_SIG,
             HEADER_SIG_INPUT,
@@ -32,7 +34,7 @@ use {
         },
     },
     base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _},
-    ed25519_dalek::{Signature, SigningKey, VerifyingKey},
+    ed25519_dalek::SigningKey,
     rand::RngCore as _,
     std::{
         collections::HashMap,
@@ -659,6 +661,7 @@ impl SignedHttpInvokerV1 {
             nonce,
             sig_input,
             sig_input_sha256,
+            sig,
             headers,
         })
     }
@@ -672,6 +675,7 @@ pub struct OutboundSessionV1 {
     nonce: String,
     sig_input: Vec<u8>,
     sig_input_sha256: [u8; 32],
+    sig: [u8; 64],
     headers: EncodedSignatureHeadersV1,
 }
 
@@ -699,6 +703,37 @@ impl OutboundSessionV1 {
         self.sig_input_sha256
     }
 
+    fn verify_response_wire(
+        &self,
+        status: u16,
+        headers: SignatureHeadersRef<'_>,
+        body: &[u8],
+        responder_keys: &dyn ResponderKeyResolver,
+    ) -> Result<VerifiedInvokeResponseV1, SignedHttpError> {
+        let decoded =
+            decode_signature_headers_v1(headers.sig_v, headers.sig_input_b64, headers.sig_b64)?;
+
+        let verified = verify_invoke_response_with_key_resolver_v1(
+            decoded,
+            body,
+            &self.expected_responder_id,
+            self.sig_input_sha256,
+            &self.engine.verify_options(),
+            |responder_id, responder_kid| {
+                responder_keys.responder_public_key(responder_id, responder_kid)
+            },
+        )?;
+
+        if verified.claims.status != status {
+            return Err(SignedHttpError::StatusMismatch {
+                claimed: verified.claims.status,
+                actual: status,
+            });
+        }
+
+        Ok(verified)
+    }
+
     /// Verify the responder's signed response and ensure it is bound to this request.
     pub fn verify_response(
         &self,
@@ -707,44 +742,8 @@ impl OutboundSessionV1 {
         body: &[u8],
         responder_keys: &dyn ResponderKeyResolver,
     ) -> Result<VerifiedOutboundResponseV1, SignedHttpError> {
-        let decoded =
-            decode_signature_headers_v1(headers.sig_v, headers.sig_input_b64, headers.sig_b64)?;
-
-        let claims: InvokeResponseClaimsV1 = serde_json::from_slice(&decoded.sig_input)
-            .map_err(SignedHttpError::InvalidSignedInputJson)?;
-
-        if claims.status != status {
-            return Err(SignedHttpError::StatusMismatch {
-                claimed: claims.status,
-                actual: status,
-            });
-        }
-
-        let tool_public_key = responder_keys
-            .responder_public_key(&claims.tool_id, claims.tool_kid)
-            .ok_or_else(|| SignedHttpError::UnknownToolKey {
-                tool_id: claims.tool_id.clone(),
-                tool_kid: claims.tool_kid,
-            })?;
-
-        let verified = verify_invoke_response_v1(
-            decoded,
-            body,
-            &self.expected_responder_id,
-            self.sig_input_sha256,
-            tool_public_key,
-            &self.engine.verify_options(),
-        )?;
-
-        Ok(VerifiedOutboundResponseV1 {
-            responder_id: verified.claims.tool_id.clone(),
-            responder_kid: verified.claims.tool_kid,
-            nonce: verified.claims.nonce.clone(),
-            status: verified.claims.status,
-            owner_leader_id: verified.claims.owner_leader_id.clone(),
-            responder_public_key: verified.tool_public_key,
-            response_sig_input_sha256: verified.sig_input_sha256,
-        })
+        let verified = self.verify_response_wire(status, headers, body, responder_keys)?;
+        Ok(verified_outbound_response_from_wire(&verified))
     }
 
     /// Verify the responder's signed response and return the signed exchange transcript.
@@ -756,26 +755,14 @@ impl OutboundSessionV1 {
         responder_keys: &dyn ResponderKeyResolver,
         resolved_responder_kid: u64,
     ) -> Result<SignedInvokeTranscriptV1, SignedHttpError> {
-        let verified = self.verify_response(status, headers, body, responder_keys)?;
-
-        let request_claims = serde_json::from_slice::<InvokeRequestClaimsV1>(&self.sig_input)
-            .map_err(SignedHttpError::InvalidSignedInputJson)?;
-        let request_decoded = decode_signature_headers_v1(
-            Some("1"),
-            Some(&self.headers.sig_input_b64),
-            Some(&self.headers.sig_b64),
-        )?;
-        let response_decoded =
-            decode_signature_headers_v1(headers.sig_v, headers.sig_input_b64, headers.sig_b64)?;
-        let response_claims =
-            serde_json::from_slice::<InvokeResponseClaimsV1>(&response_decoded.sig_input)
-                .map_err(SignedHttpError::InvalidSignedInputJson)?;
+        let response_verified = self.verify_response_wire(status, headers, body, responder_keys)?;
+        let verified = verified_outbound_response_from_wire(&response_verified);
+        let request_claims = decode_invoke_request_claims_v1(&self.sig_input)?;
 
         build_signed_invoke_transcript_v1(
             &request_claims,
-            request_decoded.signature,
-            &response_claims,
-            response_decoded.signature,
+            self.sig,
+            &response_verified,
             &verified,
             self.sig_input_sha256,
             resolved_responder_kid,
@@ -793,6 +780,20 @@ pub struct VerifiedOutboundResponseV1 {
     pub owner_leader_id: String,
     pub responder_public_key: [u8; 32],
     pub response_sig_input_sha256: [u8; 32],
+}
+
+fn verified_outbound_response_from_wire(
+    verified: &VerifiedInvokeResponseV1,
+) -> VerifiedOutboundResponseV1 {
+    VerifiedOutboundResponseV1 {
+        responder_id: verified.claims.tool_id.clone(),
+        responder_kid: verified.claims.tool_kid,
+        nonce: verified.claims.nonce.clone(),
+        status: verified.claims.status,
+        owner_leader_id: verified.claims.owner_leader_id.clone(),
+        responder_public_key: verified.tool_public_key,
+        response_sig_input_sha256: verified.sig_input_sha256,
+    }
 }
 
 /// Signed request/response material captured from one outbound invoke exchange.
@@ -818,22 +819,13 @@ pub struct SignedInvokeTranscriptV1 {
 fn build_signed_invoke_transcript_v1(
     request_claims: &InvokeRequestClaimsV1,
     request_signature: [u8; 64],
-    response_claims: &InvokeResponseClaimsV1,
-    response_signature: [u8; 64],
+    response_verified: &VerifiedInvokeResponseV1,
     verified: &VerifiedOutboundResponseV1,
     request_sig_input_sha256: [u8; 32],
     resolved_responder_kid: u64,
 ) -> Result<SignedInvokeTranscriptV1, SignedHttpError> {
     let request_body_sha256 = parse_hex_32(&request_claims.body_sha256)
         .map_err(|_| SignedHttpError::InvalidBodySha256Hex(request_claims.body_sha256.clone()))?;
-    let response_req_sig_input_sha256 = parse_hex_32(&response_claims.req_sig_input_sha256)
-        .map_err(|_| {
-            SignedHttpError::InvalidReqSigInputSha256Hex(
-                response_claims.req_sig_input_sha256.clone(),
-            )
-        })?;
-    let response_body_sha256 = parse_hex_32(&response_claims.body_sha256)
-        .map_err(|_| SignedHttpError::InvalidBodySha256Hex(response_claims.body_sha256.clone()))?;
 
     Ok(SignedInvokeTranscriptV1 {
         leader_id: request_claims.leader_id.clone(),
@@ -845,11 +837,11 @@ fn build_signed_invoke_transcript_v1(
         request_path: request_claims.path.clone(),
         request_query: request_claims.query.clone(),
         request_sig_input_sha256,
-        response_req_sig_input_sha256,
+        response_req_sig_input_sha256: response_verified.req_sig_input_sha256,
         request_body_sha256,
-        response_body_sha256,
+        response_body_sha256: response_verified.body_sha256,
         request_signature,
-        response_signature,
+        response_signature: response_verified.signature,
         response_status: verified.status,
     })
 }
@@ -1157,67 +1149,21 @@ impl SignedHttpResponderV1 {
         http: HttpRequestMeta<'_>,
         body: &[u8],
     ) -> Result<VerifiedInboundRequestV1, SignedHttpError> {
-        let claims: InvokeRequestClaimsV1 = serde_json::from_slice(&decoded.sig_input)
-            .map_err(SignedHttpError::InvalidSignedInputJson)?;
-
-        if claims.tool_id != self.responder_id {
-            return Err(SignedHttpError::ToolIdMismatch {
-                claimed: claims.tool_id,
-                expected: self.responder_id.clone(),
-            });
-        }
-
-        if claims.method != http.method {
-            return Err(SignedHttpError::MethodMismatch {
-                claimed: claims.method,
-                actual: http.method.to_string(),
-            });
-        }
-
-        if claims.path != http.path {
-            return Err(SignedHttpError::PathMismatch {
-                claimed: claims.path,
-                actual: http.path.to_string(),
-            });
-        }
-
-        if claims.query != http.query {
-            return Err(SignedHttpError::QueryMismatch {
-                claimed: claims.query,
-                actual: http.query.to_string(),
-            });
-        }
-
-        let claimed_body_sha256 = parse_hex_32(&claims.body_sha256)
-            .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-        if claimed_body_sha256 != sha256(body) {
-            return Err(SignedHttpError::BodyHashMismatch);
-        }
-
-        validate_time_window(claims.iat_ms, claims.exp_ms, &self.engine.verify_options())?;
-
-        let invoker_public_key = self
-            .invoker_keys
-            .invoker_public_key(&claims.leader_id, claims.leader_kid)
-            .ok_or_else(|| SignedHttpError::UnknownLeaderKey {
-                leader_id: claims.leader_id.clone(),
-                leader_kid: claims.leader_kid,
-            })?;
-
-        let verifying_key = VerifyingKey::from_bytes(&invoker_public_key).map_err(|_| {
-            SignedHttpError::InvalidLeaderPublicKey {
-                leader_id: claims.leader_id.clone(),
-                leader_kid: claims.leader_kid,
-            }
-        })?;
-
-        let msg = request_signature_message_v1(&sha256(&decoded.sig_input));
-        let sig = Signature::from_bytes(&decoded.signature);
-        verifying_key
-            .verify_strict(&msg, &sig)
-            .map_err(|_| SignedHttpError::InvalidSignature)?;
-
-        let sig_input_sha256 = sha256(&decoded.sig_input);
+        let VerifiedInvokeRequestV1 {
+            claims,
+            leader_public_key,
+            body_sha256,
+            signature: _,
+            sig_input,
+            sig_input_sha256,
+        } = verify_invoke_request_with_key_resolver_v1(
+            decoded,
+            http,
+            body,
+            &self.responder_id,
+            &self.engine.verify_options(),
+            |leader_id, leader_kid| self.invoker_keys.invoker_public_key(leader_id, leader_kid),
+        )?;
 
         Ok(VerifiedInboundRequestV1 {
             invoker_id: claims.leader_id,
@@ -1229,9 +1175,9 @@ impl SignedHttpResponderV1 {
             method: claims.method,
             path: claims.path,
             query: claims.query,
-            body_sha256: claimed_body_sha256,
-            invoker_public_key,
-            sig_input: decoded.sig_input,
+            body_sha256,
+            invoker_public_key: leader_public_key,
+            sig_input,
             sig_input_sha256,
         })
     }

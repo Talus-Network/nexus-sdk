@@ -217,10 +217,38 @@ pub fn encode_signature_headers_v1(
     }
 }
 
+pub(super) fn decode_invoke_request_claims_v1(
+    sig_input: &[u8],
+) -> Result<InvokeRequestClaimsV1, SignedHttpError> {
+    decode_signed_input(sig_input)
+}
+
+pub(super) fn decode_invoke_response_claims_v1(
+    sig_input: &[u8],
+) -> Result<InvokeResponseClaimsV1, SignedHttpError> {
+    decode_signed_input(sig_input)
+}
+
+fn encode_signed_input<T>(claims: &T) -> Result<Vec<u8>, SignedHttpError>
+where
+    T: Serialize,
+{
+    serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)
+}
+
+fn decode_signed_input<T>(sig_input: &[u8]) -> Result<T, SignedHttpError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_slice(sig_input).map_err(SignedHttpError::InvalidSignedInputJson)
+}
+
 #[derive(Clone, Debug)]
 pub struct VerifiedInvokeRequestV1 {
     pub claims: InvokeRequestClaimsV1,
     pub leader_public_key: [u8; 32],
+    pub body_sha256: [u8; 32],
+    pub signature: [u8; 64],
     pub sig_input: Vec<u8>,
     pub sig_input_sha256: [u8; 32],
 }
@@ -228,7 +256,7 @@ pub struct VerifiedInvokeRequestV1 {
 /// Verify a signed invocation request (Leader -> Tool).
 ///
 /// This function verifies:
-/// - the signed claims JSON parses as [`InvokeRequestClaimsV1`]
+/// - the signed JSON claims parse as [`InvokeRequestClaimsV1`]
 /// - `tool_id`, `method`, `path`, `query` match the actual HTTP request
 /// - `body_sha256` matches the provided body bytes
 /// - the time window is acceptable under [`VerifyOptions`]
@@ -246,8 +274,25 @@ pub fn verify_invoke_request_v1(
     allowed_leaders: &AllowedLeadersV1,
     opts: &VerifyOptions,
 ) -> Result<VerifiedInvokeRequestV1, SignedHttpError> {
-    let claims: InvokeRequestClaimsV1 = serde_json::from_slice(&decoded.sig_input)
-        .map_err(SignedHttpError::InvalidSignedInputJson)?;
+    verify_invoke_request_with_key_resolver_v1(
+        decoded,
+        http,
+        body,
+        expected_tool_id,
+        opts,
+        |leader_id, leader_kid| allowed_leaders.leader_public_key_bytes(leader_id, leader_kid),
+    )
+}
+
+pub(super) fn verify_invoke_request_with_key_resolver_v1(
+    decoded: DecodedSignatureV1,
+    http: HttpRequestMeta<'_>,
+    body: &[u8],
+    expected_tool_id: &str,
+    opts: &VerifyOptions,
+    resolve_leader_public_key: impl FnOnce(&str, u64) -> Option<[u8; 32]>,
+) -> Result<VerifiedInvokeRequestV1, SignedHttpError> {
+    let claims = decode_invoke_request_claims_v1(&decoded.sig_input)?;
 
     if claims.tool_id != expected_tool_id {
         return Err(SignedHttpError::ToolIdMismatch {
@@ -285,8 +330,7 @@ pub fn verify_invoke_request_v1(
 
     validate_time_window(claims.iat_ms, claims.exp_ms, opts)?;
 
-    let leader_public_key = allowed_leaders
-        .leader_public_key_bytes(&claims.leader_id, claims.leader_kid)
+    let leader_public_key = resolve_leader_public_key(&claims.leader_id, claims.leader_kid)
         .ok_or_else(|| SignedHttpError::UnknownLeaderKey {
             leader_id: claims.leader_id.clone(),
             leader_kid: claims.leader_kid,
@@ -309,6 +353,8 @@ pub fn verify_invoke_request_v1(
     Ok(VerifiedInvokeRequestV1 {
         claims,
         leader_public_key,
+        body_sha256: claimed_body_sha256,
+        signature: decoded.signature,
         sig_input: decoded.sig_input,
         sig_input_sha256,
     })
@@ -318,6 +364,9 @@ pub fn verify_invoke_request_v1(
 pub struct VerifiedInvokeResponseV1 {
     pub claims: InvokeResponseClaimsV1,
     pub tool_public_key: [u8; 32],
+    pub req_sig_input_sha256: [u8; 32],
+    pub body_sha256: [u8; 32],
+    pub signature: [u8; 64],
     pub sig_input: Vec<u8>,
     pub sig_input_sha256: [u8; 32],
 }
@@ -325,7 +374,7 @@ pub struct VerifiedInvokeResponseV1 {
 /// Verify a signed invocation response (Tool -> Leader).
 ///
 /// This function verifies:
-/// - the signed claims JSON parses as [`InvokeResponseClaimsV1`]
+/// - the signed JSON claims parse as [`InvokeResponseClaimsV1`]
 /// - `tool_id` matches the expected tool
 /// - `body_sha256` matches the provided body bytes
 /// - the time window is acceptable under [`VerifyOptions`]
@@ -342,8 +391,25 @@ pub fn verify_invoke_response_v1(
     tool_public_key: [u8; 32],
     opts: &VerifyOptions,
 ) -> Result<VerifiedInvokeResponseV1, SignedHttpError> {
-    let claims: InvokeResponseClaimsV1 = serde_json::from_slice(&decoded.sig_input)
-        .map_err(SignedHttpError::InvalidSignedInputJson)?;
+    verify_invoke_response_with_key_resolver_v1(
+        decoded,
+        body,
+        expected_tool_id,
+        expected_req_sig_input_sha256,
+        opts,
+        |_, _| Some(tool_public_key),
+    )
+}
+
+pub(super) fn verify_invoke_response_with_key_resolver_v1(
+    decoded: DecodedSignatureV1,
+    body: &[u8],
+    expected_tool_id: &str,
+    expected_req_sig_input_sha256: [u8; 32],
+    opts: &VerifyOptions,
+    resolve_tool_public_key: impl FnOnce(&str, u64) -> Option<[u8; 32]>,
+) -> Result<VerifiedInvokeResponseV1, SignedHttpError> {
+    let claims = decode_invoke_response_claims_v1(&decoded.sig_input)?;
 
     if claims.tool_id != expected_tool_id {
         return Err(SignedHttpError::ToolIdMismatch {
@@ -368,6 +434,14 @@ pub fn verify_invoke_response_v1(
         return Err(SignedHttpError::RequestBindingMismatch);
     }
 
+    let tool_public_key =
+        resolve_tool_public_key(&claims.tool_id, claims.tool_kid).ok_or_else(|| {
+            SignedHttpError::UnknownToolKey {
+                tool_id: claims.tool_id.clone(),
+                tool_kid: claims.tool_kid,
+            }
+        })?;
+
     let verifying_key = VerifyingKey::from_bytes(&tool_public_key).map_err(|_| {
         SignedHttpError::InvalidToolPublicKey {
             tool_id: expected_tool_id.to_string(),
@@ -391,6 +465,9 @@ pub fn verify_invoke_response_v1(
     Ok(VerifiedInvokeResponseV1 {
         claims,
         tool_public_key,
+        req_sig_input_sha256: claimed_req_hash,
+        body_sha256: claimed_body_sha256,
+        signature: decoded.signature,
         sig_input: decoded.sig_input,
         sig_input_sha256,
     })
@@ -403,46 +480,8 @@ pub fn sign_invoke_request_v1(
     claims: &InvokeRequestClaimsV1,
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
-    let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
+    let sig_input = encode_signed_input(claims)?;
     let msg = request_signature_message_v1(&sha256(&sig_input));
-    let sig: Signature = signing_key.sign(&msg);
-    Ok((sig_input, sig.to_bytes()))
-}
-
-/// Sign response claims as a v1 invocation response.
-///
-/// Deprecated: use [`sign_invoke_response_with_body_v1`] so the signer and
-/// verifier derive the same outcome for 2xx responses that carry `_err_eval`
-/// bodies. This helper now rejects 2xx statuses because the body is required to
-/// classify their signed outcome.
-///
-/// Returns `(sig_input_bytes, signature_bytes)`.
-#[deprecated(
-    since = "1.0.0",
-    note = "use sign_invoke_response_with_body_v1 so response outcome is derived from status and body"
-)]
-pub fn sign_invoke_response_v1(
-    claims: &InvokeResponseClaimsV1,
-    signing_key: &SigningKey,
-) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
-    if (200..300).contains(&claims.status) {
-        return Err(SignedHttpError::ResponseBodyRequiredForStatusOnlySigning {
-            status: claims.status,
-        });
-    }
-
-    let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
-    let req_sig_input_sha256 = parse_hex_32(&claims.req_sig_input_sha256).map_err(|_| {
-        SignedHttpError::InvalidReqSigInputSha256Hex(claims.req_sig_input_sha256.clone())
-    })?;
-    let body_sha256 = parse_hex_32(&claims.body_sha256)
-        .map_err(|_| SignedHttpError::InvalidBodySha256Hex(claims.body_sha256.clone()))?;
-    let msg = response_signature_message_v1(
-        req_sig_input_sha256,
-        body_sha256,
-        claims.status,
-        response_outcome_v1(claims.status),
-    );
     let sig: Signature = signing_key.sign(&msg);
     Ok((sig_input, sig.to_bytes()))
 }
@@ -458,7 +497,7 @@ pub fn sign_invoke_response_with_body_v1(
     body: &[u8],
     signing_key: &SigningKey,
 ) -> Result<(Vec<u8>, [u8; 64]), SignedHttpError> {
-    let sig_input = serde_json::to_vec(claims).map_err(SignedHttpError::InvalidSignedInputJson)?;
+    let sig_input = encode_signed_input(claims)?;
     let req_sig_input_sha256 = parse_hex_32(&claims.req_sig_input_sha256).map_err(|_| {
         SignedHttpError::InvalidReqSigInputSha256Hex(claims.req_sig_input_sha256.clone())
     })?;
@@ -529,18 +568,18 @@ pub fn response_outcome_from_status_and_body_v1(status: u16, body: &[u8]) -> u8 
     RESPONSE_OUTCOME_SUCCESS_V1
 }
 
-pub fn canonical_output_body_sha256_from_json_bytes(
+pub(super) fn canonical_json_output_payload_sha256(
     body: &[u8],
 ) -> Result<[u8; 32], serde_json::Error> {
     let value = serde_json::from_slice::<serde_json::Value>(body)?;
-    canonical_output_body_sha256_from_json_value(&value)
+    canonical_json_output_payload_sha256_from_value(&value)
 }
 
 pub fn response_body_sha256_for_claim(body: &[u8]) -> [u8; 32] {
-    canonical_output_body_sha256_from_json_bytes(body).unwrap_or_else(|_| sha256(body))
+    canonical_json_output_payload_sha256(body).unwrap_or_else(|_| sha256(body))
 }
 
-fn canonical_output_body_sha256_from_json_value(
+fn canonical_json_output_payload_sha256_from_value(
     value: &serde_json::Value,
 ) -> Result<[u8; 32], serde_json::Error> {
     let Some(value_as_object) = value.as_object() else {
@@ -569,10 +608,7 @@ fn canonical_output_body_sha256_from_json_value(
         bytes.extend_from_slice(
             &bcs::to_bytes(&port_name.as_bytes().to_vec()).expect("Vec<u8> BCS"),
         );
-        bytes.extend_from_slice(
-            &bcs::to_bytes(&inline_nexus_data_wire(ports.get(&port_name).unwrap())?)
-                .expect("inline nexus data BCS"),
-        );
+        bytes.extend_from_slice(&inline_json_nexus_data_bcs(ports.get(&port_name).unwrap())?);
     }
 
     Ok(sha256(&bytes))
@@ -588,16 +624,7 @@ fn response_body_is_err_eval_v1(body: &[u8]) -> bool {
     object.len() == 1 && object.contains_key("_err_eval")
 }
 
-#[derive(Serialize)]
-struct InlineNexusDataWire {
-    storage: Vec<u8>,
-    one: Vec<u8>,
-    many: Vec<Vec<u8>>,
-}
-
-fn inline_nexus_data_wire(
-    value: &serde_json::Value,
-) -> Result<InlineNexusDataWire, serde_json::Error> {
+fn inline_json_nexus_data_bcs(value: &serde_json::Value) -> Result<Vec<u8>, serde_json::Error> {
     let (one, many) = match value {
         serde_json::Value::Array(values) => (
             Vec::new(),
@@ -612,11 +639,7 @@ fn inline_nexus_data_wire(
         _ => (serde_json::to_string(value)?.into_bytes(), Vec::new()),
     };
 
-    Ok(InlineNexusDataWire {
-        storage: INLINE_STORAGE_TAG.to_vec(),
-        one,
-        many,
-    })
+    Ok(bcs::to_bytes(&(INLINE_STORAGE_TAG.to_vec(), one, many)).expect("inline NexusData BCS"))
 }
 
 pub(super) fn validate_time_window(
@@ -661,6 +684,34 @@ pub fn now_ms() -> u64 {
         return 0;
     };
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(all(test, feature = "types"))]
+mod tests {
+    use {super::*, crate::move_bindings::primitives::data::NexusData};
+
+    #[test]
+    fn inline_json_nexus_data_bcs_matches_generated_move_shape() {
+        let scalar = serde_json::json!({"ok": true});
+        let actual = inline_json_nexus_data_bcs(&scalar).expect("scalar adapter");
+        let expected = bcs::to_bytes(&NexusData::inline_one(
+            serde_json::to_string(&scalar).unwrap().into_bytes(),
+        ))
+        .unwrap();
+        assert_eq!(actual, expected);
+
+        let array = serde_json::json!(["one", 2]);
+        let actual = inline_json_nexus_data_bcs(&array).expect("array adapter");
+        let expected = bcs::to_bytes(&NexusData::inline_many(
+            array
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|value| serde_json::to_string(value).unwrap().into_bytes()),
+        ))
+        .unwrap();
+        assert_eq!(actual, expected);
+    }
 }
 
 #[derive(Clone, Debug)]

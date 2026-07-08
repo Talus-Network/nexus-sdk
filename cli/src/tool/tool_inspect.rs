@@ -24,7 +24,7 @@ pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
         .await
         .map_err(NexusCliError::Nexus)?;
 
-    print_inspection(&inspection);
+    print_inspection(&inspection)?;
     json_output(&inspect_tool_result_json(&inspection))
 }
 
@@ -47,7 +47,7 @@ pub(crate) fn inspect_tool_result_json(inspection: &ToolInspection) -> serde_jso
 /// underlying `notify_success!`/`notify_error!`/`item!` macros check
 /// `JSON_MODE` themselves, mirroring how `dag inspect-execution` interleaves
 /// progress notifications with the structured JSON.
-fn print_inspection(inspection: &ToolInspection) {
+fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError> {
     let Some(tool) = inspection.tool.as_ref() else {
         notify_error!(
             "Tool '{fqn}' is not registered.",
@@ -61,17 +61,24 @@ fn print_inspection(inspection: &ToolInspection) {
             "Derived ToolGas ID: {id}",
             id = inspection.tool_gas_id.to_string().truecolor(100, 100, 100)
         );
-        return;
+        return Ok(());
     };
 
-    let status = if tool.unregistered_at.is_some() {
+    let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
+    let description = tool.description_string().map_err(NexusCliError::Any)?;
+    let registered_at = tool.registered_at_datetime().map_err(NexusCliError::Any)?;
+    let unregistered_at = tool
+        .unregistered_at_datetime()
+        .map_err(NexusCliError::Any)?;
+
+    let status = if unregistered_at.is_some() {
         "unregistered"
     } else {
         "active"
     };
     notify_success!(
         "Tool '{fqn}' registered ({status}).",
-        fqn = tool.fqn.to_string().truecolor(100, 100, 100),
+        fqn = fqn.truecolor(100, 100, 100),
         status = status.truecolor(100, 100, 100),
     );
 
@@ -83,7 +90,7 @@ fn print_inspection(inspection: &ToolInspection) {
         "ToolGas ID: {id}",
         id = inspection.tool_gas_id.to_string().truecolor(100, 100, 100)
     );
-    print_tool_reference(tool);
+    print_tool_reference(tool)?;
     item!(
         "Cap-gated (WAC): {cap_first}",
         cap_first = tool
@@ -93,34 +100,42 @@ fn print_inspection(inspection: &ToolInspection) {
     );
     item!(
         "Description: {description}",
-        description = tool.description.truecolor(100, 100, 100)
+        description = description.truecolor(100, 100, 100)
     );
     item!(
         "Registered at: {at}",
-        at = tool.registered_at.to_string().truecolor(100, 100, 100)
+        at = registered_at.to_string().truecolor(100, 100, 100)
     );
-    if let Some(unregistered_at) = tool.unregistered_at {
+    if let Some(unregistered_at) = unregistered_at {
         item!(
             "Unregistered at: {at}",
             at = unregistered_at.to_string().truecolor(100, 100, 100)
         );
     }
+
+    Ok(())
 }
 
-fn print_tool_reference(tool: &Tool) {
-    match &tool.reference {
-        ToolRef::Http { url } => {
+fn print_tool_reference(tool: &Tool) -> AnyResult<(), NexusCliError> {
+    match &tool.r#ref {
+        ToolRef::Http { .. } => {
+            let url = tool
+                .r#ref
+                .http_url_string()
+                .map_err(NexusCliError::Any)?
+                .ok_or_else(|| NexusCliError::Any(anyhow!("expected HTTP tool reference")))?;
             item!(
                 "Variant: {kind}",
                 kind = "off-chain (HTTP)".truecolor(100, 100, 100)
             );
-            item!("URL: {url}", url = url.to_string().truecolor(100, 100, 100));
+            item!("URL: {url}", url = url.truecolor(100, 100, 100));
         }
-        ToolRef::Sui {
-            package_address,
-            module_name,
-            tool_witness_id,
-        } => {
+        ToolRef::Sui { .. } => {
+            let Some((package_address, module_name, tool_witness_id)) =
+                tool.r#ref.sui_parts().map_err(NexusCliError::Any)?
+            else {
+                return Err(NexusCliError::Any(anyhow!("expected Sui tool reference")));
+            };
             item!(
                 "Variant: {kind}",
                 kind = "on-chain (Sui)".truecolor(100, 100, 100)
@@ -131,7 +146,7 @@ fn print_tool_reference(tool: &Tool) {
             );
             item!(
                 "Module: {module}",
-                module = module_name.as_str().truecolor(100, 100, 100)
+                module = module_name.truecolor(100, 100, 100)
             );
             item!(
                 "Witness ID: {witness}",
@@ -139,6 +154,8 @@ fn print_tool_reference(tool: &Tool) {
             );
         }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

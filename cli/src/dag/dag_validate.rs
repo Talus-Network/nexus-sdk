@@ -1,11 +1,14 @@
 use {
     crate::{command_title, loading, prelude::*},
-    nexus_sdk::{dag::validator::validate, types::Dag},
+    nexus_sdk::{
+        dag::{json::parse_dag_spec, validator::validate},
+        types::DagSpec,
+    },
 };
 
 /// Validate if a JSON file at the provided location is a valid Nexus DAG. If so,
 /// return the parsed DAG.
-pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError> {
+pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<DagSpec, NexusCliError> {
     command_title!("Validating Nexus DAG at '{path}'", path = path.display());
 
     let parsing_handle = loading!("Parsing JSON file...");
@@ -20,8 +23,7 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
         }
     };
 
-    // Parse into [crate::dag::parser::Dag].
-    let dag: Dag = match serde_json::from_str(file.as_str()) {
+    let dag = match parse_dag_spec(file.as_str()) {
         Ok(dag) => dag,
         Err(e) => {
             parsing_handle.error();
@@ -35,7 +37,7 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<Dag, NexusCliError>
     let validation_handle = loading!("Validating Nexus DAG...");
 
     // Validate the dag.
-    match validate(dag.clone()) {
+    match validate(&dag) {
         Ok(()) => {
             validation_handle.success();
 

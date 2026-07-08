@@ -8,7 +8,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::types::Task,
+    nexus_sdk::move_bindings::scheduler::scheduler::Task,
     serde_json::json,
 };
 
@@ -37,9 +37,11 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
         owner = task_data.owner.to_string().truecolor(100, 100, 100)
     );
 
-    let metadata = task_data.metadata.values.inner();
+    let metadata = &task_data.metadata.values.contents;
     item!("Metadata entries: {count}", count = metadata.len());
-    for (key, value) in metadata.iter().take(10) {
+    for entry in metadata.iter().take(10) {
+        let key = std::str::from_utf8(&entry.key.bytes).unwrap_or("<invalid utf8>");
+        let value = std::str::from_utf8(&entry.value.bytes).unwrap_or("<invalid utf8>");
         item!(
             "  {key}: {value}",
             key = key.truecolor(100, 100, 100),

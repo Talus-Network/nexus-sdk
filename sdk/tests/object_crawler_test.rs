@@ -2,23 +2,29 @@
 
 use {
     nexus_sdk::{
-        nexus::crawler::{
-            Bag,
-            Crawler,
-            DynamicMap,
-            DynamicObjectMap,
-            Map,
-            ObjectBag,
-            Set,
-            TableVec,
+        move_bindings::{
+            move_std::ascii::String as MoveString,
+            sui_framework::{
+                bag::Bag,
+                linked_table::{LinkedTable, Node as LinkedTableNode},
+                object_bag::ObjectBag,
+                object_table::ObjectTable,
+                table_vec::TableVec,
+                vec_map::VecMap,
+                vec_set::VecSet,
+            },
         },
+        nexus::crawler::{Crawler, Map},
         sui,
         test_utils,
-        types::deserialize_encoded_bytes,
     },
     serde::{Deserialize, Serialize},
     serde_json::json,
-    std::{collections::HashMap, str::FromStr, sync::Arc},
+    std::{
+        collections::{HashMap, HashSet},
+        str::FromStr,
+        sync::Arc,
+    },
     tokio::sync::Mutex,
 };
 
@@ -29,14 +35,14 @@ struct Guy {
     id: sui::types::Address,
     name: String,
     age: u8,
-    hobbies: Set<String>,
-    groups: Map<Name, Vec<Name>>,
-    timetable: DynamicObjectMap<Name, Value>,
-    friends: DynamicObjectMap<Name, PlainValue>,
-    bag: DynamicMap<Name, PlainValue>,
-    heterogeneous: DynamicMap<Name, HeterogeneousValue>,
-    linked_table: DynamicMap<Name, Name>,
+    hobbies: VecSet<MoveString>,
+    groups: VecMap<Name, Vec<Name>>,
+    timetable: ObjectTable<Name, Value>,
+    friends: ObjectBag,
+    bag: Bag,
+    heterogeneous: Bag,
     sequence: TableVec<Name>,
+    linked_table: LinkedTable<Name, Name>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -44,21 +50,49 @@ struct Name {
     name: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+impl sui_move::MoveType for Name {
+    fn type_tag_static() -> sui::types::TypeTag {
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x0"),
+            sui::types::Identifier::from_static("main"),
+            sui::types::Identifier::from_static("Name"),
+            vec![],
+        )))
+    }
+}
+
+impl sui_move::HasCopy for Name {}
+impl sui_move::HasDrop for Name {}
+impl sui_move::HasStore for Name {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Value {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
     value: Name,
-    pouch: DynamicObjectMap<Name, PlainValue>,
+    pouch: ObjectBag,
 }
+
+impl sui_move::MoveType for Value {
+    fn type_tag_static() -> sui::types::TypeTag {
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x0"),
+            sui::types::Identifier::from_static("main"),
+            sui::types::Identifier::from_static("Value"),
+            vec![],
+        )))
+    }
+}
+
+impl sui_move::HasKey for Value {}
+impl sui_move::HasStore for Value {}
 
 #[derive(Clone, Debug, Deserialize)]
 struct PlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    #[serde(deserialize_with = "deserialize_encoded_bytes")]
     value: Vec<u8>,
 }
 
@@ -67,18 +101,7 @@ struct AnotherPlainValue {
     // Test UID deser.
     #[allow(dead_code)]
     id: sui::types::Address,
-    #[serde(
-        deserialize_with = "deserialize_encoded_bytes",
-        serialize_with = "serialize_encoded_bytes"
-    )]
     another_value: Vec<u8>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(untagged)]
-enum HeterogeneousValue {
-    Value(PlainValue),
-    AnotherValue(AnotherPlainValue),
 }
 
 #[tokio::test]
@@ -154,14 +177,18 @@ async fn test_object_crawler() {
     assert_eq!(guy.name, "John Doe");
     assert_eq!(guy.age, 30);
     assert_eq!(
-        guy.hobbies.into_inner(),
+        guy.hobbies
+            .contents
+            .into_iter()
+            .map(MoveString::into_string)
+            .collect::<HashSet<_>>(),
         vec!["Reading".to_string(), "Swimming".to_string()]
             .into_iter()
             .collect()
     );
 
     // Check map and nested vector fetched correctly.
-    let groups = guy.groups.into_inner();
+    let groups = guy.groups.into_hash_map();
     assert_eq!(groups.len(), 2);
 
     // Contains book club with the correct people.
@@ -185,7 +212,7 @@ async fn test_object_crawler() {
     // Fetch timetable that is an ObjectTable and has a nested ObjectBag.
     assert_eq!(guy.timetable.size(), 2);
     let timetable = crawler
-        .get_dynamic_field_objects(&guy.timetable)
+        .get_dynamic_object_fields::<Name, Value>(guy.timetable.id())
         .await
         .unwrap();
     assert_eq!(timetable.len(), 2);
@@ -201,7 +228,7 @@ async fn test_object_crawler() {
 
     assert_eq!(monday.data.pouch.size(), 1);
     let pouch = crawler
-        .get_dynamic_field_objects(&monday.data.pouch)
+        .get_dynamic_object_fields::<Name, PlainValue>(monday.data.pouch.id())
         .await
         .unwrap();
 
@@ -221,7 +248,7 @@ async fn test_object_crawler() {
 
     assert_eq!(tuesday.data.pouch.size(), 1);
     let pouch = crawler
-        .get_dynamic_field_objects(&tuesday.data.pouch)
+        .get_dynamic_object_fields::<Name, PlainValue>(tuesday.data.pouch.id())
         .await
         .unwrap();
     assert_eq!(pouch.len(), 1);
@@ -232,7 +259,7 @@ async fn test_object_crawler() {
     // Fetch friends which is an ObjectBag.
     assert_eq!(guy.friends.size(), 2);
     let friends = crawler
-        .get_dynamic_field_objects(&guy.friends)
+        .get_dynamic_object_fields::<Name, PlainValue>(guy.friends.id())
         .await
         .unwrap();
     assert_eq!(friends.len(), 2);
@@ -257,7 +284,10 @@ async fn test_object_crawler() {
 
     // Now fetch bag which is a Bag. Finally.
     assert_eq!(guy.bag.size(), 2);
-    let bag = crawler.get_dynamic_fields(&guy.bag).await.unwrap();
+    let bag = crawler
+        .get_dynamic_fields::<Name, PlainValue>(guy.bag.id(), guy.bag.size())
+        .await
+        .unwrap();
     assert_eq!(bag.len(), 2);
 
     // Fetch first item from bag.
@@ -281,28 +311,38 @@ async fn test_object_crawler() {
     // Fetch heterogeneous Bag.
     assert_eq!(guy.heterogeneous.size(), 2);
     let heterogeneous = crawler
-        .get_dynamic_fields(&guy.heterogeneous)
+        .get_dynamic_field_refs_matching_key::<Name>(guy.heterogeneous.id())
         .await
         .unwrap();
-    assert!(heterogeneous.len() == 2);
+    assert_eq!(heterogeneous.len(), 2);
 
-    for (key, value) in heterogeneous {
-        if key.name == "Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::Value(v) if v.value.clone() == b"Bag Data")
-            );
-        } else if key.name == "Another Bag Item" {
-            assert!(
-                matches!(value, HeterogeneousValue::AnotherValue(v) if v.another_value.clone() == b"Another Bag Data")
-            );
+    for field in heterogeneous {
+        if field.name.name == "Bag Item" {
+            let value = crawler
+                .get_dynamic_field_value_by_id::<Name, PlainValue>(field.field_id)
+                .await
+                .unwrap();
+            assert_eq!(value.value, b"Bag Data");
+        } else if field.name.name == "Another Bag Item" {
+            let value = crawler
+                .get_dynamic_field_value_by_id::<Name, AnotherPlainValue>(field.field_id)
+                .await
+                .unwrap();
+            assert_eq!(value.another_value, b"Another Bag Data");
         } else {
-            panic!("Unexpected key in heterogeneous bag: {:?}", key);
+            panic!("Unexpected key in heterogeneous bag: {:?}", field.name);
         }
     }
 
     // Fetch linked table.
     assert_eq!(guy.linked_table.size(), 1);
-    let linked_table = crawler.get_dynamic_fields(&guy.linked_table).await.unwrap();
+    let linked_table = crawler
+        .get_dynamic_fields::<Name, LinkedTableNode<Name, Name>>(
+            guy.linked_table.id(),
+            guy.linked_table.size(),
+        )
+        .await
+        .unwrap();
     assert_eq!(linked_table.len(), 1);
 
     // Fetch first value from linked table.
@@ -312,7 +352,7 @@ async fn test_object_crawler() {
         })
         .unwrap();
 
-    assert_eq!(linked_item.name, "Value 1");
+    assert_eq!(linked_item.value.name, "Value 1");
 
     // Fetch TableVec.
     assert_eq!(guy.sequence.size(), 3);
@@ -456,31 +496,30 @@ async fn test_object_crawler_get_object_creation_checkpoint() {
 
     let mut bump_checkpoints = Vec::new();
     for _ in 0..3 {
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let guy_arg = tx.object(sui::tx::ObjectInput::shared(
-            guy_id,
-            initial_shared_version,
-            true,
-        ));
-        tx.move_call(
-            sui::tx::Function::new(
-                pkg_id,
-                sui::types::Identifier::from_static("main"),
-                sui::types::Identifier::from_static("bump_age"),
-            ),
-            vec![guy_arg],
-        );
-        tx.set_sender(addr);
-        tx.set_gas_budget(1_000_000_000);
-        tx.set_gas_price(reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin_ref.object_id(),
-            gas_coin_ref.version(),
-            *gas_coin_ref.digest(),
-        )]);
-        let tx = tx
-            .try_build()
-            .expect("Failed to finish bump_age transaction.");
+        let mut ptb = sui_move_ptb::PtbBuilder::new();
+        let guy_arg = ptb
+            .input(sui::types::Input::Shared(sui::types::SharedInput::new(
+                guy_id,
+                initial_shared_version,
+                sui::types::Mutability::Mutable,
+            )))
+            .expect("shared Guy input should build");
+        let target = sui_move_call::CallTarget::new(pkg_id, "main", "bump_age")
+            .expect("bump_age target should build");
+        ptb.call_target(target, vec![guy_arg])
+            .expect("bump_age call should build");
+
+        let tx = sui::types::Transaction {
+            kind: sui::types::TransactionKind::ProgrammableTransaction(ptb.finish()),
+            sender: addr,
+            gas_payment: sui::types::GasPayment {
+                objects: vec![gas_coin_ref.clone()],
+                owner: addr,
+                price: reference_gas_price,
+                budget: 1_000_000_000,
+            },
+            expiration: sui::types::TransactionExpiration::None,
+        };
         let signature = signer
             .sign_tx(&tx)
             .await

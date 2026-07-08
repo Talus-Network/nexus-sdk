@@ -89,8 +89,8 @@ mod tests {
     use {
         super::*,
         nexus_sdk::{
+            move_bindings::interface::graph::RuntimeVertex,
             nexus::workflow::{ToolGasAbortCandidate, ToolGasAbortCandidateWalk},
-            types::RuntimeVertex,
         },
     };
 

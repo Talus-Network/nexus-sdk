@@ -7,10 +7,19 @@ use {
         notify_success,
         prelude::*,
         sui::*,
-        tool::tool_validate::validate_off_chain_tool,
+        tool::tool_validate::{
+            output_schema_has_top_level_one_of,
+            parse_tool_meta_json,
+            validate_off_chain_tool,
+        },
     },
     nexus_sdk::{
-        idents::{primitives, registry, workflow},
+        move_bindings::{
+            primitives::owner_cap::CloneableOwnerCap,
+            registry::tool_registry::OverTool,
+            struct_tag_matches,
+            workflow::gas::OverGas,
+        },
         nexus::{client::NexusClient, error::NexusError},
         transactions::tool,
         types::ToolMeta,
@@ -38,7 +47,7 @@ fn load_meta_from_source(
             .map_err(|e| NexusCliError::Any(anyhow!("failed to read meta file '{source}': {e}")))?
     };
 
-    let mut meta: ToolMeta = serde_json::from_str(&raw)
+    let mut meta = parse_tool_meta_json(&raw)
         .map_err(|e| NexusCliError::Any(anyhow!("failed to parse meta JSON: {e}")))?;
 
     if let Some(url) = url_override {
@@ -56,7 +65,7 @@ fn load_meta_from_source(
         ))
     })?;
 
-    if meta.output_schema["oneOf"].is_null() {
+    if !output_schema_has_top_level_one_of(&meta).map_err(NexusCliError::Any)? {
         return Err(NexusCliError::Any(anyhow!(
             "The tool meta does not contain a top-level 'oneOf' key. Please make sure to use an enum as the Tool output type."
         )));
@@ -82,7 +91,6 @@ async fn register_one_tool(
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
     let signer = nexus_client.signer();
-    let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let collateral_coin = fetch_coin(grpc_client, owner, collateral_coin, 1).await?;
@@ -90,49 +98,28 @@ async fn register_one_tool(
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    if let Err(e) = tool::register_off_chain_for_self(
-        &mut tx,
+    let tx = match tool::register_off_chain_for_self_ptb(
         nexus_objects,
         &meta,
         address,
         &collateral_coin,
         invocation_cost,
     ) {
-        tx_handle.error();
-        return Err(NexusCliError::Any(e));
-    }
+        Ok(tx) => tx,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     tx_handle.success();
 
-    let mut gas_coin = gas_config.acquire_gas_coin().await;
-
-    tx.set_sender(address);
-    tx.set_gas_budget(gas_config.get_budget());
-    tx.set_gas_price(nexus_client.get_reference_gas_price());
-
-    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.try_build().map_err(|e| NexusCliError::Any(e.into()))?;
-
-    let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
-
     // Sign and submit the TX.
-    let response = match signer.execute_tx(tx, signature, &mut gas_coin).await {
-        Ok(response) => {
-            gas_config.release_gas_coin(gas_coin).await;
-            response
-        }
+    let response = match nexus_client.submit_transaction(tx, address).await {
+        Ok(response) => response,
         // If the tool is already registered, treat as a non-fatal result so
         // batch mode can continue to the next tool.
         Err(NexusError::Wallet(e)) if e.to_string().contains("register_off_chain_tool_") => {
-            gas_config.release_gas_coin(gas_coin).await;
-
             notify_error!(
                 "Tool '{fqn}' is already registered.",
                 fqn = meta.fqn.to_string().truecolor(100, 100, 100)
@@ -148,8 +135,6 @@ async fn register_one_tool(
         }
         // Any other error is also non-fatal for batch mode.
         Err(e) => {
-            gas_config.release_gas_coin(gas_coin).await;
-
             notify_error!(
                 "Failed to register tool '{fqn}': {error}",
                 fqn = meta.fqn.to_string().truecolor(100, 100, 100),
@@ -167,7 +152,7 @@ async fn register_one_tool(
     };
 
     // Parse the owner cap object IDs from the response.
-    let owner_caps = response
+    let owner_caps: Vec<(sui::types::Address, sui::types::StructTag)> = response
         .objects
         .iter()
         .filter_map(|obj| {
@@ -175,10 +160,7 @@ async fn register_one_tool(
                 return None;
             };
 
-            if *object_type.address() == nexus_objects.primitives_pkg_id
-                && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
-                && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
-            {
+            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(nexus_objects, &object_type) {
                 Some((obj.object_id(), object_type))
             } else {
                 None
@@ -190,10 +172,9 @@ async fn register_one_tool(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if *what_for.module() == registry::ToolRegistry::OVER_TOOL.module
-                    && *what_for.name() == registry::ToolRegistry::OVER_TOOL.name =>
+                if struct_tag_matches::<OverTool>(nexus_objects, what_for.as_ref()) =>
             {
-                Some(object_id)
+                Some(*object_id)
             }
             _ => None,
         }
@@ -209,10 +190,9 @@ async fn register_one_tool(
     let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if *what_for.module() == workflow::Gas::OVER_GAS.module
-                    && *what_for.name() == workflow::Gas::OVER_GAS.name =>
+                if struct_tag_matches::<OverGas>(nexus_objects, what_for.as_ref()) =>
             {
-                Some(object_id)
+                Some(*object_id)
             }
             _ => None,
         }
@@ -240,8 +220,8 @@ async fn register_one_tool(
     );
 
     let caps = ToolOwnerCaps {
-        over_tool: *over_tool_id,
-        over_gas: Some(*over_gas_id),
+        over_tool: over_tool_id,
+        over_gas: Some(over_gas_id),
     };
 
     // Re-fetch the freshly-registered Tool object so the JSON output carries

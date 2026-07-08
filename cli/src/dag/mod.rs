@@ -31,14 +31,14 @@ pub(crate) enum DagCommand {
     },
 
     #[command(
-        about = "Publish a Nexus DAG JSON file to the currently active Sui net. This commands also performs validation on the file before publishing."
+        about = "Publish a Nexus DAG spec file to the currently active Sui net. This command also performs validation on the file before publishing."
     )]
     Publish {
-        /// The path to the Nexus DAG JSON file to publish.
+        /// The path to the Nexus DAG spec file to publish.
         #[arg(
             long = "path",
             short = 'p',
-            help = "The path to the Nexus DAG JSON file to publish",
+            help = "The path to the Nexus DAG spec file to publish",
             value_parser = ValueParser::from(expand_tilde)
         )]
         path: PathBuf,

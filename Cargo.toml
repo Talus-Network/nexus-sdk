@@ -68,7 +68,7 @@ tempfile = "3.19.0"
 thiserror = "2.0.12"
 tokio = { version = "1.52", features = ["full"] }
 tokio-stream = "0.1.17"
-tokio-retry = "0.3.0"
+tokio-retry = "0.3.2"
 tokio-util = "0.7.18"
 toml = "0.8.20"
 tonic = "^0.14.6"

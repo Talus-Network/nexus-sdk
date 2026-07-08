@@ -39,7 +39,7 @@ use {
     },
     convert_case::{Case, Casing},
     nexus_sdk::{
-        dag::validator as dag_validator,
+        move_bindings::interface::payment::ExecutionPaymentReceipt,
         nexus::{
             error::NexusError,
             tap::{
@@ -55,14 +55,7 @@ use {
             },
             workflow::AgentDagExecuteOptions,
         },
-        types::{
-            interface::payment::ExecutionPaymentReceipt,
-            Dag as JsonDag,
-            SkillConfig,
-            SkillId,
-            TapPublishArtifact,
-            DEFAULT_ENTRY_GROUP,
-        },
+        types::{SkillConfig, SkillId, TapPublishArtifact, DEFAULT_ENTRY_GROUP},
     },
     regex::Regex,
     tap_agent::handle_agent_command,
@@ -848,7 +841,7 @@ mod tests {
     use {
         super::*,
         assert_matches::assert_matches,
-        nexus_sdk::types::interface::{
+        nexus_sdk::move_bindings::interface::{
             agent::{SkillRequirement, SkillSchedulePolicy},
             payment::SkillPaymentPolicy,
             version::InterfaceVersion,
@@ -1272,7 +1265,7 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
                 current_interface_revision: InterfaceVersion::new(3),
-                dag_binding: nexus_sdk::types::interface::agent::SkillDagBinding::pinned(
+                dag_binding: nexus_sdk::move_bindings::interface::agent::SkillDagBinding::pinned(
                     artifact.dag_id,
                 ),
                 requirements: artifact.requirements.clone(),
@@ -1280,7 +1273,10 @@ mod tests {
         );
 
         assert_eq!(output["function"], "update_skill");
-        assert_eq!(output["current_interface_revision"], serde_json::json!(3));
+        assert_eq!(
+            output["current_interface_revision"],
+            serde_json::json!({ "inner": 3 })
+        );
         assert!(output.get("config_digest_hex").is_none());
     }
 

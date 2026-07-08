@@ -1,47 +1,43 @@
-//! Tool-focused helpers for `nexus_registry::network_auth`.
+//! Tool focused helpers for the `nexus_registry::network_auth` package.
 //!
-//! This module is designed for tool operators and other off-chain clients that need to:
-//! - register/rotate a ToolId message-signing key on-chain, and
-//! - export a tool-side allowlist of permitted Leaders (public keys) for the signed HTTP runtime.
+//! This module is designed for tool operators and other off chain clients that need to:
+//! - register or rotate a ToolId message signing key on chain, and
+//! - export a tool side allowlist of permitted leaders for the signed HTTP runtime.
 //!
-//! # Background: what is registered on-chain?
-//! `nexus_registry::network_auth` binds an off-chain identity (Leader address or Tool FQN) to an
+//! # Background: what is registered on chain?
+//! `nexus_registry::network_auth` binds an off chain identity, leader address or tool FQN, to an
 //! Ed25519 public key used for signed HTTP.
 //!
-//! Registration requires a proof-of-possession (PoP) signature:
+//! Registration requires a proof of possession signature:
 //! `POP_DOMAIN || bcs(IdentityKey) || bcs(key_id) || public_key`
 //!
-//! Where `key_id` is the binding's current `next_key_id` (making PoP signatures one-time-use).
+//! Where `key_id` is the binding current `next_key_id`, which makes each signature single use.
 //!
 //! # Tool runtime (no RPC)
-//! Tools must not perform RPC calls at runtime. Instead, a tool operator can call
-//! [`NetworkAuthActions::export_allowed_leaders_file_v1`] (or the `write_*` helper) to produce an
-//! `allowed_leaders.json` file consumed by `nexus-toolkit`.
+//! Tools must not perform RPC calls at runtime. With the `signed_http` feature, a tool operator
+//! can export the typed allowlist data consumed by nexus toolkit.
 
+#[cfg(feature = "signed_http")]
+use crate::signed_http::v1::wire::{
+    AllowedLeaderFileV1,
+    AllowedLeaderKeyFileV1,
+    AllowedLeadersFileV1,
+};
 use {
     crate::{
-        idents::registry,
+        move_bindings::registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth},
         nexus::{
             client::NexusClient,
             crawler::{Crawler, Response},
             error::NexusError,
         },
-        signed_http::v1::wire::{
-            AllowedLeaderFileV1,
-            AllowedLeaderKeyFileV1,
-            AllowedLeadersFileV1,
-        },
         sui,
         transactions,
-        types::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth, Tool},
+        types::Tool,
         ToolFqn,
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
-    std::{
-        path::{Path, PathBuf},
-        sync::Arc,
-        time::Duration,
-    },
+    std::sync::Arc,
     tokio::sync::Mutex,
 };
 
@@ -107,6 +103,16 @@ pub struct NetworkAuthActions {
 }
 
 impl NetworkAuthActions {
+    /// Derive the deterministic [`KeyBinding`] object ID for a network auth identity.
+    pub fn binding_object_id(
+        &self,
+        identity: &IdentityKey,
+    ) -> Result<sui::types::Address, NexusError> {
+        let objects = &self.client.nexus_objects;
+        NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id())
+            .binding_object_id(identity)
+    }
+
     /// Register (or rotate) a ToolId message-signing key under `network_auth`.
     ///
     /// This function:
@@ -173,54 +179,29 @@ impl NetworkAuthActions {
                 ))
             })?;
 
-        // Craft and submit tx.
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        match binding_ref {
-            None => transactions::network_auth::create_tool_binding_and_register_key(
-                &mut tx,
+        let tx = match binding_ref {
+            None => transactions::network_auth::create_tool_binding_and_register_key_ptb(
                 objects,
                 &tool,
                 &owner_cap_ref,
                 public_key,
                 pop_sig,
                 description,
-            )
-            .map_err(NexusError::TransactionBuilding)?,
-            Some(binding_ref) => transactions::network_auth::register_tool_key_on_existing_binding(
-                &mut tx,
-                objects,
-                &binding_ref,
-                &tool,
-                &owner_cap_ref,
-                public_key,
-                pop_sig,
-            )
-            .map_err(NexusError::TransactionBuilding)?,
+            ),
+            Some(binding_ref) => {
+                transactions::network_auth::register_tool_key_on_existing_binding_ptb(
+                    objects,
+                    &binding_ref,
+                    &tool,
+                    &owner_cap_ref,
+                    public_key,
+                    pop_sig,
+                )
+            }
         }
+        .map_err(NexusError::TransactionBuilding)?;
 
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-        let signature = self.client.signer.sign_tx(&tx).await?;
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(RegisteredToolKey {
             tx_digest: response.digest,
@@ -254,7 +235,7 @@ impl NetworkAuthActions {
         let key_records = self
             .client
             .crawler()
-            .get_dynamic_fields_bcs::<u64, KeyRecord>(
+            .get_dynamic_fields::<u64, KeyRecord>(
                 binding.data.key_table_id(),
                 binding.data.key_table_size(),
             )
@@ -284,12 +265,13 @@ impl NetworkAuthActions {
         }))
     }
 
-    /// Export a tool-side allowlist file containing the active key for each leader.
+    /// Export tool side allowlist data containing the active key for each leader.
     ///
-    /// The returned JSON schema matches `nexus_sdk::signed_http::v1::AllowedLeadersFileV1`
-    /// and can be written to disk and mounted into `nexus-toolkit`.
+    /// The returned file model matches [`crate::signed_http::v1::wire::AllowedLeadersFileV1`].
     ///
-    /// `leader_cap_ids` are leader capability ID (`leader_cap::OverNetwork` object IDs)
+    /// `leader_cap_ids` are leader capability ID values for
+    /// [`crate::move_bindings::registry::leader_cap::OverNetwork`] objects.
+    #[cfg(feature = "signed_http")]
     pub async fn export_allowed_leaders_file_v1(
         &self,
         leader_cap_ids: &[sui::types::Address],
@@ -306,7 +288,7 @@ impl NetworkAuthActions {
             let binding = self
                 .client
                 .crawler()
-                .get_object_contents_bcs::<KeyBinding>(binding_object_id)
+                .get_object::<KeyBinding>(binding_object_id)
                 .await
                 .map_err(|e| {
                     NexusError::Rpc(anyhow::anyhow!(
@@ -323,7 +305,7 @@ impl NetworkAuthActions {
             let keys = self
                 .client
                 .crawler()
-                .get_dynamic_fields_bcs::<u64, KeyRecord>(
+                .get_dynamic_fields::<u64, KeyRecord>(
                     binding.data.key_table_id(),
                     binding.data.key_table_size(),
                 )
@@ -367,20 +349,6 @@ impl NetworkAuthActions {
         })
     }
 
-    /// Convenience helper to write an allowlist file to disk as pretty JSON.
-    pub async fn write_allowed_leaders_file_v1(
-        &self,
-        leader_cap_ids: &[sui::types::Address],
-        path: impl AsRef<Path>,
-    ) -> Result<(), NexusError> {
-        let file = self.export_allowed_leaders_file_v1(leader_cap_ids).await?;
-        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
-        })?;
-        std::fs::write(path, bytes).map_err(|e| NexusError::Parsing(e.into()))?;
-        Ok(())
-    }
-
     /// List the leader capability IDs currently present in `network_auth.identities`.
     pub async fn list_leader_cap_ids_from_network_auth(
         &self,
@@ -391,7 +359,7 @@ impl NetworkAuthActions {
         let registry = self
             .client
             .crawler()
-            .get_object_contents_bcs::<NetworkAuth>(network_auth_object_id)
+            .get_object::<NetworkAuth>(network_auth_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -413,10 +381,11 @@ impl NetworkAuthActions {
         Ok(out)
     }
 
-    /// Export a tool-side allowlist file containing the active key for every Leader identity
+    /// Export tool side allowlist data containing the active key for every leader identity
     /// found in `network_auth.identities`.
     ///
     /// Leaders that do not have an active key are skipped.
+    #[cfg(feature = "signed_http")]
     pub async fn export_allowed_leaders_file_v1_for_all_leaders(
         &self,
     ) -> Result<AllowedLeadersFileV1, NexusError> {
@@ -453,21 +422,6 @@ impl NetworkAuthActions {
         })
     }
 
-    /// Convenience helper to write an allowlist file for all leaders to disk as pretty JSON.
-    pub async fn write_allowed_leaders_file_v1_for_all_leaders(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<(), NexusError> {
-        let file = self
-            .export_allowed_leaders_file_v1_for_all_leaders()
-            .await?;
-        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
-        })?;
-        std::fs::write(path, bytes).map_err(|e| NexusError::Parsing(e.into()))?;
-        Ok(())
-    }
-
     async fn try_get_key_binding(
         &self,
         binding_object_id: sui::types::Address,
@@ -475,6 +429,7 @@ impl NetworkAuthActions {
         try_get_key_binding_by_object_id(self.client.crawler(), binding_object_id).await
     }
 
+    #[cfg(feature = "signed_http")]
     async fn export_allowed_leader_entry_file_v1(
         &self,
         codec: &NetworkAuthCodec,
@@ -486,7 +441,7 @@ impl NetworkAuthActions {
         let binding = self
             .client
             .crawler()
-            .get_object_contents_bcs::<KeyBinding>(binding_object_id)
+            .get_object::<KeyBinding>(binding_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -501,7 +456,7 @@ impl NetworkAuthActions {
         let keys = self
             .client
             .crawler()
-            .get_dynamic_fields_bcs::<u64, KeyRecord>(
+            .get_dynamic_fields::<u64, KeyRecord>(
                 binding.data.key_table_id(),
                 binding.data.key_table_size(),
             )
@@ -616,7 +571,7 @@ impl NetworkAuthReader {
     ) -> Result<Vec<sui::types::Address>, NexusError> {
         let registry = self
             .crawler
-            .get_object_contents_bcs::<NetworkAuth>(self.network_auth_object_id)
+            .get_object::<NetworkAuth>(self.network_auth_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -639,10 +594,11 @@ impl NetworkAuthReader {
         Ok(out)
     }
 
-    /// Export a tool-side allowlist file containing the active key for every Leader identity
+    /// Export tool side allowlist data containing the active key for every leader identity
     /// found in `network_auth.identities`.
     ///
     /// Leaders that do not have an active key are skipped.
+    #[cfg(feature = "signed_http")]
     pub async fn export_allowed_leaders_file_v1_for_all_leaders(
         &self,
     ) -> Result<AllowedLeadersFileV1, NexusError> {
@@ -677,21 +633,7 @@ impl NetworkAuthReader {
         })
     }
 
-    /// Convenience helper to write an allowlist file for all leaders to disk as pretty JSON.
-    pub async fn write_allowed_leaders_file_v1_for_all_leaders(
-        &self,
-        path: impl AsRef<Path>,
-    ) -> Result<(), NexusError> {
-        let file = self
-            .export_allowed_leaders_file_v1_for_all_leaders()
-            .await?;
-        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
-        })?;
-        std::fs::write(path, bytes).map_err(|e| NexusError::Parsing(e.into()))?;
-        Ok(())
-    }
-
+    #[cfg(feature = "signed_http")]
     async fn export_allowed_leader_entry_file_v1(
         &self,
         codec: &NetworkAuthCodec,
@@ -723,10 +665,7 @@ async fn try_get_key_binding_by_object_id(
     crawler: &Crawler,
     binding_object_id: sui::types::Address,
 ) -> Result<Option<Response<KeyBinding>>, NexusError> {
-    match crawler
-        .get_object_contents_bcs::<KeyBinding>(binding_object_id)
-        .await
-    {
+    match crawler.get_object::<KeyBinding>(binding_object_id).await {
         Ok(binding) => Ok(Some(binding)),
         Err(e) if e.to_string().contains("not found") => Ok(None),
         Err(e) => Err(NexusError::Rpc(e)),
@@ -742,7 +681,7 @@ async fn try_get_active_ed25519_key(
     };
 
     let keys = crawler
-        .get_dynamic_fields_bcs::<u64, KeyRecord>(
+        .get_dynamic_fields::<u64, KeyRecord>(
             binding.data.key_table_id(),
             binding.data.key_table_size(),
         )
@@ -788,80 +727,6 @@ async fn try_get_active_ed25519_key(
     }))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AllowedLeadersSyncOutcome {
-    Unchanged,
-    Updated,
-}
-
-/// Periodically refresh a tool-side `allowed-leaders.json` file from on-chain `network_auth`.
-///
-/// This is intended to run outside of the tool request path. Tools can then
-/// hot-reload allowlist updates via `nexus-toolkit`'s config watcher.
-#[derive(Clone)]
-pub struct AllowedLeadersFileSyncerV1 {
-    reader: NetworkAuthReader,
-    out_path: PathBuf,
-}
-
-impl AllowedLeadersFileSyncerV1 {
-    pub fn new(reader: NetworkAuthReader, out_path: impl Into<PathBuf>) -> Self {
-        Self {
-            reader,
-            out_path: out_path.into(),
-        }
-    }
-
-    pub fn out_path(&self) -> &Path {
-        &self.out_path
-    }
-
-    /// Export and (atomically) write the latest allowlist if it differs from the current file.
-    pub async fn sync_once(&self) -> Result<AllowedLeadersSyncOutcome, NexusError> {
-        let file = self
-            .reader
-            .export_allowed_leaders_file_v1_for_all_leaders()
-            .await?;
-
-        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to serialize allowlist: {e}"))
-        })?;
-
-        match std::fs::read(&self.out_path) {
-            Ok(existing) if existing == bytes => return Ok(AllowedLeadersSyncOutcome::Unchanged),
-            Ok(_) | Err(_) => {}
-        }
-
-        atomic_write(&self.out_path, &bytes).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "failed to write {}: {e}",
-                self.out_path.display()
-            ))
-        })?;
-
-        Ok(AllowedLeadersSyncOutcome::Updated)
-    }
-
-    /// Run `sync_once()` in a loop, sleeping `poll_interval` between iterations.
-    pub async fn run(&self, poll_interval: Duration) -> Result<(), NexusError> {
-        loop {
-            self.sync_once().await?;
-            tokio::time::sleep(poll_interval).await;
-        }
-    }
-
-    /// Run `sync_once()` in a loop, swallowing transient errors.
-    ///
-    /// This is the recommended mode for long-running processes: on any error
-    /// (RPC, parsing, IO), the syncer waits `poll_interval` and tries again.
-    pub async fn run_best_effort(&self, poll_interval: Duration) {
-        loop {
-            let _ = self.sync_once().await;
-            tokio::time::sleep(poll_interval).await;
-        }
-    }
-}
-
 /// Internal helper that knows how to compute binding ids and PoP bytes.
 struct NetworkAuthCodec {
     registry_pkg_id: sui::types::Address,
@@ -880,12 +745,12 @@ impl NetworkAuthCodec {
     }
 
     fn binding_object_id(&self, identity: &IdentityKey) -> Result<sui::types::Address, NexusError> {
-        let key_type =
-            registry::into_type_tag(self.registry_pkg_id, registry::NetworkAuth::IDENTITY_KEY);
-        let key_bcs = identity_bcs(identity)?;
-        Ok(self
-            .network_auth_object_id
-            .derive_object_id(&key_type, &key_bcs))
+        crate::move_bindings::derive_network_auth_binding_id(
+            self.registry_pkg_id,
+            self.network_auth_object_id,
+            identity,
+        )
+        .map_err(NexusError::Parsing)
     }
 
     fn pop_message_v1(
@@ -913,27 +778,6 @@ fn identity_bcs(identity: &IdentityKey) -> Result<Vec<u8>, NexusError> {
 fn sign_bytes(signing_key: &SigningKey, msg: &[u8]) -> [u8; 64] {
     let sig: Signature = signing_key.sign(msg);
     sig.to_bytes()
-}
-
-fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let parent = path.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent)?;
-
-    let base = path
-        .file_name()
-        .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_else(|| "allowed-leaders.json".to_string());
-
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_nanos(0))
-        .as_nanos();
-    let pid = std::process::id();
-    let tmp = parent.join(format!(".{base}.{pid}.{nanos}.tmp"));
-
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(tmp, path)?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1020,8 +864,11 @@ mod tests {
         use {
             super::*,
             crate::{
+                move_bindings::{
+                    registry::network_auth::KeyRecord,
+                    sui_framework::table::Table as MoveTable,
+                },
                 test_utils::sui_mocks,
-                types::{KeyRecord, MoveTable},
             },
             serde::Serialize,
             tonic::{Response, Status},
@@ -1143,14 +990,14 @@ mod tests {
                 .unwrap()
         }
 
-        async fn build_reader_and_syncer(
-            out_path: PathBuf,
+        #[cfg(feature = "signed_http")]
+        async fn build_reader_with_network_auth(
             registry_pkg_id: sui::types::Address,
             network_auth_object_id: sui::types::Address,
             leader_cap_id: sui::types::Address,
             active_kid: u64,
             record: KeyRecord,
-        ) -> AllowedLeadersFileSyncerV1 {
+        ) -> NetworkAuthReader {
             let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
             let identity = IdentityKey::leader(leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
@@ -1230,10 +1077,8 @@ mod tests {
                 ..Default::default()
             });
 
-            let reader =
-                NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
-                    .unwrap();
-            AllowedLeadersFileSyncerV1::new(reader, out_path)
+            NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
+                .unwrap()
         }
 
         #[tokio::test]
@@ -1273,8 +1118,9 @@ mod tests {
             );
         }
 
+        #[cfg(feature = "signed_http")]
         #[tokio::test]
-        async fn actions_export_and_write_allowlists() {
+        async fn actions_export_allowlists() {
             let mut rng = rand::thread_rng();
             let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
@@ -1324,7 +1170,7 @@ mod tests {
             let binding_object_id_str = binding_object_id.to_string();
             ledger_service
                 .expect_get_object()
-                .times(7)
+                .times(4)
                 .returning(move |request| {
                     let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
                     let object = if requested_id == network_auth_object_id_str {
@@ -1344,7 +1190,7 @@ mod tests {
 
             state_service
                 .expect_list_dynamic_fields()
-                .times(4)
+                .times(2)
                 .returning(move |_request| {
                     let mut dynamic_field = sui::grpc::DynamicField::default();
                     dynamic_field.set_child_id(field_object_id);
@@ -1360,7 +1206,7 @@ mod tests {
 
             ledger_service
                 .expect_batch_get_objects()
-                .times(4)
+                .times(2)
                 .returning(move |_request| {
                     let object = object_with_contents(Some(field_object_id), field_bytes.clone());
                     let mut result = sui::grpc::GetObjectResult::default();
@@ -1417,14 +1263,6 @@ mod tests {
             assert_eq!(file.leaders[0].keys[0].kid, active_kid);
             assert_eq!(file.leaders[0].keys[0].public_key, hex::encode(public_key));
 
-            let out_dir = tempfile::tempdir().unwrap();
-            let out_one = out_dir.path().join("one.json");
-            client
-                .network_auth()
-                .write_allowed_leaders_file_v1(&[leader_cap_id], &out_one)
-                .await
-                .unwrap();
-
             let leaders = client
                 .network_auth()
                 .list_leader_cap_ids_from_network_auth()
@@ -1442,45 +1280,32 @@ mod tests {
             assert_eq!(file.leaders[0].keys.len(), 1);
             assert_eq!(file.leaders[0].keys[0].kid, active_kid);
             assert_eq!(file.leaders[0].keys[0].public_key, hex::encode(public_key));
-
-            let out_all = out_dir.path().join("all.json");
-            client
-                .network_auth()
-                .write_allowed_leaders_file_v1_for_all_leaders(&out_all)
-                .await
-                .unwrap();
         }
 
+        #[cfg(feature = "signed_http")]
         #[tokio::test]
-        async fn syncer_writes_allowlist_when_missing() {
+        async fn reader_export_allowed_leaders_file_v1_for_all_leaders() {
             let mut rng = rand::thread_rng();
             let registry_pkg_id = sui::types::Address::generate(&mut rng);
             let network_auth_object_id = sui::types::Address::generate(&mut rng);
             let leader_cap_id = sui::types::Address::generate(&mut rng);
 
-            let out_dir = tempfile::tempdir().unwrap();
-            let out_path = out_dir.path().join("allowed-leaders.json");
-
             let active_kid = 7u64;
-            let record = KeyRecord::new_for_test(0, vec![9u8; 32], 0, None);
+            let public_key = [9u8; 32];
 
-            let syncer = build_reader_and_syncer(
-                out_path.clone(),
+            let reader = build_reader_with_network_auth(
                 registry_pkg_id,
                 network_auth_object_id,
                 leader_cap_id,
                 active_kid,
-                record,
+                KeyRecord::new_for_test(0, public_key.to_vec(), 0, None),
             )
             .await;
 
-            assert_eq!(syncer.out_path(), out_path.as_path());
-
-            let outcome = syncer.sync_once().await.unwrap();
-            assert_eq!(outcome, AllowedLeadersSyncOutcome::Updated);
-
-            let bytes = std::fs::read(&out_path).unwrap();
-            let allowlist: AllowedLeadersFileV1 = serde_json::from_slice(&bytes).unwrap();
+            let allowlist = reader
+                .export_allowed_leaders_file_v1_for_all_leaders()
+                .await
+                .unwrap();
             assert_eq!(allowlist.version, 1);
             assert_eq!(allowlist.leaders.len(), 1);
             assert_eq!(allowlist.leaders[0].leader_id, leader_cap_id.to_string());
@@ -1488,52 +1313,8 @@ mod tests {
             assert_eq!(allowlist.leaders[0].keys[0].kid, active_kid);
             assert_eq!(
                 allowlist.leaders[0].keys[0].public_key,
-                hex::encode([9u8; 32])
+                hex::encode(public_key)
             );
-        }
-
-        #[tokio::test]
-        async fn syncer_returns_unchanged_when_file_matches() {
-            let mut rng = rand::thread_rng();
-            let registry_pkg_id = sui::types::Address::generate(&mut rng);
-            let network_auth_object_id = sui::types::Address::generate(&mut rng);
-            let leader_cap_id = sui::types::Address::generate(&mut rng);
-
-            let out_dir = tempfile::tempdir().unwrap();
-            let out_path = out_dir.path().join("allowed-leaders.json");
-
-            let active_kid = 1u64;
-            let public_key = [4u8; 32];
-            let record = KeyRecord::new_for_test(0, public_key.to_vec(), 0, None);
-
-            let expected = AllowedLeadersFileV1 {
-                version: 1,
-                leaders: vec![AllowedLeaderFileV1 {
-                    leader_id: leader_cap_id.to_string(),
-                    keys: vec![AllowedLeaderKeyFileV1 {
-                        kid: active_kid,
-                        public_key: hex::encode(public_key),
-                    }],
-                }],
-            };
-            let expected_bytes = serde_json::to_vec_pretty(&expected).unwrap();
-            std::fs::write(&out_path, &expected_bytes).unwrap();
-
-            let syncer = build_reader_and_syncer(
-                out_path.clone(),
-                registry_pkg_id,
-                network_auth_object_id,
-                leader_cap_id,
-                active_kid,
-                record,
-            )
-            .await;
-
-            let outcome = syncer.sync_once().await.unwrap();
-            assert_eq!(outcome, AllowedLeadersSyncOutcome::Unchanged);
-
-            let bytes = std::fs::read(&out_path).unwrap();
-            assert_eq!(bytes, expected_bytes);
         }
 
         /// Verifies that `list_tool_keys` returns the correct key list for a tool

@@ -1,69 +1,54 @@
 //! Commands related to workflow management in Nexus.
 //!
-//! - [`WorkflowActions::publish`] to publish a [`Dag`] instance to Nexus.
+//! - [`WorkflowActions::publish`] to publish a [`DagSpec`] instance to Nexus.
 //! - [`WorkflowActions::execute`] to execute a published DAG.
 //! - [`WorkflowActions::inspect_execution`] to monitor the execution of a DAG.
 
+#[cfg(feature = "walrus")]
+use crate::{
+    move_bindings::interface::{agent::SkillDagBinding, graph::InputPort},
+    types::{
+        payment_source_from_address,
+        resolve_active_tap_skill_execution_target,
+        resolve_default_tap_dag_executor,
+        validate_execution_payment_options,
+        AgentId,
+        AgentRegistrySnapshot,
+        DefaultDagExecutorRecord,
+        SkillId,
+        SkillRevisionLookupKey,
+        DEFAULT_ENTRY_GROUP,
+    },
+    walrus::StorageConf,
+};
 use {
     crate::{
         events::{EventPage, NexusEvent, NexusEventKind},
-        idents::{interface, sui_framework, workflow},
-        nexus::{
-            client::NexusClient,
-            crawler::{Crawler, Response},
-            error::NexusError,
-            models::{
-                Dag,
-                DagEdge,
-                DagEdgeBcs,
-                DagExecution,
-                DagExecutionWalk,
-                DagOutputVariantPort,
-                DagVertexInfo,
-                DagVertexInfoBcs,
-                DagVertexInputPort,
-                LinkedTableNodeBcs,
+        move_bindings::{
+            interface::{
+                dag as dag_move,
+                graph::{self as graph_move, RuntimeVertex},
+                payment::{ExecutionPayment, ExecutionPaymentVertexLock},
+                verifier::{FailureEvidenceKind, VerifierConfig, VerifierMode},
             },
-            tap,
+            move_std::type_name::TypeName,
+            primitives::{data::NexusData, onchain_tool_result::OnchainToolResult},
+            sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
+            workflow::{
+                execution::{self as execution_move, DAGExecution, DAGWalk},
+                execution_events::{
+                    EndStateReachedEvent,
+                    ExecutionFinishedEvent,
+                    TerminalErrEvalRecordedEvent,
+                },
+                execution_failure::WorkflowFailureClass,
+            },
         },
+        move_boundary,
+        nexus::{client::NexusClient, crawler::Crawler, error::NexusError, tap},
         sui,
         transactions::{dag, gas},
-        types::{
-            derive_tool_gas_id,
-            derive_tool_id,
-            deserialize_sui_u64,
-            interface::{
-                agent::SkillDagBinding,
-                payment::{ExecutionPayment, ExecutionPaymentVertexLock},
-            },
-            payment_source_from_address,
-            resolve_active_tap_skill_execution_target,
-            resolve_default_tap_dag_executor,
-            validate_execution_payment_options,
-            workflow::execution_events::{
-                EndStateReachedEvent,
-                ExecutionFinishedEvent,
-                TerminalErrEvalRecordedEvent,
-            },
-            AgentId,
-            AgentRegistrySnapshot,
-            Dag as JsonDag,
-            DefaultDagExecutorRecord,
-            FailureEvidenceKind,
-            NexusData,
-            NexusObjects,
-            PortsData,
-            RuntimeVertex,
-            SkillId,
-            SkillRevisionLookupKey,
-            StorageConf,
-            ToolRef,
-            TypeName,
-            VerifierConfig,
-            VerifierMode,
-            WorkflowFailureClass,
-            DEFAULT_ENTRY_GROUP,
-        },
+        types::{DagSpec, NexusObjects, Tool, ToolRef},
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
@@ -79,6 +64,9 @@ const COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX: &str = "::execution::CommittedToo
 const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
     "::execution::ExecutionPaymentInsufficientSettlement";
 const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
+pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
+    "walk is not double timeout expired";
+pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
 
 #[derive(Clone, Debug)]
 pub struct PublishResult {
@@ -87,6 +75,7 @@ pub struct PublishResult {
     pub dag_object_id: sui::types::Address,
 }
 
+#[cfg(feature = "walrus")]
 pub struct ExecuteResult {
     pub tx_digest: sui::types::Digest,
     pub execution_object_id: sui::types::Address,
@@ -94,6 +83,7 @@ pub struct ExecuteResult {
     pub tap_execution: Option<TapExecutionSubmitMetadata>,
 }
 
+#[cfg(feature = "walrus")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TapExecutionSubmitMetadata {
     pub agent_id: AgentId,
@@ -257,13 +247,9 @@ pub struct RecordCommittedToolResultGasChargeResult {
     pub walk_index: u64,
 }
 
-/// Dynamic-field key for `DAGExecution` committed tool results.
-pub type CommittedToolResultKey = crate::types::workflow::execution::CommittedToolResultKey;
-type CommittedToolResult = crate::types::workflow::execution::CommittedToolResult;
-
-/// Narrowed committed-result view for off-chain freshness checks.
+/// Narrowed committed result view for off chain freshness checks.
 ///
-/// This is separate from `DagExecution` because callers only need committed-result state and
+/// This is separate from [`DAGExecution`] because callers only need committed result state and
 /// should not read or decode the full execution object for early wake decisions.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct CommittedToolResultView {
@@ -294,13 +280,6 @@ pub struct CommittedToolResultLeaderRecordView {
     pub commit_gas_charge: Option<u64>,
     pub settlement_gas_charge: Option<u64>,
 }
-
-pub use crate::types::primitives::onchain_tool_result::OnchainToolResult;
-type ExecutionPaymentInsufficientSettlement =
-    crate::types::workflow::execution::ExecutionPaymentInsufficientSettlement;
-type ExecutionPaymentInsufficientSettlementFieldKey =
-    crate::types::workflow::execution::ExecutionPaymentInsufficientSettlementFieldKey;
-type OnchainToolResultKey = crate::types::workflow::execution::OnchainToolResultKey;
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct InsufficientSettlementMarkerView {
@@ -343,27 +322,31 @@ impl OnchainToolResultState {
 
     /// Build the mutable shared-object input expected by
     /// `consume_on_chain_tool_result_for_walk`.
-    pub fn consume_object_input(&self) -> Option<sui::tx::ObjectInput> {
+    pub fn consume_object_input(&self) -> Option<sui_move_call::CallArg> {
         self.consume_ready_result().map(|(_, object_ref)| {
-            sui::tx::ObjectInput::shared(*object_ref.object_id(), object_ref.version(), true)
+            sui_move_call::CallArg::Shared(sui::types::SharedInput::new(
+                *object_ref.object_id(),
+                object_ref.version(),
+                true,
+            ))
         })
     }
 }
 
 fn onchain_tool_result_is_finalized(result: &OnchainToolResult) -> bool {
     result.finalized
-        && result.tag.0.is_some()
-        && result.named_payload.0.is_some()
-        && result.finalize_tx_digest.0.is_some()
-        && result.finalize_recipient.0.is_some()
+        && result.tag.as_option().is_some()
+        && result.named_payload.as_option().is_some()
+        && result.finalize_tx_digest.as_option().is_some()
+        && result.finalize_recipient.as_option().is_some()
 }
 
-impl From<CommittedToolResult> for CommittedToolResultView {
-    fn from(value: CommittedToolResult) -> Self {
+impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
+    fn from(value: execution_move::CommittedToolResult) -> Self {
         Self {
             expected_vertex: value.expected_vertex,
-            primary_failure_evidence_kind: value.primary_failure_evidence_kind.0,
-            secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.0,
+            primary_failure_evidence_kind: value.primary_failure_evidence_kind.into_option(),
+            secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.into_option(),
             current_leader_cap_id: value.current_leader_cap_id.bytes,
             has_finalized_onchain_payload: value.has_finalized_onchain_payload,
             leader_records: value
@@ -374,20 +357,15 @@ impl From<CommittedToolResult> for CommittedToolResultView {
                     leader_cap_id: entry.key.bytes,
                     commit_tx_digest: entry.value.commit_tx_digest,
                     recipient: entry.value.recipient,
-                    commit_gas_charge: entry.value.commit_gas_charge.0,
-                    settlement_gas_charge: entry.value.settlement_gas_charge.0,
+                    commit_gas_charge: entry.value.commit_gas_charge.into_option(),
+                    settlement_gas_charge: entry.value.settlement_gas_charge.into_option(),
                 })
                 .collect(),
         }
     }
 }
 
-#[derive(Clone, Debug, serde::Deserialize)]
-struct SuiClock {
-    #[serde(deserialize_with = "deserialize_sui_u64")]
-    timestamp_ms: u64,
-}
-
+#[cfg(feature = "walrus")]
 #[derive(Clone, Debug, Default)]
 pub struct AgentDagExecuteOptions {
     pub payment_source: Vec<u8>,
@@ -396,6 +374,7 @@ pub struct AgentDagExecuteOptions {
     pub payment_max_budget: u64,
 }
 
+#[cfg(feature = "walrus")]
 fn resolve_default_agent_dag_executor(
     objects: &crate::types::NexusObjects,
     registry: &AgentRegistrySnapshot,
@@ -460,34 +439,6 @@ pub struct WorkflowActions {
     pub(super) client: NexusClient,
 }
 
-fn object_argument_from_metadata(
-    tx: &mut sui::tx::TransactionBuilder,
-    metadata: &Response<()>,
-    mutable: bool,
-) -> Result<sui::tx::Argument, NexusError> {
-    match metadata.owner {
-        sui::types::Owner::Shared(version) => Ok(tx.object(sui::tx::ObjectInput::shared(
-            metadata.object_id,
-            version,
-            mutable,
-        ))),
-        sui::types::Owner::Immutable if !mutable => Ok(tx.object(sui::tx::ObjectInput::immutable(
-            metadata.object_id,
-            metadata.version,
-            metadata.digest,
-        ))),
-        sui::types::Owner::Address(_) if !mutable => Ok(tx.object(sui::tx::ObjectInput::owned(
-            metadata.object_id,
-            metadata.version,
-            metadata.digest,
-        ))),
-        ref owner => Err(NexusError::TransactionBuilding(anyhow!(
-            "object '{}' has unsupported owner for transaction input: {owner:?}",
-            metadata.object_id
-        ))),
-    }
-}
-
 fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
         NexusEventKind::WalkAdvanced(e) => Some(e.execution.clone().into()),
@@ -501,6 +452,7 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     }
 }
 
+#[cfg(feature = "walrus")]
 fn terminal_state_from_execution_finished(
     execution_finished: &ExecutionFinishedEvent,
 ) -> WorkflowExecutionTerminalState {
@@ -515,6 +467,7 @@ fn terminal_state_from_execution_finished(
     }
 }
 
+#[cfg(feature = "walrus")]
 async fn build_execution_completion_result(
     events: Vec<NexusEvent>,
     dag_execution_id: sui::types::Address,
@@ -585,27 +538,30 @@ pub fn effective_verifier_config(
         .unwrap_or_else(|| dag_default.clone())
 }
 
-pub fn dag_vertex_requires_verifier_proof(dag: &Dag, vertex: &DagVertexInfo) -> bool {
+pub fn dag_vertex_requires_verifier_proof(
+    dag: &dag_move::DAG,
+    vertex: &graph_move::VertexInfo,
+) -> bool {
     verifier_mode_requires_proof(
-        effective_verifier_config(&dag.leader_verifier, vertex.leader_verifier.as_ref()).mode,
+        effective_verifier_config(&dag.leader_verifier, vertex.leader_verifier.as_option()).mode,
     ) || verifier_mode_requires_proof(
-        effective_verifier_config(&dag.tool_verifier, vertex.tool_verifier.as_ref()).mode,
+        effective_verifier_config(&dag.tool_verifier, vertex.tool_verifier.as_option()).mode,
     )
 }
 
 pub async fn fetch_dag_vertices_bcs(
     crawler: &Crawler,
-    dag: &Dag,
-) -> anyhow::Result<HashMap<crate::types::TypeName, DagVertexInfo>> {
-    crawler
-        .get_dynamic_fields_bcs::<
-            crate::types::TypeName,
-            LinkedTableNodeBcs<crate::types::TypeName, DagVertexInfoBcs>,
+    dag: &dag_move::DAG,
+) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfo>> {
+    Ok(crawler
+        .get_dynamic_fields::<
+            graph_move::Vertex,
+            linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
         >(dag.vertices.id(), dag.vertices.size())
         .await?
         .into_iter()
-        .map(|(vertex, node)| Ok((vertex, node.value.into_sdk()?)))
-        .collect()
+        .map(|(vertex, node)| (vertex, node.value))
+        .collect())
 }
 
 /// Fetch the committed result for one walk from `DAGExecution` dynamic fields.
@@ -617,12 +573,12 @@ pub async fn fetch_committed_tool_result_for_walk(
     walk_index: u64,
 ) -> anyhow::Result<Option<CommittedToolResultView>> {
     crawler
-        .get_optional_dynamic_field_bcs_matching_value_type::<
-            CommittedToolResultKey,
-            CommittedToolResult,
+        .get_optional_dynamic_field_matching_value_type::<
+            execution_move::CommittedToolResultKey,
+            execution_move::CommittedToolResult,
         >(
             execution_id,
-            CommittedToolResultKey { walk_index },
+            execution_move::CommittedToolResultKey { walk_index },
             Some(COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX),
         )
         .await
@@ -631,11 +587,11 @@ pub async fn fetch_committed_tool_result_for_walk(
 
 pub async fn inspect_expired_walk_resolution(
     crawler: &Crawler,
-    objects: &crate::types::NexusObjects,
+    objects: &NexusObjects,
     params: ResolveExpiredWalkParams,
 ) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let clock = crawler
-        .get_object::<SuiClock>(sui_framework::CLOCK_OBJECT_ID)
+        .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
         .await?
         .data;
     inspect_expired_walk_resolution_at(crawler, objects, params, clock.timestamp_ms).await
@@ -643,12 +599,12 @@ pub async fn inspect_expired_walk_resolution(
 
 pub async fn inspect_expired_walk_resolution_at(
     crawler: &Crawler,
-    objects: &crate::types::NexusObjects,
+    objects: &NexusObjects,
     params: ResolveExpiredWalkParams,
     clock_ms: u64,
 ) -> anyhow::Result<ExpiredWalkResolutionPlan> {
     let execution = crawler
-        .get_object::<DagExecution>(params.dag_execution_id)
+        .get_object::<DAGExecution>(params.dag_execution_id)
         .await?
         .data;
     let Some(walk) = usize::try_from(params.walk_index)
@@ -656,7 +612,7 @@ pub async fn inspect_expired_walk_resolution_at(
         .and_then(|index| execution.walks.get(index))
     else {
         return Ok(ExpiredWalkResolutionPlan {
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Skipped {
@@ -667,11 +623,11 @@ pub async fn inspect_expired_walk_resolution_at(
 
     let Some(timeout_vertex) = walk.timeout_expired_vertex(clock_ms) else {
         return Ok(ExpiredWalkResolutionPlan {
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Skipped {
-                reason: "walk is not double-timeout expired or is already terminal".to_string(),
+                reason: unresolved_timeout_skip_reason(walk).to_string(),
             },
         });
     };
@@ -685,14 +641,16 @@ pub async fn inspect_expired_walk_resolution_at(
     {
         OnchainToolResultState::Committed { .. } => {
             return Ok(ExpiredWalkResolutionPlan {
-                dag_id: execution.dag_id,
+                dag_id: execution.dag_id(),
                 dag_execution_id: params.dag_execution_id,
                 walk_index: params.walk_index,
                 kind: ExpiredWalkResolutionKind::Settled,
             });
         }
         OnchainToolResultState::Finalized { result, object_ref } => {
-            let dag = crawler.get_object::<Dag>(execution.dag_id).await?;
+            let dag = crawler
+                .get_object::<dag_move::DAG>(execution.dag_id())
+                .await?;
             let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
             let kind = finalized_onchain_result_resolution_kind(
                 crawler,
@@ -704,7 +662,7 @@ pub async fn inspect_expired_walk_resolution_at(
             )
             .await?;
             return Ok(ExpiredWalkResolutionPlan {
-                dag_id: execution.dag_id,
+                dag_id: execution.dag_id(),
                 dag_execution_id: params.dag_execution_id,
                 walk_index: params.walk_index,
                 kind,
@@ -712,7 +670,7 @@ pub async fn inspect_expired_walk_resolution_at(
         }
         OnchainToolResultState::InsufficientSettlement { .. } => {
             return Ok(ExpiredWalkResolutionPlan {
-                dag_id: execution.dag_id,
+                dag_id: execution.dag_id(),
                 dag_execution_id: params.dag_execution_id,
                 walk_index: params.walk_index,
                 kind: ExpiredWalkResolutionKind::Skipped {
@@ -725,7 +683,7 @@ pub async fn inspect_expired_walk_resolution_at(
             object_ref,
         } => {
             return Ok(ExpiredWalkResolutionPlan {
-                dag_id: execution.dag_id,
+                dag_id: execution.dag_id(),
                 dag_execution_id: params.dag_execution_id,
                 walk_index: params.walk_index,
                 kind: ExpiredWalkResolutionKind::Skipped {
@@ -741,13 +699,13 @@ pub async fn inspect_expired_walk_resolution_at(
 
     let Some(abort_vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
         return Ok(ExpiredWalkResolutionPlan {
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Skipped {
                 reason: format!(
                     "timeout-expired walk at vertex '{}' is not abortable without a committed result",
-                    timeout_vertex.name().name
+                    timeout_vertex.vertex_name()
                 ),
             },
         });
@@ -756,15 +714,17 @@ pub async fn inspect_expired_walk_resolution_at(
     let payment = tap::fetch_execution_payment_for_execution(crawler, params.dag_execution_id)
         .await?
         .data;
-    let dag = crawler.get_object::<Dag>(execution.dag_id).await?;
+    let dag = crawler
+        .get_object::<dag_move::DAG>(execution.dag_id())
+        .await?;
     let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
-    let vertex_info = vertices.get(&abort_vertex.name()).ok_or_else(|| {
+    let vertex_info = vertices.get(abort_vertex.vertex()).ok_or_else(|| {
         anyhow!(
             "DAG vertex '{}' missing from fetched DAG",
-            abort_vertex.name().name
+            abort_vertex.vertex_name()
         )
     })?;
-    let tool_fqn = vertex_info.kind.tool_fqn().clone();
+    let tool_fqn = vertex_info.kind.tool_fqn()?;
     let vertex_key = payment_vertex_key(params.dag_execution_id, abort_vertex, &tool_fqn)?;
     let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
     let locked = payment
@@ -774,7 +734,7 @@ pub async fn inspect_expired_walk_resolution_at(
 
     if !locked {
         return Ok(ExpiredWalkResolutionPlan {
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
             kind: ExpiredWalkResolutionKind::Aborted,
@@ -795,54 +755,61 @@ pub async fn inspect_expired_walk_resolution_at(
     let selected_candidate = select_tool_gas_abort_candidate(candidates, params.tool_gas_id)?;
 
     Ok(ExpiredWalkResolutionPlan {
-        dag_id: execution.dag_id,
+        dag_id: execution.dag_id(),
         dag_execution_id: params.dag_execution_id,
         walk_index: params.walk_index,
         kind: ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate },
     })
 }
 
+fn unresolved_timeout_skip_reason(walk: &DAGWalk) -> &'static str {
+    match walk {
+        DAGWalk::Active { .. } | DAGWalk::PendingSettlement { .. } => {
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        }
+        _ => EXPIRED_WALK_ALREADY_TERMINAL_REASON,
+    }
+}
+
 async fn finalized_onchain_result_resolution_kind(
     crawler: &Crawler,
     objects: &NexusObjects,
-    vertices: &HashMap<TypeName, DagVertexInfo>,
+    vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
     timeout_vertex: RuntimeVertex,
     result: &OnchainToolResult,
     object_ref: sui::types::ObjectReference,
 ) -> anyhow::Result<ExpiredWalkResolutionKind> {
-    let vertex_info = vertices.get(&timeout_vertex.name()).ok_or_else(|| {
+    let vertex_info = vertices.get(timeout_vertex.vertex()).ok_or_else(|| {
         anyhow!(
             "DAG vertex '{}' missing from fetched DAG",
-            timeout_vertex.name().name
+            timeout_vertex.vertex_name()
         )
     })?;
-    let tool_fqn = vertex_info.kind.tool_fqn();
-    let tool_id = derive_tool_id(*objects.tool_registry.object_id(), tool_fqn)?;
-    let tool = crawler
-        .get_object::<crate::types::Tool>(tool_id)
-        .await?
-        .data;
+    let tool_fqn = vertex_info.kind.tool_fqn()?;
+    let tool_id =
+        crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)?;
+    let tool = crawler.get_object::<Tool>(tool_id).await?.data;
     let ToolRef::Sui {
         tool_witness_id, ..
-    } = tool.reference
+    } = tool.reference()
     else {
         return Ok(ExpiredWalkResolutionKind::Skipped {
             reason: format!(
                 "finalized on-chain result exists for non-Sui tool vertex '{}'",
-                timeout_vertex.name().name
+                timeout_vertex.vertex_name()
             ),
         });
     };
     let finalize_tx_digest = result
         .finalize_tx_digest
-        .0
-        .clone()
+        .as_option()
+        .cloned()
         .ok_or_else(|| anyhow!("finalized on-chain result is missing finalize_tx_digest"))?;
 
     Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
         result_ref: object_ref,
         expected_vertex: timeout_vertex,
-        tool_witness_id,
+        tool_witness_id: tool_witness_id.bytes,
         finalize_tx_digest,
     })
 }
@@ -851,7 +818,7 @@ async fn broken_onchain_result_cleanups_for_abort(
     crawler: &Crawler,
     objects: &NexusObjects,
     execution_id: sui::types::Address,
-    execution: &DagExecution,
+    execution: &DAGExecution,
     clock_ms: u64,
 ) -> anyhow::Result<Vec<BrokenOnchainToolResultCleanup>> {
     let mut vertices = None;
@@ -865,7 +832,9 @@ async fn broken_onchain_result_cleanups_for_abort(
         match fetch_onchain_tool_result_state_for_walk(crawler, execution_id, walk_index).await? {
             OnchainToolResultState::Finalized { result, object_ref } => {
                 if vertices.is_none() {
-                    let dag = crawler.get_object::<Dag>(execution.dag_id).await?;
+                    let dag = crawler
+                        .get_object::<dag_move::DAG>(execution.dag_id())
+                        .await?;
                     vertices = Some(fetch_dag_vertices_bcs(crawler, &dag.data).await?);
                 }
                 let vertices = vertices.as_ref().expect("vertices were just fetched");
@@ -925,12 +894,12 @@ fn onchain_tool_result_has_required_stamps(
     leader_registry_id: sui::types::Address,
     tool_witness_id: sui::types::Address,
 ) -> bool {
-    let Some(stamps) = result.stamps.0.as_ref() else {
+    let Some(stamps) = result.stamps.as_option() else {
         return false;
     };
-    let execution_id = crate::types::sui_address_to_id(execution_id);
-    let leader_registry_id = crate::types::sui_address_to_id(leader_registry_id);
-    let tool_witness_id = crate::types::sui_address_to_id(tool_witness_id);
+    let execution_id = ID::new(execution_id);
+    let leader_registry_id = ID::new(leader_registry_id);
+    let tool_witness_id = ID::new(tool_witness_id);
 
     stamps
         .contents
@@ -954,9 +923,9 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     let committed_result =
         fetch_committed_tool_result_for_walk(crawler, execution_id, walk_index).await?;
     let insufficient_settlement = crawler
-        .get_optional_dynamic_field_bcs_matching_value_type::<
-            ExecutionPaymentInsufficientSettlementFieldKey,
-            ExecutionPaymentInsufficientSettlement,
+        .get_optional_dynamic_field_matching_value_type::<
+            execution_move::ExecutionPaymentInsufficientSettlementFieldKey,
+            execution_move::ExecutionPaymentInsufficientSettlement,
         >(
             execution_id,
             insufficient_settlement_field_key(),
@@ -980,12 +949,9 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     }
 
     let result_id = crawler
-        .get_optional_dynamic_field_bcs_matching_value_type::<
-            OnchainToolResultKey,
-            crate::types::ID,
-        >(
+        .get_optional_dynamic_field_matching_value_type::<execution_move::OnchainToolResultKey, ID>(
             execution_id,
-            OnchainToolResultKey { walk_index },
+            execution_move::OnchainToolResultKey { walk_index },
             Some(ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX),
         )
         .await?;
@@ -994,9 +960,7 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     };
 
     let result_id = result_id.bytes;
-    let result_response = crawler
-        .get_object_contents_bcs::<OnchainToolResult>(result_id)
-        .await?;
+    let result_response = crawler.get_object::<OnchainToolResult>(result_id).await?;
     let object_ref = result_response.object_ref();
     let result = result_response.data;
 
@@ -1010,19 +974,20 @@ pub async fn fetch_onchain_tool_result_state_for_walk(
     }
 }
 
-fn insufficient_settlement_field_key() -> ExecutionPaymentInsufficientSettlementFieldKey {
-    ExecutionPaymentInsufficientSettlementFieldKey { dummy_field: false }
+fn insufficient_settlement_field_key(
+) -> execution_move::ExecutionPaymentInsufficientSettlementFieldKey {
+    execution_move::ExecutionPaymentInsufficientSettlementFieldKey { dummy_field: false }
 }
 
 pub async fn fetch_dag_default_values_bcs<T>(
     crawler: &Crawler,
-    dag: &Dag,
-) -> anyhow::Result<HashMap<DagVertexInputPort, T>>
+    dag: &dag_move::DAG,
+) -> anyhow::Result<HashMap<graph_move::VertexInputPort, T>>
 where
     T: serde::de::DeserializeOwned,
 {
     crawler
-        .get_dynamic_fields_bcs::<DagVertexInputPort, T>(
+        .get_dynamic_fields::<graph_move::VertexInputPort, T>(
             dag.defaults_to_input_ports.id(),
             dag.defaults_to_input_ports.size(),
         )
@@ -1031,30 +996,22 @@ where
 
 pub async fn fetch_dag_edges_bcs(
     crawler: &Crawler,
-    dag: &Dag,
-) -> anyhow::Result<HashMap<crate::types::TypeName, Vec<DagEdge>>> {
+    dag: &dag_move::DAG,
+) -> anyhow::Result<HashMap<graph_move::Vertex, Vec<graph_move::Edge>>> {
     crawler
-        .get_dynamic_fields_bcs::<crate::types::TypeName, Vec<DagEdgeBcs>>(
+        .get_dynamic_fields::<graph_move::Vertex, Vec<graph_move::Edge>>(
             dag.edges.id(),
             dag.edges.size(),
         )
-        .await?
-        .into_iter()
-        .map(|(vertex, edges)| {
-            Ok((
-                vertex,
-                edges.into_iter().map(DagEdgeBcs::into_sdk).collect(),
-            ))
-        })
-        .collect()
+        .await
 }
 
 pub async fn fetch_dag_outputs_bcs(
     crawler: &Crawler,
-    dag: &Dag,
-) -> anyhow::Result<HashMap<crate::types::TypeName, Vec<DagOutputVariantPort>>> {
+    dag: &dag_move::DAG,
+) -> anyhow::Result<HashMap<graph_move::Vertex, Vec<graph_move::OutputVariantPort>>> {
     crawler
-        .get_dynamic_fields_bcs::<crate::types::TypeName, Vec<DagOutputVariantPort>>(
+        .get_dynamic_fields::<graph_move::Vertex, Vec<graph_move::OutputVariantPort>>(
             dag.outputs.id(),
             dag.outputs.size(),
         )
@@ -1066,101 +1023,41 @@ pub async fn offchain_success_requires_verifier_proof(
     dag_object_id: sui::types::Address,
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
-    let dag = crawler.get_object::<Dag>(dag_object_id).await?;
+    let dag = crawler.get_object::<dag_move::DAG>(dag_object_id).await?;
     let mut vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
-    let vertex_name = next_vertex.name();
-    let vertex = vertices
-        .remove(&vertex_name)
-        .ok_or_else(|| anyhow!("Vertex '{vertex_name}' not found in DAG verifier config"))?;
+    let vertex_name = next_vertex.vertex();
+    let vertex = vertices.remove(&vertex_name).ok_or_else(|| {
+        anyhow!(
+            "Vertex '{}' not found in DAG verifier config",
+            vertex_name.name
+        )
+    })?;
 
     Ok(dag_vertex_requires_verifier_proof(&dag.data, &vertex))
 }
 
 pub async fn fetch_vertex_input_port_names(
     crawler: &Crawler,
-    dag: &Dag,
-    vertex_name: &crate::types::TypeName,
+    dag: &dag_move::DAG,
+    vertex_name: &TypeName,
 ) -> anyhow::Result<Vec<String>> {
     let mut vertices = fetch_dag_vertices_bcs(crawler, dag).await?;
-    let vertex = vertices.remove(vertex_name).ok_or_else(|| {
+    let vertex_key = graph_move::Vertex::from(vertex_name);
+    let vertex = vertices.remove(&vertex_key).ok_or_else(|| {
         anyhow!("Vertex '{vertex_name}' not found in DAG vertices dynamic fields")
     })?;
 
     Ok(vertex.declared_input_port_names())
 }
 
-#[derive(Clone, Debug, Default, serde::Deserialize)]
-struct ExecutionErrEvalArbitrationState {
-    #[serde(default)]
-    terminal_records: serde_json::Value,
-}
-
-async fn fetch_execution_err_eval_state(
-    crawler: &Crawler,
-    object_id: sui::types::Address,
-) -> anyhow::Result<Response<ExecutionErrEvalArbitrationState>> {
-    crawler.get_object(object_id).await
-}
-
 pub fn execution_terminal_record_matches_retryable_vertex(
-    value: &serde_json::Value,
+    terminal_records: &VecMap<u64, execution_move::TerminalErrEvalRecord>,
     walk_index: u64,
     next_vertex: &RuntimeVertex,
-) -> anyhow::Result<bool> {
-    let mut pending = vec![value];
-    let walk_index_key = walk_index.to_string();
-    let prioritized_nested_keys = ["contents", "entries", "fields", "inner", "vec", "value"];
-
-    while let Some(value) = pending.pop() {
-        match value {
-            serde_json::Value::Object(object) => {
-                if let Some(record_value) = object.get(&walk_index_key) {
-                    if let Some(record) =
-                        crate::types::parse_execution_terminal_record_value(record_value)?
-                    {
-                        return Ok(&record.vertex == next_vertex
-                            && record.failure_class == WorkflowFailureClass::Retryable);
-                    }
-                }
-
-                if let (Some(key), Some(record_value)) = (object.get("key"), object.get("value")) {
-                    if crate::types::parse_u64_value(key)? == Some(walk_index) {
-                        if let Some(record) =
-                            crate::types::parse_execution_terminal_record_value(record_value)?
-                        {
-                            return Ok(&record.vertex == next_vertex
-                                && record.failure_class == WorkflowFailureClass::Retryable);
-                        }
-                    }
-                }
-
-                for (name, nested) in object.iter().rev() {
-                    if matches!(
-                        name.as_str(),
-                        "contents" | "entries" | "fields" | "inner" | "vec" | "value"
-                    ) {
-                        continue;
-                    }
-
-                    pending.push(nested);
-                }
-
-                for &nested_key in prioritized_nested_keys.iter().rev() {
-                    if let Some(nested) = object.get(nested_key) {
-                        pending.push(nested);
-                    }
-                }
-            }
-            serde_json::Value::Array(values) => {
-                for nested in values.iter().rev() {
-                    pending.push(nested);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(false)
+) -> bool {
+    terminal_records.get(&walk_index).is_some_and(|record| {
+        &record.vertex == next_vertex && record.failure_class == WorkflowFailureClass::Retryable
+    })
 }
 
 pub async fn should_settle_tool_err_eval_gas(
@@ -1169,63 +1066,29 @@ pub async fn should_settle_tool_err_eval_gas(
     walk_index: u64,
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
-    let state = fetch_execution_err_eval_state(crawler, execution).await?;
-    execution_terminal_record_matches_retryable_vertex(
-        &state.data.terminal_records,
+    let execution = crawler.get_object::<DAGExecution>(execution).await?;
+    Ok(execution_terminal_record_matches_retryable_vertex(
+        &execution.data.terminal_records,
         walk_index,
         next_vertex,
-    )
+    ))
 }
 
 impl WorkflowActions {
-    /// Publish the provided JSON [`Dag`].
-    pub async fn publish(&self, json_dag: JsonDag) -> Result<PublishResult, NexusError> {
+    /// Publish the provided [`DagSpec`] specification.
+    pub async fn publish(&self, dag_spec: DagSpec) -> Result<PublishResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
 
         // == Craft and submit the publish DAG transaction ==
 
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        let mut dag_arg = dag::empty(&mut tx, nexus_objects);
-
-        dag_arg = match dag::create(&mut tx, nexus_objects, dag_arg, json_dag) {
-            Ok(dag_arg) => dag_arg,
-            Err(e) => {
-                return Err(NexusError::TransactionBuilding(e));
-            }
-        };
-
-        dag::publish(&mut tx, nexus_objects, dag_arg);
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let tx =
+            dag::publish_ptb(nexus_objects, dag_spec).map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         // == Find the published DAG object ID ==
 
+        let dag_tag = crate::move_bindings::struct_tag::<dag_move::DAG>(nexus_objects);
         let dag_object_id = response
             .objects
             .into_iter()
@@ -1234,9 +1097,9 @@ impl WorkflowActions {
                     return None;
                 };
 
-                if *object_type.address() == nexus_objects.interface_pkg_id
-                    && *object_type.module() == interface::Dag::DAG.module
-                    && *object_type.name() == interface::Dag::DAG.name
+                if *object_type.address() == *dag_tag.address()
+                    && object_type.module() == dag_tag.module()
+                    && object_type.name() == dag_tag.name()
                 {
                     Some(obj.object_id())
                 } else {
@@ -1266,10 +1129,11 @@ impl WorkflowActions {
     /// down to the DAG execution.
     ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
+    #[cfg(feature = "walrus")]
     pub async fn execute(
         &self,
         dag_object_id: sui::types::Address,
-        entry_data: HashMap<String, PortsData>,
+        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
@@ -1294,11 +1158,12 @@ impl WorkflowActions {
 
     /// Execute a published DAG through the configured standard default agent
     /// with explicit standard payment options.
+    #[cfg(feature = "walrus")]
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_default_agent_dag(
         &self,
         dag_object_id: sui::types::Address,
-        entry_data: HashMap<String, PortsData>,
+        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
@@ -1323,7 +1188,7 @@ impl WorkflowActions {
         let dag = self
             .client
             .crawler()
-            .get_object::<Dag>(dag_object_id)
+            .get_object::<dag_move::DAG>(dag_object_id)
             .await
             .map_err(NexusError::Rpc)?;
 
@@ -1335,7 +1200,6 @@ impl WorkflowActions {
         let default_executor = resolve_default_agent_dag_executor(nexus_objects, &registry.data)
             .map_err(NexusError::Parsing)?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
         validate_execution_payment_options(
             default_executor.target.agent_id,
             &default_executor.skill_revision.requirements.payment_policy,
@@ -1354,6 +1218,7 @@ impl WorkflowActions {
         }
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id: default_executor.target.agent_id,
+            skill_id: default_executor.target.skill_id,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: options.payment_source,
@@ -1367,9 +1232,12 @@ impl WorkflowActions {
             .into_iter()
             .map(|(vertex, data)| (vertex, data.into_map()))
             .collect();
+        let owned_payment_coin = agent_execution
+            .payment_coin
+            .as_ref()
+            .map(|payment_coin| *payment_coin.object_id());
 
-        if let Err(e) = dag::execute_default_agent_dag(
-            &mut tx,
+        let tx = dag::execute_default_agent_dag_ptb(
             nexus_objects,
             &dag.object_ref(),
             priority_fee_per_gas_unit,
@@ -1377,39 +1245,9 @@ impl WorkflowActions {
             &transaction_input_data,
             &agent_execution,
             &tools_gas,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-        let owned_payment_coin = agent_execution
-            .payment_coin
-            .as_ref()
-            .map(|payment_coin| *payment_coin.object_id());
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
                 .objects
@@ -1429,6 +1267,8 @@ impl WorkflowActions {
 
         // == Find the created DAG execution object ID ==
 
+        let execution_tag =
+            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(nexus_objects);
         let execution_object_id = response
             .objects
             .into_iter()
@@ -1438,8 +1278,8 @@ impl WorkflowActions {
                 };
 
                 if nexus_objects.is_workflow_package(*object_type.address())
-                    && *object_type.module() == workflow::Execution::DAG_EXECUTION.module
-                    && *object_type.name() == workflow::Execution::DAG_EXECUTION.name
+                    && object_type.module() == execution_tag.module()
+                    && object_type.name() == execution_tag.name()
                 {
                     Some(obj.object_id())
                 } else {
@@ -1467,13 +1307,14 @@ impl WorkflowActions {
     /// Execute the active agent skill for `(agent_id, skill_id)`.
     ///
     /// This resolves the registered DAG from the configured TAP registry, then
-    /// calls the explicit agent workflow entry instead of the legacy default-agent entry.
+    /// calls the explicit agent workflow entry.
+    #[cfg(feature = "walrus")]
     #[allow(clippy::too_many_arguments)]
     pub async fn execute_agent_dag(
         &self,
         agent_id: AgentId,
         skill_id: SkillId,
-        entry_data: HashMap<String, PortsData>,
+        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
         priority_fee_per_gas_unit: u64,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
@@ -1513,7 +1354,7 @@ impl WorkflowActions {
         let dag = self
             .client
             .crawler()
-            .get_object::<Dag>(dag_id)
+            .get_object::<dag_move::DAG>(dag_id)
             .await
             .map_err(NexusError::Rpc)?;
 
@@ -1525,7 +1366,6 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
         validate_execution_payment_options(
             agent_id,
             &target.skill_revision.requirements.payment_policy,
@@ -1544,6 +1384,7 @@ impl WorkflowActions {
         }
         let agent_execution = dag::AgentDagExecuteInput {
             agent_id,
+            skill_id,
             selected_dag: None,
             authorization_templates: Vec::new(),
             payment_source: options.payment_source,
@@ -1557,52 +1398,25 @@ impl WorkflowActions {
             .into_iter()
             .map(|(vertex, data)| (vertex, data.into_map()))
             .collect();
-
-        if let Err(e) = dag::execute_agent_dag(
-            &mut tx,
-            nexus_objects,
-            &dag.object_ref(),
-            tap::agent_input_from_metadata(&agent_object)
-                .map_err(NexusError::TransactionBuilding)?,
-            skill_id,
-            priority_fee_per_gas_unit,
-            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-            &transaction_input_data,
-            &agent_execution,
-            &tools_gas,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
         let owned_payment_coin = agent_execution
             .payment_coin
             .as_ref()
             .map(|payment_coin| *payment_coin.object_id());
 
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let agent_input = tap::agent_input_from_metadata(&agent_object)
+            .map_err(NexusError::TransactionBuilding)?;
+        let tx = dag::execute_agent_dag_ptb(
+            nexus_objects,
+            &dag.object_ref(),
+            agent_input,
+            priority_fee_per_gas_unit,
+            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
+            &transaction_input_data,
+            &agent_execution,
+            &tools_gas,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
                 .objects
@@ -1620,6 +1434,8 @@ impl WorkflowActions {
             }
         }
 
+        let execution_tag =
+            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(nexus_objects);
         let execution_object_id = response
             .objects
             .into_iter()
@@ -1629,8 +1445,8 @@ impl WorkflowActions {
                 };
 
                 if nexus_objects.is_workflow_package(*object_type.address())
-                    && *object_type.module() == workflow::Execution::DAG_EXECUTION.module
-                    && *object_type.name() == workflow::Execution::DAG_EXECUTION.name
+                    && object_type.module() == execution_tag.module()
+                    && object_type.name() == execution_tag.name()
                 {
                     Some(obj.object_id())
                 } else {
@@ -1748,6 +1564,7 @@ impl WorkflowActions {
     /// with resolved end-state data. The starting checkpoint is derived from
     /// the execution object's creation transaction; see
     /// [`Self::inspect_execution`] for details.
+    #[cfg(feature = "walrus")]
     pub async fn inspect_execution_until_completion(
         &self,
         dag_execution_id: sui::types::Address,
@@ -1780,7 +1597,7 @@ impl WorkflowActions {
     ) -> Result<ExecutionCostResult, NexusError> {
         let crawler = self.client.crawler();
         let execution = crawler
-            .get_object::<DagExecution>(dag_execution_id)
+            .get_object::<DAGExecution>(dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -1803,6 +1620,9 @@ impl WorkflowActions {
 
     /// Submit the current permissionless expired-execution abort entry.
     ///
+    /// This wraps `execution_settlement::abort_expired_execution`; it does not
+    /// discover or submit ToolGas candidates.
+    ///
     /// If a double-expired active walk is blocked by a finalized on-chain
     /// result whose required stamps are insufficient, this prepends the
     /// self-validating broken-result cleanup call before aborting.
@@ -1812,12 +1632,12 @@ impl WorkflowActions {
     ) -> Result<AbortExecutionResult, NexusError> {
         let crawler = self.client.crawler();
         let execution = crawler
-            .get_object::<DagExecution>(dag_execution_id)
+            .get_object::<DAGExecution>(dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
         let clock = crawler
-            .get_object::<SuiClock>(sui_framework::CLOCK_OBJECT_ID)
+            .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -1831,7 +1651,7 @@ impl WorkflowActions {
         .await
         .map_err(NexusError::TransactionBuilding)?;
         let dag_ref = crawler
-            .get_object_metadata(execution.dag_id)
+            .get_object_metadata(execution.dag_id())
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -1842,71 +1662,26 @@ impl WorkflowActions {
             .object_ref();
 
         let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let objects = &self.client.nexus_objects;
-        if cleaned_broken_onchain_results.is_empty() {
-            dag::abort_expired_execution(&mut tx, objects, &dag_ref, &execution_ref);
-        } else {
-            let dag = tx.object(sui::tx::ObjectInput::shared(
-                *dag_ref.object_id(),
-                dag_ref.version(),
-                false,
-            ));
-            let execution_arg = tx.object(sui::tx::ObjectInput::shared(
-                *execution_ref.object_id(),
-                execution_ref.version(),
-                true,
-            ));
-            let tool_registry = tx.object(sui::tx::ObjectInput::shared(
-                *objects.tool_registry.object_id(),
-                objects.tool_registry.version(),
-                false,
-            ));
-            let leader_registry = tx.object(sui::tx::ObjectInput::shared(
-                *objects.leader_registry.object_id(),
-                objects.leader_registry.version(),
-                false,
-            ));
-            let clock = tx.object(sui::tx::ObjectInput::shared(
-                sui_framework::CLOCK_OBJECT_ID,
-                1,
-                false,
-            ));
-            for cleanup in &cleaned_broken_onchain_results {
-                let result = tx.object(sui::tx::ObjectInput::shared(
-                    *cleanup.result_ref.object_id(),
-                    cleanup.result_ref.version(),
-                    true,
-                ));
-                dag::cleanup_broken_onchain_tool_result(
-                    &mut tx,
-                    objects,
-                    dag,
-                    execution_arg,
-                    tool_registry,
-                    result,
-                    leader_registry,
-                    cleanup.walk_index,
-                    cleanup.tool_witness_id,
-                    clock,
-                )
-                .map_err(NexusError::TransactionBuilding)?;
-            }
-            tx.move_call(
-                sui::tx::Function::new(
-                    objects.workflow_pkg_id,
-                    workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.module,
-                    workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name,
-                ),
-                vec![dag, execution_arg, clock],
-            );
-        }
+        let tx = dag::abort_expired_execution_for_self_ptb(
+            &self.client.nexus_objects,
+            &dag_ref,
+            &execution_ref,
+            &cleaned_broken_onchain_results
+                .iter()
+                .map(|cleanup| dag::BrokenOnchainToolResultCleanupInput {
+                    walk_index: cleanup.walk_index,
+                    result_ref: cleanup.result_ref.clone(),
+                    tool_witness_id: cleanup.tool_witness_id,
+                })
+                .collect::<Vec<_>>(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(AbortExecutionResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id,
             cleaned_broken_onchain_results,
         })
@@ -1919,12 +1694,12 @@ impl WorkflowActions {
     ) -> Result<CommittedToolResultSettlementResult, NexusError> {
         let crawler = self.client.crawler();
         let execution = crawler
-            .get_object::<DagExecution>(params.dag_execution_id)
+            .get_object::<DAGExecution>(params.dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
         let dag_ref = crawler
-            .get_object_metadata(execution.dag_id)
+            .get_object_metadata(execution.dag_id())
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -1936,48 +1711,115 @@ impl WorkflowActions {
 
         let address = self.client.signer.get_active_address();
         let objects = &self.client.nexus_objects;
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let dag = tx.object(sui::tx::ObjectInput::shared(
-            *dag_ref.object_id(),
-            dag_ref.version(),
-            false,
-        ));
-        let execution_arg = tx.object(sui::tx::ObjectInput::shared(
-            *execution_ref.object_id(),
-            execution_ref.version(),
-            true,
-        ));
-        let tool_registry = tx.object(sui::tx::ObjectInput::shared(
-            *objects.tool_registry.object_id(),
-            objects.tool_registry.version(),
-            false,
-        ));
-        let clock = tx.object(sui::tx::ObjectInput::shared(
-            sui_framework::CLOCK_OBJECT_ID,
-            1,
-            false,
-        ));
-        dag::settle_committed_tool_result_for_walk(
-            &mut tx,
+        let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
             objects,
-            dag,
-            execution_arg,
-            tool_registry,
+            &dag_ref,
+            &execution_ref,
             params.walk_index,
-            clock,
-        );
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(CommittedToolResultSettlementResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id: params.dag_execution_id,
             walk_index: params.walk_index,
         })
     }
 
-    /// Resolve one double-timeout walk by settling committed results or aborting no-result walks.
+    /// Submit leader authenticated committed result settlement with the leader commit gas charge.
+    pub async fn settle_committed_tool_result_for_walk_by_leader(
+        &self,
+        params: SettleCommittedToolResultByLeaderParams,
+    ) -> Result<CommittedToolResultSettlementResult, NexusError> {
+        let crawler = self.client.crawler();
+        let execution = crawler
+            .get_object::<DAGExecution>(params.dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let dag_ref = crawler
+            .get_object_metadata(execution.dag_id())
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let execution_ref = crawler
+            .get_object_metadata(params.dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let leader_cap_ref = crawler
+            .get_object_metadata(params.leader_cap_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let address = self.client.signer.get_active_address();
+        let objects = &self.client.nexus_objects;
+        let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
+            objects,
+            &dag_ref,
+            &execution_ref.object_ref(),
+            &execution_ref.owner,
+            &leader_cap_ref.object_ref(),
+            &leader_cap_ref.owner,
+            params.walk_index,
+            params.commit_tx_digest,
+            params.commit_gas_charge,
+            params.settlement_gas_charge,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
+
+        Ok(CommittedToolResultSettlementResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            dag_id: execution.dag_id(),
+            dag_execution_id: params.dag_execution_id,
+            walk_index: params.walk_index,
+        })
+    }
+
+    /// Record a leader commit gas charge without settling the walk.
+    pub async fn record_committed_tool_result_gas_charge_by_leader(
+        &self,
+        params: RecordCommittedToolResultGasChargeParams,
+    ) -> Result<RecordCommittedToolResultGasChargeResult, NexusError> {
+        let crawler = self.client.crawler();
+        let execution_ref = crawler
+            .get_object_metadata(params.dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let leader_cap_ref = crawler
+            .get_object_metadata(params.leader_cap_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let address = self.client.signer.get_active_address();
+        let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
+            &self.client.nexus_objects,
+            &execution_ref.object_ref(),
+            &execution_ref.owner,
+            &leader_cap_ref.object_ref(),
+            &leader_cap_ref.owner,
+            params.walk_index,
+            params.commit_tx_digest,
+            params.commit_gas_charge,
+            params.settlement_gas_charge,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
+
+        Ok(RecordCommittedToolResultGasChargeResult {
+            tx_digest: response.digest,
+            tx_checkpoint: response.checkpoint,
+            dag_execution_id: params.dag_execution_id,
+            leader_cap_id: params.leader_cap_id,
+            walk_index: params.walk_index,
+        })
+    }
+
+    /// Classify what the SDK would submit for one expired walk without sending it.
     pub async fn inspect_expired_walk_resolution(
         &self,
         params: ResolveExpiredWalkParams,
@@ -2031,49 +1873,30 @@ impl WorkflowActions {
                 let execution_ref = crawler
                     .get_object_metadata(plan.dag_execution_id)
                     .await
-                    .map_err(NexusError::Rpc)?;
+                    .map_err(NexusError::Rpc)?
+                    .object_ref();
                 let address = self.client.signer.get_active_address();
                 let objects = &self.client.nexus_objects;
-                let mut tx = sui::tx::TransactionBuilder::new();
-                let dag = tx.object(sui::tx::ObjectInput::shared(
-                    *dag_ref.object_id(),
-                    dag_ref.version(),
-                    false,
-                ));
-                let execution = object_argument_from_metadata(&mut tx, &execution_ref, true)?;
-                let tool_registry = tx.object(sui::tx::ObjectInput::shared(
-                    *objects.tool_registry.object_id(),
-                    objects.tool_registry.version(),
-                    false,
-                ));
-                let result = tx.object(sui::tx::ObjectInput::shared(
-                    *result_ref.object_id(),
-                    result_ref.version(),
-                    true,
-                ));
-                let leader_registry = tx.object(sui::tx::ObjectInput::shared(
-                    *objects.leader_registry.object_id(),
-                    objects.leader_registry.version(),
-                    false,
-                ));
-                let clock = tx.object(sui::tx::ObjectInput::shared(
-                    sui_framework::CLOCK_OBJECT_ID,
-                    1,
-                    false,
-                ));
-                dag::settle_onchain_tool_result_for_walk(
-                    &mut tx,
-                    objects,
-                    dag,
-                    execution,
-                    tool_registry,
-                    result,
-                    leader_registry,
-                    plan.walk_index,
-                    &expected_vertex,
-                    tool_witness_id,
-                    clock,
-                )
+                let tx = move_boundary::ptb(objects, |tx| {
+                    let dag = tx.shared_object(&dag_ref, false)?;
+                    let execution = tx.shared_object(&execution_ref, true)?;
+                    let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+                    let result = tx.shared_object(&result_ref, true)?;
+                    let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+                    let clock = tx.clock()?;
+                    dag::settle_onchain_tool_result_for_walk(
+                        tx,
+                        dag,
+                        execution,
+                        tool_registry,
+                        result,
+                        leader_registry,
+                        plan.walk_index,
+                        &expected_vertex,
+                        tool_witness_id,
+                        clock,
+                    )
+                })
                 .map_err(NexusError::TransactionBuilding)?;
                 let response = self.client.submit_transaction(tx, address).await?;
                 Ok(ExpiredWalkResolutionResult {
@@ -2103,124 +1926,13 @@ impl WorkflowActions {
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(aborted.tx_digest),
                     tx_checkpoint: Some(aborted.tx_checkpoint),
-                    ..base(ExpiredWalkResolutionKind::AbortedWithToolGas {
-                        selected_candidate: aborted.selected_candidate,
-                    })
+                    ..base(ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate })
                 })
             }
             ExpiredWalkResolutionKind::Skipped { reason } => {
                 Ok(base(ExpiredWalkResolutionKind::Skipped { reason }))
             }
         }
-    }
-
-    /// Submit leader-authenticated committed-result settlement with the leader's commit gas charge.
-    pub async fn settle_committed_tool_result_for_walk_by_leader(
-        &self,
-        params: SettleCommittedToolResultByLeaderParams,
-    ) -> Result<CommittedToolResultSettlementResult, NexusError> {
-        let crawler = self.client.crawler();
-        let execution = crawler
-            .get_object::<DagExecution>(params.dag_execution_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .data;
-        let dag_ref = crawler
-            .get_object_metadata(execution.dag_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-        let execution_ref = crawler
-            .get_object_metadata(params.dag_execution_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let leader_cap_ref = crawler
-            .get_object_metadata(params.leader_cap_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let address = self.client.signer.get_active_address();
-        let objects = &self.client.nexus_objects;
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let dag = tx.object(sui::tx::ObjectInput::shared(
-            *dag_ref.object_id(),
-            dag_ref.version(),
-            false,
-        ));
-        let execution_arg = object_argument_from_metadata(&mut tx, &execution_ref, true)?;
-        let tool_registry = tx.object(sui::tx::ObjectInput::shared(
-            *objects.tool_registry.object_id(),
-            objects.tool_registry.version(),
-            false,
-        ));
-        let leader_cap = object_argument_from_metadata(&mut tx, &leader_cap_ref, false)?;
-        let clock = tx.object(sui::tx::ObjectInput::shared(
-            sui_framework::CLOCK_OBJECT_ID,
-            1,
-            false,
-        ));
-        dag::settle_committed_tool_result_for_walk_by_leader(
-            &mut tx,
-            objects,
-            dag,
-            execution_arg,
-            tool_registry,
-            leader_cap,
-            params.walk_index,
-            params.commit_tx_digest,
-            params.commit_gas_charge,
-            params.settlement_gas_charge,
-            clock,
-        );
-        let response = self.client.submit_transaction(tx, address).await?;
-
-        Ok(CommittedToolResultSettlementResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            dag_id: execution.dag_id,
-            dag_execution_id: params.dag_execution_id,
-            walk_index: params.walk_index,
-        })
-    }
-
-    /// Record a leader commit gas charge without settling the walk.
-    pub async fn record_committed_tool_result_gas_charge_by_leader(
-        &self,
-        params: RecordCommittedToolResultGasChargeParams,
-    ) -> Result<RecordCommittedToolResultGasChargeResult, NexusError> {
-        let crawler = self.client.crawler();
-        let execution_ref = crawler
-            .get_object_metadata(params.dag_execution_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let leader_cap_ref = crawler
-            .get_object_metadata(params.leader_cap_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let address = self.client.signer.get_active_address();
-        let mut tx = sui::tx::TransactionBuilder::new();
-        let execution_arg = object_argument_from_metadata(&mut tx, &execution_ref, true)?;
-        let leader_cap = object_argument_from_metadata(&mut tx, &leader_cap_ref, false)?;
-        dag::record_committed_tool_result_gas_charge_by_leader(
-            &mut tx,
-            &self.client.nexus_objects,
-            execution_arg,
-            leader_cap,
-            params.walk_index,
-            params.commit_tx_digest,
-            params.commit_gas_charge,
-            params.settlement_gas_charge,
-        );
-        let response = self.client.submit_transaction(tx, address).await?;
-
-        Ok(RecordCommittedToolResultGasChargeResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            dag_execution_id: params.dag_execution_id,
-            leader_cap_id: params.leader_cap_id,
-            walk_index: params.walk_index,
-        })
     }
 
     /// Return ToolGas refs that can be passed to
@@ -2233,19 +1945,19 @@ impl WorkflowActions {
     ) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
         let crawler = self.client.crawler();
         let execution = crawler
-            .get_object::<DagExecution>(dag_execution_id)
+            .get_object::<DAGExecution>(dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
         let dag = crawler
-            .get_object::<Dag>(execution.dag_id)
+            .get_object::<dag_move::DAG>(execution.dag_id())
             .await
             .map_err(NexusError::Rpc)?;
         let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
             .await
             .map_err(NexusError::Rpc)?;
         let clock = crawler
-            .get_object::<SuiClock>(sui_framework::CLOCK_OBJECT_ID)
+            .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -2286,12 +1998,12 @@ impl WorkflowActions {
         let selected_candidate = select_tool_gas_abort_candidate(candidates, tool_gas_id)?;
         let crawler = self.client.crawler();
         let execution = crawler
-            .get_object::<DagExecution>(dag_execution_id)
+            .get_object::<DAGExecution>(dag_execution_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
         let dag_ref = crawler
-            .get_object_metadata(execution.dag_id)
+            .get_object_metadata(execution.dag_id())
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
@@ -2303,42 +2015,19 @@ impl WorkflowActions {
 
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let mut tx = sui::tx::TransactionBuilder::new();
-        gas::abort_expired_execution_with_tool_gas(
-            &mut tx,
+        let tx = gas::abort_expired_execution_with_tool_gas_ptb(
             nexus_objects,
             &selected_candidate.tool_gas_ref,
             &dag_ref,
             &execution_ref,
-        );
-
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-        let signature = self.client.signer.sign_tx(&tx).await?;
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(AbortExpiredExecutionResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
-            dag_id: execution.dag_id,
+            dag_id: execution.dag_id(),
             dag_execution_id,
             selected_candidate,
         })
@@ -2396,8 +2085,8 @@ fn payment_vertex_key(
 
 fn filter_tool_gas_abort_candidate_walks(
     execution_id: sui::types::Address,
-    vertices: &HashMap<crate::types::TypeName, DagVertexInfo>,
-    walks: &[DagExecutionWalk],
+    vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
+    walks: &[DAGWalk],
     locks: &[ExecutionPaymentVertexLock],
     clock_ms: u64,
 ) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>> {
@@ -2406,13 +2095,13 @@ fn filter_tool_gas_abort_candidate_walks(
         let Some(vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
             continue;
         };
-        let vertex_info = vertices.get(&vertex.name()).ok_or_else(|| {
+        let vertex_info = vertices.get(vertex.vertex()).ok_or_else(|| {
             anyhow!(
                 "DAG vertex '{}' missing from fetched DAG",
-                vertex.name().name
+                vertex.vertex_name()
             )
         })?;
-        let tool_fqn = vertex_info.kind.tool_fqn().clone();
+        let tool_fqn = vertex_info.kind.tool_fqn()?;
         let vertex_key = payment_vertex_key(execution_id, vertex, &tool_fqn)?;
         let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
         if locks
@@ -2439,8 +2128,8 @@ async fn fetch_tool_gas_refs_for_abort_candidates(
 ) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
     let mut result = Vec::new();
     for (tool_fqn, matching_walks) in candidates {
-        let tool_gas_id =
-            derive_tool_gas_id(gas_service_id, &tool_fqn).map_err(NexusError::Parsing)?;
+        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(gas_service_id, &tool_fqn)
+            .map_err(NexusError::Parsing)?;
         let tool_gas_ref = crawler
             .get_object_metadata(tool_gas_id)
             .await
@@ -2463,23 +2152,25 @@ mod tests {
         crate::{
             events::NexusEventKind,
             fqn,
-            nexus::{
-                crawler::{DynamicMap, Set},
-                models::{Dag, DagVertexInfo, DagVertexKind},
-            },
-            sui::traits::*,
-            test_utils::{nexus_mocks, sui_mocks},
-            types::{
-                derive_tool_gas_id,
+            move_bindings::{
                 interface::{
                     agent::{Agent, SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
+                    dag as dag_move,
+                    graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
                         ExecutionPaymentFinalState,
                         SkillPaymentPolicy,
                         VertexExecutionPaymentSettlementKind,
                     },
+                    verifier::{VerifierConfig, VerifierMode},
                     version::InterfaceVersion,
                 },
+                move_std::{
+                    ascii::String as MoveString,
+                    option::Option as MoveOption,
+                    type_name::TypeName,
+                },
+                primitives::data::NexusData,
                 registry::agent_registry::{
                     AgentRecord,
                     AgentRegistry,
@@ -2487,6 +2178,7 @@ mod tests {
                     DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
+                sui_framework::{table::Table as MoveTable, vec_set::VecSet},
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
@@ -2495,24 +2187,14 @@ mod tests {
                         TerminalErrEvalRecordedEvent,
                         WalkAdvancedEvent,
                     },
+                    execution_failure::WorkflowFailureClass,
                 },
-                AgentRegistrySnapshot,
-                DefaultDagExecutorTarget,
-                MoveOption,
-                MoveString,
-                MoveTable,
-                NexusData,
-                PostFailureAction,
-                RuntimeVertex,
-                SkillRecordContext,
-                TypeName,
-                VerifierConfig,
-                VerifierMode,
-                WorkflowFailureClass,
             },
+            sui::traits::*,
+            test_utils::{nexus_mocks, sui_mocks},
+            types::{AgentRegistrySnapshot, DefaultDagExecutorTarget, SkillRecordContext},
         },
         serde::Serialize,
-        serde_json::json,
         std::sync::Arc,
         tokio::sync::Mutex,
     };
@@ -2522,6 +2204,54 @@ mod tests {
         id: sui::types::Address,
         name: K,
         value: V,
+    }
+
+    fn inline_bytes(value: &'static [u8]) -> NexusData {
+        NexusData::inline_one(value.to_vec())
+    }
+
+    fn clock_bcs(timestamp_ms: u64) -> Vec<u8> {
+        bcs::to_bytes(&SuiClock::new(move_boundary::CLOCK_OBJECT_ID, timestamp_ms))
+            .expect("clock BCS should serialize")
+    }
+
+    #[test]
+    fn generated_sui_clock_bcs_matches_live_object_shape() {
+        let bytes = clock_bcs(61_000);
+
+        assert_eq!(bytes.len(), 40);
+        let clock = bcs::from_bytes::<SuiClock>(&bytes).expect("clock BCS should decode");
+        assert_eq!(clock.id.address(), move_boundary::CLOCK_OBJECT_ID);
+        assert_eq!(clock.timestamp_ms, 61_000);
+    }
+
+    #[test]
+    fn unresolved_timeout_skip_reason_distinguishes_pending_from_terminal_walks() {
+        let active = DAGWalk::Active {
+            next_vertex: RuntimeVertex::plain("tool"),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+        let pending_settlement = DAGWalk::PendingSettlement {
+            next_vertex: RuntimeVertex::plain("tool"),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        };
+
+        assert_eq!(
+            unresolved_timeout_skip_reason(&active),
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        );
+        assert_eq!(
+            unresolved_timeout_skip_reason(&pending_settlement),
+            EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON
+        );
+        assert_eq!(
+            unresolved_timeout_skip_reason(&DAGWalk::Successful),
+            EXPIRED_WALK_ALREADY_TERMINAL_REASON
+        );
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -2535,26 +2265,26 @@ mod tests {
         _secondary_leader: sui::types::Address,
         primary_failure: Option<FailureEvidenceKind>,
         secondary_failure: Option<FailureEvidenceKind>,
-    ) -> CommittedToolResult {
-        CommittedToolResult {
+    ) -> execution_move::CommittedToolResult {
+        execution_move::CommittedToolResult {
             expected_vertex,
-            variant: output_variant("ok"),
-            variant_ports_to_data: crate::types::sui_framework::vec_map::VecMap {
+            variant: graph_move::OutputVariant::new("ok"),
+            variant_ports_to_data: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
-            failure_evidence_kind: MoveOption(primary_failure.clone()),
-            primary_failure_evidence_kind: MoveOption(primary_failure),
-            secondary_failure_evidence_kind: MoveOption(secondary_failure),
+            failure_evidence_kind: MoveOption::from_option(primary_failure.clone()),
+            primary_failure_evidence_kind: MoveOption::from_option(primary_failure),
+            secondary_failure_evidence_kind: MoveOption::from_option(secondary_failure),
             current_leader_cap_id: object_id(primary_leader),
-            has_finalized_onchain_payload: true,
-            leader_records: crate::types::sui_framework::vec_map::VecMap {
-                contents: vec![crate::types::sui_framework::vec_map::Entry {
+            has_finalized_onchain_payload: false,
+            leader_records: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
                     key: object_id(primary_leader),
-                    value: crate::types::workflow::execution::CommittedToolResultLeaderRecord {
+                    value: execution_move::CommittedToolResultLeaderRecord {
                         commit_tx_digest: vec![1, 2, 3],
                         recipient: sui::types::Address::from_static("0x44"),
-                        commit_gas_charge: MoveOption(Some(10)),
-                        settlement_gas_charge: MoveOption(None),
+                        commit_gas_charge: MoveOption::from_option(Some(10)),
+                        settlement_gas_charge: MoveOption::from_option(None),
                     },
                 }],
             },
@@ -2569,130 +2299,145 @@ mod tests {
         }
     }
 
-    fn object_id(bytes: sui::types::Address) -> crate::types::sui_framework::object::ID {
-        crate::types::sui_address_to_id(bytes)
+    fn object_id(bytes: sui::types::Address) -> crate::move_bindings::sui_framework::object::ID {
+        crate::move_bindings::sui_framework::object::ID::new(bytes)
     }
 
-    fn output_variant(name: &str) -> crate::types::interface::graph::OutputVariant {
-        crate::types::interface::graph::OutputVariant {
+    fn output_variant(name: &str) -> crate::move_bindings::interface::graph::OutputVariant {
+        crate::move_bindings::interface::graph::OutputVariant {
             name: MoveString::from(name),
         }
     }
 
+    fn dag_bcs(vertices_size: u64) -> dag_move::DAG {
+        dag_move::DAG {
+            id: crate::move_bindings::sui_framework::object::UID::new(sui_mocks::mock_sui_address()),
+            vertices: linked_table::LinkedTable::new(sui_mocks::mock_sui_address(), vertices_size),
+            entry_groups: crate::move_bindings::sui_framework::vec_map::VecMap { contents: vec![] },
+            edges: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            outputs: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            defaults_to_input_ports: MoveTable::new(sui_mocks::mock_sui_address(), 0),
+            post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
+            leader_verifier: VerifierConfig::default(),
+            tool_verifier: VerifierConfig::default(),
+        }
+    }
+
+    fn empty_object_table<T0, T1>(
+        id: sui::types::Address,
+    ) -> crate::move_bindings::sui_framework::object_table::ObjectTable<T0, T1> {
+        crate::move_bindings::sui_framework::object_table::ObjectTable {
+            id: crate::move_bindings::sui_framework::object::UID::new(id),
+            size: 0,
+            phantom_t0: std::marker::PhantomData,
+            phantom_t1: std::marker::PhantomData,
+        }
+    }
+
+    fn dag_execution_bcs(
+        execution_ref: &sui::types::ObjectReference,
+        dag_ref: &sui::types::ObjectReference,
+        walks: Vec<execution_move::DAGWalk>,
+    ) -> execution_move::DAGExecution {
+        execution_move::DAGExecution {
+            id: crate::move_bindings::sui_framework::object::UID::new(*execution_ref.object_id()),
+            dag: object_id(*dag_ref.object_id()),
+            entry_group: graph_move::EntryGroup::new(DEFAULT_ENTRY_GROUP),
+            invoker: sui::types::Address::from_static("0x1"),
+            created_at: 0,
+            priority_fee_per_gas_unit: 0,
+            agent_id: object_id(sui::types::Address::from_static("0xa")),
+            skill_id: 11,
+            interface_version: InterfaceVersion::new(7),
+            scheduled_task_id: MoveOption::from_option(None),
+            scheduled_occurrence_index: MoveOption::from_option(None),
+            last_request_for_execution_emitted_at_digest: vec![],
+            last_request_for_execution_leaders: vec![],
+            network: object_id(sui::types::Address::from_static("0xf")),
+            evaluations: empty_object_table(sui_mocks::mock_sui_address()),
+            terminal_records: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            submission_failure_records: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            pending_retry_handoff_cap_ids: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            walk_request_authorities: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            pending_gas_settlements: crate::move_bindings::sui_framework::vec_map::VecMap {
+                contents: vec![],
+            },
+            active_walks: walks
+                .iter()
+                .filter(|walk| matches!(walk, execution_move::DAGWalk::Active { .. }))
+                .count() as u64,
+            pending_abort_walks: 0,
+            pending_settlement_walks: 0,
+            successful_walks: 0,
+            failed_walks: 0,
+            aborted_walks: 0,
+            consumed_walks: 0,
+            cancelled_walks: 0,
+            walks,
+        }
+    }
+
+    fn mock_get_dag_execution_bcs(
+        ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
+        nexus_objects: &crate::types::NexusObjects,
+        execution_ref: sui::types::ObjectReference,
+        dag_ref: &sui::types::ObjectReference,
+        walks: Vec<execution_move::DAGWalk>,
+    ) {
+        let owner = sui::types::Owner::Shared(execution_ref.version());
+        let execution = dag_execution_bcs(&execution_ref, dag_ref, walks);
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            ledger_service_mock,
+            execution_ref,
+            owner,
+            bcs::to_bytes(&execution).expect("DAGExecution BCS should serialize"),
+            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(nexus_objects),
+        );
+    }
+
+    fn offchain_vertex_info(tool_fqn: &crate::ToolFqn) -> graph_move::VertexInfo {
+        graph_move::VertexInfo {
+            kind: graph_move::VertexKind::OffChain {
+                _variant_name: "OffChain".into(),
+                tool_fqn: tool_fqn.to_string().into(),
+            },
+            input_ports: VecSet { contents: vec![] },
+            post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
+            leader_verifier: MoveOption::from_option(None::<VerifierConfig>),
+            tool_verifier: MoveOption::from_option(None::<VerifierConfig>),
+        }
+    }
+
     fn ports_data_map(
-        entries: Vec<(&str, serde_json::Value)>,
-    ) -> crate::types::sui_framework::vec_map::VecMap<
-        crate::types::interface::graph::OutputPort,
-        crate::types::primitives::data::NexusData,
+        entries: Vec<(&str, &'static [u8])>,
+    ) -> crate::move_bindings::sui_framework::vec_map::VecMap<
+        crate::move_bindings::interface::graph::OutputPort,
+        crate::move_bindings::primitives::data::NexusData,
     > {
-        crate::types::sui_framework::vec_map::VecMap {
+        crate::move_bindings::sui_framework::vec_map::VecMap {
             contents: entries
                 .into_iter()
                 .map(
-                    |(name, value)| crate::types::sui_framework::vec_map::Entry {
-                        key: crate::types::interface::graph::OutputPort {
+                    |(name, value)| crate::move_bindings::sui_framework::vec_map::Entry {
+                        key: crate::move_bindings::interface::graph::OutputPort {
                             name: MoveString::from(name),
                         },
-                        value: crate::types::primitives::data::NexusData {
+                        value: crate::move_bindings::primitives::data::NexusData {
                             storage: b"inline".to_vec(),
-                            one: serde_json::to_vec(&value).expect("inline JSON encodes"),
+                            one: value.to_vec(),
                             many: vec![],
                         },
                     },
                 )
                 .collect(),
-        }
-    }
-
-    fn dynamic_field_struct_tag() -> sui::types::StructTag {
-        sui::types::StructTag::new(
-            sui::types::Address::TWO,
-            sui::types::Identifier::from_static("dynamic_field"),
-            sui::types::Identifier::from_static("Field"),
-            vec![],
-        )
-    }
-
-    #[test]
-    fn committed_tool_result_key_uses_generated_u64_shape() {
-        let key = CommittedToolResultKey { walk_index: 7 };
-        let bytes = bcs::to_bytes(&key).expect("generated committed key bcs");
-
-        assert_eq!(bytes, bcs::to_bytes(&7_u64).expect("u64 bcs"));
-    }
-
-    #[test]
-    fn insufficient_settlement_field_key_uses_generated_bool_shape() {
-        let key = insufficient_settlement_field_key();
-        let bytes = bcs::to_bytes(&key).expect("generated key bcs");
-
-        assert_eq!(key.dummy_field, false);
-        assert_eq!(bytes, vec![0]);
-    }
-
-    #[tokio::test]
-    async fn fetch_onchain_tool_result_state_skips_same_key_wrong_value_type() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let wrong_field_id = sui::types::Address::from_static("0xf4");
-        let marker_key = insufficient_settlement_field_key();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        state_service_mock
-            .expect_list_dynamic_fields()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
-                let mut wrong_type = sui::grpc::DynamicField::default();
-                wrong_type.set_field_id(wrong_field_id.to_string());
-                wrong_type
-                    .set_name(bcs::to_bytes(&marker_key).expect("insufficient settlement key bcs"));
-                wrong_type.set_value_type("0x2::object::ID");
-                response.set_dynamic_fields(vec![wrong_type]);
-                Ok(tonic::Response::new(response))
-            });
-        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        let crawler = crawler_from_mocks(
-            sui_mocks::grpc::MockLedgerService::new(),
-            state_service_mock,
-        )
-        .await;
-
-        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("state fetch should skip wrong dynamic-field value type");
-
-        assert!(matches!(state, OnchainToolResultState::NoResult));
-    }
-
-    fn onchain_tool_result_bcs(
-        result_id: sui::types::Address,
-        execution_id: sui::types::Address,
-        finalized: bool,
-    ) -> OnchainToolResult {
-        OnchainToolResult {
-            id: crate::types::sui_address_to_uid(result_id),
-            execution_id: object_id(execution_id),
-            finalized,
-            stamps: MoveOption(
-                finalized
-                    .then_some(crate::types::sui_framework::vec_map::VecMap { contents: vec![] }),
-            ),
-            tag: MoveOption(finalized.then_some(b"ok".to_vec())),
-            named_payload: MoveOption(
-                finalized
-                    .then_some(crate::types::sui_framework::vec_map::VecMap { contents: vec![] }),
-            ),
-            finalize_tx_digest: MoveOption(finalized.then_some(vec![1, 2, 3])),
-            finalize_recipient: MoveOption(
-                finalized.then_some(sui::types::Address::from_static("0x45")),
-            ),
         }
     }
 
@@ -2713,7 +2458,7 @@ mod tests {
     async fn fetch_committed_tool_result_for_walk_returns_none_when_absent() {
         let execution_id = sui::types::Address::from_static("0xe1");
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
+        sui_mocks::grpc::mock_list_dynamic_fields::<execution_move::CommittedToolResultKey>(
             &mut state_service_mock,
             vec![],
         );
@@ -2746,7 +2491,7 @@ mod tests {
         );
         let field_value = DynamicFieldValueBcs {
             id: sui::types::Address::from_static("0xdf"),
-            name: CommittedToolResultKey { walk_index: 7 },
+            name: execution_move::CommittedToolResultKey { walk_index: 7 },
             value: committed,
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -2766,7 +2511,7 @@ mod tests {
                 let mut wanted = sui::grpc::DynamicField::default();
                 wanted.set_field_id(field_id.to_string());
                 wanted.set_name(
-                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
+                    bcs::to_bytes(&execution_move::CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
                 response.set_dynamic_fields(vec![unrelated, wanted]);
@@ -2816,17 +2561,15 @@ mod tests {
             Some(FailureEvidenceKind::ToolEvidence),
             None,
         );
-        committed.variant_ports_to_data = crate::types::sui_framework::vec_map::VecMap {
-            contents: vec![crate::types::sui_framework::vec_map::Entry {
-                key: crate::types::interface::graph::OutputPort {
-                    name: MoveString::from("reason"),
-                },
+        committed.variant_ports_to_data = crate::move_bindings::sui_framework::vec_map::VecMap {
+            contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
+                key: graph_move::OutputPort::new("reason"),
                 value: raw_inline_nexus_data_bcs(b"not-json".to_vec()),
             }],
         };
         let field_value = DynamicFieldValueBcs {
             id: sui::types::Address::from_static("0xdf"),
-            name: CommittedToolResultKey { walk_index: 7 },
+            name: execution_move::CommittedToolResultKey { walk_index: 7 },
             value: committed,
         };
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -2840,7 +2583,7 @@ mod tests {
                 let mut wanted = sui::grpc::DynamicField::default();
                 wanted.set_field_id(field_id.to_string());
                 wanted.set_name(
-                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
+                    bcs::to_bytes(&execution_move::CommittedToolResultKey { walk_index: 7 })
                         .expect("committed key bcs"),
                 );
                 response.set_dynamic_fields(vec![wanted]);
@@ -2876,470 +2619,17 @@ mod tests {
         assert!(result.leader_record(secondary_leader).is_none());
     }
 
-    #[tokio::test]
-    async fn fetch_onchain_tool_result_state_returns_committed_before_no_result() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf1"));
-        let field_id = *field_ref.object_id();
-        let committed = committed_tool_result_bcs(
-            RuntimeVertex::plain("done"),
-            sui::types::Address::from_static("0xa1"),
-            sui::types::Address::from_static("0xa2"),
-            None,
-            None,
-        );
-        let field_value = DynamicFieldValueBcs {
-            id: *field_ref.object_id(),
-            name: CommittedToolResultKey { walk_index: 7 },
-            value: committed,
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        state_service_mock
-            .expect_list_dynamic_fields()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
-                let mut wanted = sui::grpc::DynamicField::default();
-                wanted.set_field_id(field_id.to_string());
-                wanted.set_name(
-                    bcs::to_bytes(&CommittedToolResultKey { walk_index: 7 })
-                        .expect("committed key bcs"),
-                );
-                response.set_dynamic_fields(vec![wanted]);
-                Ok(tonic::Response::new(response))
-            });
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            field_ref.clone(),
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&field_value).expect("field value bcs"),
-            dynamic_field_struct_tag(),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("state fetch should succeed");
-
-        assert!(matches!(state, OnchainToolResultState::Committed { .. }));
-    }
-
-    #[tokio::test]
-    async fn fetch_onchain_tool_result_state_decodes_finalized_result() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let result_id = sui::types::Address::from_static("0xbeef");
-        let result_ref = sui_mocks::object_ref_for_id(result_id);
-        let result_version = result_ref.version();
-        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
-        let field_value = DynamicFieldValueBcs {
-            id: *field_ref.object_id(),
-            name: OnchainToolResultKey { walk_index: 7 },
-            value: object_id(result_id),
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
-            &mut state_service_mock,
-            vec![(
-                OnchainToolResultKey { walk_index: 7 },
-                *field_ref.object_id(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            field_ref.clone(),
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&field_value).expect("field value bcs"),
-            dynamic_field_struct_tag(),
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_ref,
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&onchain_tool_result_bcs(result_id, execution_id, true))
-                .expect("result bcs"),
-            sui::types::StructTag::new(
-                sui::types::Address::from_static("0xa1"),
-                sui::types::Identifier::from_static("onchain_tool_result"),
-                sui::types::Identifier::from_static("OnchainToolResult"),
-                vec![],
-            ),
-        );
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("state fetch should succeed");
-
-        let (consume_ready, consume_ref) = state
-            .consume_ready_result()
-            .expect("finalized result should be consume-ready");
-        assert_eq!(consume_ready.id.id.bytes, result_id);
-        assert_eq!(consume_ready.execution_id.bytes, execution_id);
-        assert_eq!(consume_ref.object_id(), &result_id);
-        let mut tx = sui::tx::TransactionBuilder::new();
-        tx.object(
-            state
-                .consume_object_input()
-                .expect("finalized result should expose consume input"),
-        );
-        let tx = sui_mocks::mock_finish_transaction(tx);
-        let sui::types::TransactionKind::ProgrammableTransaction(
-            sui::types::ProgrammableTransaction { inputs, .. },
-        ) = tx.kind
-        else {
-            panic!("expected programmable transaction");
-        };
-        let shared = inputs
-            .iter()
-            .find_map(|input| match input {
-                sui::types::Input::Shared(shared) if shared.object_id() == result_id => {
-                    Some(shared)
-                }
-                _ => None,
-            })
-            .expect("expected consume object input to be shared");
-        assert_eq!(shared.object_id(), result_id);
-        assert_eq!(shared.version(), result_version);
-        assert!(shared.mutability().is_mutable());
-
-        let OnchainToolResultState::Finalized { result, object_ref } = state else {
-            panic!("expected finalized state");
-        };
-        assert_eq!(result.id.id.bytes, result_id);
-        assert_eq!(result.execution_id.bytes, execution_id);
-        assert_eq!(result.tag.0, Some(b"ok".to_vec()));
-        assert_eq!(result.finalize_tx_digest.0, Some(vec![1, 2, 3]));
-        assert_eq!(object_ref.object_id(), &result_id);
-    }
-
-    #[tokio::test]
-    async fn inspect_expired_walk_resolution_settles_finalized_onchain_result() {
-        let execution_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xe1"));
-        let dag_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xd1"));
-        let result_id = sui::types::Address::from_static("0xbeef");
-        let result_ref = sui_mocks::object_ref_for_id(result_id);
-        let result_field_ref =
-            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
-        let vertex_field_ref =
-            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
-        let tool_witness_id = sui::types::Address::from_static("0x777");
-        let tool_fqn = fqn!("xyz.taluslabs.onchain@1");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let tool_id = derive_tool_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-            .expect("tool id derives");
-        let dag = Dag {
-            vertices: DynamicMap::new(sui::types::Address::from_static("0x900"), 1),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
-        let result_field_value = DynamicFieldValueBcs {
-            id: *result_field_ref.object_id(),
-            name: OnchainToolResultKey { walk_index: 0 },
-            value: object_id(result_id),
-        };
-        let vertex = RuntimeVertex::plain("onchain");
-        let vertex_node = LinkedTableNodeBcs {
-            prev: crate::types::MoveOption(None::<TypeName>),
-            next: crate::types::MoveOption(None::<TypeName>),
-            value: DagVertexInfoBcs {
-                kind: crate::nexus::models::DagVertexKindBcs::OnChain {
-                    _variant_name: "OnChain".to_string(),
-                    tool_fqn: tool_fqn.to_string(),
-                },
-                input_ports: crate::types::MoveVecSet { contents: vec![] },
-                post_failure_action: crate::types::MoveOption(
-                    None::<crate::nexus::models::PostFailureActionBcs>,
-                ),
-                leader_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-                tool_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-            },
-        };
-        let tool = crate::types::Tool {
-            id: tool_id,
-            fqn: tool_fqn.clone(),
-            reference: ToolRef::Sui {
-                package_address: sui::types::Address::from_static("0x42"),
-                module_name: sui::types::Identifier::from_static("tool"),
-                tool_witness_id,
-            },
-            description: "on-chain tool".to_string(),
-            input_schema: json!({}),
-            output_schema: json!({}),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::DateTime::from_timestamp_millis(1_000).unwrap(),
-            unregistered_at: None,
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            json!({
-                "invoker": "0x1",
-                "dag": dag_ref.object_id().to_string(),
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_version": "7",
-                "scheduled_task_id": { "vec": [] },
-                "scheduled_occurrence_index": { "vec": [] },
-                "walks": [{
-                    "Active": {
-                        "next_vertex": { "Plain": { "vertex": { "name": "onchain" } } },
-                        "timeout_ms": "30000",
-                        "created_at": "1000"
-                    }
-                }]
-            }),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
-            &mut state_service_mock,
-            vec![(
-                OnchainToolResultKey { walk_index: 0 },
-                *result_field_ref.object_id(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_field_ref,
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&result_field_value).expect("result field bcs"),
-            dynamic_field_struct_tag(),
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_ref.clone(),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&onchain_tool_result_bcs(
-                result_id,
-                *execution_ref.object_id(),
-                true,
-            ))
-            .expect("result bcs"),
-            sui::types::StructTag::new(
-                sui::types::Address::from_static("0xa1"),
-                sui::types::Identifier::from_static("onchain_tool_result"),
-                sui::types::Identifier::from_static("OnchainToolResult"),
-                vec![],
-            ),
-        );
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            dag_ref,
-            sui::types::Owner::Shared(0),
-            serde_json::to_value(dag).expect("DAG JSON should serialize"),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            &mut state_service_mock,
-            vec![(TypeName::new("onchain"), *vertex_field_ref.object_id())],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            &mut ledger_service_mock,
-            vec![(
-                vertex_field_ref,
-                sui::types::Owner::Shared(1),
-                TypeName::new("onchain"),
-                vertex_node,
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            sui_mocks::object_ref_for_id(tool_id),
-            sui::types::Owner::Shared(0),
-            serde_json::to_value(tool).expect("tool JSON should serialize"),
-        );
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let plan = inspect_expired_walk_resolution_at(
-            &crawler,
-            &nexus_objects,
-            ResolveExpiredWalkParams {
-                dag_execution_id: *execution_ref.object_id(),
-                walk_index: 0,
-                tool_gas_id: None,
-            },
-            61_001,
-        )
-        .await
-        .expect("planner should settle finalized result");
-
-        let (planned_result_ref, expected_vertex, planned_witness, finalize_tx_digest) = match plan
-            .kind
-        {
-            ExpiredWalkResolutionKind::SettledOnchainResult {
-                result_ref,
-                expected_vertex,
-                tool_witness_id,
-                finalize_tx_digest,
-            } => (
-                result_ref,
-                expected_vertex,
-                tool_witness_id,
-                finalize_tx_digest,
-            ),
-            other => panic!("expected finalized on-chain result settlement branch, got {other:?}"),
-        };
-        assert_eq!(planned_result_ref, result_ref);
-        assert_eq!(expected_vertex, vertex);
-        assert_eq!(planned_witness, tool_witness_id);
-        assert_eq!(finalize_tx_digest, vec![1, 2, 3]);
-    }
-
-    #[tokio::test]
-    async fn fetch_onchain_tool_result_state_surfaces_empty_as_invalid() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let result_id = sui::types::Address::from_static("0xbeef");
-        let result_ref = sui_mocks::object_ref_for_id(result_id);
-        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
-        let field_value = DynamicFieldValueBcs {
-            id: *field_ref.object_id(),
-            name: OnchainToolResultKey { walk_index: 7 },
-            value: object_id(result_id),
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
-            &mut state_service_mock,
-            vec![(
-                OnchainToolResultKey { walk_index: 7 },
-                *field_ref.object_id(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            field_ref,
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&field_value).expect("field value bcs"),
-            dynamic_field_struct_tag(),
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_ref,
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&onchain_tool_result_bcs(result_id, execution_id, false))
-                .expect("result bcs"),
-            sui::types::StructTag::new(
-                sui::types::Address::from_static("0xa1"),
-                sui::types::Identifier::from_static("onchain_tool_result"),
-                sui::types::Identifier::from_static("OnchainToolResult"),
-                vec![],
-            ),
-        );
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("state fetch should succeed");
-
-        assert!(state.consume_ready_result().is_none());
-        assert!(state.consume_object_input().is_none());
-        assert!(matches!(
-            state,
-            OnchainToolResultState::InvalidEmpty { result_id: id, .. } if id == result_id
-        ));
-    }
-
-    #[tokio::test]
-    async fn fetch_onchain_tool_result_state_surfaces_insufficient_settlement_marker() {
-        let execution_id = sui::types::Address::from_static("0xe1");
-        let marker_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
-        let marker_field_id = *marker_ref.object_id();
-        let marker_key = insufficient_settlement_field_key();
-        let field_value = DynamicFieldValueBcs {
-            id: marker_field_id,
-            name: marker_key.clone(),
-            value: ExecutionPaymentInsufficientSettlement { walks: vec![7] },
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![(marker_key, marker_field_id)],
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            marker_ref,
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&field_value).expect("field value bcs"),
-            dynamic_field_struct_tag(),
-        );
-        let crawler = crawler_from_mocks(ledger_service_mock, state_service_mock).await;
-
-        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
-            .await
-            .expect("state fetch should succeed");
-
-        assert!(matches!(
-            state,
-            OnchainToolResultState::InsufficientSettlement { marker, .. }
-                if marker.walks == vec![7]
-        ));
-    }
-
     fn offchain_vertex_node_bcs(
         tool_fqn: &crate::ToolFqn,
-    ) -> LinkedTableNodeBcs<TypeName, DagVertexInfoBcs> {
-        LinkedTableNodeBcs {
-            prev: crate::types::MoveOption(None::<TypeName>),
-            next: crate::types::MoveOption(None::<TypeName>),
-            value: DagVertexInfoBcs {
-                kind: crate::nexus::models::DagVertexKindBcs::OffChain {
-                    _variant_name: "OffChain".to_string(),
-                    tool_fqn: tool_fqn.to_string(),
-                },
-                input_ports: crate::types::MoveVecSet { contents: vec![] },
-                post_failure_action: crate::types::MoveOption(
-                    None::<crate::nexus::models::PostFailureActionBcs>,
-                ),
-                leader_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-                tool_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-            },
+    ) -> linked_table::Node<graph_move::Vertex, graph_move::VertexInfo> {
+        linked_table::Node {
+            prev: crate::move_bindings::move_std::option::Option::from_option(
+                None::<graph_move::Vertex>,
+            ),
+            next: crate::move_bindings::move_std::option::Option::from_option(
+                None::<graph_move::Vertex>,
+            ),
+            value: offchain_vertex_info(tool_fqn),
         }
     }
 
@@ -3369,7 +2659,7 @@ mod tests {
 
         RegistryObjectMock {
             registry_object: AgentRegistry {
-                id: crate::types::sui_address_to_uid(registry.id),
+                id: crate::move_bindings::sui_framework::object::UID::new(registry.id),
                 agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
             },
             agent_field_ref: sui_mocks::mock_sui_object_ref(),
@@ -3394,12 +2684,7 @@ mod tests {
             nexus_objects.agent_registry.clone(),
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
-            sui::types::StructTag::new(
-                nexus_objects.registry_pkg_id,
-                crate::idents::registry::AGENT_REGISTRY_MODULE,
-                sui::types::Identifier::from_static("AgentRegistry"),
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<AgentRegistry>(nexus_objects),
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
@@ -3566,12 +2851,7 @@ mod tests {
         let dag_created = sui::types::Object::new(
             sui::types::ObjectData::Struct(
                 sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.interface_pkg_id,
-                        interface::Dag::DAG.module,
-                        interface::Dag::DAG.name,
-                        vec![],
-                    ),
+                    crate::move_bindings::struct_tag::<dag_move::DAG>(&nexus_objects),
                     true,
                     0,
                     dag_object_id.to_bcs().unwrap(),
@@ -3603,16 +2883,7 @@ mod tests {
 
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
-        let dag = JsonDag {
-            vertices: vec![],
-            edges: vec![],
-            default_values: None,
-            post_failure_action: None,
-            leader_verifier: None,
-            tool_verifier: None,
-            entry_groups: None,
-            outputs: None,
-        };
+        let dag = DagSpec::default();
 
         let result = client
             .workflow()
@@ -3625,6 +2896,7 @@ mod tests {
         assert_eq!(result.tx_checkpoint, 1);
     }
 
+    #[cfg(feature = "walrus")]
     #[tokio::test]
     async fn test_workflow_actions_execute() {
         let mut rng = rand::thread_rng();
@@ -3708,26 +2980,22 @@ mod tests {
         );
 
         // DAG
-        let dag = Dag {
-            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
+        let dag = dag_bcs(1);
 
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             dag_ref.clone(),
             sui::types::Owner::Shared(0),
-            json!(dag),
+            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
         );
 
-        // Dag.vertices
+        // DagSpec.vertices
         sui_mocks::grpc::mock_list_dynamic_fields(
             &mut state_service_mock,
-            vec![(TypeName::new("ToolVertex"), *tool_gas_ref.object_id())],
+            vec![(
+                graph_move::Vertex::new("ToolVertex"),
+                *tool_gas_ref.object_id(),
+            )],
         );
 
         sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
@@ -3735,7 +3003,7 @@ mod tests {
             vec![(
                 tool_gas_ref.clone(),
                 sui::types::Owner::Shared(0),
-                TypeName::new("ToolVertex"),
+                graph_move::Vertex::new("ToolVertex"),
                 offchain_vertex_node_bcs(&tool_fqn),
             )],
         );
@@ -3781,15 +3049,9 @@ mod tests {
 
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
-            PortsData::from_map(HashMap::from([
-                (
-                    "entry_port".to_string(),
-                    NexusData::new_inline(json!("data")),
-                ),
-                (
-                    "another_entry_port".to_string(),
-                    NexusData::new_inline(json!("data")),
-                ),
+            VecMap::<InputPort, NexusData>::from_map(HashMap::from([
+                ("entry_port".to_string(), inline_bytes(b"data")),
+                ("another_entry_port".to_string(), inline_bytes(b"data")),
             ])),
         )]);
 
@@ -3813,6 +3075,7 @@ mod tests {
         assert_eq!(tap_execution.payment_max_budget, 1000);
     }
 
+    #[cfg(feature = "walrus")]
     #[tokio::test]
     async fn test_workflow_actions_execute_agent_dag_pinned_skill() {
         let mut rng = rand::thread_rng();
@@ -3822,8 +3085,11 @@ mod tests {
         let execution_object_id = sui::types::Address::generate(&mut rng);
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let tool_fqn = fqn!("xyz.taluslabs.standard_tap@1");
-        let tool_gas_id = derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &tool_fqn)
-            .expect("derive tool gas id");
+        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
+            *nexus_objects.gas_service.object_id(),
+            &tool_fqn,
+        )
+        .expect("derive tool gas id");
         let tool_gas_ref = sui::types::ObjectReference::new(
             tool_gas_id,
             1,
@@ -3885,36 +3151,32 @@ mod tests {
             tx_digest,
             1000,
         );
-        let dag = Dag {
-            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
+        let dag = dag_bcs(1);
         mock_fetch_registry_from_tables(
             &mut ledger_service_mock,
             &mut state_service_mock,
             &nexus_objects,
             &agent_registry,
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             dag_ref.clone(),
             sui::types::Owner::Shared(0),
-            json!(dag),
+            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             &mut state_service_mock,
-            vec![(TypeName::new("ToolVertex"), *tool_gas_ref.object_id())],
+            vec![(
+                graph_move::Vertex::new("ToolVertex"),
+                *tool_gas_ref.object_id(),
+            )],
         );
         sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
             &mut ledger_service_mock,
             vec![(
                 tool_gas_ref.clone(),
                 sui::types::Owner::Shared(0),
-                TypeName::new("ToolVertex"),
+                graph_move::Vertex::new("ToolVertex"),
                 offchain_vertex_node_bcs(&tool_fqn),
             )],
         );
@@ -3948,9 +3210,9 @@ mod tests {
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
         let entry_data = HashMap::from([(
             "entry_vertex".to_string(),
-            PortsData::from_map(HashMap::from([(
+            VecMap::<InputPort, NexusData>::from_map(HashMap::from([(
                 "entry_port".to_string(),
-                NexusData::new_inline(json!("data")),
+                inline_bytes(b"data"),
             )])),
         )]);
 
@@ -4140,6 +3402,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "walrus")]
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution_until_completion() {
         let mut rng = rand::thread_rng();
@@ -4179,7 +3442,7 @@ mod tests {
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                outcome: MoveOption::from_option(Some(PostFailureAction::Terminate)),
                 reason: MoveString::from("tool failed"),
                 err_eval_hash: vec![9, 8, 7],
                 duplicate: false,
@@ -4190,7 +3453,7 @@ mod tests {
             walk_index: 0,
             vertex: RuntimeVertex::plain("final"),
             variant: output_variant("ok"),
-            variant_ports_to_data: ports_data_map(vec![("answer", json!(42))]),
+            variant_ports_to_data: ports_data_map(vec![("answer", b"42")]),
         });
         let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
             dag: object_id(dag_object_id),
@@ -4249,6 +3512,7 @@ mod tests {
         assert!(result.events.len() >= 2);
     }
 
+    #[cfg(feature = "walrus")]
     #[tokio::test]
     async fn test_workflow_actions_inspect_execution_until_completion_timeout() {
         let mut rng = rand::thread_rng();
@@ -4308,7 +3572,7 @@ mod tests {
             vertex: RuntimeVertex::plain("failable"),
             leader: sui::types::Address::THREE,
             failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-            outcome: MoveOption(Some(PostFailureAction::Terminate)),
+            outcome: MoveOption::from_option(Some(PostFailureAction::Terminate)),
             reason: MoveString::from("timeout"),
             err_eval_hash: vec![4, 5, 6],
             duplicate: true,
@@ -4317,6 +3581,7 @@ mod tests {
         assert_eq!(event_execution_id(&event), Some(execution));
     }
 
+    #[cfg(feature = "walrus")]
     #[test]
     fn test_terminal_state_from_execution_finished() {
         let success = ExecutionFinishedEvent {
@@ -4362,6 +3627,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "walrus")]
     #[tokio::test]
     async fn test_build_execution_completion_result_resolves_end_states() {
         let execution = sui::types::Address::TWO;
@@ -4376,7 +3642,7 @@ mod tests {
                     vertex: RuntimeVertex::plain("failable"),
                     leader: sui::types::Address::THREE,
                     failure_class: WorkflowFailureClass::TerminalToolFailure,
-                    outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                    outcome: MoveOption::from_option(Some(PostFailureAction::Terminate)),
                     reason: MoveString::from("tool failed"),
                     err_eval_hash: vec![1, 2, 3],
                     duplicate: false,
@@ -4392,7 +3658,7 @@ mod tests {
                     walk_index: 0,
                     vertex: RuntimeVertex::plain("final"),
                     variant: output_variant("ok"),
-                    variant_ports_to_data: ports_data_map(vec![("answer", json!(42))]),
+                    variant_ports_to_data: ports_data_map(vec![("answer", b"42")]),
                 }),
                 distribution: None,
             },
@@ -4429,8 +3695,9 @@ mod tests {
                 .resolved_ports_to_data
                 .get("answer")
                 .expect("answer port")
-                .as_json(),
-            json!(42)
+                .inline_one_bytes()
+                .expect("answer should be inline bytes"),
+            b"42"
         );
     }
 
@@ -4448,19 +3715,16 @@ mod tests {
 
         let payment_id = *payment_ref.object_id();
 
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref,
-            sui::types::Owner::Shared(0),
-            json!({
-                "invoker": "0x1",
-                "dag": "0xd",
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_version": "7",
-                "scheduled_task_id": { "vec": [] },
-                "scheduled_occurrence_index": { "vec": [] }
-            }),
+            &sui::types::ObjectReference::new(
+                sui::types::Address::from_static("0xd"),
+                0,
+                sui::types::Digest::ZERO,
+            ),
+            vec![],
         );
 
         sui_mocks::grpc::mock_list_dynamic_object_fields(
@@ -4476,18 +3740,24 @@ mod tests {
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
-                id: crate::types::sui_address_to_uid(payment_id),
+                id: crate::move_bindings::sui_framework::object::UID::new(payment_id),
                 execution_id,
-                agent_id: crate::types::sui_address_to_id(sui::types::Address::from_static("0xa")),
-                skill_id: 11,
-                interface_revision: crate::types::interface::version::InterfaceVersion::new(7),
-                payment_policy: crate::types::interface::payment::SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::interface::payment::PaymentSourceKind::user_funded(
-                    sui::types::Address::from_static("0x1"),
+                agent_id: crate::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::from_static("0xa"),
                 ),
+                skill_id: 11,
+                interface_revision: crate::move_bindings::interface::version::InterfaceVersion::new(
+                    7,
+                ),
+                payment_policy:
+                    crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
+                source_kind:
+                    crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                        sui::types::Address::from_static("0x1"),
+                    ),
                 max_budget: 100_000,
                 locked_budget: 100_000,
-                funds: crate::types::sui_framework::balance::Balance {
+                funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 58_000,
                     phantom_t0: std::marker::PhantomData,
                 },
@@ -4495,18 +3765,15 @@ mod tests {
                 accomplished: true,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Accomplished,
-                tool_cost_snapshot: crate::types::sui_framework::vec_map::VecMap {
+                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
                     contents: vec![],
                 },
                 locked_vertices: vec![],
             })
             .expect("execution payment bcs"),
-            sui::types::StructTag::new(
-                nexus_objects.interface_pkg_id,
-                crate::idents::tap::STANDARD_PAYMENT_MODULE,
-                sui::types::Identifier::from_static("ExecutionPayment"),
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<
+                crate::move_bindings::interface::payment::ExecutionPayment,
+            >(&nexus_objects),
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -4538,54 +3805,41 @@ mod tests {
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let payment_ref = sui_mocks::mock_sui_object_ref();
-        let vertices = DynamicMap::new(sui_mocks::mock_sui_address(), 0);
-        let dag = Dag {
-            vertices,
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
+        let dag = dag_bcs(0);
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(0),
-            json!({
-                "invoker": "0x1",
-                "dag": dag_ref.object_id().to_string(),
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_version": "7",
-                "scheduled_task_id": { "vec": [] },
-                "scheduled_occurrence_index": { "vec": [] },
-                "walks": []
-            }),
+            &dag_ref,
+            vec![],
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             dag_ref,
             sui::types::Owner::Shared(0),
-            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
         );
-        sui_mocks::grpc::mock_list_dynamic_fields::<TypeName>(&mut state_service_mock, vec![]);
+        sui_mocks::grpc::mock_list_dynamic_fields::<graph_move::Vertex>(
+            &mut state_service_mock,
+            vec![],
+        );
         sui_mocks::grpc::mock_get_dynamic_table_values_bcs::<
-            TypeName,
-            LinkedTableNodeBcs<TypeName, DagVertexInfoBcs>,
+            graph_move::Vertex,
+            linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
         >(&mut ledger_service_mock, vec![]);
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(
-                sui_framework::CLOCK_OBJECT_ID,
+                move_boundary::CLOCK_OBJECT_ID,
                 1,
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            json!({ "timestamp_ms": "61000" }),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_list_dynamic_object_fields(
             &mut state_service_mock,
@@ -4600,18 +3854,21 @@ mod tests {
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
-                id: crate::types::sui_address_to_uid(*payment_ref.object_id()),
+                id: crate::move_bindings::sui_framework::object::UID::new(*payment_ref.object_id()),
                 execution_id: *execution_ref.object_id(),
-                agent_id: crate::types::sui_address_to_id(sui::types::Address::from_static("0xa")),
+                agent_id: crate::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::from_static("0xa"),
+                ),
                 skill_id: 11,
                 interface_revision: InterfaceVersion::new(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::interface::payment::PaymentSourceKind::user_funded(
-                    sui::types::Address::from_static("0x1"),
-                ),
+                source_kind:
+                    crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                        sui::types::Address::from_static("0x1"),
+                    ),
                 max_budget: 100_000,
                 locked_budget: 0,
-                funds: crate::types::sui_framework::balance::Balance {
+                funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 100_000,
                     phantom_t0: std::marker::PhantomData,
                 },
@@ -4619,18 +3876,15 @@ mod tests {
                 accomplished: false,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Pending,
-                tool_cost_snapshot: crate::types::sui_framework::vec_map::VecMap {
+                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
                     contents: vec![],
                 },
                 locked_vertices: vec![],
             })
             .expect("execution payment bcs"),
-            sui::types::StructTag::new(
-                nexus_objects.interface_pkg_id,
-                crate::idents::tap::STANDARD_PAYMENT_MODULE,
-                sui::types::Identifier::from_static("ExecutionPayment"),
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<
+                crate::move_bindings::interface::payment::ExecutionPayment,
+            >(&nexus_objects),
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -4659,35 +3913,21 @@ mod tests {
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let payment_ref = sui_mocks::mock_sui_object_ref();
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_gas_id =
-            derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &tool_fqn).unwrap();
+        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
+            *nexus_objects.gas_service.object_id(),
+            &tool_fqn,
+        )
+        .unwrap();
         let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
         let vertex = RuntimeVertex::plain("payable");
         let field_ref = sui_mocks::mock_sui_object_ref();
-        let dag = Dag {
-            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 1),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
-        let execution_json = json!({
-            "invoker": "0x1",
-            "dag": dag_ref.object_id().to_string(),
-            "agent_id": "0xa",
-            "skill_id": "11",
-            "interface_version": "7",
-            "scheduled_task_id": { "vec": [] },
-            "scheduled_occurrence_index": { "vec": [] },
-            "walks": [{
-                "Active": {
-                    "next_vertex": { "Plain": { "vertex": { "name": "payable" } } },
-                    "timeout_ms": "30000",
-                    "created_at": "1000"
-                }
-            }]
-        });
+        let dag = dag_bcs(1);
+        let execution_walks = vec![execution_move::DAGWalk::Active {
+            next_vertex: vertex.clone(),
+            timeout_ms: 30_000,
+            requires_vertex_authorization_grant: false,
+            created_at: 1_000,
+        }];
         let payment_vertex_key =
             payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
         let current_locked_vertices = vec![ExecutionPaymentVertexLock {
@@ -4702,59 +3942,41 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(0),
-            execution_json.clone(),
+            &dag_ref,
+            execution_walks.clone(),
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             dag_ref.clone(),
             sui::types::Owner::Shared(0),
-            serde_json::to_value(dag).expect("DAG JSON should serialize"),
+            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             &mut state_service_mock,
-            vec![(TypeName::new("payable"), *field_ref.object_id())],
+            vec![(graph_move::Vertex::new("payable"), *field_ref.object_id())],
         );
         sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
             &mut ledger_service_mock,
             vec![(
                 field_ref,
                 sui::types::Owner::Shared(1),
-                TypeName::new("payable"),
-                LinkedTableNodeBcs {
-                    prev: crate::types::MoveOption(None::<TypeName>),
-                    next: crate::types::MoveOption(None::<TypeName>),
-                    value: DagVertexInfoBcs {
-                        kind: crate::nexus::models::DagVertexKindBcs::OffChain {
-                            _variant_name: "OffChain".to_string(),
-                            tool_fqn: tool_fqn.to_string(),
-                        },
-                        input_ports: crate::types::MoveVecSet { contents: vec![] },
-                        post_failure_action: crate::types::MoveOption(
-                            None::<crate::nexus::models::PostFailureActionBcs>,
-                        ),
-                        leader_verifier: crate::types::MoveOption(
-                            None::<crate::nexus::models::VerifierConfigBcs>,
-                        ),
-                        tool_verifier: crate::types::MoveOption(
-                            None::<crate::nexus::models::VerifierConfigBcs>,
-                        ),
-                    },
-                },
+                graph_move::Vertex::new("payable"),
+                offchain_vertex_node_bcs(&tool_fqn),
             )],
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(
-                sui_framework::CLOCK_OBJECT_ID,
+                move_boundary::CLOCK_OBJECT_ID,
                 1,
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            json!({ "timestamp_ms": "61000" }),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_list_dynamic_object_fields(
             &mut state_service_mock,
@@ -4769,18 +3991,21 @@ mod tests {
             payment_ref.clone(),
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
-                id: crate::types::sui_address_to_uid(*payment_ref.object_id()),
+                id: crate::move_bindings::sui_framework::object::UID::new(*payment_ref.object_id()),
                 execution_id: *execution_ref.object_id(),
-                agent_id: crate::types::sui_address_to_id(sui::types::Address::from_static("0xa")),
+                agent_id: crate::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::from_static("0xa"),
+                ),
                 skill_id: 11,
                 interface_revision: InterfaceVersion::new(7),
                 payment_policy: SkillPaymentPolicy::UserFunded,
-                source_kind: crate::types::interface::payment::PaymentSourceKind::user_funded(
-                    sui::types::Address::from_static("0x1"),
-                ),
+                source_kind:
+                    crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+                        sui::types::Address::from_static("0x1"),
+                    ),
                 max_budget: 100_000,
                 locked_budget: 10,
-                funds: crate::types::sui_framework::balance::Balance {
+                funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 100_000,
                     phantom_t0: std::marker::PhantomData,
                 },
@@ -4788,18 +4013,15 @@ mod tests {
                 accomplished: false,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Pending,
-                tool_cost_snapshot: crate::types::sui_framework::vec_map::VecMap {
+                tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
                     contents: vec![],
                 },
                 locked_vertices: current_locked_vertices,
             })
             .expect("execution payment bcs"),
-            sui::types::StructTag::new(
-                nexus_objects.interface_pkg_id,
-                crate::idents::tap::STANDARD_PAYMENT_MODULE,
-                sui::types::Identifier::from_static("ExecutionPayment"),
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<
+                crate::move_bindings::interface::payment::ExecutionPayment,
+            >(&nexus_objects),
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -4807,11 +4029,12 @@ mod tests {
             sui::types::Owner::Shared(tool_gas_ref.version()),
             None,
         );
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(0),
-            execution_json,
+            &dag_ref,
+            execution_walks,
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -4871,19 +4094,6 @@ mod tests {
         );
     }
 
-    fn mock_execution_json(dag_ref: &sui::types::ObjectReference) -> serde_json::Value {
-        json!({
-            "invoker": "0x1",
-            "dag": dag_ref.object_id().to_string(),
-            "agent_id": "0xa",
-            "skill_id": "11",
-            "interface_version": "7",
-            "scheduled_task_id": { "vec": [] },
-            "scheduled_occurrence_index": { "vec": [] },
-            "walks": []
-        })
-    }
-
     async fn mock_client_for_workflow_submit(
         nexus_objects: &crate::types::NexusObjects,
         gas_coin_ref: sui::types::ObjectReference,
@@ -4921,21 +4131,22 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            mock_execution_json(&dag_ref),
+            &dag_ref,
+            vec![],
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             sui::types::ObjectReference::new(
-                sui_framework::CLOCK_OBJECT_ID,
+                move_boundary::CLOCK_OBJECT_ID,
                 1,
                 sui::types::Digest::from([1; 32]),
             ),
             sui::types::Owner::Shared(1),
-            json!({ "timestamp_ms": "61000" }),
+            clock_bcs(61_000),
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -4982,303 +4193,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_abort_expired_execution_cleans_broken_finalized_onchain_result_before_abort() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let dag_ref = sui_mocks::mock_sui_object_ref();
-        let execution_ref = sui_mocks::mock_sui_object_ref();
-        let result_id = sui::types::Address::from_static("0xbeef");
-        let result_ref = sui_mocks::object_ref_for_id(result_id);
-        let result_field_ref =
-            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf2"));
-        let vertex_field_ref =
-            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0xf3"));
-        let tool_witness_id = sui::types::Address::from_static("0x777");
-        let tool_fqn = fqn!("xyz.taluslabs.onchain@1");
-        let tool_id = derive_tool_id(*nexus_objects.tool_registry.object_id(), &tool_fqn)
-            .expect("tool id derives");
-        let vertex = RuntimeVertex::plain("onchain");
-        let dag = Dag {
-            vertices: DynamicMap::new(sui::types::Address::from_static("0x900"), 1),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
-        };
-        let result_field_value = DynamicFieldValueBcs {
-            id: *result_field_ref.object_id(),
-            name: OnchainToolResultKey { walk_index: 0 },
-            value: object_id(result_id),
-        };
-        let vertex_node = LinkedTableNodeBcs {
-            prev: crate::types::MoveOption(None::<TypeName>),
-            next: crate::types::MoveOption(None::<TypeName>),
-            value: DagVertexInfoBcs {
-                kind: crate::nexus::models::DagVertexKindBcs::OnChain {
-                    _variant_name: "OnChain".to_string(),
-                    tool_fqn: tool_fqn.to_string(),
-                },
-                input_ports: crate::types::MoveVecSet { contents: vec![] },
-                post_failure_action: crate::types::MoveOption(
-                    None::<crate::nexus::models::PostFailureActionBcs>,
-                ),
-                leader_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-                tool_verifier: crate::types::MoveOption(
-                    None::<crate::nexus::models::VerifierConfigBcs>,
-                ),
-            },
-        };
-        let tool = crate::types::Tool {
-            id: tool_id,
-            fqn: tool_fqn,
-            reference: ToolRef::Sui {
-                package_address: sui::types::Address::from_static("0x42"),
-                module_name: sui::types::Identifier::from_static("tool"),
-                tool_witness_id,
-            },
-            description: "on-chain tool".to_string(),
-            input_schema: json!({}),
-            output_schema: json!({}),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::DateTime::from_timestamp_millis(1_000).unwrap(),
-            unregistered_at: None,
-        };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            json!({
-                "invoker": "0x1",
-                "dag": dag_ref.object_id().to_string(),
-                "agent_id": "0xa",
-                "skill_id": "11",
-                "interface_version": "7",
-                "scheduled_task_id": { "vec": [] },
-                "scheduled_occurrence_index": { "vec": [] },
-                "walks": [{
-                    "Active": {
-                        "next_vertex": { "Plain": { "vertex": { "name": "onchain" } } },
-                        "timeout_ms": "30000",
-                        "created_at": "1000"
-                    }
-                }]
-            }),
-        );
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            sui::types::ObjectReference::new(
-                sui_framework::CLOCK_OBJECT_ID,
-                1,
-                sui::types::Digest::from([1; 32]),
-            ),
-            sui::types::Owner::Shared(1),
-            json!({ "timestamp_ms": "61000" }),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<CommittedToolResultKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<ExecutionPaymentInsufficientSettlementFieldKey>(
-            &mut state_service_mock,
-            vec![],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields::<OnchainToolResultKey>(
-            &mut state_service_mock,
-            vec![(
-                OnchainToolResultKey { walk_index: 0 },
-                *result_field_ref.object_id(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_field_ref,
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&result_field_value).expect("result field bcs"),
-            dynamic_field_struct_tag(),
-        );
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            &mut ledger_service_mock,
-            result_ref.clone(),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&onchain_tool_result_bcs(
-                result_id,
-                *execution_ref.object_id(),
-                true,
-            ))
-            .expect("result bcs"),
-            sui::types::StructTag::new(
-                sui::types::Address::from_static("0xa1"),
-                sui::types::Identifier::from_static("onchain_tool_result"),
-                sui::types::Identifier::from_static("OnchainToolResult"),
-                vec![],
-            ),
-        );
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            dag_ref.clone(),
-            sui::types::Owner::Shared(dag_ref.version()),
-            serde_json::to_value(dag).expect("DAG JSON should serialize"),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            &mut state_service_mock,
-            vec![(TypeName::new("onchain"), *vertex_field_ref.object_id())],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            &mut ledger_service_mock,
-            vec![(
-                vertex_field_ref,
-                sui::types::Owner::Shared(1),
-                TypeName::new("onchain"),
-                vertex_node,
-            )],
-        );
-        sui_mocks::grpc::mock_get_object_json(
-            &mut ledger_service_mock,
-            sui_mocks::object_ref_for_id(tool_id),
-            sui::types::Owner::Shared(0),
-            serde_json::to_value(tool).expect("tool JSON should serialize"),
-        );
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            dag_ref.clone(),
-            sui::types::Owner::Shared(dag_ref.version()),
-            None,
-        );
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            None,
-        );
-
-        let expected_result_ref = result_ref.clone();
-        let expected_workflow_pkg_id = nexus_objects.workflow_pkg_id;
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            tx_digest,
-            gas_coin_ref.clone(),
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let submitted = request
-                    .transaction
-                    .as_ref()
-                    .expect("execute request should include transaction");
-                let submitted = sui::types::Transaction::try_from(submitted)
-                    .expect("submitted transaction should decode");
-                let sui::types::TransactionKind::ProgrammableTransaction(
-                    sui::types::ProgrammableTransaction { commands, inputs },
-                ) = submitted.kind
-                else {
-                    panic!("expected programmable transaction");
-                };
-                let cleanup_index = commands
-                    .iter()
-                    .position(|command| matches!(
-                        command,
-                        sui::types::Command::MoveCall(call)
-                            if call.package == expected_workflow_pkg_id
-                                && call.module == workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.module
-                                && call.function == workflow::ExecutionSettlement::CLEANUP_BROKEN_ONCHAIN_TOOL_RESULT.name
-                    ))
-                    .expect("submitted PTB should cleanup broken on-chain result");
-                let abort_index = commands
-                    .iter()
-                    .position(|command| matches!(
-                        command,
-                        sui::types::Command::MoveCall(call)
-                            if call.package == expected_workflow_pkg_id
-                                && call.module == workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.module
-                                && call.function == workflow::ExecutionSettlement::ABORT_EXPIRED_EXECUTION.name
-                    ))
-                    .expect("submitted PTB should abort expired execution");
-                assert!(cleanup_index < abort_index);
-                assert_eq!(abort_index, commands.len() - 1);
-
-                let cleanup_call = match &commands[cleanup_index] {
-                    sui::types::Command::MoveCall(call) => call,
-                    other => panic!("expected cleanup move call, got {other:?}"),
-                };
-                let result_input = match cleanup_call.arguments[3] {
-                    sui::types::Argument::Input(index) => inputs
-                        .get(index as usize)
-                        .unwrap_or_else(|| panic!("missing result input at index {index}")),
-                    ref other => panic!("expected result input argument, got {other:?}"),
-                };
-                let sui::types::Input::Shared(shared_result) = result_input else {
-                    panic!("expected cleanup result input to be shared, got {result_input:?}");
-                };
-                assert_eq!(shared_result.object_id(), *expected_result_ref.object_id());
-                assert_eq!(shared_result.version(), expected_result_ref.version());
-                assert!(shared_result.mutability().is_mutable());
-
-                let walk_index_input = match cleanup_call.arguments[5] {
-                    sui::types::Argument::Input(index) => inputs
-                        .get(index as usize)
-                        .unwrap_or_else(|| panic!("missing walk index input at index {index}")),
-                    ref other => panic!("expected walk index input argument, got {other:?}"),
-                };
-                let sui::types::Input::Pure(walk_index_bytes) = walk_index_input else {
-                    panic!("expected walk index pure input, got {walk_index_input:?}");
-                };
-                let walk_index: u64 =
-                    bcs::from_bytes(walk_index_bytes).expect("walk index should decode");
-                assert_eq!(walk_index, 0);
-            },
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            state_service_mock: Some(state_service_mock),
-        });
-        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
-        let client = NexusClient::builder()
-            .with_private_key(pk)
-            .with_rpc_url(&rpc_url)
-            .with_nexus_objects(nexus_objects)
-            .with_gas(vec![gas_coin_ref], 1000)
-            .build()
-            .await
-            .expect("mock client should build");
-
-        let result = client
-            .workflow()
-            .abort_expired_execution(*execution_ref.object_id())
-            .await
-            .expect("abort transaction should submit with cleanup");
-
-        assert_eq!(result.tx_digest, tx_digest);
-        assert_eq!(result.tx_checkpoint, 1);
-        assert_eq!(result.dag_id, *dag_ref.object_id());
-        assert_eq!(result.dag_execution_id, *execution_ref.object_id());
-        assert_eq!(
-            result.cleaned_broken_onchain_results,
-            vec![BrokenOnchainToolResultCleanup {
-                walk_index: 0,
-                result_ref,
-                expected_vertex: vertex,
-                tool_witness_id,
-            }]
-        );
-    }
-
-    #[tokio::test]
     async fn test_settle_committed_tool_result_for_walk_submits_workflow_transaction() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
@@ -5291,11 +4205,12 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut ledger_service_mock,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            mock_execution_json(&dag_ref),
+            &dag_ref,
+            vec![],
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
@@ -5360,11 +4275,12 @@ mod tests {
         let mut settle_tx = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut settle_sub = sui_mocks::grpc::MockSubscriptionService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut settle_ledger, 1000);
-        sui_mocks::grpc::mock_get_object_json(
+        mock_get_dag_execution_bcs(
             &mut settle_ledger,
+            &nexus_objects,
             execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            mock_execution_json(&dag_ref),
+            &dag_ref,
+            vec![],
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut settle_ledger,
@@ -5480,102 +4396,78 @@ mod tests {
 
     #[test]
     fn dag_vertex_requires_verifier_proof_prefers_vertex_override() {
-        let dag = Dag {
-            vertices: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            defaults_to_input_ports: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            edges: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            outputs: DynamicMap::new(sui_mocks::mock_sui_address(), 0),
-            leader_verifier: VerifierConfig {
-                mode: VerifierMode::LeaderRegisteredKey,
-                method: "signed_http_v1".into(),
-            },
-            tool_verifier: VerifierConfig::default(),
+        let mut dag = dag_bcs(0);
+        dag.leader_verifier = VerifierConfig {
+            mode: VerifierMode::LeaderRegisteredKey,
+            method: "signed_http_v1".into(),
         };
-        let vertex = DagVertexInfo {
-            kind: DagVertexKind::OffChain {
-                tool_fqn: fqn!("xyz.example.tool@1"),
-            },
-            leader_verifier: Some(VerifierConfig::default()),
-            tool_verifier: None,
-            input_ports: Set::default(),
-        };
+        let mut vertex = offchain_vertex_info(&fqn!("xyz.example.tool@1"));
+        vertex.leader_verifier = MoveOption::from_option(Some(VerifierConfig::default()));
 
         assert!(!dag_vertex_requires_verifier_proof(&dag, &vertex));
     }
 
     #[test]
-    fn execution_terminal_record_matches_retryable_vertex_handles_wrapped_and_plain_json() {
+    fn execution_terminal_record_matches_retryable_vertex_uses_typed_records() {
         let vertex = RuntimeVertex::with_iterator("v1", 2, 5);
-        let wrapped = json!({
-            "fields": {
-                "contents": [{
-                    "fields": {
-                        "key": "9",
-                        "value": {
-                            "fields": {
-                                "record": {
-                                    "fields": {
-                                        "vertex": {
-                                            "fields": {
-                                                "_variant_name": "WithIterator",
-                                                "vertex": { "name": "v1" },
-                                                "iteration": { "value": "2" },
-                                                "out_of": { "u64": 5 }
-                                            }
-                                        },
-                                        "failure_class": {
-                                            "fields": {
-                                                "@variant": "Retryable"
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }]
-            }
-        });
-        let plain = json!({
-            "9": {
-                "vertex": {
-                    "Plain": {
-                        "vertex": {
-                            "name": "terminal_vertex"
-                        }
-                    }
-                },
-                "failure_class": "TerminalSubmissionFailure"
-            }
-        });
 
-        assert!(execution_terminal_record_matches_retryable_vertex(&wrapped, 9, &vertex).unwrap());
+        fn record(
+            vertex: RuntimeVertex,
+            failure_class: WorkflowFailureClass,
+        ) -> execution_move::TerminalErrEvalRecord {
+            execution_move::TerminalErrEvalRecord {
+                walk_index: 9,
+                vertex,
+                leader: sui::types::Address::THREE,
+                failure_class,
+                outcome: MoveOption::from_option(None::<PostFailureAction>),
+                reason: MoveString::from("retryable failure"),
+                variant_ports_to_data: VecMap { contents: vec![] },
+                err_eval_hash: vec![1, 2, 3],
+            }
+        }
+
+        let retryable_records = VecMap {
+            contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
+                key: 9,
+                value: record(vertex.clone(), WorkflowFailureClass::Retryable),
+            }],
+        };
+        let terminal_records = VecMap {
+            contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
+                key: 9,
+                value: record(
+                    RuntimeVertex::plain("terminal_vertex"),
+                    WorkflowFailureClass::TerminalSubmissionFailure,
+                ),
+            }],
+        };
+
+        assert!(execution_terminal_record_matches_retryable_vertex(
+            &retryable_records,
+            9,
+            &vertex,
+        ));
         assert!(!execution_terminal_record_matches_retryable_vertex(
-            &plain,
+            &retryable_records,
+            10,
+            &vertex,
+        ));
+        assert!(!execution_terminal_record_matches_retryable_vertex(
+            &terminal_records,
             9,
             &RuntimeVertex::plain("terminal_vertex"),
-        )
-        .unwrap());
+        ));
     }
 
     #[test]
     fn fetch_vertex_input_port_names_reads_declared_ports_from_typed_vertex() {
-        let vertex = DagVertexInfo {
-            kind: DagVertexKind::OffChain {
-                tool_fqn: fqn!("xyz.example.tool@1"),
-            },
-            leader_verifier: None,
-            tool_verifier: None,
-            input_ports: [
-                crate::nexus::models::DagInputPort {
-                    name: "z_port".to_string(),
-                },
-                crate::nexus::models::DagInputPort {
-                    name: "a_port".to_string(),
-                },
-            ]
-            .into_iter()
-            .collect(),
+        let mut vertex = offchain_vertex_info(&fqn!("xyz.example.tool@1"));
+        vertex.input_ports = VecSet {
+            contents: vec![
+                graph_move::InputPort::new("z_port"),
+                graph_move::InputPort::new("a_port"),
+            ],
         };
 
         assert_eq!(
@@ -5594,41 +4486,27 @@ mod tests {
         let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
         let mut vertices = HashMap::new();
         vertices.insert(
-            TypeName::new("payable"),
-            DagVertexInfo {
-                kind: DagVertexKind::OffChain {
-                    tool_fqn: tool_fqn.clone(),
-                },
-                leader_verifier: None,
-                tool_verifier: None,
-                input_ports: Set::default(),
-            },
+            graph_move::Vertex::new("payable"),
+            offchain_vertex_info(&tool_fqn),
         );
         vertices.insert(
-            TypeName::new("idle"),
-            DagVertexInfo {
-                kind: DagVertexKind::OffChain {
-                    tool_fqn: other_tool_fqn,
-                },
-                leader_verifier: None,
-                tool_verifier: None,
-                input_ports: Set::default(),
-            },
+            graph_move::Vertex::new("idle"),
+            offchain_vertex_info(&other_tool_fqn),
         );
         let walks = vec![
-            DagExecutionWalk::Active {
+            DAGWalk::Active {
                 next_vertex: payable_vertex.clone(),
                 timeout_ms: 30_000,
                 requires_vertex_authorization_grant: false,
                 created_at: 1_000,
             },
-            DagExecutionWalk::Active {
+            DAGWalk::Active {
                 next_vertex: idle_vertex,
                 timeout_ms: 30_000,
                 requires_vertex_authorization_grant: false,
                 created_at: 61_000,
             },
-            DagExecutionWalk::PendingAbort {
+            DAGWalk::PendingAbort {
                 at_vertex: RuntimeVertex::plain("already_pending"),
             },
         ];
@@ -5662,17 +4540,10 @@ mod tests {
         let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
         let mut vertices = HashMap::new();
         vertices.insert(
-            TypeName::new("payable"),
-            DagVertexInfo {
-                kind: DagVertexKind::OffChain {
-                    tool_fqn: tool_fqn.clone(),
-                },
-                leader_verifier: None,
-                tool_verifier: None,
-                input_ports: Set::default(),
-            },
+            graph_move::Vertex::new("payable"),
+            offchain_vertex_info(&tool_fqn),
         );
-        let walks = vec![DagExecutionWalk::Active {
+        let walks = vec![DAGWalk::Active {
             next_vertex: payable_vertex,
             timeout_ms: 30_000,
             requires_vertex_authorization_grant: false,
@@ -5701,47 +4572,9 @@ mod tests {
     }
 
     #[test]
-    fn tool_gas_abort_filter_ignores_pending_settlement_timeouts() {
-        let execution_id = sui::types::Address::from_static("0xabc");
-        let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let payable_vertex = RuntimeVertex::plain("payable");
-        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
-        let mut vertices = HashMap::new();
-        vertices.insert(
-            TypeName::new("payable"),
-            DagVertexInfo {
-                kind: DagVertexKind::OffChain {
-                    tool_fqn: tool_fqn.clone(),
-                },
-                leader_verifier: None,
-                tool_verifier: None,
-                input_ports: Set::default(),
-            },
-        );
-        let walks = vec![DagExecutionWalk::PendingSettlement {
-            next_vertex: payable_vertex,
-            timeout_ms: 30_000,
-            requires_vertex_authorization_grant: false,
-            created_at: 1_000,
-        }];
-        let locks = vec![ExecutionPaymentVertexLock {
-            vertex_key: matching_key,
-            tool_fqn: tool_fqn.to_string().into_bytes(),
-            amount: 10,
-            settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
-        }];
-
-        let candidates =
-            filter_tool_gas_abort_candidate_walks(execution_id, &vertices, &walks, &locks, 61_000)
-                .unwrap();
-
-        assert!(candidates.is_empty());
-    }
-
-    #[test]
     fn tool_gas_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
         let execution_id = sui::types::Address::from_static("0xabc");
-        let walks = vec![DagExecutionWalk::Active {
+        let walks = vec![DAGWalk::Active {
             next_vertex: RuntimeVertex::plain("missing"),
             timeout_ms: 30_000,
             requires_vertex_authorization_grant: false,
@@ -5766,7 +4599,8 @@ mod tests {
     async fn fetch_tool_gas_refs_for_abort_candidates_derives_metadata_refs() {
         let gas_service_id = sui::types::Address::from_static("0xabc");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_gas_id = derive_tool_gas_id(gas_service_id, &tool_fqn).unwrap();
+        let tool_gas_id =
+            crate::move_bindings::derive_tool_gas_id(gas_service_id, &tool_fqn).unwrap();
         let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
         let candidate_walk = ToolGasAbortCandidateWalk {
             walk_index: 2,
@@ -5844,27 +4678,5 @@ mod tests {
         assert!(error
             .to_string()
             .contains("No ToolGas abort candidates are currently eligible"));
-    }
-
-    #[test]
-    fn dag_edge_bcs_into_sdk_keeps_the_public_edge_shape() {
-        let edge = DagEdgeBcs {
-            from: DagOutputVariantPort {
-                variant: crate::types::TypeName::from("ok"),
-                port: crate::types::TypeName::from("value"),
-            },
-            to: DagVertexInputPort {
-                vertex: crate::types::TypeName::from("next"),
-                port: crate::nexus::models::DagInputPort {
-                    name: "input".to_string(),
-                },
-            },
-            kind: crate::nexus::models::DagEdgeKindBcs::Static,
-        };
-
-        let sdk = edge.into_sdk();
-
-        assert_eq!(sdk.from.variant, crate::types::TypeName::from("ok"));
-        assert_eq!(sdk.from.port, crate::types::TypeName::from("value"));
     }
 }

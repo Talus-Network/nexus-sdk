@@ -16,6 +16,9 @@ tag = "v2.0.0-rc.2"
 package = "nexus-sdk"
 ```
 
+If you are upgrading direct SDK usage after the move to generated Move bindings,
+see the [SDK migration guide](./MIGRATION.md).
+
 ## Signed HTTP (Leader nodes <-> Tools)
 
 This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:

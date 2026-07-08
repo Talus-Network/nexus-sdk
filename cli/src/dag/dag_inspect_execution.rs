@@ -3,6 +3,7 @@ use {
         command_title,
         display::json_output,
         item,
+        nexus_data_json::nexus_data_to_json_value,
         notify_error,
         notify_success,
         prelude::*,
@@ -17,7 +18,7 @@ fn terminal_err_eval_trace_entry(event: &NexusEventKind) -> serde_json::Value {
             "terminal_err_eval": true,
             "vertex": event.vertex,
             "failure_class": event.failure_class.to_string(),
-            "outcome": event.outcome.0.as_ref().map(|outcome| outcome.to_string()),
+            "outcome": event.outcome.as_option().map(|outcome| outcome.to_string()),
             "reason": event.reason.as_str(),
             "duplicate": event.duplicate,
             "err_eval_hash": hex::encode(&event.err_eval_hash),
@@ -87,9 +88,11 @@ pub(crate) async fn inspect_dag_execution(
                     )))?;
 
                 for (port, data) in fetched_data.into_map() {
+                    let data_value = nexus_data_to_json_value(&data);
+                    let storage = String::from_utf8_lossy(data.storage_tag()).into_owned();
                     let (display_data, json_data_value) = (
-                        format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
+                        format!("{data_value}"),
+                        json!({ "port": port, "data": data_value, "storage": storage }),
                     );
 
                     item!(
@@ -131,9 +134,11 @@ pub(crate) async fn inspect_dag_execution(
                     )))?;
 
                 for (port, data) in fetched_data.into_map() {
+                    let data_value = nexus_data_to_json_value(&data);
+                    let storage = String::from_utf8_lossy(data.storage_tag()).into_owned();
                     let (display_data, json_data_value) = (
-                        format!("{}", data.as_json()),
-                        json!({ "port": port, "data": data.as_json(), "storage": data.storage_kind() }),
+                        format!("{data_value}"),
+                        json!({ "port": port, "data": data_value, "storage": storage }),
                     );
 
                     item!(
@@ -167,8 +172,7 @@ pub(crate) async fn inspect_dag_execution(
                     vertex = format!("{}", e.vertex).truecolor(100, 100, 100),
                     failure_class = e.failure_class.to_string().truecolor(100, 100, 100),
                     outcome = e.outcome
-                        .0
-                        .as_ref()
+                        .as_option()
                         .map(|outcome| outcome.to_string())
                         .unwrap_or_else(|| "none".to_string())
                         .truecolor(100, 100, 100),
@@ -240,30 +244,34 @@ pub(crate) async fn await_poller_outcome(
 mod tests {
     use {
         super::*,
-        nexus_sdk::types::{
-            sui_address_to_id,
-            MoveOption,
-            MoveString,
-            PostFailureAction,
-            RuntimeVertex,
-            TypeName,
-            WorkflowFailureClass,
+        nexus_sdk::move_bindings::{
+            interface::graph::{PostFailureAction, RuntimeVertex},
+            move_std::{
+                ascii::String as MoveString,
+                option::Option as MoveOption,
+                type_name::TypeName,
+            },
+            workflow::execution_failure::WorkflowFailureClass,
         },
     };
 
     #[test]
     fn test_terminal_err_eval_trace_entry() {
         let event = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
-                dag: sui_address_to_id(sui::types::Address::ZERO),
-                execution: sui_address_to_id(sui::types::Address::TWO),
+            nexus_sdk::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent {
+                dag: nexus_sdk::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::ZERO,
+                ),
+                execution: nexus_sdk::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::TWO,
+                ),
                 walk_index: 5,
                 vertex: RuntimeVertex::Plain {
                     vertex: TypeName::new("failable").into(),
                 },
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalToolFailure,
-                outcome: MoveOption(Some(PostFailureAction::TransientContinue)),
+                outcome: MoveOption::from_option(Some(PostFailureAction::TransientContinue)),
                 reason: MoveString::from("tool failed"),
                 err_eval_hash: vec![0xab, 0xcd],
                 duplicate: true,
@@ -290,14 +298,18 @@ mod tests {
     #[test]
     fn test_terminal_err_eval_duplicate_suffix() {
         let duplicate = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
-                dag: sui_address_to_id(sui::types::Address::ZERO),
-                execution: sui_address_to_id(sui::types::Address::TWO),
+            nexus_sdk::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent {
+                dag: nexus_sdk::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::ZERO,
+                ),
+                execution: nexus_sdk::move_bindings::sui_framework::object::ID::new(
+                    sui::types::Address::TWO,
+                ),
                 walk_index: 0,
                 vertex: RuntimeVertex::plain("failable"),
                 leader: sui::types::Address::THREE,
                 failure_class: WorkflowFailureClass::TerminalSubmissionFailure,
-                outcome: MoveOption(Some(PostFailureAction::Terminate)),
+                outcome: MoveOption::from_option(Some(PostFailureAction::Terminate)),
                 reason: MoveString::from("timeout"),
                 err_eval_hash: vec![],
                 duplicate: true,
@@ -305,7 +317,7 @@ mod tests {
         );
 
         let first = NexusEventKind::TerminalErrEvalRecorded(
-            nexus_sdk::types::workflow::execution_events::TerminalErrEvalRecordedEvent {
+            nexus_sdk::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent {
                 duplicate: false,
                 ..match &duplicate {
                     NexusEventKind::TerminalErrEvalRecorded(event) => event.clone(),

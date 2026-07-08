@@ -31,7 +31,7 @@
 //! in headers so tools do not need to wrap or change their JSON schemas.
 //!
 //! This format is compact, easy to forward through HTTP infrastructure, and widely supported
-//! (it is the same encoding used by JWTs).
+//! (it is the same byte to header encoding used by JWTs).
 //!
 //! ## Why headers (not an "envelope" body)?
 //! Nexus intentionally does not wrap the application payload in a signed envelope object.
@@ -52,7 +52,7 @@
 //! # What is actually signed?
 //! The signature is computed over:
 //! - a protocol-specific domain separator (request vs response), and
-//! - the exact `sig_input` bytes (the JSON encoding of the claims).
+//! - the request `sig_input` hash, or response binding fields derived from it.
 //!
 //! Concretely:
 //! - Request domain: `b"nexus.leader_tool.request.v1."`

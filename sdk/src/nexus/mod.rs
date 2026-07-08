@@ -8,7 +8,6 @@ pub mod client;
 pub mod crawler;
 pub mod error;
 pub mod gas;
-pub mod models;
 pub mod network_auth;
 pub mod registered_key;
 pub mod registry;

@@ -1,141 +1,221 @@
-//! This module provides a model for on-chain representation of a tool with some
-//! added logic like object ID derivation and input/output validation.
+//! Nexus helpers for the generated on chain [`crate::move_bindings::registry::tool_registry::Tool`]
+//! representation.
+//!
+//! The persisted object shape is generated from Move. This module must not
+//! duplicate that shape; it only adds SDK projections that are not part of the
+//! ABI itself.
 
+pub use tool_registry::{Tool, ToolRef};
 use {
     crate::{
+        move_bindings::{move_std::ascii, registry::tool_registry},
         sui,
-        types::{
-            derive_tool_id,
-            serde_parsers::{
-                deserialize_bytes_to_json_value,
-                deserialize_bytes_to_string,
-                deserialize_bytes_to_url,
-                deserialize_option_sui_u64_to_datetime,
-                deserialize_sui_u64_to_datetime,
-                serialize_datetime_to_sui_u64,
-                serialize_json_value_to_bytes,
-                serialize_option_datetime_to_sui_u64,
-                serialize_string_to_bytes,
-                serialize_url_to_bytes,
-            },
-        },
         ToolFqn,
     },
-    serde::{Deserialize, Serialize},
+    anyhow::{anyhow, bail, Context as _},
+    chrono::{DateTime, Utc},
 };
 
-/// A [`ToolRef`] is the differentiating enum between HTTP and Sui hosted tools.
-///
-/// HTTP tools are represented by their URL, while Sui tools are represented by
-/// a Sui package address, module name, and tool witness ID.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(tag = "_variant_name")]
-pub enum ToolRef {
-    /// An off-chain tool represented by an HTTP URL.
-    Http {
-        #[serde(
-            serialize_with = "serialize_url_to_bytes",
-            deserialize_with = "deserialize_bytes_to_url"
-        )]
-        url: reqwest::Url,
-    },
-    /// An on-chain tool represented by a Sui package address, module name, and tool witness ID.
-    Sui {
-        package_address: sui::types::Address,
-        module_name: sui::types::Identifier,
-        tool_witness_id: sui::types::Address,
-    },
-}
-
-/// [`ToolRef`] display implementation.
-///
-/// - Http: `https://example.com/my-tool`
-/// - Sui: `0xabc123::my_module@0xtoolwitness` (address::module@tool-witness)
-impl std::fmt::Display for ToolRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ToolRef::Http { url } => write!(f, "{url}"),
-            ToolRef::Sui {
-                package_address,
-                module_name,
-                tool_witness_id,
-            } => write!(f, "{package_address}::{module_name}@{tool_witness_id}"),
-        }
-    }
-}
-
-/// A [`Tool`] represents a tool that can be either on-chain or off-chain. This
-/// structure matches the on-chain representation of a tool.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct Tool {
-    pub id: sui::types::Address,
-    pub fqn: ToolFqn,
-    #[serde(rename = "ref")]
-    pub reference: ToolRef,
-    #[serde(
-        serialize_with = "serialize_string_to_bytes",
-        deserialize_with = "deserialize_bytes_to_string"
-    )]
-    pub description: String,
-    #[serde(
-        serialize_with = "serialize_json_value_to_bytes",
-        deserialize_with = "deserialize_bytes_to_json_value"
-    )]
-    pub input_schema: serde_json::Value,
-    #[serde(
-        serialize_with = "serialize_json_value_to_bytes",
-        deserialize_with = "deserialize_bytes_to_json_value"
-    )]
-    pub output_schema: serde_json::Value,
-    #[serde(default)]
-    pub workflow_authorization_cap_first: bool,
-    #[serde(
-        rename = "registered_at_ms",
-        serialize_with = "serialize_datetime_to_sui_u64",
-        deserialize_with = "deserialize_sui_u64_to_datetime"
-    )]
-    pub registered_at: chrono::DateTime<chrono::Utc>,
-    #[serde(
-        rename = "unregistered_at_ms",
-        serialize_with = "serialize_option_datetime_to_sui_u64",
-        deserialize_with = "deserialize_option_sui_u64_to_datetime"
-    )]
-    pub unregistered_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
 impl Tool {
-    /// Validate the provided [serde_json::Value] against the tool's input schema.
-    pub fn validate_input(&self, data: &serde_json::Value) -> Result<(), anyhow::Error> {
-        match jsonschema::draft202012::validate(&self.input_schema, data) {
-            Ok(()) => Ok(()),
-            Err(e) => anyhow::bail!("Input data does not match the input schema: {e}"),
-        }
-    }
-
-    /// Validate the provided [serde_json::Value] against the tool's output schema.
-    pub fn validate_output(&self, data: &serde_json::Value) -> Result<(), anyhow::Error> {
-        match jsonschema::draft202012::validate(&self.output_schema, data) {
-            Ok(()) => Ok(()),
-            Err(e) => anyhow::bail!("Output data does not match the output schema: {e}"),
-        }
-    }
-
-    /// Derive a Tool's ID from the ToolRegistry ID and ToolFqn.
+    /// Derive a `Tool` object ID from the `ToolRegistry` ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::Address> {
-        derive_tool_id(registry_id, fqn)
+        crate::move_bindings::derive_tool_id(registry_id, fqn)
     }
+
+    pub fn object_id(&self) -> sui::types::Address {
+        self.id.address()
+    }
+
+    pub fn registry_id(&self) -> sui::types::Address {
+        self.registry.address()
+    }
+
+    pub fn fqn_string(&self) -> anyhow::Result<String> {
+        ascii_string(&self.fqn).context("Tool FQN is not UTF-8")
+    }
+
+    pub fn parsed_fqn(&self) -> anyhow::Result<ToolFqn> {
+        let value = self.fqn_string()?;
+        value
+            .parse()
+            .map_err(|error| anyhow!("Tool FQN '{value}' did not parse: {error}"))
+    }
+
+    pub fn reference(&self) -> &ToolRef {
+        &self.r#ref
+    }
+
+    pub fn input_schema_json(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::from_slice(&self.input_schema).context("Tool input schema is not valid JSON")
+    }
+
+    pub fn output_schema_json(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::from_slice(&self.output_schema).context("Tool output schema is not valid JSON")
+    }
+
+    /// Validate the provided JSON input against the tool's input schema.
+    pub fn validate_input(&self, data: &serde_json::Value) -> anyhow::Result<()> {
+        let schema = self.input_schema_json()?;
+        match jsonschema::draft202012::validate(&schema, data) {
+            Ok(()) => Ok(()),
+            Err(error) => anyhow::bail!("Input data does not match the input schema: {error}"),
+        }
+    }
+
+    /// Validate the provided JSON output against the tool's output schema.
+    pub fn validate_output(&self, data: &serde_json::Value) -> anyhow::Result<()> {
+        let schema = self.output_schema_json()?;
+        match jsonschema::draft202012::validate(&schema, data) {
+            Ok(()) => Ok(()),
+            Err(error) => anyhow::bail!("Output data does not match the output schema: {error}"),
+        }
+    }
+
+    pub fn description_string(&self) -> anyhow::Result<String> {
+        std::str::from_utf8(&self.description)
+            .map(str::to_owned)
+            .context("Tool description is not UTF-8")
+    }
+
+    pub fn registered_at_datetime(&self) -> anyhow::Result<DateTime<Utc>> {
+        timestamp_millis_to_datetime(self.registered_at_ms, "registered_at_ms")
+    }
+
+    pub fn unregistered_at_datetime(&self) -> anyhow::Result<Option<DateTime<Utc>>> {
+        match self.unregistered_at_ms.vec.as_slice() {
+            [] => Ok(None),
+            [millis] => timestamp_millis_to_datetime(*millis, "unregistered_at_ms").map(Some),
+            values => bail!(
+                "Tool unregistered_at_ms is not a valid Move option: {} values",
+                values.len()
+            ),
+        }
+    }
+
+    pub fn unregistered_at_millis(&self) -> anyhow::Result<Option<u64>> {
+        match self.unregistered_at_ms.vec.as_slice() {
+            [] => Ok(None),
+            [millis] => Ok(Some(*millis)),
+            values => bail!(
+                "Tool unregistered_at_ms is not a valid Move option: {} values",
+                values.len()
+            ),
+        }
+    }
+}
+
+impl ToolRef {
+    pub fn http_url_string(&self) -> anyhow::Result<Option<String>> {
+        let Self::Http { url, .. } = self else {
+            return Ok(None);
+        };
+        bytes_string(url, "HTTP tool URL").map(Some)
+    }
+
+    pub fn sui_parts(
+        &self,
+    ) -> anyhow::Result<Option<(sui::types::Address, String, sui::types::Address)>> {
+        let Self::Sui {
+            package_address,
+            module_name,
+            tool_witness_id,
+            ..
+        } = self
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some((
+            *package_address,
+            ascii_string(module_name).context("Sui tool module name is not UTF-8")?,
+            tool_witness_id.address(),
+        )))
+    }
+
+    pub fn display_string(&self) -> anyhow::Result<String> {
+        match self {
+            Self::Http { .. } => self
+                .http_url_string()?
+                .ok_or_else(|| anyhow!("expected HTTP tool reference")),
+            Self::Sui { .. } => {
+                let Some((package_address, module_name, tool_witness_id)) = self.sui_parts()?
+                else {
+                    unreachable!("matched Sui tool reference")
+                };
+                Ok(format!(
+                    "{package_address}::{module_name}@{tool_witness_id}"
+                ))
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ToolRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.display_string() {
+            Ok(value) => f.write_str(&value),
+            Err(_) => f.write_str("<invalid tool reference>"),
+        }
+    }
+}
+
+fn ascii_string(value: &ascii::String) -> anyhow::Result<String> {
+    bytes_string(&value.bytes, "Move ASCII string")
+}
+
+fn bytes_string(value: &[u8], label: &str) -> anyhow::Result<String> {
+    std::str::from_utf8(value)
+        .map(str::to_owned)
+        .with_context(|| format!("{label} is not UTF-8"))
+}
+
+fn timestamp_millis_to_datetime(value: u64, field: &str) -> anyhow::Result<DateTime<Utc>> {
+    let millis = i64::try_from(value).with_context(|| format!("{field} exceeds i64::MAX"))?;
+    DateTime::<Utc>::from_timestamp_millis(millis)
+        .ok_or_else(|| anyhow!("{field} is outside chrono's timestamp range"))
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::{fqn, test_utils::sui_mocks},
-        std::collections::HashSet,
+        crate::{
+            fqn,
+            move_bindings::{move_std::option::Option as MoveOption, sui_framework},
+            test_utils::sui_mocks,
+        },
     };
+
+    fn ascii(value: &str) -> ascii::String {
+        ascii::String::from(value)
+    }
+
+    fn fixture_tool(reference: ToolRef, input_schema: Vec<u8>, output_schema: Vec<u8>) -> Tool {
+        Tool {
+            id: crate::move_bindings::sui_framework::object::UID::new(sui_mocks::mock_sui_address()),
+            registry: crate::move_bindings::sui_framework::object::ID::new(
+                sui_mocks::mock_sui_address(),
+            ),
+            fqn: ascii("xyz.taluslabs.math.i64.add@1"),
+            r#ref: reference,
+            description: b"A test tool".to_vec(),
+            input_schema,
+            output_schema,
+            verified: false,
+            vault: sui_framework::balance::Balance {
+                value: 0,
+                phantom_t0: std::marker::PhantomData,
+            },
+            supported_verifier_methods: vec![],
+            workflow_authorization_cap_first: true,
+            lock_duration_ms: 0,
+            registered_at_ms: 0,
+            unregistered_at_ms: MoveOption::from(None),
+        }
+    }
 
     #[test]
     fn test_tool_derive_id() {
@@ -143,203 +223,77 @@ mod tests {
             "0x940f0dd81d4e4ae2cd476ff61ca5699e0d9356e1874d6c4ba3a5bdf28e67b9e9",
         );
 
-        // 1
         let fqn = fqn!("xyz.taluslabs.math.i64.add@1");
         let expected_id = sui::types::Address::from_static(
             "0x63152163bf12d54f38742656cba5d37a05e89d3ef5df7e9d22062e7bff0aed35",
         );
-        let derived_id = Tool::derive_id(registry_id, &fqn).unwrap();
-        assert_eq!(derived_id, expected_id);
+        assert_eq!(Tool::derive_id(registry_id, &fqn).unwrap(), expected_id);
 
-        // 2
         let fqn = fqn!("xyz.taluslabs.math.i64.mul@1");
         let expected_id = sui::types::Address::from_static(
             "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da",
         );
-        let derived_id = Tool::derive_id(registry_id, &fqn).unwrap();
-        assert_eq!(derived_id, expected_id);
+        assert_eq!(Tool::derive_id(registry_id, &fqn).unwrap(), expected_id);
     }
 
     #[test]
-    fn test_toolref_http_serialization() {
-        let url = reqwest::Url::parse("https://example.com/tool").unwrap();
-        let tool_ref = ToolRef::Http { url: url.clone() };
-        let serialized = serde_json::to_string(&tool_ref).unwrap();
-        let deserialized: ToolRef = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(deserialized, tool_ref);
-        if let ToolRef::Http { url: des_url } = deserialized {
-            assert_eq!(des_url, url);
-        } else {
-            panic!("Deserialized ToolRef is not Http variant");
-        }
+    fn generated_tool_bcs_roundtrips_and_preserves_schema_bytes() {
+        let tool = fixture_tool(
+            ToolRef::Http {
+                _variant_name: ascii("Http"),
+                url: b"https://example.com/tool".to_vec(),
+            },
+            b"input schema bytes".to_vec(),
+            b"output schema bytes".to_vec(),
+        );
+
+        let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
+        let decoded: Tool = bcs::from_bytes(&bytes).expect("generated Tool deserializes as BCS");
+
+        assert_eq!(
+            decoded.fqn_string().unwrap(),
+            "xyz.taluslabs.math.i64.add@1"
+        );
+        assert_eq!(decoded.description_string().unwrap(), "A test tool");
+        assert_eq!(
+            decoded.registered_at_datetime().unwrap(),
+            DateTime::<Utc>::from_timestamp(0, 0).unwrap()
+        );
+        assert_eq!(decoded.input_schema, b"input schema bytes");
+        assert_eq!(decoded.output_schema, b"output schema bytes");
     }
 
     #[test]
-    fn test_toolref_sui_serialization() {
-        let tool_ref = ToolRef::Sui {
-            package_address: sui::types::Address::from_static(
-                "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-            ),
-            module_name: sui::types::Identifier::from_static("my_tool_module"),
-            tool_witness_id: sui::types::Address::from_static(
-                "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-            ),
+    fn tool_ref_helpers_decode_http_and_sui() {
+        let http_ref = ToolRef::Http {
+            _variant_name: ascii("Http"),
+            url: b"https://example.com/tool".to_vec(),
         };
-        let serialized = serde_json::to_string(&tool_ref).unwrap();
-        let deserialized: ToolRef = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(deserialized, tool_ref);
-    }
+        assert_eq!(
+            http_ref.http_url_string().unwrap().unwrap().as_str(),
+            "https://example.com/tool"
+        );
+        assert_eq!(http_ref.to_string(), "https://example.com/tool");
 
-    #[test]
-    fn test_tool_validate_input_and_output_success() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "integer" }
-            },
-            "required": ["x"]
-        });
-        let tool = Tool {
-            id: sui_mocks::mock_sui_address(),
-            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
-            reference: ToolRef::Http {
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-            },
-            description: "A test tool".to_string(),
-            input_schema: schema.clone(),
-            output_schema: schema.clone(),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::Utc::now(),
-            unregistered_at: None,
-        };
-        let valid_data = serde_json::json!({ "x": 42 });
-        assert!(tool.validate_input(&valid_data).is_ok());
-        assert!(tool.validate_output(&valid_data).is_ok());
-    }
-
-    #[test]
-    fn test_tool_validate_input_and_output_failure() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "integer" }
-            },
-            "required": ["x"]
-        });
-        let tool = Tool {
-            id: sui_mocks::mock_sui_address(),
-            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
-            reference: ToolRef::Http {
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-            },
-            description: "A test tool".to_string(),
-            input_schema: schema.clone(),
-            output_schema: schema.clone(),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::Utc::now(),
-            unregistered_at: None,
-        };
-        let invalid_data = serde_json::json!({ "y": 42 });
-        assert!(tool.validate_input(&invalid_data).is_err());
-        assert!(tool.validate_output(&invalid_data).is_err());
-    }
-
-    #[test]
-    fn test_tool_serde_roundtrip() {
-        let tool = Tool {
-            id: sui_mocks::mock_sui_address(),
-            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
-            reference: ToolRef::Http {
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-            },
-            description: "A test tool".to_string(),
-            input_schema: serde_json::json!({ "type": "object" }),
-            output_schema: serde_json::json!({ "type": "object" }),
-            workflow_authorization_cap_first: true,
-            registered_at: chrono::DateTime::from_timestamp_millis(
-                chrono::Utc::now().timestamp_millis(),
-            )
-            .unwrap(),
-            unregistered_at: None,
-        };
-        let serialized = serde_json::to_string(&tool).unwrap();
-        let deserialized: Tool = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(tool, deserialized);
-    }
-
-    #[test]
-    fn test_toolref_display_http() {
-        let url = reqwest::Url::parse("https://example.com/tool").unwrap();
-        let tool_ref = ToolRef::Http { url: url.clone() };
-        let display = format!("{}", tool_ref);
-        assert_eq!(display, url.to_string());
-    }
-
-    #[test]
-    fn test_toolref_display_sui() {
         let package_address = sui::types::Address::from_static(
             "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         );
-        let module_name = sui::types::Identifier::from_static("my_tool_module");
         let tool_witness_id = sui::types::Address::from_static(
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
         );
-        let tool_ref = ToolRef::Sui {
+        let sui_ref = ToolRef::Sui {
+            _variant_name: ascii("Sui"),
             package_address,
-            module_name: module_name.clone(),
-            tool_witness_id,
+            module_name: ascii("my_tool_module"),
+            tool_witness_id: crate::move_bindings::sui_framework::object::ID::new(tool_witness_id),
         };
-        let display = format!("{}", tool_ref);
+        let (package, module, witness) = sui_ref.sui_parts().unwrap().unwrap();
+        assert_eq!(package, package_address);
+        assert_eq!(module, "my_tool_module");
+        assert_eq!(witness, tool_witness_id);
         assert_eq!(
-            display,
-            format!("{}::{}@{}", package_address, module_name, tool_witness_id)
+            sui_ref.to_string(),
+            format!("{package_address}::my_tool_module@{tool_witness_id}")
         );
-    }
-
-    #[test]
-    fn test_toolref_equality_and_hash() {
-        let url1 = reqwest::Url::parse("https://example.com/tool1").unwrap();
-        let url2 = reqwest::Url::parse("https://example.com/tool2").unwrap();
-        let ref1 = ToolRef::Http { url: url1.clone() };
-        let ref2 = ToolRef::Http { url: url2.clone() };
-        let mut set = HashSet::new();
-        set.insert(ref1.clone());
-        assert!(set.contains(&ref1));
-        assert!(!set.contains(&ref2));
-    }
-
-    #[test]
-    fn test_tool_partial_eq_and_hash() {
-        let id = sui_mocks::mock_sui_address();
-        let tool1 = Tool {
-            id,
-            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
-            reference: ToolRef::Http {
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-            },
-            description: "Tool 1".to_string(),
-            input_schema: serde_json::json!({ "type": "object" }),
-            output_schema: serde_json::json!({ "type": "object" }),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::Utc::now(),
-            unregistered_at: Some(chrono::Utc::now()),
-        };
-        let tool2 = Tool {
-            id,
-            fqn: fqn!("xyz.taluslabs.math.i64.add@1"),
-            reference: ToolRef::Http {
-                url: reqwest::Url::parse("https://example.com").unwrap(),
-            },
-            description: "Tool 1".to_string(),
-            input_schema: serde_json::json!({ "type": "object" }),
-            output_schema: serde_json::json!({ "type": "object" }),
-            workflow_authorization_cap_first: false,
-            registered_at: tool1.registered_at,
-            unregistered_at: tool1.unregistered_at,
-        };
-        assert_eq!(tool1, tool2);
-        let mut set = HashSet::new();
-        set.insert(tool1.clone());
-        assert!(set.contains(&tool2));
     }
 }

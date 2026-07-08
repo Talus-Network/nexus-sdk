@@ -7,7 +7,7 @@ use {
         nexus::{client::NexusClient, error::NexusError},
         sui,
         transactions::tool,
-        types::{derive_tool_gas_id, derive_tool_id, Tool},
+        types::Tool,
         ToolFqn,
     },
     std::time::Duration,
@@ -55,43 +55,15 @@ impl ToolActions {
         // Derive and fetch the Tool object.
         let tool_ref = self.client.fetch_tool_gas(tool_fqn).await?;
 
-        let mut tx = sui::tx::TransactionBuilder::new();
-
-        if let Err(e) = tool::update_tool_timeout(
-            &mut tx,
+        let tx = tool::update_tool_timeout_ptb(
             nexus_objects,
             &tool_ref,
             &owner_cap.object_ref(),
             new_timeout,
-        ) {
-            return Err(NexusError::TransactionBuilding(e));
-        }
+        )
+        .map_err(NexusError::TransactionBuilding)?;
 
-        let mut gas_coin = self.client.gas.acquire_gas_coin().await;
-
-        tx.set_sender(address);
-        tx.set_gas_budget(self.client.gas.get_budget());
-        tx.set_gas_price(self.client.reference_gas_price);
-
-        tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-            *gas_coin.object_id(),
-            gas_coin.version(),
-            *gas_coin.digest(),
-        )]);
-
-        let tx = tx
-            .try_build()
-            .map_err(|e| NexusError::TransactionBuilding(e.into()))?;
-
-        let signature = self.client.signer.sign_tx(&tx).await?;
-
-        let response = self
-            .client
-            .signer
-            .execute_tx(tx, signature, &mut gas_coin)
-            .await?;
-
-        self.client.gas.release_gas_coin(gas_coin).await;
+        let response = self.client.submit_transaction(tx, address).await?;
 
         Ok(UpdateToolTimeoutResult {
             tx_digest: response.digest,
@@ -101,8 +73,9 @@ impl ToolActions {
     /// Derive the Tool and ToolGas object IDs for `fqn` and probe the Tool
     /// object. Returns `exists: false` when neither object is present yet,
     /// and the full on-chain `Tool` record when both exist. The same shape
-    /// works for HTTP and Sui tools — discriminating between them is the
-    /// caller's job via [`Tool::reference`].
+    /// works for HTTP and Sui tools. Callers can inspect the generated
+    /// `Tool::r#ref` field or use [`ToolRef`](crate::types::ToolRef) helper
+    /// methods for ergonomic projections.
     ///
     /// Returns [`NexusError::Configuration`] when only one of Tool/ToolGas
     /// exists — that combination indicates corrupt registry state and
@@ -113,8 +86,10 @@ impl ToolActions {
         let tool_registry_id = *nexus_objects.tool_registry.object_id();
         let gas_service_id = *nexus_objects.gas_service.object_id();
 
-        let tool_id = derive_tool_id(tool_registry_id, fqn).map_err(NexusError::Parsing)?;
-        let tool_gas_id = derive_tool_gas_id(gas_service_id, fqn).map_err(NexusError::Parsing)?;
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, fqn)
+            .map_err(NexusError::Parsing)?;
+        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(gas_service_id, fqn)
+            .map_err(NexusError::Parsing)?;
 
         let tool_exists = crawler.get_object_metadata(tool_id).await.is_ok();
         let tool_gas_exists = crawler.get_object_metadata(tool_gas_id).await.is_ok();
@@ -159,6 +134,10 @@ mod tests {
         super::*,
         crate::{
             fqn,
+            move_bindings::{
+                move_std::{ascii, option::Option as MoveOption},
+                sui_framework,
+            },
             test_utils::{nexus_mocks, sui_mocks},
             types::ToolRef,
         },
@@ -178,10 +157,16 @@ mod tests {
         fn new() -> Self {
             let nexus_objects = sui_mocks::mock_nexus_objects();
             let fqn = fqn!("xyz.taluslabs.example@1");
-            let tool_id = derive_tool_id(*nexus_objects.tool_registry.object_id(), &fqn)
-                .expect("tool id derives");
-            let tool_gas_id = derive_tool_gas_id(*nexus_objects.gas_service.object_id(), &fqn)
-                .expect("tool gas id derives");
+            let tool_id = crate::move_bindings::derive_tool_id(
+                *nexus_objects.tool_registry.object_id(),
+                &fqn,
+            )
+            .expect("tool id derives");
+            let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
+                *nexus_objects.gas_service.object_id(),
+                &fqn,
+            )
+            .expect("tool gas id derives");
             Self {
                 nexus_objects,
                 fqn,
@@ -191,29 +176,48 @@ mod tests {
         }
     }
 
-    fn fixture_tool(
-        id: sui::types::Address,
-        fqn: crate::ToolFqn,
+    fn ascii(value: &str) -> ascii::String {
+        ascii::String::from(value)
+    }
+
+    fn sui_tool_ref(
         package_address: sui::types::Address,
         module_name: sui::types::Identifier,
         tool_witness_id: sui::types::Address,
+    ) -> ToolRef {
+        ToolRef::Sui {
+            _variant_name: ascii("Sui"),
+            package_address,
+            module_name: ascii(module_name.as_str()),
+            tool_witness_id: crate::move_bindings::sui_framework::object::ID::new(tool_witness_id),
+        }
+    }
+
+    fn fixture_tool(
+        fixture: &InspectionFixture,
+        reference: ToolRef,
         workflow_authorization_cap_first: bool,
     ) -> Tool {
         Tool {
-            id,
-            fqn,
-            reference: ToolRef::Sui {
-                package_address,
-                module_name,
-                tool_witness_id,
+            id: crate::move_bindings::sui_framework::object::UID::new(fixture.tool_id),
+            registry: crate::move_bindings::sui_framework::object::ID::new(
+                *fixture.nexus_objects.tool_registry.object_id(),
+            ),
+            fqn: ascii(&fixture.fqn.to_string()),
+            r#ref: reference,
+            description: b"demo".to_vec(),
+            input_schema: b"{}".to_vec(),
+            output_schema: b"{}".to_vec(),
+            verified: false,
+            vault: sui_framework::balance::Balance {
+                value: 0,
+                phantom_t0: std::marker::PhantomData,
             },
-            description: "demo".to_string(),
-            input_schema: serde_json::json!({}),
-            output_schema: serde_json::json!({}),
+            supported_verifier_methods: vec![],
             workflow_authorization_cap_first,
-            registered_at: chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
-                .expect("epoch datetime"),
-            unregistered_at: None,
+            lock_duration_ms: 0,
+            registered_at_ms: 0,
+            unregistered_at_ms: MoveOption::from(None),
         }
     }
 
@@ -315,14 +319,11 @@ mod tests {
             sui::types::Digest::from([4u8; 32]),
         );
         let tool = fixture_tool(
-            fixture.tool_id,
-            fixture.fqn.clone(),
-            package_address,
-            module_name.clone(),
-            tool_witness_id,
+            &fixture,
+            sui_tool_ref(package_address, module_name.clone(), tool_witness_id),
             true,
         );
-        let tool_json = serde_json::to_value(&tool).expect("Tool serializes to JSON");
+        let tool_bcs = bcs::to_bytes(&tool).expect("Tool serializes to BCS");
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -338,11 +339,11 @@ mod tests {
             sui::types::Owner::Shared(1),
             None,
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_json,
+            tool_bcs,
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -362,18 +363,14 @@ mod tests {
         assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
         let decoded = inspection.tool.expect("Tool decoded");
         assert!(decoded.workflow_authorization_cap_first);
-        match decoded.reference {
-            ToolRef::Sui {
-                package_address: p,
-                module_name: m,
-                tool_witness_id: w,
-            } => {
-                assert_eq!(p, package_address);
-                assert_eq!(m, module_name);
-                assert_eq!(w, tool_witness_id);
-            }
-            ToolRef::Http { .. } => panic!("expected Sui-variant tool"),
-        }
+        let Some((decoded_package, decoded_module, decoded_witness)) =
+            decoded.r#ref.sui_parts().expect("Sui tool ref decodes")
+        else {
+            panic!("expected Sui-variant tool");
+        };
+        assert_eq!(decoded_package, package_address);
+        assert_eq!(decoded_module, module_name.as_str());
+        assert_eq!(decoded_witness, tool_witness_id);
     }
 
     #[tokio::test]
@@ -435,21 +432,15 @@ mod tests {
             11,
             sui::types::Digest::from([8u8; 32]),
         );
-        let http_tool = Tool {
-            id: fixture.tool_id,
-            fqn: fixture.fqn.clone(),
-            reference: ToolRef::Http {
-                url: "https://example.com/tool".parse().expect("valid URL"),
+        let http_tool = fixture_tool(
+            &fixture,
+            ToolRef::Http {
+                _variant_name: ascii("Http"),
+                url: b"https://example.com/tool".to_vec(),
             },
-            description: "http tool".to_string(),
-            input_schema: serde_json::json!({}),
-            output_schema: serde_json::json!({}),
-            workflow_authorization_cap_first: false,
-            registered_at: chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
-                .expect("epoch datetime"),
-            unregistered_at: None,
-        };
-        let tool_json = serde_json::to_value(&http_tool).expect("Tool serializes to JSON");
+            false,
+        );
+        let tool_bcs = bcs::to_bytes(&http_tool).expect("Tool serializes to BCS");
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -465,11 +456,11 @@ mod tests {
             sui::types::Owner::Shared(1),
             None,
         );
-        sui_mocks::grpc::mock_get_object_json(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_json,
+            tool_bcs,
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -486,9 +477,10 @@ mod tests {
 
         assert!(inspection.exists);
         let decoded = inspection.tool.expect("Tool decoded");
-        // HTTP-variant tools surface their URL via Tool.reference rather
-        // than via the (now-removed) flattened decoded fields.
-        assert!(matches!(decoded.reference, ToolRef::Http { .. }));
+        assert_eq!(
+            decoded.r#ref.http_url_string().unwrap().unwrap().as_str(),
+            "https://example.com/tool"
+        );
     }
 
     #[tokio::test]

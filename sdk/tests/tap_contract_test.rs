@@ -1,39 +1,42 @@
-#![cfg(feature = "full")]
+#![cfg(all(feature = "full", feature = "test_utils"))]
 
 use {
     nexus_sdk::{
-        idents::{
-            interface::Agent,
-            primitives,
-            registry::{AgentRegistry as AgentRegistryIdent, AGENT_REGISTRY_MODULE},
-        },
-        sui,
-        transactions::tap as tap_tx,
-        types::{
+        move_bindings::{
             interface::{
                 agent::{
+                    self as agent_binding,
                     FixedTool,
                     SkillDagBinding,
                     SkillRecurrenceKind,
                     SkillRequirement,
                     SkillSchedulePolicy,
                 },
-                payment::{
-                    ExecutionPayment,
-                    ExecutionPaymentFinalState,
-                    PaymentSourceKind,
-                    SkillPaymentPolicy,
-                },
+                graph::RuntimeVertex,
+                payment::{self as payment_binding, PaymentSourceKind, SkillPaymentPolicy},
                 version::InterfaceVersion,
             },
-            registry::agent_registry::{AgentRecord, DefaultDagExecutor, SkillRecord},
+            primitives::event as event_binding,
+            registry::agent_registry::{
+                self as agent_registry_binding,
+                AgentRecord,
+                DefaultDagExecutor,
+                SkillRecord,
+            },
+            struct_tag,
+            sui_framework::table::Table as MoveTable,
+            workflow::{
+                execution_events::RequestWalkExecutionEvent,
+                execution_submission as execution_submission_binding,
+            },
+        },
+        sui,
+        test_utils::ptb as move_boundary,
+        types::{
             resolve_active_tap_skill_revision,
-            workflow::execution_events::RequestWalkExecutionEvent,
             AgentRegistrySnapshot,
             DefaultDagExecutorTarget,
-            MoveTable,
             NexusObjects,
-            RuntimeVertex,
             SkillConfig,
             SkillRecordContext,
             SkillRevisionContext,
@@ -41,9 +44,153 @@ use {
             SkillRevisionLookupKey,
         },
     },
-    serde_json::json,
     std::{path::PathBuf, str::FromStr},
 };
+
+fn generated_target(
+    objects: &NexusObjects,
+    target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
+) -> sui_move_call::CallTarget {
+    let tx = move_boundary::ptb(objects, |tx| {
+        tx.call_target(target, vec![])?;
+        Ok(())
+    })
+    .expect("generated target is valid");
+    let Some(sui::types::Command::MoveCall(call)) = tx.commands.first() else {
+        panic!("expected generated target move call");
+    };
+    sui_move_call::CallTarget {
+        package: call.package,
+        module: call.module.clone(),
+        function: call.function.clone(),
+        type_arguments: call.type_arguments.clone(),
+    }
+}
+
+fn generated_function(
+    objects: &NexusObjects,
+    target: impl FnOnce() -> Result<sui_move_call::CallTarget, sui_move_call::CallSpecError>,
+) -> sui::types::Identifier {
+    generated_target(objects, target).function
+}
+
+fn append_standard_runtime_worksheet(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    leader_cap: sui::types::Argument,
+    walk_index: u64,
+) -> anyhow::Result<sui::types::Argument> {
+    let agent_registry_ref = tx.objects().agent_registry.clone();
+    let leader_registry_ref = tx.objects().leader_registry.clone();
+    let agent_registry = tx.shared_object(&agent_registry_ref, false)?;
+    let leader_registry = tx.shared_object(&leader_registry_ref, false)?;
+    let walk_index = tx.arg(&walk_index)?;
+    let clock = tx.clock()?;
+
+    tx.call_target(
+        execution_submission_binding::prepare_tool_result_submission_worksheet_target,
+        vec![
+            dag,
+            agent_registry,
+            leader_registry,
+            execution,
+            leader_cap,
+            walk_index,
+            clock,
+        ],
+    )
+}
+
+fn tap_agent_registry_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    mutable: bool,
+) -> anyhow::Result<sui::types::Argument> {
+    let registry_ref = tx.objects().agent_registry.clone();
+    Ok(tx.shared_object(&registry_ref, mutable)?)
+}
+
+fn tap_payment_policy_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    payment_policy: &SkillPaymentPolicy,
+) -> anyhow::Result<sui::types::Argument> {
+    match payment_policy {
+        SkillPaymentPolicy::UserFunded => {
+            tx.call_target(payment_binding::payment_policy_user_funded_target, vec![])
+        }
+        SkillPaymentPolicy::AgentFunded { max_budget } => {
+            let max_budget = tx.arg(max_budget)?;
+            tx.call_target(
+                payment_binding::payment_policy_agent_funded_target,
+                vec![max_budget],
+            )
+        }
+    }
+}
+
+fn tap_schedule_policy_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    schedule_policy: &SkillSchedulePolicy,
+) -> anyhow::Result<sui::types::Argument> {
+    let recurrence = match &schedule_policy.recurrence {
+        SkillRecurrenceKind::Once => {
+            tx.call_target(agent_binding::recurrence_once_target, vec![])?
+        }
+        SkillRecurrenceKind::Recursive {
+            min_interval_ms,
+            max_occurrences,
+        } => {
+            let min_interval_ms = tx.arg(min_interval_ms)?;
+            let max_occurrences = match max_occurrences.as_option() {
+                Some(value) => {
+                    let value = tx.arg(value)?;
+                    tx.option::<u64>(Some(value))?
+                }
+                None => tx.option::<u64>(None)?,
+            };
+            tx.call_target(
+                agent_binding::recurrence_recursive_target,
+                vec![min_interval_ms, max_occurrences],
+            )?
+        }
+    };
+    let allow_recursive = tx.arg(&schedule_policy.allow_recursive)?;
+
+    tx.call_target(
+        agent_binding::schedule_policy_target,
+        vec![recurrence, allow_recursive],
+    )
+}
+
+fn append_tap_register_skill(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    registry: sui::types::Argument,
+    agent: sui::types::Argument,
+    dag_id: sui::types::Address,
+    description: Vec<u8>,
+    input_commitment: Vec<u8>,
+    payment_policy: &SkillPaymentPolicy,
+    schedule_policy: &SkillSchedulePolicy,
+) -> anyhow::Result<sui::types::Argument> {
+    let payment_policy = tap_payment_policy_arg(tx, payment_policy)?;
+    let schedule_policy = tap_schedule_policy_arg(tx, schedule_policy)?;
+    let dag_id = tx.arg(&dag_id)?;
+    let description = tx.arg(&description)?;
+    let input_commitment = tx.arg(&input_commitment)?;
+
+    tx.call_target(
+        agent_registry_binding::register_skill_target,
+        vec![
+            registry,
+            agent,
+            dag_id,
+            description,
+            input_commitment,
+            payment_policy,
+            schedule_policy,
+        ],
+    )
+}
 
 fn addr(value: &str) -> sui::types::Address {
     sui::types::Address::from_str(value).expect("valid address")
@@ -57,12 +204,12 @@ fn object_ref(id: &str, version: u64, digest_byte: u8) -> sui::types::ObjectRefe
     )
 }
 
-fn object_id(address: sui::types::Address) -> nexus_sdk::types::sui_framework::object::ID {
-    nexus_sdk::types::sui_address_to_id(address)
+fn object_id(address: sui::types::Address) -> nexus_sdk::move_bindings::sui_framework::object::ID {
+    nexus_sdk::move_bindings::sui_framework::object::ID::new(address)
 }
 
-fn interface_version(inner: u64) -> nexus_sdk::types::interface::version::InterfaceVersion {
-    nexus_sdk::types::interface::version::InterfaceVersion { inner }
+fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version::InterfaceVersion {
+    nexus_sdk::move_bindings::interface::version::InterfaceVersion { inner }
 }
 
 fn nexus_objects() -> NexusObjects {
@@ -135,7 +282,7 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
         }],
         skills: vec![skill(agent_id, skill_id, active_revision)],
         default_executor: Some(DefaultDagExecutor {
-            agent: nexus_sdk::types::interface::agent::Agent::from_ids(
+            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_ids(
                 agent_id,
                 1,
                 Some(addr("0x91")),
@@ -145,46 +292,18 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
     }
 }
 
-fn finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::types::Transaction {
-    let gas = object_ref("0xf1", 1, 9);
-
-    tx.set_sender(addr("0xf2"));
-    tx.set_gas_budget(1000);
-    tx.set_gas_price(1000);
-    tx.add_gas_objects(vec![sui::tx::ObjectInput::owned(
-        *gas.object_id(),
-        gas.version(),
-        *gas.digest(),
-    )]);
-
-    tx.try_build().expect("transaction builds")
-}
-
-fn move_call(tx: &sui::types::Transaction, index: usize) -> &sui::types::MoveCall {
-    let sui::types::TransactionKind::ProgrammableTransaction(sui::types::ProgrammableTransaction {
-        commands,
-        ..
-    }) = &tx.kind
-    else {
-        panic!("expected programmable transaction");
-    };
-
-    match commands.get(index) {
+fn expect_command_call(
+    tx: &sui::types::ProgrammableTransaction,
+    index: usize,
+) -> &sui::types::MoveCall {
+    match tx.commands.get(index) {
         Some(sui::types::Command::MoveCall(call)) => call,
         other => panic!("expected move call at {index}, got {other:?}"),
     }
 }
 
-fn move_calls(tx: &sui::types::Transaction) -> Vec<&sui::types::MoveCall> {
-    let sui::types::TransactionKind::ProgrammableTransaction(sui::types::ProgrammableTransaction {
-        commands,
-        ..
-    }) = &tx.kind
-    else {
-        panic!("expected programmable transaction");
-    };
-
-    commands
+fn move_calls(tx: &sui::types::ProgrammableTransaction) -> Vec<&sui::types::MoveCall> {
+    tx.commands
         .iter()
         .filter_map(|command| match command {
             sui::types::Command::MoveCall(call) => Some(call),
@@ -194,16 +313,19 @@ fn move_calls(tx: &sui::types::Transaction) -> Vec<&sui::types::MoveCall> {
 }
 
 fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::types::Event {
+    let wrapper_template =
+        struct_tag::<event_binding::EventWrapper<RequestWalkExecutionEvent>>(objects);
+    let wrapper = sui::types::StructTag::new(
+        *wrapper_template.address(),
+        wrapper_template.module().clone(),
+        wrapper_template.name().clone(),
+        vec![sui::types::TypeTag::Struct(Box::new(inner))],
+    );
     sui::types::Event {
         package_id: objects.primitives_pkg_id,
-        module: primitives::Event::EVENT_WRAPPER.module,
+        module: wrapper.module().clone(),
         sender: addr("0xf3"),
-        type_: sui::types::StructTag::new(
-            objects.primitives_pkg_id,
-            primitives::Event::EVENT_WRAPPER.module,
-            primitives::Event::EVENT_WRAPPER.name,
-            vec![sui::types::TypeTag::Struct(Box::new(inner))],
-        ),
+        type_: wrapper,
         contents: vec![],
     }
 }
@@ -283,8 +405,10 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
         agent_id: object_id(addr("0xa1")),
         skill_id: 177,
         interface_version: interface_version(7),
-        scheduled_task_id: nexus_sdk::types::MoveOption(None),
-        scheduled_occurrence_index: nexus_sdk::types::MoveOption(None),
+        scheduled_task_id: nexus_sdk::move_bindings::move_std::option::Option::from_option(None),
+        scheduled_occurrence_index: nexus_sdk::move_bindings::move_std::option::Option::from_option(
+            None,
+        ),
     }
 }
 
@@ -304,37 +428,6 @@ fn request_walk_context_uses_required_agent_fields() {
 }
 
 #[test]
-fn request_walk_context_deserializes_move_option_fields() {
-    let event: RequestWalkExecutionEvent = serde_json::from_value(serde_json::json!({
-        "dag": "0x51",
-        "execution": "0x52",
-        "invoker": "0x53",
-        "walk_index": 0,
-        "next_vertex": { "Plain": { "vertex": { "name": "entry" } } },
-        "evaluations": "0x54",
-        "worksheet_from_type": { "name": "0x2::legacy::Witness" },
-        "worksheet_from_uid": "0x55",
-        "agent_id": "0xa1",
-        "skill_id": "177",
-        "interface_version": 7,
-        "scheduled_task_id": { "vec": ["0x66"] },
-        "scheduled_occurrence_index": { "vec": ["3"] }
-    }))
-    .expect("event should deserialize");
-
-    let context = event
-        .to_context()
-        .expect("complete context should parse")
-        .expect("standard context should be present");
-
-    assert_eq!(context.agent_id, addr("0xa1"));
-    assert_eq!(context.skill_id, 177);
-    assert_eq!(context.interface_revision, InterfaceVersion::new(7));
-    assert_eq!(context.scheduled_task_id, Some(addr("0x66")));
-    assert_eq!(context.scheduled_occurrence_index, Some(3));
-}
-
-#[test]
 fn publish_artifact_preserves_skill_contract_without_endpoint_digest() {
     let config = SkillConfig {
         name: "weather".to_string(),
@@ -349,12 +442,6 @@ fn publish_artifact_preserves_skill_contract_without_endpoint_digest() {
     assert_eq!(artifact.dag_id, addr("0x24"));
     assert_eq!(artifact.interface_revision, InterfaceVersion::new(3));
     assert_eq!(artifact.requirements, config.requirements);
-
-    let value = serde_json::to_value(&artifact).expect("artifact json");
-    assert!(value.get("tap_package_id").is_none());
-    assert!(value.get("config_digest").is_none());
-    assert!(value.get("config_digest_hex").is_none());
-    assert!(value.get("shared_objects").is_none());
 }
 
 #[test]
@@ -378,71 +465,18 @@ fn registry_default_executor_requires_runtime_selected_binding() {
 }
 
 #[test]
-fn tap_execution_payment_model_matches_live_object_shape() {
-    let payment: ExecutionPayment = serde_json::from_value(json!({
-        "id": "0xaa",
-        "execution_id": "0xbb",
-        "agent_id": "0xcc",
-        "skill_id": "221",
-        "interface_revision": { "value": "7" },
-        "payment_policy": "UserFunded",
-        "source_kind": {
-            "AgentFunded": {
-                "agent_id": "0xcc"
-            }
-        },
-        "max_budget": "42",
-        "locked_budget": "40",
-        "consumed": "5",
-        "funds": { "value": "100" },
-        "final_state": "Accomplished",
-        "tool_cost_snapshot": { "contents": [] },
-        "locked_vertices": [],
-        "accomplished": true,
-        "refunded": false
-    }))
-    .expect("payment object should deserialize");
-
-    assert_eq!(payment.payment_id(), addr("0xaa"));
-    assert_eq!(payment.execution_id, addr("0xbb"));
-    assert_eq!(payment.skill_revision_key().agent_id, addr("0xcc"));
-    assert_eq!(payment.skill_revision_key().skill_id, 221);
-    assert_eq!(
-        payment.skill_revision_key().interface_revision,
-        InterfaceVersion::new(7)
-    );
-    assert_eq!(
-        payment.payment_policy,
-        nexus_sdk::types::interface::payment::SkillPaymentPolicy::UserFunded
-    );
-    assert_eq!(
-        payment.source_kind,
-        PaymentSourceKind::agent_funded(addr("0xcc"))
-    );
-    assert_eq!(
-        payment.final_state,
-        ExecutionPaymentFinalState::Accomplished
-    );
-    assert_eq!(payment.max_budget, 42);
-    assert_eq!(payment.locked_budget, 40);
-    assert_eq!(payment.consumed, 5);
-    assert!(payment.accomplished);
-    assert!(!payment.refunded);
-}
-
-#[test]
 fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
     let agent_id = addr("0xa");
     let payer = addr("0x1");
     let invoker_source =
-        nexus_sdk::types::tap_payment_source_for_invoker(payer).expect("invoker source");
+        nexus_sdk::types::payment_source_from_address(payer).expect("invoker source");
     let agent_vault_source =
-        nexus_sdk::types::tap_payment_source_for_agent_vault(agent_id).expect("agent vault source");
+        bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id)).expect("agent vault source");
 
-    let decoded_invoker =
-        PaymentSourceKind::from_bcs_bytes(&invoker_source).expect("typed invoker source decodes");
-    let decoded_vault =
-        PaymentSourceKind::from_bcs_bytes(&agent_vault_source).expect("typed vault source decodes");
+    let decoded_invoker = bcs::from_bytes::<PaymentSourceKind>(&invoker_source)
+        .expect("typed invoker source decodes");
+    let decoded_vault = bcs::from_bytes::<PaymentSourceKind>(&agent_vault_source)
+        .expect("typed vault source decodes");
     assert_eq!(decoded_invoker, PaymentSourceKind::user_funded(payer));
     assert_eq!(decoded_invoker.identity(), payer);
     assert_eq!(decoded_vault, PaymentSourceKind::agent_funded(agent_id));
@@ -511,7 +545,7 @@ fn standard_tap_events_are_nexus_events() {
         &objects,
         sui::types::StructTag::new(
             objects.registry_pkg_id,
-            AGENT_REGISTRY_MODULE,
+            struct_tag::<AgentRecord>(&objects).module().clone(),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
         ),
@@ -547,39 +581,46 @@ fn standard_tap_events_are_nexus_events() {
 #[test]
 fn transaction_builders_select_tap_functions() {
     let objects = nexus_objects();
-    let mut tx = sui::tx::TransactionBuilder::new();
-    let registry =
-        tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
+    let agent = object_ref("0xa1", 1, 0xa1);
+    let tx = move_boundary::ptb(&objects, |tx| {
+        let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
 
-    tap_tx::bootstrap_default_runtime_dag_skill_for_deployment(&mut tx, &objects, registry)
+        tx.call_target(
+            agent_registry_binding::bootstrap_default_runtime_dag_skill_for_deployment_target,
+            vec![registry],
+        )
         .expect("deployment bootstrap builder");
 
-    let registry =
-        tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
-    let requirements = requirements();
-    tap_tx::register_skill(
-        &mut tx,
-        &objects,
-        registry,
-        agent,
-        addr("0xd1"),
-        b"demo".to_vec(),
-        requirements.input_commitment,
-        requirements.payment_policy,
-        requirements.schedule_policy,
-    )
-    .expect("register skill builder");
+        let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
+        let agent = tx.shared_object(&agent, true)?;
+        let requirements = requirements();
+        append_tap_register_skill(
+            tx,
+            registry,
+            agent,
+            addr("0xd1"),
+            b"demo".to_vec(),
+            requirements.input_commitment,
+            &requirements.payment_policy,
+            &requirements.schedule_policy,
+        )
+        .expect("register skill builder");
 
-    let tx = finish_transaction(tx);
+        Ok(())
+    })
+    .expect("transaction should build");
     let calls = move_calls(&tx);
 
     assert!(calls.iter().any(|call| {
-        call.function == AgentRegistryIdent::BOOTSTRAP_DEFAULT_RUNTIME_DAG_SKILL_FOR_DEPLOYMENT.name
+        call.function
+            == generated_function(
+                &objects,
+                agent_registry_binding::bootstrap_default_runtime_dag_skill_for_deployment_target,
+            )
     }));
-    assert!(calls
-        .iter()
-        .any(|call| call.function == AgentRegistryIdent::REGISTER_SKILL.name));
+    assert!(calls.iter().any(|call| {
+        call.function == generated_function(&objects, agent_registry_binding::register_skill_target)
+    }));
     assert!(!calls
         .iter()
         .any(|call| call.function == sui::types::Identifier::from_static("worksheet")));
@@ -588,43 +629,61 @@ fn transaction_builders_select_tap_functions() {
 #[test]
 fn update_skill_compatibility_builds_dag_and_policy_calls() {
     let objects = nexus_objects();
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    let registry =
-        tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
-    tap_tx::update_dag(&mut tx, &objects, registry, agent, 177, addr("0xd2"))
+    let agent = object_ref("0xa1", 1, 0xa1);
+    let tx = move_boundary::ptb(&objects, |tx| {
+        let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
+        let agent_arg = tx.shared_object(&agent, true)?;
+        let skill_id = tx.arg(&177_u64)?;
+        let dag_id = tx.arg(&addr("0xd2"))?;
+        tx.call_target(
+            agent_registry_binding::update_dag_target,
+            vec![registry, agent_arg, skill_id, dag_id],
+        )
         .expect("update dag builder");
 
-    let registry =
-        tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("configured registry");
-    let agent = tx.object(sui::tx::ObjectInput::shared(addr("0xa1"), 1, true));
-    tap_tx::update_skill_policies(
-        &mut tx,
-        &objects,
-        registry,
-        agent,
-        177,
-        SkillPaymentPolicy::AgentFunded { max_budget: 100 },
-        SkillSchedulePolicy {
-            recurrence: SkillRecurrenceKind::Recursive {
-                min_interval_ms: 5000,
-                max_occurrences: nexus_sdk::types::MoveOption(Some(3)),
+        let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
+        let agent_arg = tx.shared_object(&agent, true)?;
+        let skill_id = tx.arg(&177_u64)?;
+        let payment_policy =
+            tap_payment_policy_arg(tx, &SkillPaymentPolicy::AgentFunded { max_budget: 100 })?;
+        let schedule_policy = tap_schedule_policy_arg(
+            tx,
+            &SkillSchedulePolicy {
+                recurrence: SkillRecurrenceKind::Recursive {
+                    min_interval_ms: 5000,
+                    max_occurrences:
+                        nexus_sdk::move_bindings::move_std::option::Option::from_option(Some(3)),
+                },
+                allow_recursive: true,
             },
-            allow_recursive: true,
-        },
-    )
-    .expect("update skill policies builder");
+        )?;
+        tx.call_target(
+            agent_registry_binding::update_skill_policies_target,
+            vec![
+                registry,
+                agent_arg,
+                skill_id,
+                payment_policy,
+                schedule_policy,
+            ],
+        )
+        .expect("update skill policies builder");
 
-    let tx = finish_transaction(tx);
+        Ok(())
+    })
+    .expect("transaction should build");
     let calls = move_calls(&tx);
 
-    assert!(calls
-        .iter()
-        .any(|call| call.function == AgentRegistryIdent::UPDATE_DAG.name));
-    assert!(calls
-        .iter()
-        .any(|call| call.function == AgentRegistryIdent::UPDATE_SKILL_POLICIES.name));
+    assert!(calls.iter().any(|call| {
+        call.function == generated_function(&objects, agent_registry_binding::update_dag_target)
+    }));
+    assert!(calls.iter().any(|call| {
+        call.function
+            == generated_function(
+                &objects,
+                agent_registry_binding::update_skill_policies_target,
+            )
+    }));
     assert!(!calls
         .iter()
         .any(|call| call.function.as_str() == "update_skill"));
@@ -634,6 +693,8 @@ fn update_skill_compatibility_builds_dag_and_policy_calls() {
 fn demo_tap_publish_and_bind_lifecycle_ptb() {
     let objects = nexus_objects();
     let dag_id = addr("0xd5");
+    let dag_ref = object_ref("0xd5", 1, 0xd5);
+    let execution_ref = object_ref("0xe1", 1, 0xe1);
     let config = SkillConfig {
         name: "demo_agent".to_string(),
         dag_path: PathBuf::from("demo-dag.json"),
@@ -642,34 +703,34 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
     };
     let artifact = nexus_sdk::types::TapPublishArtifact::from_config(&config, dag_id)
         .expect("publish artifact");
-    let mut tx = sui::tx::TransactionBuilder::new();
+    let tx = move_boundary::ptb(&objects, |tx| {
+        let registry = tap_agent_registry_arg(tx, true).expect("registry");
+        let agent_object = tx
+            .call_target(agent_registry_binding::create_agent_target, vec![registry])
+            .expect("create agent");
 
-    let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
-    let agent_object = tap_tx::create_agent(&mut tx, &objects, registry).expect("create agent");
+        let registry = tap_agent_registry_arg(tx, true).expect("registry");
+        append_tap_register_skill(
+            tx,
+            registry,
+            agent_object,
+            artifact.dag_id,
+            artifact.skill_name.as_bytes().to_vec(),
+            artifact.requirements.input_commitment.clone(),
+            &artifact.requirements.payment_policy,
+            &artifact.requirements.schedule_policy,
+        )
+        .expect("register skill");
 
-    let registry = tap_tx::agent_registry_arg(&mut tx, &objects, true).expect("registry");
-    tap_tx::register_skill(
-        &mut tx,
-        &objects,
-        registry,
-        agent_object,
-        artifact.dag_id,
-        artifact.skill_name.as_bytes().to_vec(),
-        artifact.requirements.input_commitment.clone(),
-        artifact.requirements.payment_policy.clone(),
-        artifact.requirements.schedule_policy.clone(),
-    )
-    .expect("register skill");
+        let dag = tx.shared_object(&dag_ref, false)?;
+        let execution = tx.shared_object(&execution_ref, true)?;
+        let leader_cap = tx.arg(&1_u64)?;
+        append_standard_runtime_worksheet(tx, dag, execution, leader_cap, 0)
+            .expect("workflow worksheet");
 
-    let dag = tx.object(sui::tx::ObjectInput::shared(dag_id, 1, false));
-    let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
-    let leader_cap = tx.pure(&1_u64);
-    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
-        &mut tx, &objects, dag, execution, leader_cap, 0,
-    )
-    .expect("workflow worksheet");
-
-    let tx = finish_transaction(tx);
+        Ok(())
+    })
+    .expect("transaction should build");
     let calls = move_calls(&tx);
     let find_call = |function: &sui::types::Identifier| {
         calls
@@ -678,43 +739,70 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
             .expect("expected lifecycle call")
     };
 
-    let create_agent = find_call(&AgentRegistryIdent::CREATE_AGENT.name);
-    let register_skill = find_call(&AgentRegistryIdent::REGISTER_SKILL.name);
-    let worksheet = find_call(
-        &nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
-            .name,
-    );
+    let create_agent = find_call(&generated_function(
+        &objects,
+        agent_registry_binding::create_agent_target,
+    ));
+    let register_skill = find_call(&generated_function(
+        &objects,
+        agent_registry_binding::register_skill_target,
+    ));
+    let worksheet = find_call(&generated_function(
+        &objects,
+        execution_submission_binding::prepare_tool_result_submission_worksheet_target,
+    ));
 
     assert!(create_agent < register_skill);
     assert!(register_skill < worksheet);
     assert_eq!(
-        move_call(&tx, worksheet).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
-            .name
+        calls[worksheet].function,
+        generated_function(
+            &objects,
+            execution_submission_binding::prepare_tool_result_submission_worksheet_target,
+        )
     );
 }
 
 #[test]
 fn agent_payment_vault_builders_target_tap_functions() {
     let objects = nexus_objects();
-    let mut tx = sui::tx::TransactionBuilder::new();
-    let registry = tap_tx::agent_registry_arg(&mut tx, &objects, false).expect("registry");
-    let agent = tx.pure(&1_u64);
-    let coin = tx.pure(&2_u64);
+    let tx = move_boundary::ptb(&objects, |tx| {
+        let registry = tap_agent_registry_arg(tx, false).expect("registry");
+        let agent = tx.arg(&1_u64)?;
+        let coin = tx.arg(&2_u64)?;
 
-    tap_tx::deposit_agent_payment_vault(&mut tx, &objects, agent, coin);
-    tap_tx::withdraw_agent_payment_vault(&mut tx, &objects, registry, agent, 25)
+        tx.call_target(
+            agent_binding::deposit_agent_payment_vault_target,
+            vec![agent, coin],
+        )
+        .expect("deposit vault");
+        let amount = tx.arg(&25_u64)?;
+        tx.call_target(
+            agent_registry_binding::withdraw_agent_payment_vault_target,
+            vec![registry, agent, amount],
+        )
         .expect("withdraw vault");
 
-    let tx = finish_transaction(tx);
+        Ok(())
+    })
+    .expect("transaction should build");
     let calls = move_calls(&tx);
     let deposit = calls
         .iter()
-        .find(|call| call.function == Agent::DEPOSIT_AGENT_PAYMENT_VAULT.name)
+        .find(|call| {
+            call.function
+                == generated_function(&objects, agent_binding::deposit_agent_payment_vault_target)
+        })
         .expect("deposit vault call");
     let withdraw = calls
         .iter()
-        .find(|call| call.function == Agent::WITHDRAW_AGENT_PAYMENT_VAULT.name)
+        .find(|call| {
+            call.function
+                == generated_function(
+                    &objects,
+                    agent_registry_binding::withdraw_agent_payment_vault_target,
+                )
+        })
         .expect("withdraw vault call");
 
     assert_eq!(deposit.package, objects.interface_pkg_id);
@@ -779,20 +867,24 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
 #[test]
 fn transaction_builders_select_standard_runtime_worksheet_functions() {
     let objects = nexus_objects();
-    let mut tx = sui::tx::TransactionBuilder::new();
-    let dag = tx.object(sui::tx::ObjectInput::shared(addr("0xd1"), 1, false));
-    let execution = tx.object(sui::tx::ObjectInput::shared(addr("0xe1"), 1, true));
-    let leader_cap = tx.pure(&1_u64);
+    let dag_ref = object_ref("0xd1", 1, 0xd1);
+    let execution_ref = object_ref("0xe1", 1, 0xe1);
+    let tx = move_boundary::ptb(&objects, |tx| {
+        let dag = tx.shared_object(&dag_ref, false)?;
+        let execution = tx.shared_object(&execution_ref, true)?;
+        let leader_cap = tx.arg(&1_u64)?;
 
-    nexus_sdk::transactions::dag::prepare_tool_result_submission_worksheet(
-        &mut tx, &objects, dag, execution, leader_cap, 7,
-    )
-    .expect("workflow worksheet builder");
+        append_standard_runtime_worksheet(tx, dag, execution, leader_cap, 7)
+            .expect("workflow worksheet builder");
 
-    let tx = finish_transaction(tx);
+        Ok(())
+    })
+    .expect("transaction should build");
     assert_eq!(
-        move_call(&tx, 0).function,
-        nexus_sdk::idents::workflow::ExecutionSubmission::PREPARE_TOOL_RESULT_SUBMISSION_WORKSHEET
-            .name
+        expect_command_call(&tx, 0).function,
+        generated_function(
+            &objects,
+            execution_submission_binding::prepare_tool_result_submission_worksheet_target,
+        )
     );
 }

@@ -1,23 +1,33 @@
 //! [`NexusObjects`] struct is holding the Nexus object IDs and refs that are
 //! generated during Nexus package deployment.
-#[cfg(not(feature = "sui_idents"))]
-use super::DefaultDagExecutorTarget;
-#[cfg(feature = "sui_idents")]
-use super::{primitives::policy::Symbol as PolicySymbol, DefaultDagExecutorTarget, TypeName};
-#[cfg(all(test, feature = "sui_idents"))]
-use crate::idents::primitives;
-#[cfg(all(test, feature = "sui_idents"))]
-use crate::idents::registry;
-#[cfg(all(test, feature = "sui_idents"))]
-use crate::idents::workflow;
-#[cfg(feature = "sui_idents")]
-use crate::idents::{interface, scheduler, tap, ModuleAndNameIdent};
-use {
-    crate::sui,
-    serde::{Deserialize, Serialize},
-    std::sync::Arc,
-    tokio::sync::Mutex,
+#[cfg(test)]
+use crate::move_bindings::{
+    primitives::event as event_move,
+    registry::agent_registry as agent_registry_move,
+    workflow::execution as execution_move,
 };
+use {
+    crate::{
+        move_bindings::{
+            interface::{
+                agent as agent_move,
+                authorization as authorization_move,
+                dag as dag_move,
+                payment as payment_move,
+                version as version_move,
+            },
+            move_std::type_name::TypeName,
+            primitives::policy::Symbol as PolicySymbol,
+            scheduler::scheduler as scheduler_move,
+        },
+        sui,
+        types::DefaultDagExecutorTarget,
+    },
+    serde::{Deserialize, Serialize},
+    sui_move::MoveStruct,
+};
+#[cfg(feature = "nexus")]
+use {std::sync::Arc, tokio::sync::Mutex};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
@@ -101,6 +111,7 @@ impl NexusObjects {
     ///
     /// If no upgrade has occurred (i.e. the type origins point to the same
     /// address as `workflow_pkg_id`), `workflow_original_pkg_id` remains `None`.
+    #[cfg(feature = "nexus")]
     pub async fn resolve_workflow_original_pkg_id(
         &mut self,
         client: &Arc<Mutex<sui::grpc::Client>>,
@@ -151,6 +162,7 @@ impl NexusObjects {
     /// `type_origin_table` and set `scheduler_original_pkg_id`.
     ///
     /// If no upgrade has occurred, `scheduler_original_pkg_id` remains `None`.
+    #[cfg(feature = "nexus")]
     pub async fn resolve_scheduler_original_pkg_id(
         &mut self,
         client: &Arc<Mutex<sui::grpc::Client>>,
@@ -196,7 +208,6 @@ impl NexusObjects {
     }
 }
 
-#[cfg(feature = "sui_idents")]
 impl NexusObjects {
     /// Returns true when the event payload originates from a configured Nexus package.
     pub fn is_event_from_nexus(&self, event: &sui::types::Event) -> bool {
@@ -217,14 +228,15 @@ impl NexusObjects {
         }
 
         if *inner_tag.address() == self.interface_pkg_id
-            && matches!(
-                inner_tag.module(),
-                module if module == &tap::STANDARD_AGENT_MODULE
-                    || module == &tap::STANDARD_AUTHORIZATION_MODULE
-                    || module == &tap::STANDARD_PAYMENT_MODULE
-                    || module == &tap::INTERFACE_VERSION_MODULE
-                    || module == &interface::Dag::DAG.module
-            )
+            && (self.interface_module_matches::<agent_move::Agent>(inner_tag.module())
+                || self.interface_module_matches::<authorization_move::AgentVertexAuthorization>(
+                    inner_tag.module(),
+                )
+                || self
+                    .interface_module_matches::<payment_move::ExecutionPayment>(inner_tag.module())
+                || self
+                    .interface_module_matches::<version_move::InterfaceVersion>(inner_tag.module())
+                || self.interface_module_matches::<dag_move::DAG>(inner_tag.module()))
         {
             return true;
         }
@@ -234,46 +246,70 @@ impl NexusObjects {
 
     /// Fully-qualified Move type name for the queue generator witness.
     pub fn scheduler_queue_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol(&scheduler::Scheduler::QUEUE_GENERATOR_WITNESS)
+        self.sched_generator_symbol::<scheduler_move::QueueGeneratorWitness>()
     }
 
     /// Fully-qualified Move type name for the periodic generator witness.
     pub fn scheduler_periodic_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol(&scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS)
+        self.sched_generator_symbol::<scheduler_move::PeriodicGeneratorWitness>()
     }
 
     /// Returns true when the provided policy symbol references the queue generator witness.
     pub fn scheduler_matches_queue_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches(symbol, &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS)
+        self.generator_matches::<scheduler_move::QueueGeneratorWitness>(symbol)
     }
 
     /// Returns true when the provided policy symbol references the periodic generator witness.
     pub fn scheduler_matches_periodic_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches(symbol, &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS)
+        self.generator_matches::<scheduler_move::PeriodicGeneratorWitness>(symbol)
     }
 
-    fn sched_generator_symbol(&self, ident: &ModuleAndNameIdent) -> PolicySymbol {
-        PolicySymbol::witness(TypeName::new(
-            &ident.qualified_name(self.scheduler_type_origin_pkg_id()),
-        ))
+    fn sched_generator_symbol<T>(&self) -> PolicySymbol
+    where
+        T: MoveStruct,
+    {
+        PolicySymbol::witness(TypeName::new(&self.move_struct_type_name::<T>()))
     }
 
-    fn generator_matches(&self, symbol: &PolicySymbol, ident: &ModuleAndNameIdent) -> bool {
-        // Match against both original and current package addresses since
-        // on-chain type names could reference either after an upgrade.
-        let original = ident.qualified_name(self.scheduler_type_origin_pkg_id());
+    fn generator_matches<T>(&self, symbol: &PolicySymbol) -> bool
+    where
+        T: MoveStruct,
+    {
+        let original = self.move_struct_type_name::<T>();
         if symbol.matches_qualified_name(&original) {
             return true;
         }
         if self.scheduler_original_pkg_id.is_some() {
-            let current = ident.qualified_name(self.scheduler_pkg_id);
+            let current = self.move_struct_type_name_with_package::<T>(self.scheduler_pkg_id);
             return symbol.matches_qualified_name(&current);
         }
         false
     }
+
+    fn move_struct_type_name<T>(&self) -> String
+    where
+        T: MoveStruct,
+    {
+        crate::move_bindings::struct_type_name::<T>(self)
+    }
+
+    fn move_struct_type_name_with_package<T>(&self, package: sui::types::Address) -> String
+    where
+        T: MoveStruct,
+    {
+        crate::move_bindings::struct_type_name_with_package::<T>(self, package)
+    }
+
+    fn interface_module_matches<T>(&self, module: &sui::types::Identifier) -> bool
+    where
+        T: MoveStruct,
+    {
+        let tag = crate::move_bindings::struct_tag::<T>(self);
+        module == tag.module()
+    }
 }
 
-#[cfg(all(test, feature = "sui_idents"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -326,17 +362,30 @@ mod tests {
         }
     }
 
+    fn struct_tag_with_package<T>(
+        objects: &NexusObjects,
+        package: sui::types::Address,
+    ) -> sui::types::StructTag
+    where
+        T: MoveStruct,
+    {
+        crate::move_bindings::struct_tag_with_package::<T>(objects, package)
+    }
+
     fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::types::Event {
         let rng = &mut rand::thread_rng();
+        let wrapper = crate::move_bindings::struct_tag::<
+            event_move::EventWrapper<agent_move::AgentCreatedEvent>,
+        >(objects);
 
         sui::types::Event {
-            package_id: objects.primitives_pkg_id,
-            module: primitives::Event::EVENT_WRAPPER.module,
+            package_id: *wrapper.address(),
+            module: wrapper.module().clone(),
             sender: sui::types::Address::generate(rng),
             type_: sui::types::StructTag::new(
-                objects.primitives_pkg_id,
-                primitives::Event::EVENT_WRAPPER.module,
-                primitives::Event::EVENT_WRAPPER.name,
+                *wrapper.address(),
+                wrapper.module().clone(),
+                wrapper.name().clone(),
                 vec![sui::types::TypeTag::Struct(Box::new(inner))],
             ),
             contents: vec![],
@@ -350,48 +399,28 @@ mod tests {
 
         let workflow_event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
-                objects.workflow_pkg_id,
-                workflow::Execution::DAG_EXECUTION.module,
-                workflow::Execution::DAG_EXECUTION.name,
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(&objects),
         );
 
         assert!(objects.is_event_from_nexus(&workflow_event));
 
         let interface_dag_event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
-                objects.interface_pkg_id,
-                interface::Dag::DAG.module,
-                interface::Dag::DAG.name,
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<dag_move::DAG>(&objects),
         );
 
         assert!(objects.is_event_from_nexus(&interface_dag_event));
 
         let interface_tap_event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
-                objects.interface_pkg_id,
-                tap::STANDARD_AGENT_MODULE,
-                crate::idents::interface::Agent::AGENT_CREATED_EVENT.name,
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<agent_move::AgentCreatedEvent>(&objects),
         );
 
         assert!(objects.is_event_from_nexus(&interface_tap_event));
 
         let registry_tap_event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
-                objects.registry_pkg_id,
-                registry::AGENT_REGISTRY_MODULE,
-                crate::idents::registry::AgentRegistry::SKILL_REGISTERED_EVENT.name,
-                vec![],
-            ),
+            crate::move_bindings::struct_tag::<agent_registry_move::SkillRegisteredEvent>(&objects),
         );
 
         assert!(objects.is_event_from_nexus(&registry_tap_event));
@@ -444,16 +473,9 @@ mod tests {
     #[test]
     fn matches_scheduler_events() {
         let objects = sample_objects();
+        let task_tag = crate::move_bindings::struct_tag::<scheduler_move::Task>(&objects);
 
-        let scheduler_event = wrap_event(
-            &objects,
-            sui::types::StructTag::new(
-                objects.scheduler_pkg_id,
-                scheduler::Scheduler::TASK.module,
-                scheduler::Scheduler::TASK.name,
-                vec![],
-            ),
-        );
+        let scheduler_event = wrap_event(&objects, task_tag);
 
         assert!(objects.is_event_from_nexus(&scheduler_event));
     }
@@ -566,23 +588,16 @@ mod tests {
         // Event referencing the original package address should match.
         let event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
-                original,
-                workflow::Execution::DAG_EXECUTION.module,
-                workflow::Execution::DAG_EXECUTION.name,
-                vec![],
-            ),
+            struct_tag_with_package::<execution_move::DAGExecution>(&objects, original),
         );
         assert!(objects.is_event_from_nexus(&event));
 
         // Event referencing the current (upgraded) package should also match.
         let event = wrap_event(
             &objects,
-            sui::types::StructTag::new(
+            struct_tag_with_package::<execution_move::DAGExecution>(
+                &objects,
                 objects.workflow_pkg_id,
-                workflow::Execution::DAG_EXECUTION.module,
-                workflow::Execution::DAG_EXECUTION.name,
-                vec![],
             ),
         );
         assert!(objects.is_event_from_nexus(&event));
@@ -602,32 +617,36 @@ mod tests {
 
         // Symbols using the current (upgraded) package should also match.
         let current_queue = PolicySymbol::witness(TypeName::new(
-            &scheduler::Scheduler::QUEUE_GENERATOR_WITNESS.qualified_name(objects.scheduler_pkg_id),
+            &objects.move_struct_type_name_with_package::<scheduler_move::QueueGeneratorWitness>(
+                objects.scheduler_pkg_id,
+            ),
         ));
         assert!(objects.scheduler_matches_queue_generator(&current_queue));
 
         let current_periodic = PolicySymbol::witness(TypeName::new(
-            &scheduler::Scheduler::PERIODIC_GENERATOR_WITNESS
-                .qualified_name(objects.scheduler_pkg_id),
+            &objects
+                .move_struct_type_name_with_package::<scheduler_move::PeriodicGeneratorWitness>(
+                    objects.scheduler_pkg_id,
+                ),
         ));
         assert!(objects.scheduler_matches_periodic_generator(&current_periodic));
     }
 
     #[test]
-    fn serde_round_trip_without_upgrade() {
+    fn toml_round_trip_without_upgrade() {
         let objects = sample_objects();
-        let json = serde_json::to_string(&objects).unwrap();
-        assert!(!json.contains("workflow_original_pkg_id"));
-        let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
+        let encoded = toml::to_string(&objects).unwrap();
+        assert!(!encoded.contains("workflow_original_pkg_id"));
+        let deserialized: NexusObjects = toml::from_str(&encoded).unwrap();
         assert_eq!(deserialized, objects);
     }
 
     #[test]
-    fn serde_round_trip_with_upgrade() {
+    fn toml_round_trip_with_upgrade() {
         let objects = sample_objects_with_scheduler_upgrade();
-        let json = serde_json::to_string(&objects).unwrap();
-        assert!(json.contains("scheduler_original_pkg_id"));
-        let deserialized: NexusObjects = serde_json::from_str(&json).unwrap();
+        let encoded = toml::to_string(&objects).unwrap();
+        assert!(encoded.contains("scheduler_original_pkg_id"));
+        let deserialized: NexusObjects = toml::from_str(&encoded).unwrap();
         assert_eq!(deserialized, objects);
     }
 }
