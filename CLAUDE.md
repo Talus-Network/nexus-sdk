@@ -130,22 +130,28 @@ Key invariants:
 ### Regenerating the bindings
 
 Run this after the on chain Move in Nexus changes identifiers, signatures,
-functions, or datatypes. From the SDK workspace:
+functions, or datatypes. The command expects a Nexus `sui` directory whose
+`bin/target/objects.localnet.toml` already points at a published local
+deployment, plus a reachable Sui gRPC endpoint. From the SDK workspace:
 
 ```bash
 just sdk rebind {your_path_to_nexus_contracts}
 ```
 
-The wrapper delegates to `sdk/bin/regenerate_bindings.sh`. Internally it
-validates the required `cargo`, `python3`, and `sui` tools; resolves the
-supplied Nexus `sui` directory; starts a fresh local Sui environment when one
-is not reachable; publishes the Nexus Move packages; reads package ids from
-`bin/target/objects.localnet.toml`; appends the fixed framework packages
-`move_std=0x1` and `sui_framework=0x2`; runs the `regenerate_bindings` binary
-with `binding_codegen`; validates the refreshed JSON under
-`sdk/src/move_bindings/ir/`; and finally runs
-`cargo +stable check --all-features --package nexus-sdk` unless
-`NEXUS_BINDING_SDK_CHECK=0` is set.
+You can pass the gRPC endpoint as the second argument when it is not
+`http://127.0.0.1:9000`:
+
+```bash
+just sdk rebind {your_path_to_nexus_contracts} http://127.0.0.1:{grpc_port}
+```
+
+The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
+`binding_codegen` feature. The binary reads package ids from
+`bin/target/objects.localnet.toml`, appends the fixed framework packages
+`move_std=0x1` and `sui_framework=0x2`, fetches normalized package metadata
+over gRPC, and writes the refreshed JSON under `sdk/src/move_bindings/ir/`.
+The recipe does not start Sui, publish packages, or run `cargo check`; run the
+normal SDK checks after regeneration.
 
 The committed artifact to review is the JSON diff under
 `sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON
