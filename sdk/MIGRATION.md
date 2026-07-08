@@ -32,11 +32,11 @@ value. Old local mirror types are no longer the authority.
 ## Migration Order
 
 1. Replace imports from removed mirror modules with generated bindings.
-1. Rebuild TAP skill inputs around `TapPublishArtifact`.
-1. Replace endpoint revision flows with current skill update flows.
-1. Replace scheduled execution helpers with scheduled task APIs.
-1. Replace old payment source bytes with typed payment source helpers.
-1. Run SDK checks, then fix any remaining compile errors at the import boundary.
+2. Rebuild TAP skill inputs around `TapPublishArtifact`.
+3. Replace endpoint revision flows with current skill update flows.
+4. Replace scheduled execution helpers with scheduled task APIs.
+5. Replace old payment source bytes with typed payment source helpers.
+6. Run SDK checks, then fix any remaining compile errors at the import boundary.
 
 ## Import Map
 
@@ -220,10 +220,10 @@ just sdk test
 If compile errors remain, handle them in this order:
 
 1. Fix imports so Move types come from `move_bindings`.
-1. Replace old TAP artifact fields with `SkillRequirement`.
-1. Replace old schedule helpers with task creation.
-1. Replace manual payment bytes with `PaymentSourceKind`.
-1. Recheck workflow result calls against the split result flow.
+2. Replace old TAP artifact fields with `SkillRequirement`.
+3. Replace old schedule helpers with task creation.
+4. Replace manual payment bytes with `PaymentSourceKind`.
+5. Recheck workflow result calls against the split result flow.
 
 ## References
 
