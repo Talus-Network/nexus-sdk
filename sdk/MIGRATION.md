@@ -218,13 +218,15 @@ just sdk rebind \
   ../nexus/sui
 ```
 
-The source tree only supplies parameter names. Package addresses, signatures, types, and abilities
-still come from the selected network package. Source names are trusted metadata and are not proof
-that the local source produced the published bytecode.
+The source tree only supplies parameter names. Signatures, types, and abilities still come from the
+selected network package. Source names are trusted metadata and are not proof that the local source
+produced the published bytecode.
 
-The generated IR is bound to the selected deployment and preserves its package IDs. Rebinding
-against a fresh localnet therefore changes those IDs. Commit IR generated from the stable deployment
-that the SDK release targets.
+Before writing the committed IR, regeneration replaces current and original Nexus package IDs with
+stable SDK binding slots. This includes package IDs in cross package type references, so rebinding
+the same ABI from another deployment produces the same canonical IR. The package object version is
+also normalized because the renderer does not consume it. Runtime `NexusObjects` supplies current
+package IDs for calls and original package IDs for type identity.
 
 ## Checks
 

@@ -20,12 +20,13 @@ use {
 
 const DEFAULT_GRPC_URL: &str = "http://127.0.0.1:9000";
 const IR_DIR: &str = "src/move_bindings/ir";
-const NEXUS_PACKAGES: &[&str] = &[
-    "primitives",
-    "interface",
-    "registry",
-    "workflow",
-    "scheduler",
+const CANONICAL_PACKAGE_VERSION: u64 = 1;
+const NEXUS_PACKAGES: &[(&str, &str)] = &[
+    ("primitives", "0xa1"),
+    ("interface", "0xa2"),
+    ("registry", "0xa3"),
+    ("workflow", "0xa4"),
+    ("scheduler", "0xa5"),
 ];
 const FRAMEWORK_PACKAGES: &[(&str, &str)] = &[("move_std", "0x1"), ("sui_framework", "0x2")];
 
@@ -42,18 +43,24 @@ async fn main() -> Result<()> {
 }
 
 async fn regenerate(inputs: Inputs) -> Result<()> {
-    let packages = packages_from_objects_file(&inputs.objects_file)?;
+    let package_ids = packages_from_objects_file(&inputs.objects_file)?;
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
     fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
 
     let mut client = GrpcClient::new(&inputs.grpc_url)
         .map_err(|err| anyhow!("gRPC client for {}: {err}", inputs.grpc_url))?;
 
-    for (name, package_id) in packages {
+    let mut packages = Vec::with_capacity(package_ids.len());
+    for (name, package_id) in package_ids {
         let mut package = fetch_package(&mut client, package_id)
             .await
             .with_context(|| format!("fetch {name} ({package_id})"))?;
         apply_source_names(&mut package, &name, inputs.source_root.as_deref())?;
+        packages.push((name, package));
+    }
+
+    canonicalize_sdk_ir(&mut packages);
+    for (name, package) in packages {
         let module_count = package.modules.len();
         let path = write_package_ir(&out_dir, &name, &package)?;
         println!("wrote {} ({} modules)", path.display(), module_count);
@@ -75,7 +82,7 @@ fn apply_source_names(
     }
 
     let source_dir = source_root.join(package_name).join("sources");
-    if NEXUS_PACKAGES.contains(&package_name) && !source_dir.is_dir() {
+    if NEXUS_PACKAGES.iter().any(|(name, _)| *name == package_name) && !source_dir.is_dir() {
         bail!(
             "source directory for {package_name} does not exist: {}",
             source_dir.display()
@@ -83,6 +90,28 @@ fn apply_source_names(
     }
     apply_function_parameter_names_from_sources(package, &source_dir)
         .with_context(|| format!("apply parameter names from {}", source_dir.display()))
+}
+
+fn canonicalize_sdk_ir(packages: &mut [(String, NormalizedPackage)]) {
+    let mut replacements = Vec::new();
+    for (name, package) in packages.iter_mut() {
+        package.version = CANONICAL_PACKAGE_VERSION;
+        let Some((_, canonical_id)) = NEXUS_PACKAGES
+            .iter()
+            .find(|(package_name, _)| package_name == name)
+        else {
+            continue;
+        };
+
+        replacements.push((package.storage_id.clone(), (*canonical_id).to_string()));
+        if let Some(original_id) = &package.original_id {
+            replacements.push((original_id.clone(), (*canonical_id).to_string()));
+        }
+    }
+
+    for (_, package) in packages {
+        package.replace_addresses(&replacements);
+    }
 }
 
 impl Inputs {
@@ -149,7 +178,7 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
     }
 
     let mut packages = Vec::new();
-    for package in NEXUS_PACKAGES {
+    for (package, _) in NEXUS_PACKAGES {
         let id = ids
             .get(*package)
             .ok_or_else(|| anyhow!("{source} is missing {package}_pkg_id"))?;
@@ -332,6 +361,64 @@ mod tests {
             .modules
             .contains_key("module_that_sdk_used_to_filter"));
         assert_eq!(decoded.modules["m"].functions[0].name, "keep_me");
+    }
+
+    #[test]
+    fn canonicalizes_same_abi_across_deployments() {
+        fn package(storage_id: &str, original_id: &str, dependency_id: &str) -> NormalizedPackage {
+            NormalizedPackage {
+                storage_id: storage_id.to_string(),
+                original_id: Some(original_id.to_string()),
+                version: 1,
+                modules: BTreeMap::from([(
+                    "m".to_string(),
+                    NormalizedModule {
+                        name: "m".to_string(),
+                        datatypes: vec![],
+                        functions: vec![Function {
+                            name: "use_dependency".to_string(),
+                            visibility: Visibility::Public,
+                            is_entry: true,
+                            type_parameters: vec![],
+                            parameters: vec![FunctionParam {
+                                name: "arg0".to_string(),
+                                ty: TypeRef::Datatype {
+                                    type_name: TypeName::parse(&format!("{dependency_id}::m::Obj"))
+                                        .unwrap(),
+                                    type_arguments: vec![],
+                                },
+                            }],
+                            return_types: vec![],
+                        }],
+                    },
+                )]),
+            }
+        }
+
+        let mut first = vec![
+            ("primitives".to_string(), package("0x11", "0x10", "0x20")),
+            ("interface".to_string(), package("0x21", "0x20", "0x10")),
+        ];
+        let mut second = vec![
+            ("primitives".to_string(), package("0x111", "0x110", "0x220")),
+            ("interface".to_string(), package("0x221", "0x220", "0x110")),
+        ];
+        second[0].1.version = 7;
+        second[1].1.version = 9;
+
+        canonicalize_sdk_ir(&mut first);
+        canonicalize_sdk_ir(&mut second);
+
+        assert_eq!(first, second);
+        assert_eq!(first[0].1.storage_id, "0xa1");
+        assert_eq!(first[0].1.original_id.as_deref(), Some("0xa1"));
+        assert_eq!(
+            first[0].1.modules["m"].functions[0].parameters[0].ty,
+            TypeRef::Datatype {
+                type_name: TypeName::parse("0xa2::m::Obj").unwrap(),
+                type_arguments: vec![],
+            }
+        );
     }
 
     #[test]

@@ -90,7 +90,7 @@ Sibling repos checked out next to this one (paths depend on local layout):
 ## Move binding
 
 The Move binding refresh is **not type only**. It refreshes the committed
-normalized package IR for each Nexus Move package and the fixed framework
+canonical package IR for each Nexus Move package and the fixed framework
 packages. The generated Rust surface in `sdk/src/move_bindings` is the ABI
 boundary for Move types, type tags, BCS and serde implementations, and typed
 call targets. Rust domain modules may add helpers on top, but they should not
@@ -100,7 +100,9 @@ How the pipeline fits together:
 
 - **Refresh half (on demand through `just sdk rebind`)**:
   `sdk/src/bin/regenerate_bindings.rs` fetches each package's normalized IR
-  through `sui_move_codegen::fetch_package` and writes committed JSON under
+  through `sui_move_codegen::fetch_package`, replaces concrete Nexus package
+  identities with stable SDK binding slots, normalizes the unused deployment
+  version, and writes committed JSON under
   `sdk/src/move_bindings/ir/<package>.json`. One file exists for `move_std`,
   `sui_framework`, `primitives`, `interface`, `registry`, `workflow`, and
   `scheduler`.
@@ -119,6 +121,11 @@ Key invariants:
 
 - Framework packages are scoped to their fixed addresses: `move_std` uses
   `0x1`, and `sui_framework` uses `0x2`.
+- Committed Nexus IR uses stable binding slots: `primitives` uses `0xa1`,
+  `interface` uses `0xa2`, `registry` uses `0xa3`, `workflow` uses `0xa4`, and
+  `scheduler` uses `0xa5`. These slots describe the canonical SDK package
+  graph and are not deployment package IDs. The unused package object version
+  is normalized to `1`.
 - Nexus package call targets use the current package ids from `NexusObjects`.
   Type identity uses the defining package id where Sui upgrades keep type tags
   pinned to the original package.
@@ -162,12 +169,16 @@ the supplied deployment manifest, appends the fixed framework packages
 gRPC, optionally overlays trusted source parameter names, and writes the
 refreshed JSON under `sdk/src/move_bindings/ir/`. Without a source root,
 parameter names remain deterministic `argN` values. Source input does not
-replace package identity, signatures, types, or abilities from the network.
+replace signatures, types, or abilities from the network.
 
-The output is deployment bound and preserves the selected package ids exactly.
-A fresh localnet therefore creates package id changes in the generated IR. The
-recipe does not start Sui, publish packages, or run `cargo check`; run the normal
-SDK checks after regeneration.
+Before writing, regeneration replaces every current and original Nexus package
+ID, including cross package type references, with its stable SDK binding slot.
+It also normalizes the package object version, which is not consumed by the
+renderer. The concrete deployment remains authoritative for the fetched ABI,
+while redeploying the same ABI does not change the committed IR. Runtime
+`NexusObjects` supplies current package IDs for calls and original package IDs
+for type identity. The recipe does not start Sui, publish packages, or run
+`cargo check`; run the normal SDK checks after regeneration.
 
 The committed artifact to review is the JSON diff under
 `sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON
