@@ -28,7 +28,6 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
-const FRAMEWORK_PACKAGES: &[(&str, &str)] = &[("move_std", "0x1"), ("sui_framework", "0x2")];
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
@@ -184,10 +183,6 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
             .ok_or_else(|| anyhow!("{source} is missing {package}_pkg_id"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
-    for (package, id) in FRAMEWORK_PACKAGES {
-        packages.push(((*package).to_string(), parse_address(id)?));
-    }
-
     Ok(packages)
 }
 
@@ -221,7 +216,7 @@ mod tests {
     };
 
     #[test]
-    fn parses_required_objects_and_framework_packages() {
+    fn parses_required_nexus_packages() {
         let objects = [
             r#"primitives_pkg_id = "0x11""#,
             r#"interface_pkg_id = "0x12""#,
@@ -241,11 +236,6 @@ mod tests {
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
-                ("move_std".to_string(), Address::from_str("0x1").unwrap()),
-                (
-                    "sui_framework".to_string(),
-                    Address::from_str("0x2").unwrap()
-                ),
             ]
         );
     }

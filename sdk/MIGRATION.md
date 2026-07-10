@@ -199,6 +199,10 @@ Generated bindings are built from committed normalized Move package IR under
 `sdk/src/move_bindings/ir/*.json`. Normal SDK builds render Rust bindings from
 that IR through `build.rs`.
 
+Normal regeneration refreshes the five Nexus package files and preserves the reduced Move standard
+library and Sui framework support IR. Update those framework files explicitly only when the pinned
+Sui version changes.
+
 Regenerate the IR only when the published Move ABI changes:
 
 ```sh
