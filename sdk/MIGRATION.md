@@ -202,11 +202,29 @@ that IR through `build.rs`.
 Regenerate the IR only when the published Move ABI changes:
 
 ```sh
-just sdk rebind ../nexus/sui http://127.0.0.1:9000
+just sdk rebind ../nexus/sui/bin/target/objects.localnet.toml http://127.0.0.1:9000
 ```
 
 This requires a published objects TOML and a running Sui gRPC endpoint. See the
 SDK just recipe for exact defaults [Rebind command].
+
+Sui package metadata does not contain function parameter names. The command therefore keeps the
+network derived `argN` names unless a matching Move source tree is provided explicitly:
+
+```sh
+just sdk rebind \
+  ../nexus/sui/bin/target/objects.localnet.toml \
+  http://127.0.0.1:9000 \
+  ../nexus/sui
+```
+
+The source tree only supplies parameter names. Package addresses, signatures, types, and abilities
+still come from the selected network package. Source names are trusted metadata and are not proof
+that the local source produced the published bytecode.
+
+The generated IR is bound to the selected deployment and preserves its package IDs. Rebinding
+against a fresh localnet therefore changes those IDs. Commit IR generated from the stable deployment
+that the SDK release targets.
 
 ## Checks
 

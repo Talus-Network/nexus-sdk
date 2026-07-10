@@ -130,28 +130,44 @@ Key invariants:
 ### Regenerating the bindings
 
 Run this after the on chain Move in Nexus changes identifiers, signatures,
-functions, or datatypes. The command expects a Nexus `sui` directory whose
-`bin/target/objects.localnet.toml` already points at a published local
-deployment, plus a reachable Sui gRPC endpoint. From the SDK workspace:
+functions, or datatypes. The command expects a deployment objects TOML plus a
+reachable Sui gRPC endpoint. From the SDK workspace:
 
 ```bash
-just sdk rebind {your_path_to_nexus_contracts}
+just sdk rebind {your_path_to_objects_toml}
 ```
 
 You can pass the gRPC endpoint as the second argument when it is not
 `http://127.0.0.1:9000`:
 
 ```bash
-just sdk rebind {your_path_to_nexus_contracts} http://127.0.0.1:{grpc_port}
+just sdk rebind {your_path_to_objects_toml} http://127.0.0.1:{grpc_port}
+```
+
+Network package metadata does not contain Move function parameter names. Pass
+a matching Move source root as the third argument when source names should be
+restored:
+
+```bash
+just sdk rebind \
+  {your_path_to_objects_toml} \
+  http://127.0.0.1:{grpc_port} \
+  {your_path_to_nexus_contracts}
 ```
 
 The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
 `binding_codegen` feature. The binary reads package ids from
-`bin/target/objects.localnet.toml`, appends the fixed framework packages
-`move_std=0x1` and `sui_framework=0x2`, fetches normalized package metadata
-over gRPC, and writes the refreshed JSON under `sdk/src/move_bindings/ir/`.
-The recipe does not start Sui, publish packages, or run `cargo check`; run the
-normal SDK checks after regeneration.
+the supplied deployment manifest, appends the fixed framework packages
+`move_std=0x1` and `sui_framework=0x2`, fetches normalized package metadata over
+gRPC, optionally overlays trusted source parameter names, and writes the
+refreshed JSON under `sdk/src/move_bindings/ir/`. Without a source root,
+parameter names remain deterministic `argN` values. Source input does not
+replace package identity, signatures, types, or abilities from the network.
+
+The output is deployment bound and preserves the selected package ids exactly.
+A fresh localnet therefore creates package id changes in the generated IR. The
+recipe does not start Sui, publish packages, or run `cargo check`; run the normal
+SDK checks after regeneration.
 
 The committed artifact to review is the JSON diff under
 `sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON

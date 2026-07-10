@@ -9292,7 +9292,7 @@ dependencies = [
 [[package]]
 name = "sui-move"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#2e61fa2885e89ab96fdb6b936c68e1a7a4cecba8"
 dependencies = [
  "bcs",
  "serde",
@@ -9330,7 +9330,7 @@ dependencies = [
 [[package]]
 name = "sui-move-call"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#2e61fa2885e89ab96fdb6b936c68e1a7a4cecba8"
 dependencies = [
  "bcs",
  "serde",
@@ -9342,7 +9342,7 @@ dependencies = [
 [[package]]
 name = "sui-move-codegen"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#2e61fa2885e89ab96fdb6b936c68e1a7a4cecba8"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -9358,7 +9358,7 @@ dependencies = [
 [[package]]
 name = "sui-move-derive"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#2e61fa2885e89ab96fdb6b936c68e1a7a4cecba8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9475,7 +9475,7 @@ dependencies = [
 [[package]]
 name = "sui-move-ptb"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#2e61fa2885e89ab96fdb6b936c68e1a7a4cecba8"
 dependencies = [
  "sui-move",
  "sui-move-call",
