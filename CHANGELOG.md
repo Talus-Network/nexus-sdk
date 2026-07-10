@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Move binding regeneration now accepts an optional matching Move source root for restoring
+  function parameter names. Network package metadata remains authoritative, and regeneration
+  without source keeps deterministic `argN` names.
+
 #### Changed
 
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID
@@ -50,9 +56,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Move binding regeneration now accepts an optional matching Move source root for restoring
-  function parameter names. Network package metadata remains authoritative, and regeneration
-  without source keeps deterministic `argN` names.
 - `WorkflowActions`/crawler support for fetching on-chain tool result state by execution and walk, returning finalized state through the generated `nexus_primitives::onchain_tool_result::OnchainToolResult` type plus the shared object reference.
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
