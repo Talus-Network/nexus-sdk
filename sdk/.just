@@ -20,10 +20,11 @@ check: _check-cargo
 test: _check-cargo
     cargo +stable test --all-features --package {{ package }}
 
-# Regenerate the committed Move binding IR (src/move_bindings/ir/*.json).
+# Regenerate the committed Nexus Move binding IR (src/move_bindings/ir/*.json).
 #
 # Requires a deployment objects TOML and a running Sui gRPC endpoint.
 # Set source_root to a matching Nexus Move source tree to restore source parameter names.
+# The reduced framework support IR files remain unchanged.
 # The wrapper does not start Sui or publish packages.
 #
 # The offline render happens automatically in build.rs on the next build.

@@ -90,22 +90,22 @@ Sibling repos checked out next to this one (paths depend on local layout):
 ## Move binding
 
 The Move binding refresh is **not type only**. It refreshes the committed
-canonical package IR for each Nexus Move package and the fixed framework
-packages. The generated Rust surface in `sdk/src/move_bindings` is the ABI
-boundary for Move types, type tags, BCS and serde implementations, and typed
-call targets. Rust domain modules may add helpers on top, but they should not
-duplicate Move ABI logic.
+canonical package IR for each Nexus Move package. The reduced framework support
+IR remains pinned to the SDK. The generated Rust surface in
+`sdk/src/move_bindings` is the ABI boundary for Move types, type tags, BCS and
+serde implementations, and typed call targets. Rust domain modules may add
+helpers on top, but they should not duplicate Move ABI logic.
 
 How the pipeline fits together:
 
 - **Refresh half (on demand through `just sdk rebind`)**:
-  `sdk/src/bin/regenerate_bindings.rs` fetches each package's normalized IR
+  `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR
   through `sui_move_codegen::fetch_package`, replaces concrete Nexus package
   identities with stable SDK binding slots, normalizes the unused deployment
   version, and writes committed JSON under
-  `sdk/src/move_bindings/ir/<package>.json`. One file exists for `move_std`,
-  `sui_framework`, `primitives`, `interface`, `registry`, `workflow`, and
-  `scheduler`.
+  `sdk/src/move_bindings/ir/<package>.json`. The reduced `move_std` and
+  `sui_framework` IR files remain unchanged and are rendered alongside the five
+  refreshed Nexus package files.
 - **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
   renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
   includes generated Move structs, enum variants, type tags, serde and BCS
@@ -121,6 +121,8 @@ Key invariants:
 
 - Framework packages are scoped to their fixed addresses: `move_std` uses
   `0x1`, and `sui_framework` uses `0x2`.
+- Normal Nexus regeneration does not rewrite framework IR. Update that support
+  surface explicitly only when the pinned Sui version changes.
 - Committed Nexus IR uses stable binding slots: `primitives` uses `0xa1`,
   `interface` uses `0xa2`, `registry` uses `0xa3`, `workflow` uses `0xa4`, and
   `scheduler` uses `0xa5`. These slots describe the canonical SDK package
@@ -164,11 +166,11 @@ just sdk rebind \
 
 The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
 `binding_codegen` feature. The binary reads package ids from
-the supplied deployment manifest, appends the fixed framework packages
-`move_std=0x1` and `sui_framework=0x2`, fetches normalized package metadata over
-gRPC, optionally overlays trusted source parameter names, and writes the
-refreshed JSON under `sdk/src/move_bindings/ir/`. Without a source root,
-parameter names remain deterministic `argN` values. Source input does not
+the supplied deployment manifest, fetches normalized Nexus package metadata
+over gRPC, optionally overlays trusted source parameter names, and writes the
+refreshed Nexus JSON under `sdk/src/move_bindings/ir/`. The reduced `move_std`
+and `sui_framework` IR files are not fetched or rewritten. Without a source
+root, parameter names remain deterministic `argN` values. Source input does not
 replace signatures, types, or abilities from the network.
 
 Before writing, regeneration replaces every current and original Nexus package
