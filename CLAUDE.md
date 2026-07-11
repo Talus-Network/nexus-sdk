@@ -90,20 +90,22 @@ Sibling repos checked out next to this one (paths depend on local layout):
 ## Move binding
 
 The Move binding refresh is **not type only**. It refreshes the committed
-normalized package IR for each Nexus Move package and the fixed framework
-packages. The generated Rust surface in `sdk/src/move_bindings` is the ABI
-boundary for Move types, type tags, BCS and serde implementations, and typed
-call targets. Rust domain modules may add helpers on top, but they should not
-duplicate Move ABI logic.
+canonical package IR for each Nexus Move package. The reduced framework support
+IR remains pinned to the SDK. The generated Rust surface in
+`sdk/src/move_bindings` is the ABI boundary for Move types, type tags, BCS and
+serde implementations, and typed call targets. Rust domain modules may add
+helpers on top, but they should not duplicate Move ABI logic.
 
 How the pipeline fits together:
 
 - **Refresh half (on demand through `just sdk rebind`)**:
-  `sdk/src/bin/regenerate_bindings.rs` fetches each package's normalized IR
-  through `sui_move_codegen::fetch_package` and writes committed JSON under
-  `sdk/src/move_bindings/ir/<package>.json`. One file exists for `move_std`,
-  `sui_framework`, `primitives`, `interface`, `registry`, `workflow`, and
-  `scheduler`.
+  `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR
+  through `sui_move_codegen::fetch_package`, replaces concrete Nexus package
+  identities with stable SDK binding slots, normalizes the unused deployment
+  version, and writes committed JSON under
+  `sdk/src/move_bindings/ir/<package>.json`. The reduced `move_std` and
+  `sui_framework` IR files remain unchanged and are rendered alongside the five
+  refreshed Nexus package files.
 - **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
   renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
   includes generated Move structs, enum variants, type tags, serde and BCS
@@ -119,6 +121,13 @@ Key invariants:
 
 - Framework packages are scoped to their fixed addresses: `move_std` uses
   `0x1`, and `sui_framework` uses `0x2`.
+- Normal Nexus regeneration does not rewrite framework IR. Update that support
+  surface explicitly only when the pinned Sui version changes.
+- Committed Nexus IR uses stable binding slots: `primitives` uses `0xa1`,
+  `interface` uses `0xa2`, `registry` uses `0xa3`, `workflow` uses `0xa4`, and
+  `scheduler` uses `0xa5`. These slots describe the canonical SDK package
+  graph and are not deployment package IDs. The unused package object version
+  is normalized to `1`.
 - Nexus package call targets use the current package ids from `NexusObjects`.
   Type identity uses the defining package id where Sui upgrades keep type tags
   pinned to the original package.
@@ -130,28 +139,48 @@ Key invariants:
 ### Regenerating the bindings
 
 Run this after the on chain Move in Nexus changes identifiers, signatures,
-functions, or datatypes. The command expects a Nexus `sui` directory whose
-`bin/target/objects.localnet.toml` already points at a published local
-deployment, plus a reachable Sui gRPC endpoint. From the SDK workspace:
+functions, or datatypes. The command expects a deployment objects TOML plus a
+reachable Sui gRPC endpoint. From the SDK workspace:
 
 ```bash
-just sdk rebind {your_path_to_nexus_contracts}
+just sdk rebind {your_path_to_objects_toml}
 ```
 
 You can pass the gRPC endpoint as the second argument when it is not
 `http://127.0.0.1:9000`:
 
 ```bash
-just sdk rebind {your_path_to_nexus_contracts} http://127.0.0.1:{grpc_port}
+just sdk rebind {your_path_to_objects_toml} http://127.0.0.1:{grpc_port}
+```
+
+Network package metadata does not contain Move function parameter names. Pass
+a matching Move source root as the third argument when source names should be
+restored:
+
+```bash
+just sdk rebind \
+  {your_path_to_objects_toml} \
+  http://127.0.0.1:{grpc_port} \
+  {your_path_to_nexus_contracts}
 ```
 
 The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
 `binding_codegen` feature. The binary reads package ids from
-`bin/target/objects.localnet.toml`, appends the fixed framework packages
-`move_std=0x1` and `sui_framework=0x2`, fetches normalized package metadata
-over gRPC, and writes the refreshed JSON under `sdk/src/move_bindings/ir/`.
-The recipe does not start Sui, publish packages, or run `cargo check`; run the
-normal SDK checks after regeneration.
+the supplied deployment manifest, fetches normalized Nexus package metadata
+over gRPC, optionally overlays trusted source parameter names, and writes the
+refreshed Nexus JSON under `sdk/src/move_bindings/ir/`. The reduced `move_std`
+and `sui_framework` IR files are not fetched or rewritten. Without a source
+root, parameter names remain deterministic `argN` values. Source input does not
+replace signatures, types, or abilities from the network.
+
+Before writing, regeneration replaces every current and original Nexus package
+ID, including cross package type references, with its stable SDK binding slot.
+It also normalizes the package object version, which is not consumed by the
+renderer. The concrete deployment remains authoritative for the fetched ABI,
+while redeploying the same ABI does not change the committed IR. Runtime
+`NexusObjects` supplies current package IDs for calls and original package IDs
+for type identity. The recipe does not start Sui, publish packages, or run
+`cargo check`; run the normal SDK checks after regeneration.
 
 The committed artifact to review is the JSON diff under
 `sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON

@@ -199,14 +199,38 @@ Generated bindings are built from committed normalized Move package IR under
 `sdk/src/move_bindings/ir/*.json`. Normal SDK builds render Rust bindings from
 that IR through `build.rs`.
 
+Normal regeneration refreshes the five Nexus package files and preserves the reduced Move standard
+library and Sui framework support IR. Update those framework files explicitly only when the pinned
+Sui version changes.
+
 Regenerate the IR only when the published Move ABI changes:
 
 ```sh
-just sdk rebind ../nexus/sui http://127.0.0.1:9000
+just sdk rebind ../nexus/sui/bin/target/objects.localnet.toml http://127.0.0.1:9000
 ```
 
 This requires a published objects TOML and a running Sui gRPC endpoint. See the
 SDK just recipe for exact defaults [Rebind command].
+
+Sui package metadata does not contain function parameter names. The command therefore keeps the
+network derived `argN` names unless a matching Move source tree is provided explicitly:
+
+```sh
+just sdk rebind \
+  ../nexus/sui/bin/target/objects.localnet.toml \
+  http://127.0.0.1:9000 \
+  ../nexus/sui
+```
+
+The source tree only supplies parameter names. Signatures, types, and abilities still come from the
+selected network package. Source names are trusted metadata and are not proof that the local source
+produced the published bytecode.
+
+Before writing the committed IR, regeneration replaces current and original Nexus package IDs with
+stable SDK binding slots. This includes package IDs in cross package type references, so rebinding
+the same ABI from another deployment produces the same canonical IR. The package object version is
+also normalized because the renderer does not consume it. Runtime `NexusObjects` supplies current
+package IDs for calls and original package IDs for type identity.
 
 ## Checks
 

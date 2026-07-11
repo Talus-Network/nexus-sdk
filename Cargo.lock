@@ -9292,9 +9292,10 @@ dependencies = [
 [[package]]
 name = "sui-move"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
 dependencies = [
  "bcs",
+ "ethnum",
  "serde",
  "sui-move-derive",
  "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -9330,7 +9331,7 @@ dependencies = [
 [[package]]
 name = "sui-move-call"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
 dependencies = [
  "bcs",
  "serde",
@@ -9342,7 +9343,7 @@ dependencies = [
 [[package]]
 name = "sui-move-codegen"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -9358,7 +9359,7 @@ dependencies = [
 [[package]]
 name = "sui-move-derive"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9475,7 +9476,7 @@ dependencies = [
 [[package]]
 name = "sui-move-ptb"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fruntime_package#5612483c355384c08b3cb0919d244c15cc09a40f"
+source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
 dependencies = [
  "sui-move",
  "sui-move-call",

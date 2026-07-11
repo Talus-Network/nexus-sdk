@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### `nexus-sdk`
+
+#### Added
+
+- Move binding regeneration now accepts an optional matching Move source root for restoring
+  function parameter names. Network package metadata remains authoritative, and regeneration
+  without source keeps deterministic `argN` names.
+
+#### Changed
+
+- Move binding regeneration now preserves the reduced Move standard library and Sui framework IR,
+  limiting deployment refreshes to Nexus packages.
+- Move binding regeneration now commits canonical SDK package identities, preventing package ID
+  churn when the same Move ABI is rebound from another deployment.
+
 ## [`2.0.0-rc.4`] - 2026-07-09
 
 ### `nexus-cli`
