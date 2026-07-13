@@ -31,7 +31,7 @@
 //! in headers so tools do not need to wrap or change their JSON schemas.
 //!
 //! This format is compact, easy to forward through HTTP infrastructure, and widely supported
-//! (it is the same encoding used by JWTs).
+//! (it is the same byte to header encoding used by JWTs).
 //!
 //! ## Why headers (not an "envelope" body)?
 //! Nexus intentionally does not wrap the application payload in a signed envelope object.
@@ -52,7 +52,7 @@
 //! # What is actually signed?
 //! The signature is computed over:
 //! - a protocol-specific domain separator (request vs response), and
-//! - the exact `sig_input` bytes (the JSON encoding of the claims).
+//! - the request `sig_input` hash, or response binding fields derived from it.
 //!
 //! Concretely:
 //! - Request domain: `b"nexus.leader_tool.request.v1."`
@@ -182,9 +182,10 @@
 //!     nonce: verified_req.claims.nonce.clone(),
 //!     req_sig_input_sha256: sha256_hex(&verified_req.sig_input),
 //!     status: 200,
-//!     body_sha256: sha256_hex(resp_body),
+//!     body_sha256: hex::encode(response_body_sha256_for_claim(resp_body)),
 //! };
-//! let (resp_sig_input, resp_sig) = sign_invoke_response_v1(&resp_claims, &tool_sk).unwrap();
+//! let (resp_sig_input, resp_sig) =
+//!     sign_invoke_response_with_body_v1(&resp_claims, resp_body, &tool_sk).unwrap();
 //! let resp_headers = encode_signature_headers_v1(&resp_sig_input, &resp_sig);
 //!
 //! // === Leader verifies the response (provenance + binding) ===

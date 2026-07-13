@@ -1,7 +1,15 @@
 use {
-    crate::prelude::*,
+    crate::{
+        cli_conf::StorageKind,
+        nexus_data_json::{hint_remote_fields, json_to_nexus_data_map},
+        prelude::*,
+    },
     anyhow::anyhow,
-    nexus_sdk::types::{hint_remote_fields, json_to_nexus_data_map, PortsData, StorageKind},
+    nexus_sdk::move_bindings::{
+        interface::graph::InputPort,
+        primitives::data::NexusData,
+        sui_framework::vec_map::VecMap,
+    },
     serde_json::Value,
     std::collections::{HashMap, HashSet},
 };
@@ -12,7 +20,7 @@ pub(crate) async fn process_entry_ports(
     input: &Value,
     preferred_remote_storage: Option<StorageKind>,
     remote: &[String],
-) -> Result<HashMap<String, PortsData>, NexusCliError> {
+) -> Result<HashMap<String, VecMap<InputPort, NexusData>>, NexusCliError> {
     let Some(vertices) = input.as_object() else {
         return Err(NexusCliError::Any(anyhow!(
             "Input JSON must be an object with vertex names as keys."
@@ -42,7 +50,10 @@ pub(crate) async fn process_entry_ports(
         let nexus_data_map = json_to_nexus_data_map(data, &remote_fields, preferred_remote_storage)
             .map_err(NexusCliError::Any)?;
 
-        result.insert(vertex.clone(), PortsData::from_map(nexus_data_map));
+        result.insert(
+            vertex.clone(),
+            VecMap::<InputPort, NexusData>::from_map(nexus_data_map),
+        );
     }
 
     // Hint the user if they should use remote storage and for what fields.
@@ -77,12 +88,10 @@ pub(crate) async fn process_entry_ports(
 mod tests {
     use {
         super::*,
+        crate::nexus_data_json::nexus_data_to_json_value,
         assert_matches::assert_matches,
         mockito::{Server, ServerGuard},
-        nexus_sdk::{
-            types::{DataStorage, Storable, StorageConf},
-            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
-        },
+        nexus_sdk::walrus::{BlobObject, BlobStorage, NewlyCreated, StorageConf, StorageInfo},
         serde_json::json,
     };
 
@@ -123,14 +132,15 @@ mod tests {
             .commit_all(&storage_conf)
             .await
             .expect("commit_all failed");
+        let vertex = vertex.into_map();
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        assert_matches!(port1, DataStorage::Inline(_));
-        assert_eq!(port1.as_json(), &json!("value1"));
+        assert!(port1.is_inline());
+        assert_eq!(nexus_data_to_json_value(port1), json!("value1"));
 
-        assert_matches!(port2, DataStorage::Inline(_));
-        assert_eq!(port2.as_json(), &json!("value2"));
+        assert!(port2.is_inline());
+        assert_eq!(nexus_data_to_json_value(port2), json!("value2"));
     }
 
     #[tokio::test]
@@ -176,11 +186,12 @@ mod tests {
             .commit_all(&storage_conf)
             .await
             .expect("commit_all failed");
+        let vertex = vertex.into_map();
         let port1 = vertex.get("port1").expect("port1 missing");
         let port2 = vertex.get("port2").expect("port2 missing");
 
-        assert_matches!(port1, DataStorage::Walrus(_));
-        assert_matches!(port2, DataStorage::Inline(_));
+        assert!(port1.is_walrus());
+        assert!(port2.is_inline());
 
         mock_put.assert_async().await;
     }

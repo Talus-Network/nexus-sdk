@@ -1,4 +1,10 @@
-use crate::{sui, types::NexusObjects};
+use {
+    crate::{
+        sui,
+        types::{DefaultDagExecutorTarget, NexusObjects},
+    },
+    sui_transaction_builder as tx,
+};
 
 /// Create a new [`sui::types::ObjectReference`] with random values.
 pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
@@ -9,6 +15,10 @@ pub fn mock_sui_object_ref() -> sui::types::ObjectReference {
         1,
         sui::types::Digest::generate(&mut rng),
     )
+}
+
+pub fn object_ref_for_id(object_id: sui::types::Address) -> sui::types::ObjectReference {
+    sui::types::ObjectReference::new(object_id, 1, sui::types::Digest::from([1; 32]))
 }
 
 /// Create a new [`sui::EventID`] with random values.
@@ -31,15 +41,23 @@ pub fn mock_nexus_objects() -> NexusObjects {
 
     NexusObjects {
         workflow_pkg_id: sui::types::Address::generate(&mut rng),
+        scheduler_pkg_id: sui::types::Address::generate(&mut rng),
         primitives_pkg_id: sui::types::Address::generate(&mut rng),
         interface_pkg_id: sui::types::Address::generate(&mut rng),
         network_id: sui::types::Address::generate(&mut rng),
+        registry_pkg_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
+        verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
-        default_tap: mock_sui_object_ref(),
+        agent_registry: mock_sui_object_ref(),
+        default_dag_executor: DefaultDagExecutorTarget {
+            agent_id: sui::types::Address::generate(&mut rng),
+            skill_id: 1,
+        },
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         workflow_original_pkg_id: None,
+        scheduler_original_pkg_id: None,
     }
 }
 
@@ -60,27 +78,30 @@ pub fn mock_sui_event(
     }
 }
 
-/// Finish the given [`sui::tx::TransactionBuilder`] with mock data.
-pub fn mock_finish_transaction(mut tx: sui::tx::TransactionBuilder) -> sui::types::Transaction {
+/// Finish the given test transaction builder with mock gas data.
+pub fn mock_finish_transaction(mut tx: tx::TransactionBuilder) -> sui::types::Transaction {
     let mut rng = rand::thread_rng();
     let gas = mock_sui_object_ref();
 
     tx.set_sender(sui::types::Address::generate(&mut rng));
     tx.set_gas_budget(1000);
     tx.set_gas_price(1000);
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
+    tx.add_gas_objects(vec![tx::ObjectInput::owned(
         *gas.object_id(),
         gas.version(),
         *gas.digest(),
     )]);
 
-    tx.finish().expect("Transaction should build")
+    tx.try_build().expect("Transaction should build")
 }
 
 pub mod grpc {
     use {
         super::*,
-        crate::events::NexusEventKind,
+        crate::{
+            events::NexusEventKind,
+            move_bindings::primitives::{data::NexusData, event as event_move},
+        },
         mockall::mock,
         serde::Serialize,
         std::time::SystemTime,
@@ -223,12 +244,10 @@ pub mod grpc {
 
     #[tonic::async_trait]
     impl<W: SubscriptionServiceWrapper> SubscriptionService for SubscriptionServiceAdapter<W> {
-        type SubscribeCheckpointsStream = BoxCheckpointStream;
-
         async fn subscribe_checkpoints(
             &self,
             request: Request<SubscribeCheckpointsRequest>,
-        ) -> Result<Response<Self::SubscribeCheckpointsStream>, Status> {
+        ) -> Result<Response<BoxCheckpointStream>, Status> {
             self.inner.subscribe_checkpoints(request).await
         }
     }
@@ -299,6 +318,33 @@ pub mod grpc {
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
     ) {
+        mock_execute_transaction_and_wait_for_checkpoint_matching(
+            tx_service,
+            sub_service,
+            ledger_service,
+            digest,
+            gas_coin_ref,
+            objects,
+            changed_objects,
+            events,
+            |_| {},
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_execute_transaction_and_wait_for_checkpoint_matching<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        digest: sui::types::Digest,
+        gas_coin_ref: sui::types::ObjectReference,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
         let mut changed_objects_with_coin = vec![sui::types::ChangedObject {
             object_id: sui::types::Address::from_static("0x1"),
             input_state: sui::types::ObjectIn::NotExist,
@@ -333,7 +379,8 @@ pub mod grpc {
         tx_service
             .expect_execute_transaction()
             .times(1)
-            .returning(move |_request| {
+            .returning(move |request| {
+                assert_request(request.get_ref());
                 let mut response = sui::grpc::ExecuteTransactionResponse::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
@@ -421,6 +468,81 @@ pub mod grpc {
             });
     }
 
+    /// Set up the three-RPC chain consumed by
+    /// [`crate::nexus::crawler::Crawler::get_object_creation_checkpoint`]:
+    ///
+    /// 1. `get_object` (no version) → returns `Owner::Shared(initial_shared_version)`.
+    /// 2. `get_object` (version=`initial_shared_version`) → returns an object whose
+    ///    `previous_transaction` is `creation_tx_digest`.
+    /// 3. `batch_get_transactions` (one digest) → returns one tx whose
+    ///    `checkpoint` is `creation_checkpoint`.
+    ///
+    /// The two `expect_get_object` calls are registered in order; mockall
+    /// matches FIFO, so the first inspect call gets the metadata response and
+    /// the second the version-pinned one.
+    pub fn mock_object_creation_checkpoint(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        initial_shared_version: u64,
+        creation_tx_digest: sui::types::Digest,
+        creation_checkpoint: u64,
+    ) {
+        // Both `expect_get_object` closures move from `object_ref`; clone for
+        // each registration so neither hits an E0382.
+        let metadata_object_ref = object_ref.clone();
+        let version_object_id = *object_ref.object_id();
+
+        // (1) Current metadata fetch: Owner::Shared carries the initial version.
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
+                    initial_shared_version,
+                )));
+                grpc_object.set_digest(*metadata_object_ref.digest());
+                grpc_object.set_object_id(*metadata_object_ref.object_id());
+                grpc_object.set_version(metadata_object_ref.version());
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+
+        // (2) Time-travelled fetch at the initial shared version: must carry
+        // `previous_transaction` so the crawler can chase the creation digest.
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
+                    initial_shared_version,
+                )));
+                grpc_object.set_object_id(version_object_id);
+                grpc_object.set_version(initial_shared_version);
+                grpc_object.set_previous_transaction(creation_tx_digest.to_string());
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+
+        // (3) Resolve the digest's checkpoint via batch_get_transactions.
+        ledger_service
+            .expect_batch_get_transactions()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+                let mut result = sui::grpc::GetTransactionResult::default();
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(creation_tx_digest);
+                transaction.set_checkpoint(creation_checkpoint);
+                result.set_transaction(transaction);
+                response.set_transactions(vec![result]);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
     pub fn mock_get_objects_metadata(
         ledger_service: &mut MockLedgerService,
         objects: Vec<(sui::types::ObjectReference, sui::types::Owner, Option<u64>)>,
@@ -467,6 +589,194 @@ pub mod grpc {
                 grpc_object.set_object_id(object_ref.object_id().to_string());
                 grpc_object.json = Some(Box::new(json_to_prost_value(&json_value)));
                 response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    /// Expect a `get_object` call and return an object populated with metadata
+    /// and BCS contents.
+    pub fn mock_get_object_bcs(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        contents: Vec<u8>,
+    ) {
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_object_id(object_ref.object_id().to_string());
+                let mut bcs = sui::grpc::Bcs::default();
+                bcs.value = Some(contents.clone().into());
+                grpc_object.contents = Some(bcs);
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_object_bcs_for(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        contents: Vec<u8>,
+        object_type: sui::types::StructTag,
+    ) {
+        ledger_service
+            .expect_get_object()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut grpc_object = sui::grpc::Object::default();
+                grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                grpc_object.set_digest(*object_ref.digest());
+                grpc_object.set_version(object_ref.version());
+                grpc_object.set_object_id(object_ref.object_id().to_string());
+                grpc_object.set_object_type(object_type.to_string());
+                let mut bcs = sui::grpc::Bcs::default();
+                bcs.set_name(object_type.to_string());
+                bcs.set_value(contents.clone());
+                grpc_object.contents = Some(bcs);
+                response.set_object(grpc_object);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_objects_bcs(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(
+            sui::types::ObjectReference,
+            sui::types::Owner,
+            Vec<u8>,
+            sui::types::StructTag,
+        )>,
+    ) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+
+                for (object_ref, owner, contents, object_type) in objects.clone() {
+                    let mut result = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_object_id(object_ref.object_id().to_string());
+                    grpc_object.set_object_type(object_type.to_string());
+                    let mut bcs = sui::grpc::Bcs::default();
+                    bcs.set_name(object_type.to_string());
+                    bcs.set_value(contents);
+                    grpc_object.contents = Some(bcs);
+                    result.set_object(grpc_object);
+                    objs.push(result);
+                }
+
+                response.set_objects(objs);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_dynamic_field_values_bcs<T>(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(sui::types::ObjectReference, sui::types::Owner, T)>,
+    ) where
+        T: Serialize + Clone + Send + 'static,
+    {
+        let objects = objects
+            .into_iter()
+            .map(|(object_ref, owner, value)| {
+                (
+                    object_ref,
+                    owner,
+                    bcs::to_bytes(&value).expect("dynamic field value serializes"),
+                )
+            })
+            .collect::<Vec<_>>();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+
+                for (object_ref, owner, contents) in objects.clone() {
+                    let mut result = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_object_id(object_ref.object_id().to_string());
+                    let mut bcs = sui::grpc::Bcs::default();
+                    bcs.set_value(contents);
+                    grpc_object.contents = Some(bcs);
+                    result.set_object(grpc_object);
+                    objs.push(result);
+                }
+
+                response.set_objects(objs);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_get_dynamic_table_values_bcs<K, V>(
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<(sui::types::ObjectReference, sui::types::Owner, K, V)>,
+    ) where
+        K: Serialize + Clone + Send + 'static,
+        V: Serialize + Clone + Send + 'static,
+    {
+        #[derive(Clone, Serialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            id: sui::types::Address,
+            name: K,
+            value: V,
+        }
+
+        let objects = objects
+            .into_iter()
+            .map(|(object_ref, owner, name, value)| {
+                let field = DynamicFieldValueBcs {
+                    id: *object_ref.object_id(),
+                    name,
+                    value,
+                };
+                (
+                    object_ref,
+                    owner,
+                    bcs::to_bytes(&field).expect("dynamic table field serializes"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::BatchGetObjectsResponse::default();
+                let mut objs = Vec::with_capacity(objects.len());
+
+                for (object_ref, owner, contents) in objects.clone() {
+                    let mut result = sui::grpc::GetObjectResult::default();
+                    let mut grpc_object = sui::grpc::Object::default();
+                    grpc_object.set_owner(sui::grpc::Owner::from(owner));
+                    grpc_object.set_digest(*object_ref.digest());
+                    grpc_object.set_version(object_ref.version());
+                    grpc_object.set_object_id(object_ref.object_id().to_string());
+                    let mut bcs = sui::grpc::Bcs::default();
+                    bcs.set_value(contents);
+                    grpc_object.contents = Some(bcs);
+                    result.set_object(grpc_object);
+                    objs.push(result);
+                }
+
+                response.set_objects(objs);
                 Ok(tonic::Response::new(response))
             });
     }
@@ -526,6 +836,7 @@ pub mod grpc {
     ) {
         state_service
             .expect_list_dynamic_fields()
+            .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::ListDynamicFieldsResponse::default();
                 let mut dynamic_fields = Vec::new();
@@ -536,6 +847,30 @@ pub mod grpc {
                     dynamic_field.set_field_id(id);
                     dynamic_field.set_name(key.to_bcs().expect("Cannot serialize BCS key"));
                     // dynamic_field.set_value(key.to_bcs().expect("Cannot serialize BCS key"));
+                    dynamic_fields.push(dynamic_field);
+                }
+
+                response.set_dynamic_fields(dynamic_fields);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_list_dynamic_object_fields<T: Serialize + Clone + Send + 'static>(
+        state_service: &mut MockStateService,
+        fields: Vec<(T, sui::types::Address, sui::types::Address)>,
+    ) {
+        state_service
+            .expect_list_dynamic_fields()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                let mut dynamic_fields = Vec::new();
+
+                for (key, field_id, child_id) in fields.clone() {
+                    let mut dynamic_field = sui::grpc::DynamicField::default();
+                    dynamic_field.set_child_id(child_id);
+                    dynamic_field.set_field_id(field_id);
+                    dynamic_field.set_name(key.to_bcs().expect("Cannot serialize BCS key"));
                     dynamic_fields.push(dynamic_field);
                 }
 
@@ -583,16 +918,34 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
+                    let (event_pkg_id, event_module, event_name) = match event {
+                        NexusEventKind::DAGCreated(_) => {
+                            (objects.interface_pkg_id, "dag", event.name())
+                        }
+                        NexusEventKind::WalkAdvanced(_)
+                        | NexusEventKind::EndStateReached(_)
+                        | NexusEventKind::ExecutionFinished(_)
+                        | NexusEventKind::TerminalErrEvalRecorded(_) => {
+                            (objects.workflow_pkg_id, "execution_events", event.name())
+                        }
+                        _ => panic!("Unsupported event type for mock event serialization"),
+                    };
+                    let wrapper_tag = crate::move_bindings::struct_tag::<
+                        event_move::EventWrapper<NexusData>,
+                    >(&objects);
                     let t = format!(
-                        "{}::event::EventWrapper<{}::dag::{}>",
+                        "{}::{}::{}<{}::{}::{}>",
                         objects.primitives_pkg_id,
-                        objects.workflow_pkg_id,
-                        event.name()
+                        wrapper_tag.module(),
+                        wrapper_tag.name(),
+                        event_pkg_id,
+                        event_module,
+                        event_name
                     );
 
                     let mut grpc_event = sui::grpc::Event::default();
-                    grpc_event.set_package_id(objects.workflow_pkg_id);
-                    grpc_event.set_module("dag".to_string());
+                    grpc_event.set_package_id(event_pkg_id);
+                    grpc_event.set_module(wrapper_tag.module().to_string());
                     grpc_event.set_sender(sui::types::Address::ZERO);
                     grpc_event.set_event_type(t);
                     grpc_event.set_contents(match event {
@@ -608,7 +961,10 @@ pub mod grpc {
                         NexusEventKind::DAGCreated(e) => {
                             bcs::to_bytes(&Wrapper { event: e }).unwrap()
                         }
-                        _ => panic!("Unsupported event type for BCS serialization"),
+                        NexusEventKind::TerminalErrEvalRecorded(e) => {
+                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
+                        }
+                        _ => unreachable!("unsupported event type rejected before serialization"),
                     });
                     events.push(grpc_event);
                 }

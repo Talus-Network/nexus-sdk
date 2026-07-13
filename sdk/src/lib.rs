@@ -8,20 +8,33 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
-/// Ubiquitously used resource identifiers for on-chain types and functions.
-/// This includes workflow, primitives and interface Nexus modules but also
-/// some Sui framework and Sui move std modules that we use.
-#[cfg(feature = "sui_idents")]
-pub mod idents;
 /// Re-exporting Sui types into something that makes more sense.
 #[cfg(feature = "sui_types")]
 pub mod sui;
+
+#[cfg(feature = "sui_types")]
+pub use sui_transaction_builder;
+
+/// Generated Move package bindings used as the SDK's Move ABI boundary.
+#[cfg(feature = "types")]
+pub mod move_bindings;
 
 /// Nexus types represent the structure of various objects that are defined
 /// on-chain. It also provides the logic for serializing and deserializing these
 /// objects.
 #[cfg(any(feature = "types", feature = "wasm_types"))]
 pub mod types;
+
+#[cfg(feature = "types")]
+mod move_boundary;
+
+/// DAG JSON parsing and static validation helpers for SDK and CLI authoring flows.
+#[cfg(feature = "dag")]
+pub mod dag;
+
+/// Move module introspection helpers for on chain tool schema generation.
+#[cfg(feature = "onchain_schema_gen")]
+pub mod onchain_schema_gen;
 
 /// Nexus events that are fired by the Nexus workflow package and are used to
 /// communicate between the on-chain and off-chain parts of Nexus. This module
@@ -43,14 +56,6 @@ pub mod test_utils;
 /// system for storing and retrieving files.
 #[cfg(feature = "walrus")]
 pub mod walrus;
-
-/// Provides DAG-related utilities
-#[cfg(feature = "dag")]
-pub mod dag;
-
-/// Schema generation utilities for Move onchain tools.
-#[cfg(feature = "schema_gen")]
-pub mod onchain_schema_gen;
 
 /// Provides various Nexus utilities like deployment and execution of workflows.
 #[cfg(feature = "nexus")]

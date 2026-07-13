@@ -1,17 +1,20 @@
 module {{ name_snake_case }}::{{ name_snake_case }};
 
+use nexus_interface::authorization::AgentVertexAuthorization;
+use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};
 use nexus_primitives::data;
+use nexus_primitives::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
 use nexus_primitives::proof_of_uid::ProofOfUID;
-use nexus_primitives::tagged_output::{Self, TaggedOutput};
+use nexus_primitives::tagged_output;
 use sui::bag::{Self, Bag};
+use sui::clock::Clock;
 use sui::transfer::share_object;
 use std::ascii::String as AsciiString;
-use sui::clock::Clock;
 
 /// One-time witness for package initialization.
 public struct {{ name_uppercase }} has drop {}
 
-/// Witness object used to identify this tool.
+/// Witness object used as the worksheet stamp locator for this tool.
 public struct {{ name_pascal_case }}Witness has key, store {
     id: UID,
 }
@@ -19,7 +22,7 @@ public struct {{ name_pascal_case }}Witness has key, store {
 /// Your tool's state object (customize as needed).
 public struct {{ name_pascal_case }}State has key {
     id: UID,
-    /// Store the witness object that identifies this tool.
+    /// Store the independent witness object that identifies this tool's stamp.
     witness: Bag,
     // Add your application-specific fields here.
     // Example: value: u64,
@@ -62,40 +65,44 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 /// Execute function with standardized Nexus signature.
 ///
 /// CRITICAL REQUIREMENTS:
-/// 1. First parameter: worksheet: &mut ProofOfUID
-/// 2. Last parameter: ctx: &mut TxContext
-/// 3. Return type: TaggedOutput
-/// 4. Must stamp worksheet with witness ID
-public fun execute(
-    worksheet: &mut ProofOfUID,
+/// 1. Internal authorization parameter: _authorization: ProvenValue<AgentVertexAuthorization>
+/// 2. Internal workflow proof parameter: worksheet: ProofOfUID
+/// 3. Internal result parameter: result: OnchainToolResult
+/// 4. Last parameter: ctx: &mut TxContext
+/// 5. No return value; finalize and share result
+/// 6. Must stamp worksheet with tool witness ID
+entry fun execute(
+    authorization: ProvenValue<AgentVertexAuthorization>,
+    worksheet: ProofOfUID,
+    result: OnchainToolResult,
     state: &mut {{ name_pascal_case }}State,
     // Add your custom parameters here.
     input_value: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): TaggedOutput {
-    // Get the witness for stamping.
-    let witness = state.witness();
-
-    // REQUIRED: Stamp the worksheet to prove execution.
-    worksheet.stamp_with_data(&witness.id, b"{{ name_snake_case }}_executed");
+) {
+    primitive_authorization::drop(authorization);
+    let mut worksheet = worksheet;
+    // REQUIRED: Stamp the worksheet with the tool witness ID to prove execution.
+    worksheet.stamp_with_data(&state.witness().id, b"{{ name_snake_case }}_executed");
 
     // Implement your tool logic here.
-    if (input_value == 0) {
+    let output = if (input_value == 0) {
         // Return error variant.
-        Self::new(b"err")
+        tagged_output::new(b"err")
             .with_named_payload(b"reason", data::inline_one(b"Input value cannot be zero").as_string())
     } else if (input_value > 1000) {
         // Return custom variant.
-        Self::new(b"custom_result")
+        tagged_output::new(b"custom_result")
             .with_named_payload(b"data", data::inline_one(b"large_value_processed").as_string())
             .with_named_payload(b"timestamp", data::inline_one(sui::clock::timestamp_ms(clock).to_string().into_bytes()).as_number())
     } else {
         // Return success variant.
-        let result = input_value * 2;
-        Self::new(b"ok")
-            .with_named_payload(b"result", data::inline_one(result.to_string().into_bytes()).as_number())
-    }
+        let computed = input_value * 2;
+        tagged_output::new(b"ok")
+            .with_named_payload(b"result", data::inline_one(computed.to_string().into_bytes()).as_number())
+    };
+    onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);
 }
 
 // === Getters and Helper Functions ===
@@ -105,10 +112,10 @@ fun witness(self: &{{ name_pascal_case }}State): &{{ name_pascal_case }}Witness 
     self.witness.borrow(b"witness")
 }
 
-/// Get the witness ID for external reference.
+/// Get the tool witness ID for external reference.
 /// Useful for registering the tool onchain.
-public fun witness_id(self: &{{ name_pascal_case }}State): ID {
-    self.witness().id.to_inner()
+public fun tool_witness_id(self: &{{ name_pascal_case }}State): ID {
+    object::uid_to_inner(&self.witness().id)
 }
 
 // Add getters for your custom fields.
@@ -120,4 +127,3 @@ public fun witness_id(self: &{{ name_pascal_case }}State): ID {
 public fun init_for_test(otw: {{ name_uppercase }}, ctx: &mut TxContext) {
     init(otw, ctx);
 }
-

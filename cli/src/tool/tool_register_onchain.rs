@@ -8,7 +8,17 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{idents::primitives, nexus::error::NexusError, sui, transactions::tool},
+    nexus_sdk::{
+        move_bindings::{
+            primitives::owner_cap::CloneableOwnerCap,
+            registry::tool_registry::OverTool,
+            struct_tag_matches,
+            workflow::gas::OverGas,
+        },
+        nexus::error::NexusError,
+        sui,
+        transactions::tool,
+    },
     serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
     std::{
@@ -28,9 +38,10 @@ pub(crate) async fn register_onchain_tool(
     fqn: ToolFqn,
     description: String,
     timeout: Duration,
-    witness_id: sui::types::Address,
+    tool_witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
+    workflow_authorization_cap_first: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -49,7 +60,6 @@ pub(crate) async fn register_onchain_tool(
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let signer = nexus_client.signer();
-    let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let conf = CliConf::load().await.unwrap_or_default();
@@ -63,10 +73,7 @@ pub(crate) async fn register_onchain_tool(
 
     let tx_handle = loading!("Crafting transaction...");
 
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    if let Err(e) = tool::register_on_chain_for_self(
-        &mut tx,
+    let tx = match tool::register_on_chain_for_self_with_workflow_authorization_cap_ptb(
         nexus_objects,
         package,
         module.as_str(),
@@ -75,45 +82,26 @@ pub(crate) async fn register_onchain_tool(
         &input_schema,
         &output_schema,
         timeout,
-        witness_id,
+        tool_witness_id,
         &collateral_coin,
         address,
+        workflow_authorization_cap_first,
     ) {
-        tx_handle.error();
-
-        return Err(NexusCliError::Any(e));
-    }
+        Ok(tx) => tx,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
     tx_handle.success();
 
-    let mut gas_coin = gas_config.acquire_gas_coin().await;
-
-    tx.set_sender(address);
-    tx.set_gas_budget(gas_config.get_budget());
-    tx.set_gas_price(nexus_client.get_reference_gas_price());
-
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.finish().map_err(|e| NexusCliError::Any(e.into()))?;
-
-    let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
-
     // Sign and submit the TX.
-    let response = match signer.execute_tx(tx, signature, &mut gas_coin).await {
-        Ok(response) => {
-            gas_config.release_gas_coin(gas_coin).await;
-
-            response
-        }
+    let response = match nexus_client.submit_transaction(tx, address).await {
+        Ok(response) => response,
         // If the tool is already registered, we don't want to fail the
         // command.
-        Err(NexusError::Wallet(e)) if e.to_string().contains("register_on_chain_tool_") => {
-            gas_config.release_gas_coin(gas_coin).await;
-
+        Err(NexusError::Wallet(e)) if e.to_string().contains("register_tool_") => {
             notify_error!(
                 "Tool '{fqn}' is already registered.",
                 fqn = fqn.to_string().truecolor(100, 100, 100)
@@ -129,8 +117,6 @@ pub(crate) async fn register_onchain_tool(
         // Any other error fails the tool registration but continues the
         // loop.
         Err(e) => {
-            gas_config.release_gas_coin(gas_coin).await;
-
             notify_error!(
                 "Failed to register tool '{fqn}': {error}",
                 fqn = fqn.to_string().truecolor(100, 100, 100),
@@ -141,8 +127,8 @@ pub(crate) async fn register_onchain_tool(
         }
     };
 
-    // Extract the OwnerCap<OverTool> object ID.
-    let over_tool_id = extract_over_tool_owner_cap(&response.objects, nexus_objects)?;
+    // Extract the OwnerCap<OverTool> and OwnerCap<OverGas> object IDs.
+    let (over_tool_id, over_gas_id) = extract_owner_caps(&response.objects, nexus_objects)?;
 
     notify_success!(
         "Transaction digest: {digest}",
@@ -151,21 +137,27 @@ pub(crate) async fn register_onchain_tool(
 
     // Save the owner caps to the CLI conf.
     if !no_save {
-        save_tool_owner_caps(fqn.clone(), over_tool_id).await?;
+        save_tool_owner_caps(fqn.clone(), over_tool_id, over_gas_id).await?;
     }
+
+    // Re-fetch the freshly-registered Tool object so the JSON output carries
+    // the same shape `nexus tool inspect` emits. This costs one extra RPC
+    // round-trip but means scripted consumers only need to learn one Tool
+    // contract.
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(&fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     json_output(&json!({
         "digest": response.digest,
-        "tool_fqn": fqn,
-        "package_address": package,
-        "module_name": module,
-        "witness_id": witness_id.to_string(),
-        "description": description,
-        "input_schema": input_schema,
-        "output_schema": output_schema,
+        "tx_checkpoint": response.checkpoint,
+        "tool_id": inspection.tool_id,
+        "tool_gas_id": inspection.tool_gas_id,
         "owner_cap_over_tool_id": over_tool_id,
-        "owner_cap_over_gas_id": null,
-        "already_registered": false,
+        "owner_cap_over_gas_id": over_gas_id,
+        "tool": inspection.tool,
     }))?;
 
     Ok(())
@@ -226,26 +218,39 @@ async fn generate_and_customize_schemas(
     Ok((input_schema, output_schema))
 }
 
-/// Extract the OwnerCap<OverTool> object ID from the transaction response.
-fn extract_over_tool_owner_cap(
+/// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
+/// transaction response.
+fn extract_owner_caps(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
-) -> AnyResult<sui::types::Address, NexusCliError> {
-    // Find `CloneableOwnerCap<OverTool>` object ID
-    let over_tool = objects.iter().find_map(|obj| {
+) -> AnyResult<(sui::types::Address, Option<sui::types::Address>), NexusCliError> {
+    let mut over_tool = None;
+    let mut over_gas = None;
+
+    for obj in objects {
         let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
-            return None;
+            continue;
         };
 
-        if *object_type.address() == nexus_objects.primitives_pkg_id
-            && *object_type.module() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.module
-            && *object_type.name() == primitives::OwnerCap::CLONEABLE_OWNER_CAP.name
-        {
-            Some(obj.object_id())
-        } else {
-            None
+        if !struct_tag_matches::<CloneableOwnerCap<OverTool>>(nexus_objects, &object_type) {
+            continue;
         }
-    });
+
+        // Disambiguate by the generic type param. OverTool is defined in the
+        // registry package (`nexus_registry::tool_registry::OverTool`) while
+        // OverGas is defined in the workflow package
+        // (`nexus_workflow::gas::OverGas`), so the inner type's address comes
+        // from a different package depending on which cap we are looking at.
+        let Some(sui::types::TypeTag::Struct(inner)) = object_type.type_params().first() else {
+            continue;
+        };
+
+        if struct_tag_matches::<OverTool>(nexus_objects, inner) {
+            over_tool = Some(obj.object_id());
+        } else if struct_tag_matches::<OverGas>(nexus_objects, inner) {
+            over_gas = Some(obj.object_id());
+        }
+    }
 
     let Some(over_tool_id) = over_tool else {
         return Err(NexusCliError::Any(anyhow!(
@@ -258,26 +263,34 @@ fn extract_over_tool_owner_cap(
         id = over_tool_id.to_string().truecolor(100, 100, 100)
     );
 
-    notify_success!("Onchain tools use a different gas model. No OverGas cap was created.");
+    match over_gas {
+        Some(over_gas_id) => notify_success!(
+            "OwnerCap<OverGas> object ID: {id}",
+            id = over_gas_id.to_string().truecolor(100, 100, 100)
+        ),
+        None => {
+            notify_success!("No OwnerCap<OverGas> was returned by the registration transaction.")
+        }
+    }
 
-    Ok(over_tool_id)
+    Ok((over_tool_id, over_gas))
 }
 
 /// Save the tool owner caps to the CLI configuration.
 async fn save_tool_owner_caps(
     fqn: ToolFqn,
     over_tool_id: sui::types::Address,
+    over_gas_id: Option<sui::types::Address>,
 ) -> AnyResult<(), NexusCliError> {
-    let save_handle = loading!("Saving the owner cap to the CLI configuration...");
+    let save_handle = loading!("Saving the owner caps to the CLI configuration...");
 
     let mut conf = CliConf::load().await.unwrap_or_default();
 
-    // For onchain tools, we only have OverTool cap, no OverGas cap.
     conf.tools.insert(
         fqn,
         ToolOwnerCaps {
             over_tool: over_tool_id,
-            over_gas: None,
+            over_gas: over_gas_id,
         },
     );
 
@@ -604,7 +617,38 @@ fn customize_output_variant(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::test_utils::sui_mocks, std::sync::atomic::Ordering};
+    use {
+        super::*,
+        nexus_sdk::test_utils::sui_mocks,
+        serial_test::serial,
+        std::sync::atomic::Ordering,
+    };
+
+    struct HomeGuard {
+        original_home: Option<std::ffi::OsString>,
+        _temp_home: tempfile::TempDir,
+    }
+
+    impl HomeGuard {
+        fn new() -> Self {
+            let original_home = std::env::var_os("HOME");
+            let temp_home = tempfile::tempdir().expect("temp home directory");
+            std::env::set_var("HOME", temp_home.path());
+            Self {
+                original_home,
+                _temp_home: temp_home,
+            }
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match &self.original_home {
+                Some(value) => std::env::set_var("HOME", value),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
 
     #[test]
     fn test_build_final_schema_with_custom_names() {
@@ -772,6 +816,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_json_mode() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -803,6 +848,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_empty_schema() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -821,6 +867,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_variant_and_field_descriptions_json_mode() {
         // Set JSON mode to skip interactive prompts.
         JSON_MODE.store(true, Ordering::Relaxed);
@@ -952,6 +999,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_with_mock_input() {
         // Ensure JSON_MODE is off for this test.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -993,6 +1041,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_parameter_descriptions_keep_defaults() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1032,6 +1081,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_with_mock_input() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1086,6 +1136,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(json_mode)]
     fn test_customize_output_keep_defaults() {
         // Ensure JSON_MODE is off.
         JSON_MODE.store(false, Ordering::Relaxed);
@@ -1136,47 +1187,125 @@ mod tests {
         JSON_MODE.store(false, Ordering::Relaxed);
     }
 
-    #[test]
-    fn test_extract_over_tool_owner_cap_success() {
-        let mut rng = rand::thread_rng();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+    /// Build a `CloneableOwnerCap<INNER>` Sui object carrying `owner_cap_id` as
+    /// its on-chain id, where `INNER` is identified by `(module, name)` under
+    /// the workflow package. Mirrors the post-publish object set so the cap
+    /// extractor can be exercised against both `OverTool` and `OverGas`.
+    fn cloneable_owner_cap(
+        rng: &mut rand::rngs::ThreadRng,
+        nexus_objects: &NexusObjects,
+        inner: sui::types::StructTag,
+        owner_cap_id: sui::types::Address,
+    ) -> sui::types::Object {
+        let cap_tag = sui::types::StructTag::new(
+            nexus_objects.primitives_pkg_id,
+            cloneable_owner_cap_tag(nexus_objects).module().clone(),
+            cloneable_owner_cap_tag(nexus_objects).name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
 
-        // Create a mock object vector with an OwnerCap<OverTool>.
-        let owner_cap_id = sui::types::Address::generate(&mut rng);
-        let owner_address = sui::types::Address::generate(&mut rng);
-
-        let objects = vec![sui::types::Object::new(
+        sui::types::Object::new(
             sui::types::ObjectData::Struct(
-                sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.primitives_pkg_id,
-                        sui::types::Identifier::from_static("owner_cap"),
-                        sui::types::Identifier::from_static("CloneableOwnerCap"),
-                        vec![],
-                    ),
-                    true,
-                    0,
-                    owner_cap_id.to_bcs().unwrap(),
-                )
-                .unwrap(),
+                sui::types::MoveStruct::new(cap_tag, true, 0, owner_cap_id.to_bcs().unwrap())
+                    .unwrap(),
             ),
-            sui::types::Owner::Address(owner_address),
-            sui::types::Digest::generate(&mut rng),
+            sui::types::Owner::Address(sui::types::Address::generate(&mut *rng)),
+            sui::types::Digest::generate(&mut *rng),
             1000,
-        )];
+        )
+    }
 
-        // Extract the owner cap.
-        let result = extract_over_tool_owner_cap(&objects, &nexus_objects);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), owner_cap_id);
+    fn cloneable_owner_cap_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<CloneableOwnerCap<OverTool>>(nexus_objects)
+    }
+
+    fn over_tool_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverTool>(nexus_objects)
+    }
+
+    fn over_gas_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverGas>(nexus_objects)
     }
 
     #[test]
-    fn test_extract_over_tool_owner_cap_not_found() {
+    fn test_extract_owner_caps_over_tool_only() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Create a mock object vector with only an OwnerCap<OverTool>.
+        let owner_cap_id = sui::types::Address::generate(&mut rng);
+
+        let objects = vec![cloneable_owner_cap(
+            &mut rng,
+            &nexus_objects,
+            over_tool_tag(&nexus_objects),
+            owner_cap_id,
+        )];
+
+        // OverTool is found; OverGas is absent.
+        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        assert_eq!(over_tool, owner_cap_id);
+        assert_eq!(over_gas, None);
+    }
+
+    #[test]
+    fn test_extract_owner_caps_does_not_treat_over_gas_as_over_tool() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // An OverGas cap shares the outer CloneableOwnerCap struct and must not
+        // be misidentified as the OverTool cap.
+        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let objects = vec![cloneable_owner_cap(
+            &mut rng,
+            &nexus_objects,
+            over_gas_tag(&nexus_objects),
+            over_gas_id,
+        )];
+
+        let result = extract_owner_caps(&objects, &nexus_objects);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Could not find the OwnerCap<OverTool> object ID"));
+    }
+
+    #[test]
+    fn test_extract_owner_caps_returns_both_caps() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+
+        // Both caps present, as the workflow-authorization registration path
+        // returns; the extractor must return each id under its own type param.
+        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let over_tool_id = sui::types::Address::generate(&mut rng);
+        let objects = vec![
+            cloneable_owner_cap(
+                &mut rng,
+                &nexus_objects,
+                over_gas_tag(&nexus_objects),
+                over_gas_id,
+            ),
+            cloneable_owner_cap(
+                &mut rng,
+                &nexus_objects,
+                over_tool_tag(&nexus_objects),
+                over_tool_id,
+            ),
+        ];
+
+        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        assert_eq!(over_tool, over_tool_id);
+        assert_eq!(over_gas, Some(over_gas_id));
+    }
+
+    #[test]
+    fn test_extract_owner_caps_not_found() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
         // Should fail because no owner cap is found.
-        let result = extract_over_tool_owner_cap(&[], &nexus_objects);
+        let result = extract_owner_caps(&[], &nexus_objects);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1185,6 +1314,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial(json_mode)]
     async fn test_generate_and_customize_schemas_integration() {
         use crate::test_utils;
 
@@ -1268,7 +1398,7 @@ mod tests {
         assert!(output_json.is_object());
 
         // Verify input schema has expected parameters (counter and increase_with).
-        // After skipping ProofOfUID and TxContext, we should have 2 parameters.
+        // After skipping internal tool parameters and TxContext, we should have 2 parameters.
         assert_eq!(input_json.as_object().unwrap().len(), 2);
 
         // Verify output schema has expected variants.
@@ -1277,16 +1407,31 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_tool_owner_caps_success() {
+        let _home_guard = HomeGuard::new();
         let mut rng = rand::thread_rng();
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let over_tool_id = sui::types::Address::generate(&mut rng);
+        let over_gas_id = sui::types::Address::generate(&mut rng);
 
-        // Call save_tool_owner_caps.
-        let result = save_tool_owner_caps(fqn.clone(), over_tool_id).await;
+        // Call save_tool_owner_caps with both caps (as the on-chain
+        // registration path now yields).
+        let result = save_tool_owner_caps(fqn.clone(), over_tool_id, Some(over_gas_id)).await;
 
         // Should succeed.
         assert!(result.is_ok());
+
+        // Both caps must be persisted so later gas-management commands
+        // (`tool set-invocation-cost`, `gas tickets …`) can resolve OverGas.
+        let conf = CliConf::load().await.expect("saved CLI config should load");
+        assert_eq!(
+            conf.tools.get(&fqn),
+            Some(&ToolOwnerCaps {
+                over_tool: over_tool_id,
+                over_gas: Some(over_gas_id),
+            })
+        );
     }
 }

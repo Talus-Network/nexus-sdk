@@ -1,7 +1,12 @@
 //! Input schema generation for Move onchain tools.
 
 use {
-    super::types::{convert_move_signature_to_schema, is_tx_context_param},
+    super::types::{
+        convert_move_signature_to_schema,
+        is_hidden_internal_tool_param,
+        is_onchain_tool_result_param,
+        is_workflow_dag_execution_param,
+    },
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
@@ -13,7 +18,8 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips the first parameter (ProofOfUID) and the last parameter (TxContext).
+/// skips internal parameters such as `ProofOfUID`, `ProvenValue<AgentVertexAuthorization>`,
+/// and `TxContext`.
 pub async fn generate_input_schema(
     client: Arc<Mutex<sui::grpc::Client>>,
     package_address: sui::types::Address,
@@ -54,20 +60,18 @@ pub async fn generate_input_schema(
         .ok_or_else(|| {
             anyhow!("Function '{execute_function}' not found in module '{module_name}'")
         })?;
+    validate_execute_signature(execute_func, module_name, execute_function)?;
 
     // Parse function parameters.
     let mut schema_map = Map::new();
     let mut param_index = 0;
 
-    for (i, param_type) in execute_func.parameters().iter().enumerate() {
+    for param_type in execute_func.parameters() {
         let body = param_type.body_opt().ok_or_else(|| {
             anyhow!("Parameter type missing body in function '{execute_function}' of module '{module_name}'")
         })?;
 
-        let is_tx_context = is_tx_context_param(body);
-
-        // Skip the first parameter (ProofOfUID) and the last parameter (TxContext).
-        if i == 0 || is_tx_context {
+        if is_hidden_internal_tool_param(body) {
             continue;
         }
 
@@ -97,6 +101,9 @@ pub async fn generate_input_schema(
                 Value::Bool(reference_kind == sui::grpc::open_signature::Reference::Mutable),
             );
         }
+        if is_workflow_dag_execution_param(body) {
+            param_obj.insert("nexus_current_execution".to_string(), Value::Bool(true));
+        }
 
         schema_map.insert(param_index.to_string(), Value::Object(param_obj));
         param_index += 1;
@@ -108,9 +115,94 @@ pub async fn generate_input_schema(
     Ok(schema_string)
 }
 
+fn validate_execute_signature(
+    execute_func: &sui::grpc::FunctionDescriptor,
+    module_name: &str,
+    execute_function: &str,
+) -> AnyResult<()> {
+    if !execute_func.is_entry() {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must be an entry function"
+        );
+    }
+    if !execute_func.returns().is_empty() {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must not return values; finalize output through an owned OnchainToolResult argument"
+        );
+    }
+    let has_owned_result_arg = execute_func.parameters().iter().any(|param| {
+        param.reference.is_none()
+            && param
+                .body_opt()
+                .map(is_onchain_tool_result_param)
+                .unwrap_or(false)
+    });
+    if !has_owned_result_arg {
+        bail!(
+            "On-chain tool function '{module_name}::{execute_function}' must accept result: OnchainToolResult"
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, sui::grpc::open_signature_body::Type};
+
+    fn owned_onchain_tool_result_signature() -> sui::grpc::OpenSignature {
+        sui::grpc::OpenSignature::default().with_body(
+            sui::grpc::OpenSignatureBody::default()
+                .with_type(Type::Datatype)
+                .with_type_name("0x42::onchain_tool_result::OnchainToolResult"),
+        )
+    }
+
+    fn referenced_onchain_tool_result_signature(
+        reference: sui::grpc::open_signature::Reference,
+    ) -> sui::grpc::OpenSignature {
+        owned_onchain_tool_result_signature().with_reference(reference)
+    }
+
+    fn valid_execute_descriptor() -> sui::grpc::FunctionDescriptor {
+        sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![owned_onchain_tool_result_signature()])
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_non_entry_function() {
+        let descriptor = valid_execute_descriptor().with_is_entry(false);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must be an entry function"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_return_values() {
+        let descriptor =
+            valid_execute_descriptor().with_returns(vec![sui::grpc::OpenSignature::default()
+                .with_body(sui::grpc::OpenSignatureBody::default().with_type(Type::U64))]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must not return values"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_referenced_onchain_tool_result() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![referenced_onchain_tool_result_signature(
+                sui::grpc::open_signature::Reference::Immutable,
+            )]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("must accept result: OnchainToolResult"));
+    }
+
+    #[test]
+    fn validate_execute_signature_accepts_entry_no_return_owned_result() {
+        validate_execute_signature(&valid_execute_descriptor(), "tool", "execute").unwrap();
+    }
 
     #[tokio::test]
     #[cfg(feature = "test_utils")]
@@ -183,9 +275,9 @@ mod tests {
             serde_json::from_str(&schema_str).expect("Failed to parse schema JSON");
 
         // Verify schema structure.
-        // The execute function has signature:
+        // The execute function has hidden internal parameters:
         // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
-        // After skipping ProofOfUID (first) and TxContext (last), we should have:
+        // After skipping hidden internal parameters, we should have:
         // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
         // - Parameter 1: increase_with (u64).
 
@@ -209,7 +301,7 @@ mod tests {
         assert_eq!(param1["description"], "64-bit unsigned integer");
         assert!(param1.get("mutable").is_none());
 
-        // Verify only 2 parameters (ProofOfUID and TxContext were skipped).
+        // Verify only 2 user-facing parameters remain after internal params are skipped.
         assert_eq!(schema.as_object().unwrap().len(), 2);
     }
 }

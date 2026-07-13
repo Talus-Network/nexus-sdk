@@ -29,10 +29,10 @@ impl From<TaskGeneratorArg> for GeneratorKind {
 pub(crate) struct ScheduleStartOptions {
     /// Absolute start time in milliseconds since epoch for the first occurrence.
     #[arg(long = "schedule-start-ms", value_name = "MILLIS")]
-    schedule_start_ms: Option<u64>,
+    pub(crate) schedule_start_ms: Option<u64>,
     /// Start offset in milliseconds from now for the first occurrence.
     #[arg(long = "schedule-start-offset-ms", value_name = "MILLIS")]
-    schedule_start_offset_ms: Option<u64>,
+    pub(crate) schedule_start_offset_ms: Option<u64>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -40,12 +40,12 @@ pub(crate) struct ScheduleStartOptions {
 pub(crate) struct ScheduleDeadlineOptions {
     /// Deadline offset in milliseconds after the scheduled start for the first occurrence.
     #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
-    schedule_deadline_offset_ms: Option<u64>,
+    pub(crate) schedule_deadline_offset_ms: Option<u64>,
 }
 
 #[derive(Subcommand)]
 pub(crate) enum TaskCommand {
-    #[command(about = "Create a new scheduler task")]
+    #[command(about = "Create a new scheduled task")]
     Create {
         /// DAG object ID providing the execution definition.
         #[arg(long = "dag-id", short = 'd', value_name = "OBJECT_ID")]
@@ -104,16 +104,22 @@ pub(crate) enum TaskCommand {
             value_name = "KIND"
         )]
         generator: TaskGeneratorArg,
+        /// Amount of SUI, in MIST, to reserve for default-agent scheduled execution payments.
+        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
+        prepay_amount: u64,
+        /// Maximum SUI, in MIST, that each occurrence may spend from the payment reserve.
+        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
+        occurrence_budget: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Inspect a scheduler task")]
+    #[command(about = "Inspect a scheduled task")]
     Inspect {
         /// Task object ID to inspect.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
         task_id: sui::types::Address,
     },
-    #[command(about = "Update scheduler task metadata")]
+    #[command(about = "Update scheduled task metadata")]
     Metadata {
         /// Task object ID to update.
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
@@ -168,6 +174,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             schedule_deadline,
             schedule_priority_fee_per_gas_unit,
             generator,
+            prepay_amount,
+            occurrence_budget,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -190,6 +198,8 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 schedule_deadline_offset_ms,
                 schedule_priority_fee_per_gas_unit,
                 generator.into(),
+                prepay_amount,
+                occurrence_budget,
                 gas,
             )
             .await

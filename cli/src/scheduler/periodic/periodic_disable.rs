@@ -9,7 +9,7 @@ use {
     serde_json::json,
 };
 
-/// Disable the periodic schedule for a scheduler task.
+/// Disable the periodic schedule for a scheduled task.
 pub(crate) async fn disable_periodic_task(
     task_id: sui::types::Address,
     gas: GasArgs,
@@ -31,7 +31,7 @@ pub(crate) async fn disable_periodic_task(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "task_id": task_id,
+        "scheduled_task_id": task_id,
     }))?;
 
     Ok(())

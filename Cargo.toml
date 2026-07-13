@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk-wasm", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "0.8.2"
+version = "2.0.0-rc.4"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -46,9 +46,11 @@ log = "^0.4.26"
 minijinja = "2.8.0"
 mockall = "0.14.0"
 mockito = "1.7"
+num-format = "0.4"
 openssl = { version = "0.10", features = ["vendored"] }
 petgraph = "0.7.1"
 portpicker = "0.1.1"
+prettytable = "0.10"
 prometheus = "0.14"
 prost-types = "0.14.1"
 rand = { version = "0.8", default-features = false, features = ["std"] }
@@ -66,12 +68,12 @@ strum = "0.27"
 strum_macros = "0.27"
 tempfile = "3.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.52", features = ["full"] }
 tokio-stream = "0.1.17"
-tokio-retry = "0.3.0"
+tokio-retry = "0.3.2"
 tokio-util = "0.7.18"
 toml = "0.8.20"
-tonic = "0.14"
+tonic = "^0.14.6"
 tracing = "0.1.41"
 warp = "0.3.7"
 zeroize = "1.7"
@@ -81,7 +83,7 @@ nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
 
 [profile.release]
-# debug = 1 means line charts only, which is minimum needed for good stack traces
+# debug = 1 means line tables only, which is minimum needed for good stack traces
 debug = 1
 # Write debug info into a separate file.
 split-debuginfo = "packed"

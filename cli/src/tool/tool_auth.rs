@@ -9,15 +9,17 @@ use {
         sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
     },
     nexus_sdk::{
-        nexus::network_auth::{
-            AllowedLeadersFileSyncerV1,
-            AllowedLeadersSyncOutcome,
-            NetworkAuthReader,
+        nexus::network_auth::NetworkAuthReader,
+        signed_http::{
+            keys::{parse_ed25519_signing_key, Ed25519Keypair},
+            v1::wire::AllowedLeadersFileV1,
         },
-        signed_http::keys::{parse_ed25519_signing_key, Ed25519Keypair},
         ToolFqn,
     },
-    std::{path::PathBuf, time::Duration},
+    std::{
+        path::{Path, PathBuf},
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    },
 };
 
 pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
@@ -28,8 +30,20 @@ pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), Nexu
             owner_cap,
             signing_key,
             description,
+            skip_if_active,
             gas,
-        } => register_key(tool_fqn, owner_cap, signing_key, description, gas).await,
+        } => {
+            register_key(
+                tool_fqn,
+                owner_cap,
+                signing_key,
+                description,
+                skip_if_active,
+                gas,
+            )
+            .await
+        }
+        ToolAuthCommand::ListKeys { tool_fqn } => list_keys(tool_fqn).await,
         ToolAuthCommand::ExportAllowedLeaders { all, leaders, out } => {
             export_allowed_leaders(all, leaders, out).await
         }
@@ -69,6 +83,7 @@ async fn register_key(
     owner_cap: Option<sui::types::Address>,
     signing_key: String,
     description: Option<String>,
+    skip_if_active: bool,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Registering signed HTTP key for tool '{tool_fqn}'");
@@ -102,6 +117,59 @@ async fn register_key(
     key_handle.success();
 
     let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+
+    // When --skip-if-active is requested, check whether the same public key is
+    // already the active key. If it is, skip the on-chain transaction entirely
+    // so the command is safe to run repeatedly in CI without accumulating
+    // duplicate key registrations.
+    //
+    // Note: this check is best-effort. There is a TOCTOU (Time-Of-Check to
+    // Time-Of-Use) gap between this read and the subsequent registration call.
+    // Concurrent invocations may both see "key not active" and both proceed,
+    // resulting in the same public key registered twice with different key IDs.
+    // This is non-fatal (no on-chain corruption, just an extra key entry) and
+    // acceptable for a CI convenience flag targeting single-pipeline usage.
+    if skip_if_active {
+        let new_pubkey_hex = hex::encode(signing_key.verifying_key().to_bytes());
+
+        let check_handle = loading!("Checking current active key...");
+
+        match nexus_client
+            .network_auth()
+            .list_tool_keys(&tool_fqn)
+            .await
+            .map_err(NexusCliError::Nexus)?
+        {
+            Some(list) => {
+                if let Some(active_kid) = list.active_key_id {
+                    if let Some(active) = list.keys.iter().find(|k| k.kid == active_kid) {
+                        if active.public_key_hex == new_pubkey_hex {
+                            check_handle.success();
+
+                            notify_success!(
+                                "Key is already the active key (kid={kid}), skipping registration.",
+                                kid = active_kid
+                            );
+
+                            return json_output(&json!({
+                                "tool_fqn": tool_fqn,
+                                "skipped": true,
+                                "reason": "key already active",
+                                "active_kid": active_kid,
+                                "public_key_hex": new_pubkey_hex,
+                            }));
+                        }
+                    }
+                }
+
+                check_handle.success();
+            }
+            None => {
+                // No binding yet — proceed with first-time registration.
+                check_handle.success();
+            }
+        }
+    }
     let description_bytes = description.map(|s| s.into_bytes());
 
     let handle = loading!("Submitting network_auth transaction...");
@@ -123,6 +191,53 @@ async fn register_key(
     Ok(())
 }
 
+/// Query and display all registered message-signing keys for the given tool FQN.
+async fn list_keys(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
+    command_title!("Listing keys for tool '{tool_fqn}'");
+
+    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+
+    let handle = loading!("Fetching key binding...");
+    let list = match nexus_client.network_auth().list_tool_keys(&tool_fqn).await {
+        Ok(list) => {
+            handle.success();
+            list
+        }
+        Err(e) => {
+            handle.error();
+            return Err(NexusCliError::Nexus(e));
+        }
+    };
+
+    match list {
+        None => {
+            json_output(&json!({
+                "tool_fqn": tool_fqn,
+                "binding_object_id": null,
+                "active_key_id": null,
+                "next_key_id": null,
+                "keys": [],
+            }))?;
+        }
+        Some(list) => {
+            json_output(&json!({
+                "tool_fqn": tool_fqn,
+                "binding_object_id": list.binding_object_id,
+                "active_key_id": list.active_key_id,
+                "next_key_id": list.next_key_id,
+                "keys": list.keys.iter().map(|k| json!({
+                    "kid": k.kid,
+                    "public_key_hex": k.public_key_hex,
+                    "added_at_ms": k.added_at_ms,
+                    "revoked": k.revoked,
+                })).collect::<Vec<_>>(),
+            }))?;
+        }
+    }
+
+    Ok(())
+}
+
 async fn export_allowed_leaders(
     all: bool,
     leaders: Vec<sui::types::Address>,
@@ -133,12 +248,12 @@ async fn export_allowed_leaders(
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
-    if all {
+    let file = if all {
         nexus_client
             .network_auth()
-            .write_allowed_leaders_file_v1_for_all_leaders(&out)
+            .export_allowed_leaders_file_v1_for_all_leaders()
             .await
-            .map_err(NexusCliError::Nexus)?;
+            .map_err(NexusCliError::Nexus)?
     } else {
         if leaders.is_empty() {
             return Err(NexusCliError::Any(anyhow!(
@@ -148,10 +263,11 @@ async fn export_allowed_leaders(
 
         nexus_client
             .network_auth()
-            .write_allowed_leaders_file_v1(&leaders, &out)
+            .export_allowed_leaders_file_v1(&leaders)
             .await
-            .map_err(NexusCliError::Nexus)?;
-    }
+            .map_err(NexusCliError::Nexus)?
+    };
+    write_allowed_leaders_file_v1(&file, &out)?;
     handle.success();
 
     notify_success!(
@@ -165,6 +281,88 @@ async fn export_allowed_leaders(
         "leaders": leaders,
     }))?;
 
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AllowedLeadersSyncOutcome {
+    Unchanged,
+    Updated,
+}
+
+#[derive(Clone)]
+struct AllowedLeadersFileSyncerV1 {
+    reader: NetworkAuthReader,
+    out_path: PathBuf,
+}
+
+impl AllowedLeadersFileSyncerV1 {
+    fn new(reader: NetworkAuthReader, out_path: impl Into<PathBuf>) -> Self {
+        Self {
+            reader,
+            out_path: out_path.into(),
+        }
+    }
+
+    async fn sync_once(&self) -> AnyResult<AllowedLeadersSyncOutcome, NexusCliError> {
+        let file = self
+            .reader
+            .export_allowed_leaders_file_v1_for_all_leaders()
+            .await
+            .map_err(NexusCliError::Nexus)?;
+        let bytes = allowed_leaders_file_bytes(&file)?;
+
+        match std::fs::read(&self.out_path) {
+            Ok(existing) if existing == bytes => return Ok(AllowedLeadersSyncOutcome::Unchanged),
+            Ok(_) | Err(_) => {}
+        }
+
+        atomic_write(&self.out_path, &bytes).map_err(|e| {
+            NexusCliError::Any(anyhow!("failed to write {}: {e}", self.out_path.display()))
+        })?;
+
+        Ok(AllowedLeadersSyncOutcome::Updated)
+    }
+
+    async fn run_best_effort(&self, poll_interval: Duration) {
+        loop {
+            let _ = self.sync_once().await;
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
+}
+
+fn write_allowed_leaders_file_v1(
+    file: &AllowedLeadersFileV1,
+    path: &Path,
+) -> AnyResult<(), NexusCliError> {
+    let bytes = allowed_leaders_file_bytes(file)?;
+    atomic_write(path, &bytes)
+        .map_err(|e| NexusCliError::Any(anyhow!("failed to write {}: {e}", path.display())))
+}
+
+fn allowed_leaders_file_bytes(file: &AllowedLeadersFileV1) -> AnyResult<Vec<u8>, NexusCliError> {
+    serde_json::to_vec_pretty(file)
+        .map_err(|e| NexusCliError::Any(anyhow!("failed to serialize allowlist: {e}")))
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+
+    let base = path
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "allowed-leaders.json".to_string());
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_nanos(0))
+        .as_nanos();
+    let pid = std::process::id();
+    let tmp = parent.join(format!(".{base}.{pid}.{nanos}.tmp"));
+
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(tmp, path)?;
     Ok(())
 }
 
@@ -188,7 +386,7 @@ async fn sync_allowed_leaders(
 
     let reader = NetworkAuthReader::from_rpc_url(
         &rpc_url,
-        objects.workflow_pkg_id,
+        objects.registry_pkg_id,
         *objects.network_auth.object_id(),
     )
     .map_err(NexusCliError::Nexus)?;
@@ -197,7 +395,7 @@ async fn sync_allowed_leaders(
 
     if once {
         let handle = loading!("Syncing allowlist...");
-        let outcome = syncer.sync_once().await.map_err(NexusCliError::Nexus)?;
+        let outcome = syncer.sync_once().await?;
         handle.success();
 
         notify_success!(
@@ -244,6 +442,9 @@ async fn sync_allowed_leaders(
 mod tests {
     use {super::*, clap::Parser};
 
+    /// Verifies that clap correctly parses the humantime duration format for
+    /// `sync-allowed-leaders --interval`. Guards against regressions where the
+    /// custom value_parser is accidentally removed or replaced.
     #[test]
     fn clap_parses_sync_allowed_leaders_interval() {
         let cli = crate::Cli::try_parse_from([
@@ -276,6 +477,8 @@ mod tests {
         }
     }
 
+    /// Verifies that clap rejects non-duration strings for `--interval`.
+    /// Guards against the custom value_parser being silently bypassed.
     #[test]
     fn clap_rejects_invalid_sync_allowed_leaders_interval() {
         assert!(crate::Cli::try_parse_from([
@@ -292,6 +495,8 @@ mod tests {
         .is_err());
     }
 
+    /// Verifies that a zero-length interval is rejected at runtime (not just at parse time).
+    /// Guards against the `interval.is_zero()` guard being removed.
     #[tokio::test]
     async fn sync_allowed_leaders_rejects_zero_interval() {
         let out_dir = tempfile::tempdir().unwrap();
@@ -301,5 +506,45 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("invalid duration"));
+    }
+
+    /// Verifies that `register-key --skip-if-active` is accepted by clap.
+    /// Guards against the flag being accidentally dropped from the command definition.
+    #[test]
+    fn clap_parses_register_key_skip_if_active_flag() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "auth",
+            "register-key",
+            "--tool-fqn",
+            "xyz.demo.tool@1",
+            "--signing-key",
+            "deadbeef",
+            "--skip-if-active",
+        ])
+        .is_ok());
+    }
+
+    /// Verifies that `list-keys` is accepted by clap with a valid FQN.
+    /// Guards against the subcommand being accidentally removed.
+    #[test]
+    fn clap_parses_list_keys() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "auth",
+            "list-keys",
+            "--tool-fqn",
+            "xyz.demo.tool@1",
+        ])
+        .unwrap();
+
+        match cli.command {
+            crate::Command::Tool(crate::tool::ToolCommand::Auth { cmd }) => {
+                assert!(matches!(cmd, ToolAuthCommand::ListKeys { .. }));
+            }
+            _ => panic!("unexpected command"),
+        }
     }
 }

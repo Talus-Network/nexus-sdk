@@ -1,0 +1,340 @@
+# Working on `nexus-sdk` — Agent context
+
+This file documents the conventions and workflow expected of any AI agent
+contributing to `nexus-sdk`. Read it once before touching code; refer back to
+it when a pattern is unclear.
+
+## Workspace layout
+
+```text
+nexus-sdk/                  cargo workspace root
+├── sdk/                    `nexus-sdk` crate — Rust SDK
+│   └── src/
+│       ├── nexus/          high-level action types (TapActions, ToolActions,
+│       │                   WorkflowActions, SchedulerActions, GasActions,
+│       │                   NetworkAuthActions) + NexusClient, Crawler,
+│       │                   Signer, gas pool, EventPoller, errors
+│       ├── transactions/   PTB builders: tap.rs, tool.rs, workflow.rs,
+│       │                   scheduler.rs, gas.rs, network_auth.rs
+│       ├── types/          typed on-chain object/event models
+│       │                   (TapRegistry, TapExecutionPayment, Tool, ToolRef,
+│       │                   DagExecution, NexusObjects, derive helpers, …)
+│       │                   plus Move-JSON / BCS serde parsers
+│       ├── idents/         Move package/module/function/struct identifiers
+│       │                   (primitives, sui_framework, workflow, tap, move_std)
+│       ├── events/         event parsing
+│       ├── test_utils/     sui_mocks (gRPC mocks), nexus_mocks (client mocks),
+│       │                   containers (sui/redis testcontainers), faucet
+│       ├── onchain_schema_gen/  Move-introspection schema generation
+│       ├── signed_http/    application-layer Ed25519 signatures (feature)
+│       ├── walrus/         Walrus storage client
+│       ├── tool_fqn.rs     ToolFqn + `fqn!` macro
+│       └── lib.rs          top-level re-exports
+├── cli/                    `nexus-cli` crate — `nexus` binary
+│   └── src/
+│       ├── main.rs         top-level Cli + Command dispatch
+│       ├── prelude.rs      common imports (GasArgs, JSON_MODE, sui)
+│       ├── display.rs      command_title!, notify_success!, item!, loading!,
+│       │                   json_output(), JSON_MODE: AtomicBool
+│       ├── sui.rs          get_nexus_client(), gRPC client helpers
+│       ├── cli_conf.rs     CliConf (~/.nexus/conf.toml)
+│       └── {tool,conf,dag,scheduler,gas,tap,completion}/mod.rs
+│                           subcommand groups with their handlers
+├── toolkit-rust/           Rust toolkit (`nexus-toolkit`) for tool authors
+├── helpers/                workspace helper crates / just recipes
+├── docs/                   gitbook-synced docs (cli.md is the CLI reference)
+├── target/                 cargo build output
+├── Cargo.toml              workspace manifest
+├── rustfmt.toml            unstable nightly-only options used
+├── .nightly-version        pinned nightly toolchain for fmt
+├── rust-toolchain.toml     stable toolchain for everything else
+├── STYLE_GUIDE.md          markdown style rules (markdownlint-enforced)
+├── CONTRIBUTING.md         contributor guide (pre-commit, commits, PRs)
+└── CHANGELOG.md            keep-a-changelog, per-crate sections
+```
+
+Sibling repos checked out next to this one (paths depend on local layout):
+
+- `nexus-next/` — on-chain Move packages (`sui/primitives`, `sui/interface`,
+  `sui/registry`, `sui/workflow`), example TAPs (`sui/examples/demo_tap`),
+  and the off-chain leader (`be/leader/`). Its `sui/bin/publish.sh` and
+  `sui/bin/test_demo.sh` are the canonical localnet bring-up and demo driver.
+- `nexus-tools/`, `nexus-workbench/`, `nexus-api/` — sibling repos consumed
+  by docker-compose workbenches.
+
+## SDK conventions
+
+- **High-level actions** live in `sdk/src/nexus/<area>.rs`. Each action takes
+  `&self` on the `*Actions` struct (held by `NexusClient`), submits via the
+  shared signer/gas/crawler, and returns a typed `*Result` struct. Free-
+  function `fetch_*` helpers (e.g. `fetch_registry`) live in the same
+  file when they're useful without a full client.
+- **PTB builders** live in `sdk/src/transactions/<area>.rs` and take
+  `&mut TransactionBuilder` plus `&NexusObjects`. They never read from the
+  network; they only emit move calls/inputs. Pair an action with one PTB
+  builder per logical transaction.
+- **Errors** flow through `NexusError` (`Wallet`, `Configuration`,
+  `TransactionBuilding`, `Rpc`, `Parsing`, `Timeout`, `Channel`, `Storage`).
+  Pick the variant that matches the root cause; only `Configuration` is
+  string-typed.
+- **On-chain decoding**: prefer `crawler.get_object::<T>` (JSON) for SDK
+  types that implement `Deserialize` against Sui's Move-JSON, and
+  `crawler.get_object_contents_bcs::<T>` for objects whose layout is best
+  decoded from raw BCS. Dynamic field readers
+  (`get_dynamic_fields_bcs`, `get_dynamic_object_fields`) sit on top of both.
+- **ID derivation** uses `derive_tool_id`, `derive_tool_gas_id`,
+  `derive_walk_execution_event_task_id`, etc. Never reimplement the
+  ascii-string / BCS-blake2b derivation in shell or Python.
+- **Struct reuse comes before new structs.** Before adding any new Rust struct, inspect the existing structs in the related SDK/CLI/type module and confirm that none of them, and no reasonable modification of them, can satisfy the new purpose. If a new struct is still necessary, add a short doc comment or nearby comment that states exactly what is missing from the closest existing struct and why modifying that existing struct would be wrong.
+
+## Move binding
+
+The Move binding refresh is **not type only**. It refreshes the committed
+canonical package IR for each Nexus Move package. The reduced framework support
+IR remains pinned to the SDK. The generated Rust surface in
+`sdk/src/move_bindings` is the ABI boundary for Move types, type tags, BCS and
+serde implementations, and typed call targets. Rust domain modules may add
+helpers on top, but they should not duplicate Move ABI logic.
+
+How the pipeline fits together:
+
+- **Refresh half (on demand through `just sdk rebind`)**:
+  `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR
+  through `sui_move_codegen::fetch_package`, replaces concrete Nexus package
+  identities with stable SDK binding slots, normalizes the unused deployment
+  version, and writes committed JSON under
+  `sdk/src/move_bindings/ir/<package>.json`. The reduced `move_std` and
+  `sui_framework` IR files remain unchanged and are rendered alongside the five
+  refreshed Nexus package files.
+- **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
+  renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
+  includes generated Move structs, enum variants, type tags, serde and BCS
+  implementations, and function call targets. The rendered files are never
+  committed.
+- **Wiring**: `sdk/src/move_bindings/mod.rs` scopes generated packages through
+  `with_nexus_scope`, includes the rendered output, and exposes extension
+  modules from `sdk/src/move_bindings/extensions`. Runtime PTB builders call
+  generated `*_target` functions instead of hand written package, module, and
+  function strings.
+
+Key invariants:
+
+- Framework packages are scoped to their fixed addresses: `move_std` uses
+  `0x1`, and `sui_framework` uses `0x2`.
+- Normal Nexus regeneration does not rewrite framework IR. Update that support
+  surface explicitly only when the pinned Sui version changes.
+- Committed Nexus IR uses stable binding slots: `primitives` uses `0xa1`,
+  `interface` uses `0xa2`, `registry` uses `0xa3`, `workflow` uses `0xa4`, and
+  `scheduler` uses `0xa5`. These slots describe the canonical SDK package
+  graph and are not deployment package IDs. The unused package object version
+  is normalized to `1`.
+- Nexus package call targets use the current package ids from `NexusObjects`.
+  Type identity uses the defining package id where Sui upgrades keep type tags
+  pinned to the original package.
+- Generated binding output is derived from committed IR. If a Move function,
+  struct, enum, field, or signature changes, regenerate the IR and fix Rust
+  call sites against the generated compiler errors rather than patching
+  generated output by hand.
+
+### Regenerating the bindings
+
+Run this after the on chain Move in Nexus changes identifiers, signatures,
+functions, or datatypes. The command expects a deployment objects TOML plus a
+reachable Sui gRPC endpoint. From the SDK workspace:
+
+```bash
+just sdk rebind {your_path_to_objects_toml}
+```
+
+You can pass the gRPC endpoint as the second argument when it is not
+`http://127.0.0.1:9000`:
+
+```bash
+just sdk rebind {your_path_to_objects_toml} http://127.0.0.1:{grpc_port}
+```
+
+Network package metadata does not contain Move function parameter names. Pass
+a matching Move source root as the third argument when source names should be
+restored:
+
+```bash
+just sdk rebind \
+  {your_path_to_objects_toml} \
+  http://127.0.0.1:{grpc_port} \
+  {your_path_to_nexus_contracts}
+```
+
+The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
+`binding_codegen` feature. The binary reads package ids from
+the supplied deployment manifest, fetches normalized Nexus package metadata
+over gRPC, optionally overlays trusted source parameter names, and writes the
+refreshed Nexus JSON under `sdk/src/move_bindings/ir/`. The reduced `move_std`
+and `sui_framework` IR files are not fetched or rewritten. Without a source
+root, parameter names remain deterministic `argN` values. Source input does not
+replace signatures, types, or abilities from the network.
+
+Before writing, regeneration replaces every current and original Nexus package
+ID, including cross package type references, with its stable SDK binding slot.
+It also normalizes the package object version, which is not consumed by the
+renderer. The concrete deployment remains authoritative for the fetched ABI,
+while redeploying the same ABI does not change the committed IR. Runtime
+`NexusObjects` supplies current package IDs for calls and original package IDs
+for type identity. The recipe does not start Sui, publish packages, or run
+`cargo check`; run the normal SDK checks after regeneration.
+
+The committed artifact to review is the JSON diff under
+`sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON
+during normal builds, so a dropped or renamed generated target should be
+treated as an on chain API move and fixed at the call site.
+
+## CLI conventions
+
+- **Module layout per command group** (`cli/src/<group>/mod.rs`):
+  1. `mod tap_xxx;` for each subcommand handler file.
+  1. `use { … }` block bringing handler functions and SDK result types into
+     the module scope.
+  1. `#[derive(Subcommand)] enum <Group>Command { … }` with one variant per
+     subcommand; each `#[command(about = …)]` annotation feeds `--help`.
+  1. Optional nested `enum <Sub>Command { … }` for two-level groupings (e.g.
+     `EndpointCommand`, `PaymentsCommand`).
+  1. `pub(crate) async fn handle(command: <Group>Command) -> AnyResult<(), NexusCliError>`
+     dispatcher that destructures each variant into a flat handler call.
+- **Per-subcommand handler** (`cli/src/<group>/<group>_<command>.rs`):
+  1. `command_title!("…")` for human progress.
+  1. `let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;`
+     (omit gas args for read-only commands).
+  1. Drive the SDK action and unwrap the result.
+  1. `notify_success!` for human feedback.
+  1. `json_output(&<group>_<command>_result_json(&result))?;` — JSON output
+     is stable and consumed by scripts; keep keys flat and snake_case.
+- **JSON-shape helpers** (`<group>_<command>_result_json`) live next to
+  their handler. They take typed SDK results and emit `serde_json::Value`
+  with the keys the CLI documents. Always cover them with a unit test that
+  asserts each top-level key — this catches accidental field renames.
+- **The global `--json` flag** is stored in `JSON_MODE: AtomicBool` (see
+  `cli/src/prelude.rs`). Interactive prompts and progress spinners must
+  check `JSON_MODE.load(Ordering::Relaxed)` and short-circuit when set.
+
+## Testing patterns
+
+- **Unit tests** sit next to their implementation in `#[cfg(test)] mod tests`.
+  - Bring the parent module in with `use super::*;` and supplement with
+    `crate::{fqn, sui::traits::*, test_utils::{nexus_mocks, sui_mocks}}`
+    plus `tonic::Status` when you need to fake gRPC errors.
+  - Use `sui_mocks::grpc::MockLedgerService`, `MockTransactionExecutionService`,
+    `MockSubscriptionService` to expect gRPC calls.
+  - For full transaction flows use
+    `mock_execute_transaction_and_wait_for_checkpoint` and pass the response
+    objects your handler depends on.
+  - Use `sui_mocks::grpc::mock_server` + `nexus_mocks::mock_nexus_client` to
+    materialise an end-to-end client against the mocked server.
+  - `mock_get_object_metadata` / `mock_get_object_json` /
+    `mock_get_object_bcs_for` cover the three read paths; return a tonic
+    `Status::not_found` directly for "object missing" cases.
+- **CLI dispatch tests** in `cli/src/tap/mod.rs::tests` and similar verify
+  every clap variant reaches a local boundary (e.g. missing-RPC error)
+  before any network call. Add a new arm whenever you add a subcommand.
+- **JSON-shape tests** for `*_result_json` helpers assert each documented
+  top-level key with `assert_eq!(json["x"], …)`.
+
+## Comment patterns
+
+- Avoid unnecessary and extraneous comments around self explanatory code. Code
+  should be written in such a way that it doesn't require a sea of comments in
+  the first place.
+- Add `//!` brief module descriptions to each module. Highlighting what the
+  responsibility and purpose of that module is. Update this comment after any
+  changes made to each module.
+- Prefer doc-comments `///` to inline comments `//` where possible
+- Only use inline comments to clarify potentially confusing logic within
+  functions. These comments should be concise (1-2 lines maximum).
+- `///` doc comments can be more verbose if the struct or the function require it.
+
+## Step-by-step: adding a new feature
+
+1. **Add the SDK primitive** under `sdk/src/nexus/<area>.rs`:
+   - Define the params and result structs near the existing ones.
+   - Add the `impl <Area>Actions { pub async fn … }` method.
+   - If a new PTB shape is required, extend `sdk/src/transactions/<area>.rs`
+     with a builder that takes `&mut TransactionBuilder` and the relevant
+     `NexusObjects` refs/idents.
+   - Reuse existing typed models (`sdk/src/types/<area>.rs`) and identifier
+     constants (`sdk/src/idents/<package>.rs`) — only add new types when an
+     on-chain shape genuinely changed.
+1. **Wire the SDK helper into the CLI**:
+   - Create `cli/src/<group>/<group>_<command>.rs` with a handler that
+     calls the SDK and a `*_result_json` helper.
+   - Add a `mod` line and import in `cli/src/<group>/mod.rs`.
+   - Add a `#[derive(Subcommand)]` variant (or a nested `enum`) with clap
+     attributes that match the SDK's parameter types.
+   - Route the variant in `handle(command: <Group>Command)`.
+1. **Add tests**:
+   - SDK: at minimum one happy-path mock test and one failure-mode test
+     per branch in the new function. Cover the gRPC error path with
+     `Status::not_found` and the parse-failure path with a constructed bad
+     response.
+   - CLI: dispatch test that the new variant reaches the missing-RPC
+     boundary, plus a JSON-shape unit test for each new `*_result_json`.
+1. **Update documentation**:
+   - `docs/cli.md` — add a command block in the existing `### nexus <group>`
+     section. Follow the established `**\`nexus … [--flag <VALUE>]\`\*\*`header
+style and the`{% hint style="info" %}…{% endhint %}` callouts.
+   - `CHANGELOG.md` — append bullets to `## [Unreleased]` under the matching
+     `### nexus-cli` / `### nexus-sdk` / `### nexus-toolkit` / `### docs`
+     sections; `#### Added`, `#### Changed`, `#### Fixed`, `#### Removed`
+     are the allowed verbs.
+1. **Verify** (in this order):
+
+   ```bash
+   just pre-commit cargo-check          # cargo check --locked --workspace --bins --examples
+   just pre-commit cargo-nextest-run    # cargo nextest run --locked --fail-fast … (needs docker)
+   just pre-commit cargo-clippy         # cargo clippy --locked --all-targets --all-features
+   just pre-commit cargo-nightly-fmt    # cargo +<nightly> fmt --all --check
+   ```
+
+   The fmt step is **required**: `rustfmt.toml` uses several unstable
+   options (`imports_granularity`, `group_imports`, `reorder_impl_items`,
+   …) that the stable rustfmt rejects. `cargo-nightly-fmt` resolves the
+   pinned nightly from `.nightly-version` (currently `nightly-2025-01-06`)
+   automatically; install it with
+   `rustup toolchain install "$(cat .nightly-version)" --component rustfmt`
+   if you don't have it yet.
+
+1. **Run the equivalent `just` recipes** when in doubt — they wrap the
+   above with the right toolchain selection:
+
+   ```bash
+   just sdk check && just sdk test && just sdk fmt-check
+   just cli check && just cli test && just cli fmt-check
+   just pre-commit cargo-nightly-fmt
+   ```
+
+## Definition of done
+
+A change is "done" only when **all** of the following pass:
+
+- `cargo +stable check` and `cargo +stable test` for every touched
+  crate (`-p nexus-sdk -p nexus-cli` at minimum).
+- `cargo +nightly fmt --all --check` (use the pinned `.nightly-version`).
+- New public SDK items have rustdoc that explains the _why_, not only the
+  _what_; non-obvious branches (timeouts, idempotency, error mapping) get
+  a one-liner.
+- New CLI subcommands are listed in `docs/cli.md` with the same flag
+  ordering and naming as `--help`, and have a corresponding bullet in
+  `CHANGELOG.md` under `[Unreleased]`.
+- Pre-existing tests still pass — keep an eye on flaky CLI tests that
+  share `HOME` / `$SUI_RPC_URL` / `$SUI_PK`; they use `serial_test::serial`
+  for a reason, never run them concurrently without that attribute.
+
+## When in doubt
+
+- Read [STYLE_GUIDE.md](STYLE_GUIDE.md) for markdown rules
+  (markdownlint-enforced) — ordered list items use `1.` for every entry
+  (MD029 style `1/1/1`); emphasis uses `*asterisks*`, not underscores
+  (MD049).
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) for commit-message conventions
+  (Conventional Commits, imperative tense) and the pre-commit hook setup
+  (`./.pre-commit/pre-commit --install`).
+- The on-chain Move source lives in the sibling `nexus-next` repo —
+  cross-check struct layouts, function signatures, and idents there
+  before guessing.
