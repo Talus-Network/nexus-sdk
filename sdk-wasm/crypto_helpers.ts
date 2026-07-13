@@ -1,259 +1,104 @@
-// Enhanced crypto helpers for WASM integration
-// Provides CLI-compatible functionality for browser environment
+// Crypto helpers for Nexus WASM integration.
+//
+// Thin convenience layer over the WASM-exported functions for Sui private key
+// and Ed25519 tool signing key management via localStorage.
+
+interface WasmModule {
+  set_sui_private_key(raw: string): string;
+  get_sui_private_key_b64(): string | undefined;
+  sui_key_status(): string;
+  remove_sui_private_key(): string;
+  tool_auth_keygen(force: boolean): string;
+  tool_auth_import_key(raw: string, force: boolean): string;
+  tool_key_status(): string;
+  remove_tool_signing_key(): string;
+  sign_http_request(
+    method: string,
+    path: string,
+    query: string,
+    body: Uint8Array,
+    toolId: string,
+    keyId: string,
+    ttlMs: number
+  ): string;
+  crypto_clear_all(): string;
+}
 
 class NexusCryptoHelpers {
-  private masterKey: string | null;
-  private sessions: Map<string, any>;
+  private wasm: WasmModule;
 
-  constructor() {
-    this.masterKey = null;
-    this.sessions = new Map();
+  constructor(wasmModule: WasmModule) {
+    this.wasm = wasmModule;
   }
 
-  // Securely store master key in localStorage with encryption
-  async storeMasterKeySecurely(masterKeyHex: string) {
-    try {
-      // Use Web Crypto API to encrypt the master key
-      const keyData = new TextEncoder().encode(masterKeyHex);
-      const iv = crypto.getRandomValues(new Uint8Array(12));
+  // ---- Sui private key ----
 
-      // Generate a storage key from browser-specific data
-      const storageKeyMaterial = await crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(navigator.userAgent + location.origin),
-        { name: "PBKDF2" },
-        false,
-        ["deriveKey"]
-      );
-
-      const storageKey = await crypto.subtle.deriveKey(
-        {
-          name: "PBKDF2",
-          salt: new TextEncoder().encode("nexus-wasm-salt"),
-          iterations: 100000,
-          hash: "SHA-256",
-        },
-        storageKeyMaterial,
-        { name: "AES-GCM", length: 256 },
-        false,
-        ["encrypt", "decrypt"]
-      );
-
-      const encrypted = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        storageKey,
-        keyData
-      );
-
-      // Store IV + encrypted data
-      const combined = new Uint8Array(iv.length + encrypted.byteLength);
-      combined.set(iv, 0);
-      combined.set(new Uint8Array(encrypted), iv.length);
-
-      localStorage.setItem(
-        "nexus-master-key",
-        btoa(String.fromCharCode(...combined))
-      );
-      return { success: true, message: "Master key stored securely" };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  setSuiPrivateKey(raw: string) {
+    return JSON.parse(this.wasm.set_sui_private_key(raw));
   }
 
-  // Load master key from secure localStorage
-  async loadMasterKeySecurely() {
-    try {
-      const storedData = localStorage.getItem("nexus-master-key");
-      if (!storedData) {
-        return { success: false, error: "No master key found" };
-      }
-
-      // Validate stored data format
-      if (typeof storedData !== "string" || storedData.length === 0) {
-        return { success: false, error: "Invalid stored data format" };
-      }
-
-      let combined;
-      try {
-        const decoded = atob(storedData);
-        combined = new Uint8Array(
-          decoded.split("").map((c) => c.charCodeAt(0))
-        );
-      } catch (decodeError) {
-        return { success: false, error: "Failed to decode stored data" };
-      }
-
-      // Validate combined data length
-      if (combined.length < 12) {
-        return { success: false, error: "Stored data too short" };
-      }
-
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-
-      if (encrypted.length === 0) {
-        return { success: false, error: "No encrypted data found" };
-      }
-
-      // Check if Web Crypto API is available
-      if (!crypto || !crypto.subtle) {
-        return { success: false, error: "Web Crypto API not available" };
-      }
-
-      // Recreate storage key with better error handling
-      let storageKeyMaterial;
-      try {
-        const keyMaterial = new TextEncoder().encode(
-          navigator.userAgent + location.origin
-        );
-
-        storageKeyMaterial = await crypto.subtle.importKey(
-          "raw",
-          keyMaterial,
-          { name: "PBKDF2" },
-          false,
-          ["deriveKey"]
-        );
-      } catch (importError) {
-        return { success: false, error: "Failed to import key material" };
-      }
-
-      let storageKey;
-      try {
-        storageKey = await crypto.subtle.deriveKey(
-          {
-            name: "PBKDF2",
-            salt: new TextEncoder().encode("nexus-wasm-salt"),
-            iterations: 100000,
-            hash: "SHA-256",
-          },
-          storageKeyMaterial,
-          { name: "AES-GCM", length: 256 },
-          false,
-          ["encrypt", "decrypt"]
-        );
-      } catch (deriveError) {
-        return { success: false, error: "Failed to derive storage key" };
-      }
-
-      let decrypted;
-      try {
-        decrypted = await crypto.subtle.decrypt(
-          { name: "AES-GCM", iv: iv },
-          storageKey,
-          encrypted
-        );
-      } catch (decryptError) {
-        // Provide more specific error information
-        if (decryptError.name === "OperationError") {
-          return {
-            success: false,
-            error:
-              "Decryption failed - this usually means the browser context has changed or the stored key is corrupted. Please clear storage and regenerate the master key.",
-          };
-        }
-
-        return {
-          success: false,
-          error: `Decryption failed: ${decryptError.message}`,
-        };
-      }
-
-      const masterKeyHex = new TextDecoder().decode(decrypted);
-
-      // Validate the decrypted master key
-      if (!masterKeyHex || masterKeyHex.length === 0) {
-        return { success: false, error: "Decrypted master key is empty" };
-      }
-
-      return { success: true, masterKey: masterKeyHex };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  getSuiPrivateKeyB64(): string | undefined {
+    return this.wasm.get_sui_private_key_b64();
   }
 
-  // CLI-compatible crypto init function
-  async cryptoInitKey(wasmModule: any, force = false) {
-    try {
-      // CLI-parity: Check for existing keys first
-      const existingKeys = await this.checkExistingKeys();
-
-      if (existingKeys.hasAnyKey && !force) {
-        return {
-          success: false,
-          error: "KeyAlreadyExists",
-          message:
-            "A different persistent key already exists; re-run with --force if you really want to replace it",
-          requires_force: true,
-        };
-      }
-
-      // Call WASM key_init to check status and get instructions
-      const initResult = wasmModule.key_init(force);
-      const parsedResult = JSON.parse(initResult);
-
-      if (!parsedResult.success) {
-        return parsedResult;
-      }
-
-      // If we got a master key to store, store it securely
-      if (parsedResult.action === "store_key" && parsedResult.master_key) {
-        const storeResult = await this.storeMasterKeySecurely(
-          parsedResult.master_key
-        );
-        if (!storeResult.success) {
-          return { success: false, error: storeResult.error };
-        }
-
-        return {
-          success: true,
-          message: "32-byte master key saved to secure storage",
-          master_key_preview: parsedResult.master_key.substring(0, 16) + "...",
-          cli_compatible: true,
-        };
-      }
-
-      return parsedResult;
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
+  suiKeyStatus() {
+    return JSON.parse(this.wasm.sui_key_status());
   }
 
-  // CLI-parity: Check for existing keys (like CLI's keyring check)
-  async checkExistingKeys() {
-    try {
-      const masterKeyExists = localStorage.getItem("nexus-master-key") !== null;
-      const passphraseExists =
-        localStorage.getItem("nexus-passphrase") !== null;
-
-      return {
-        hasAnyKey: masterKeyExists || passphraseExists,
-        masterKeyExists,
-        passphraseExists,
-      };
-    } catch (error) {
-      return {
-        hasAnyKey: false,
-        masterKeyExists: false,
-        passphraseExists: false,
-      };
-    }
+  removeSuiPrivateKey() {
+    return JSON.parse(this.wasm.remove_sui_private_key());
   }
 
-  // Status check (internal)
-  async getStatus() {
-    const masterKeyExists = localStorage.getItem("nexus-master-key") !== null;
-    const sessionsExist = localStorage.getItem("nexus-sessions") !== null;
+  // ---- Tool signing key ----
 
+  toolAuthKeygen(force = false) {
+    return JSON.parse(this.wasm.tool_auth_keygen(force));
+  }
+
+  toolAuthImportKey(raw: string, force = false) {
+    return JSON.parse(this.wasm.tool_auth_import_key(raw, force));
+  }
+
+  toolKeyStatus() {
+    return JSON.parse(this.wasm.tool_key_status());
+  }
+
+  removeToolSigningKey() {
+    return JSON.parse(this.wasm.remove_tool_signing_key());
+  }
+
+  // ---- Signed HTTP ----
+
+  signHttpRequest(
+    method: string,
+    path: string,
+    query: string,
+    body: Uint8Array,
+    toolId: string,
+    keyId: string,
+    ttlMs = 30_000
+  ) {
+    return JSON.parse(
+      this.wasm.sign_http_request(method, path, query, body, toolId, keyId, ttlMs)
+    );
+  }
+
+  // ---- Wipe ----
+
+  clearAll() {
+    return JSON.parse(this.wasm.crypto_clear_all());
+  }
+
+  // ---- Status ----
+
+  getStatus() {
+    const sui = this.suiKeyStatus();
+    const tool = this.toolKeyStatus();
     return {
-      masterKeyExists,
-      sessionsExist,
-      cryptoApiAvailable: !!(crypto && crypto.subtle),
-      userAgent: navigator.userAgent,
-      origin: location.origin,
+      suiKeyExists: sui.exists ?? false,
+      toolKeyExists: tool.exists ?? false,
     };
   }
 }
 
-// Export for use
 (window as any).NexusCryptoHelpers = NexusCryptoHelpers;

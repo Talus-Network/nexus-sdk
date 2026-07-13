@@ -1,19 +1,17 @@
 use {
+    nexus_sdk::types::DEFAULT_ENTRY_GROUP,
     serde::{Deserialize, Serialize},
-    std::collections::HashMap,
+    std::collections::{HashMap, HashSet},
     wasm_bindgen::prelude::*,
 };
 
-/// DAG execution operation sequence for JS-side transaction building
 #[derive(Serialize, Deserialize)]
 pub struct DagExecutionSequence {
     pub operation_type: String,
     pub steps: Vec<DagExecutionOperation>,
     pub execution_params: ExecutionParams,
-    pub encryption_info: EncryptionInfo,
 }
 
-/// Individual DAG execution operation
 #[derive(Serialize, Deserialize)]
 pub struct DagExecutionOperation {
     pub operation: String,
@@ -22,7 +20,6 @@ pub struct DagExecutionOperation {
     pub parameters: Option<serde_json::Value>,
 }
 
-/// Execution parameters
 #[derive(Serialize, Deserialize)]
 pub struct ExecutionParams {
     pub dag_id: String,
@@ -32,15 +29,6 @@ pub struct ExecutionParams {
     pub gas_coin_id: Option<String>,
 }
 
-/// Encryption information for entry ports
-#[derive(Serialize, Deserialize)]
-pub struct EncryptionInfo {
-    pub has_encrypted_ports: bool,
-    pub encrypted_ports: HashMap<String, Vec<String>>, // vertex -> [port_names]
-    pub requires_session: bool,
-}
-
-/// WASM-exported execution result
 #[wasm_bindgen]
 pub struct ExecutionResult {
     is_success: bool,
@@ -66,85 +54,70 @@ impl ExecutionResult {
     }
 }
 
-/// ✅ Build DAG execution transaction using SDK (CLI-compatible with auto-encryption)
+/// Build a DAG execution transaction matching the SDK's `prepare_dag_execution` flow.
+///
+/// Input data is plain JSON. The Sui transaction is signed JS-side with the
+/// Sui SDK using the stored private key.
+///
+/// # Walrus (remote storage) parameters
+///
+/// When using remote storage, call `upload_json_to_walrus` for each remote
+/// port first, then pass the blob IDs here.
+///
+/// * `remote_ports_json` – JSON array of `"vertex.port"` strings,
+///   e.g. `["add-vertex.a"]`
+/// * `remote_ports_blob_ids_json` – JSON object mapping `"vertex.port"` to
+///   Walrus blob IDs
 #[wasm_bindgen]
 pub fn build_dag_execution_transaction(
     dag_id: &str,
     entry_group: &str,
     input_json: &str,
-    encrypted_ports_json: &str,
     gas_budget: &str,
+    priority_fee_per_gas_unit: Option<String>,
+    remote_ports_json: Option<String>,
+    remote_ports_blob_ids_json: Option<String>,
 ) -> ExecutionResult {
-    use web_sys::console;
-
     let result = (|| -> Result<String, Box<dyn std::error::Error>> {
-        // Parse inputs
-        let mut input_data: serde_json::Value = serde_json::from_str(input_json)?;
-        let encrypted_ports: std::collections::HashMap<String, Vec<String>> =
-            serde_json::from_str(encrypted_ports_json)?;
+        let input_data: serde_json::Value = serde_json::from_str(input_json)?;
+        // Match `nexus_sdk` / CLI: `execute(..., entry_group.unwrap_or(DEFAULT_ENTRY_GROUP), ...)`
+        let entry_group = if entry_group.trim().is_empty() {
+            DEFAULT_ENTRY_GROUP
+        } else {
+            entry_group
+        };
         let gas_budget_u64: u64 = gas_budget.parse()?;
 
-        // 🔐 CLI-parity: If there are encrypted ports, encrypt input data first
-        // BUT: Check if data is already encrypted (array = already encrypted)
-        if !encrypted_ports.is_empty() {
-            // Check if any encrypted port is already in encrypted form (byte array)
-            let mut needs_encryption = false;
-            for (vertex_name, port_names) in &encrypted_ports {
-                if let Some(vertex_obj) = input_data.get(vertex_name) {
-                    for port_name in port_names {
-                        if let Some(port_value) = vertex_obj.get(port_name) {
-                            // If port_value is NOT an array, it needs encryption
-                            // If it IS an array, it's already encrypted
-                            if !port_value.is_array() {
-                                needs_encryption = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if needs_encryption {
-                    break;
-                }
-            }
+        let priority_fee: u64 = priority_fee_per_gas_unit
+            .as_ref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
 
-            if needs_encryption {
-                console::log_1(
-                    &"🔐 Encrypted ports detected, encrypting input data (CLI-parity)...".into(),
-                );
+        let remote_ports: HashSet<String> = remote_ports_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
 
-                // Call the encryption function from crypto.rs (master key loaded internally)
-                let encrypt_result = crate::encrypt_entry_ports(input_json, encrypted_ports_json);
+        let remote_blob_ids: HashMap<String, String> = remote_ports_blob_ids_json
+            .as_ref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
 
-                // Parse the encryption result
-                let encrypt_response: serde_json::Value = serde_json::from_str(&encrypt_result)?;
-
-                if !encrypt_response["success"].as_bool().unwrap_or(false) {
-                    let error_msg = encrypt_response["error"]
-                        .as_str()
-                        .unwrap_or("Encryption failed");
-                    return Err(format!("Input encryption failed: {}", error_msg).into());
-                }
-
-                // Use the encrypted input data
-                input_data = encrypt_response["input_data"].clone();
-                console::log_1(
-                    &format!(
-                        "✅ Successfully encrypted {} ports (CLI-parity)",
-                        encrypt_response["encrypted_count"].as_u64().unwrap_or(0)
+        if !remote_ports.is_empty() {
+            for rp in &remote_ports {
+                if !remote_blob_ids.contains_key(rp) {
+                    return Err(format!(
+                        "Missing blob ID for remote port '{}'. Call upload_json_to_walrus first.",
+                        rp
                     )
-                    .into(),
-                );
-            } else {
-                console::log_1(&"Input data already encrypted, skipping encryption (prevent double encryption)".into());
+                    .into());
+                }
             }
-        } else {
-            console::log_1(&"No encrypted ports, using plaintext input (CLI-parity)".into());
         }
 
-        // Build transaction commands that mirror CLI's dag::execute function
         let mut commands = Vec::new();
 
-        // Step 1: Create empty VecMap for vertex inputs (like CLI)
+        // Step 1: outer VecMap<Vertex, VecMap<InputPort, NexusData>>
         commands.push(serde_json::json!({
             "type": "moveCall",
             "target": "0x2::vec_map::empty",
@@ -158,14 +131,14 @@ pub fn build_dag_execution_transaction(
 
         let mut command_index = 1;
 
-        // Step 2: Process each vertex like CLI
-        for (vertex_name, vertex_data) in input_data.as_object().unwrap_or(&serde_json::Map::new())
+        // Step 2: build per-vertex input maps
+        for (vertex_name, vertex_data) in
+            input_data.as_object().unwrap_or(&serde_json::Map::new())
         {
             if !vertex_data.is_object() {
                 continue;
             }
 
-            // Create vertex
             commands.push(serde_json::json!({
                 "type": "moveCall",
                 "target": "{{workflow_pkg_id}}::dag::vertex_from_string",
@@ -175,7 +148,6 @@ pub fn build_dag_execution_transaction(
             let vertex_result_index = command_index;
             command_index += 1;
 
-            // Create empty inner VecMap for ports
             commands.push(serde_json::json!({
                 "type": "moveCall",
                 "target": "0x2::vec_map::empty",
@@ -189,52 +161,46 @@ pub fn build_dag_execution_transaction(
             let inner_vecmap_result_index = command_index;
             command_index += 1;
 
-            // Process each port
             for (port_name, port_value) in
                 vertex_data.as_object().unwrap_or(&serde_json::Map::new())
             {
-                let is_encrypted = encrypted_ports
-                    .get(vertex_name)
-                    .map_or(false, |ports| ports.contains(port_name));
-
-                // Create input port (encrypted or normal like CLI)
-                let port_target = if is_encrypted {
-                    "{{workflow_pkg_id}}::dag::encrypted_input_port_from_string"
-                } else {
-                    "{{workflow_pkg_id}}::dag::input_port_from_string"
-                };
-
                 commands.push(serde_json::json!({
                     "type": "moveCall",
-                    "target": port_target,
+                    "target": "{{workflow_pkg_id}}::dag::input_port_from_string",
                     "arguments": [{"type": "pure", "pure_type": "string", "value": port_name}],
                     "result_index": command_index
                 }));
                 let port_result_index = command_index;
                 command_index += 1;
 
-                let json_string = serde_json::to_string(port_value)?;
-                let json_bytes = json_string.as_bytes().to_vec();
+                let remote_handle = format!("{}.{}", vertex_name, port_name);
+                let is_remote = remote_ports.contains(&remote_handle);
 
-                // Use appropriate NexusData function based on encryption status (like CLI)
-                let data_target = if is_encrypted {
-                    "{{primitives_pkg_id}}::data::inline_one_encrypted" // Use inline_one_encrypted for encrypted data
+                let (data_target, data_bytes) = if is_remote {
+                    let blob_id = remote_blob_ids.get(&remote_handle).ok_or_else(|| {
+                        format!("Missing blob ID for remote port '{}'", remote_handle)
+                    })?;
+                    let blob_id_bytes =
+                        serde_json::to_vec(&serde_json::Value::String(blob_id.clone()))?;
+                    ("{{primitives_pkg_id}}::data::walrus_one", blob_id_bytes)
                 } else {
-                    "{{primitives_pkg_id}}::data::inline_one" // Use inline_one for regular data
+                    // Same as `primitives::Data::nexus_data_inline_from_json` for non-array values:
+                    // `pure_arg(&serde_json::to_vec(json)?)`.
+                    let bytes = serde_json::to_vec(port_value)?;
+                    ("{{primitives_pkg_id}}::data::inline_one", bytes)
                 };
 
                 commands.push(serde_json::json!({
                     "type": "moveCall",
                     "target": data_target,
                     "arguments": [
-                        {"type": "pure", "pure_type": "vector_u8", "value": json_bytes}
+                        {"type": "pure", "pure_type": "vector_u8", "value": data_bytes}
                     ],
                     "result_index": command_index
                 }));
                 let nexus_data_result_index = command_index;
                 command_index += 1;
 
-                // Insert port and data into inner VecMap
                 commands.push(serde_json::json!({
                     "type": "moveCall",
                     "target": "0x2::vec_map::insert",
@@ -252,7 +218,6 @@ pub fn build_dag_execution_transaction(
                 command_index += 1;
             }
 
-            // Insert vertex and inner VecMap into outer VecMap
             commands.push(serde_json::json!({
                 "type": "moveCall",
                 "target": "0x2::vec_map::insert",
@@ -270,7 +235,7 @@ pub fn build_dag_execution_transaction(
             command_index += 1;
         }
 
-        // Step 3: Create entry group
+        // Step 3: entry group
         commands.push(serde_json::json!({
             "type": "moveCall",
             "target": "{{workflow_pkg_id}}::dag::entry_group_from_string",
@@ -280,35 +245,101 @@ pub fn build_dag_execution_transaction(
         let entry_group_result_index = command_index;
         command_index += 1;
 
-        // Step 4: Final DAG execution call (exactly like CLI)
+        // Step 4: prepare_dag_execution
+        // Returns (RequestWalkExecution, DAGExecution, ExecutionGas).
+        // JS side must access nested results [0], [1], [2] from this call.
         commands.push(serde_json::json!({
             "type": "moveCall",
-            "target": "{{workflow_pkg_id}}::default_tap::begin_dag_execution",
+            "target": "{{workflow_pkg_id}}::default_tap::prepare_dag_execution",
             "arguments": [
                 {"type": "shared_object_by_id", "id": "{{default_tap_object_id}}", "mutable": true},
                 {"type": "shared_object_by_id", "id": dag_id, "mutable": false},
                 {"type": "shared_object_by_id", "id": "{{gas_service_object_id}}", "mutable": true},
+                {"type": "shared_object_by_id", "id": "{{tool_registry_id}}", "mutable": false},
                 {"type": "pure", "pure_type": "id", "value": "{{network_id}}"},
                 {"type": "result", "index": entry_group_result_index},
                 {"type": "result", "index": 0},
+                {"type": "pure", "pure_type": "u64", "value": priority_fee},
                 {"type": "clock_object"}
             ],
-            "result_index": command_index
+            "result_index": command_index,
+            "returns": {
+                "ticket": {"nested_index": 0},
+                "execution": {"nested_index": 1},
+                "execution_gas": {"nested_index": 2}
+            }
         }));
+        let prepare_result_index = command_index;
+        let _ = command_index + 1;
+
+        // Step 5: lock_gas_state_for_tool (one per tool)
+        // JS side must iterate over tool gas objects and add one command per tool.
+        // Template for a single tool:
+        let gas_lock_template = serde_json::json!({
+            "type": "moveCall",
+            "target": "{{workflow_pkg_id}}::gas::lock_gas_state_for_tool",
+            "arguments_template": [
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 2, "description": "execution_gas"},
+                {"type": "shared_object_by_id", "id": "{{tool_gas_object_id}}", "mutable": true, "description": "tool_gas (JS must provide per tool)"},
+                {"type": "shared_object_by_id", "id": "{{invoker_gas_object_id}}", "mutable": true, "description": "invoker_gas (JS must provide)"},
+                {"type": "shared_object_by_id", "id": dag_id, "mutable": false, "description": "dag"},
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 1, "description": "execution"},
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 0, "description": "ticket"}
+            ],
+            "note": "Repeat this command for each tool in the DAG. JS must supply actual tool_gas and invoker_gas object IDs."
+        });
+
+        // Step 6: request_network_to_execute_walks
+        let walk_request_template = serde_json::json!({
+            "type": "moveCall",
+            "target": "{{workflow_pkg_id}}::dag::request_network_to_execute_walks",
+            "arguments_template": [
+                {"type": "shared_object_by_id", "id": dag_id, "mutable": false, "description": "dag"},
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 1, "description": "execution"},
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 0, "description": "ticket"},
+                {"type": "shared_object_by_id", "id": "{{leader_registry_id}}", "mutable": false, "description": "leader_registry"},
+                {"type": "clock_object"}
+            ]
+        });
+
+        // Step 7: share DAGExecution and ExecutionGas
+        let share_execution_template = serde_json::json!({
+            "type": "moveCall",
+            "target": "0x2::transfer::public_share_object",
+            "typeArguments": ["{{workflow_pkg_id}}::dag::DAGExecution"],
+            "arguments_template": [
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 1, "description": "execution"}
+            ]
+        });
+
+        let share_gas_template = serde_json::json!({
+            "type": "moveCall",
+            "target": "0x2::transfer::public_share_object",
+            "typeArguments": ["{{workflow_pkg_id}}::gas::ExecutionGas"],
+            "arguments_template": [
+                {"type": "nested_result", "index": prepare_result_index, "nested_index": 2, "description": "execution_gas"}
+            ]
+        });
 
         let transaction_data = serde_json::json!({
             "commands": commands,
             "gas_budget": gas_budget_u64,
-            "encrypted_ports_count": encrypted_ports.len(),
+            "priority_fee_per_gas_unit": priority_fee,
             "vertices_count": input_data.as_object().map_or(0, |obj| obj.len()),
-            "auto_encrypted": !encrypted_ports.is_empty()
+            "remote_ports_count": remote_ports.len(),
+            "prepare_result_index": prepare_result_index,
+            "post_prepare_templates": {
+                "lock_gas_state_for_tool": gas_lock_template,
+                "request_network_to_execute_walks": walk_request_template,
+                "share_execution": share_execution_template,
+                "share_execution_gas": share_gas_template
+            }
         });
 
         Ok(serde_json::json!({
             "success": true,
             "transaction_data": transaction_data.to_string(),
-            "message": "CLI-compatible transaction built successfully with auto-encryption",
-            "encrypted": !encrypted_ports.is_empty()
+            "message": "Transaction built (prepare_dag_execution + post-prepare templates)",
         })
         .to_string())
     })();
@@ -327,13 +358,13 @@ pub fn build_dag_execution_transaction(
     }
 }
 
+/// Validate that all required parameters are present before execution.
 #[wasm_bindgen]
 pub fn validate_dag_execution_readiness(
     dag_id: &str,
     entry_group: &str,
     input_json: &str,
 ) -> ExecutionResult {
-    // Parse input JSON to validate structure
     let input_data: serde_json::Value = match serde_json::from_str(input_json) {
         Ok(data) => data,
         Err(e) => {
@@ -345,7 +376,6 @@ pub fn validate_dag_execution_readiness(
         }
     };
 
-    // Basic validation checks
     if dag_id.is_empty() {
         return ExecutionResult {
             is_success: false,
@@ -354,15 +384,12 @@ pub fn validate_dag_execution_readiness(
         };
     }
 
-    if entry_group.is_empty() {
-        return ExecutionResult {
-            is_success: false,
-            error_message: Some("Entry group is required".to_string()),
-            transaction_data: None,
-        };
-    }
+    let resolved_entry_group = if entry_group.trim().is_empty() {
+        DEFAULT_ENTRY_GROUP
+    } else {
+        entry_group
+    };
 
-    // Check if input data is an object (required for vertex-port mapping)
     if !input_data.is_object() {
         return ExecutionResult {
             is_success: false,
@@ -375,10 +402,11 @@ pub fn validate_dag_execution_readiness(
 
     let readiness_info = serde_json::json!({
         "dag_id": dag_id,
-        "entry_group": entry_group,
+        "entry_group": resolved_entry_group,
+        "entry_group_was_defaulted": entry_group.trim().is_empty(),
         "input_vertices": input_data.as_object().unwrap().keys().collect::<Vec<_>>(),
         "ready_for_execution": true,
-        "validation_timestamp": js_sys::Date::now() as u64 / 1000 // Unix timestamp
+        "validation_timestamp": js_sys::Date::now() as u64 / 1000
     });
 
     match serde_json::to_string(&readiness_info) {

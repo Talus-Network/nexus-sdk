@@ -25,9 +25,17 @@ pub use json_dag::*;
 #[cfg(any(feature = "types", feature = "wasm_types"))]
 pub use storage_kind::StorageKind;
 
+#[cfg(all(feature = "types", not(feature = "wasm_types")))]
+pub use dag::*;
+
+#[cfg(all(feature = "types", feature = "wasm_types"))]
+pub use dag::{
+    DagDefaultValue, DagEdge, DagEntryGroup, DagEntryPort, DagInput, DagOutput, DagSpec, DagVertex,
+    DagVertexKind,
+};
+
 #[cfg(feature = "types")]
 pub use {
-    dag::*,
     nexus_objects::NexusObjects,
     secret::Secret,
     secret_value::SecretValue,
