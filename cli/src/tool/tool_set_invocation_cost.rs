@@ -15,7 +15,6 @@ pub(crate) async fn set_tool_invocation_cost(
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let signer = nexus_client.signer();
-    let gas_config = nexus_client.gas_config();
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
@@ -63,40 +62,24 @@ pub(crate) async fn set_tool_invocation_cost(
     // Craft the transaction.
     let tx_handle = loading!("Crafting transaction...");
 
-    let mut tx = sui::tx::TransactionBuilder::new();
-
-    if let Err(e) =
-        tool::set_invocation_cost(&mut tx, nexus_objects, &tool, &owner_cap, invocation_cost)
+    let tx = match tool::set_invocation_cost_ptb(nexus_objects, &tool, &owner_cap, invocation_cost)
     {
-        tx_handle.error();
+        Ok(tx) => tx,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Any(e));
+        }
+    };
 
-        return Err(NexusCliError::Any(e));
-    }
+    let response = match nexus_client.submit_transaction(tx, address).await {
+        Ok(response) => response,
+        Err(e) => {
+            tx_handle.error();
+            return Err(NexusCliError::Nexus(e));
+        }
+    };
 
     tx_handle.success();
-
-    let mut gas_coin = gas_config.acquire_gas_coin().await;
-
-    tx.set_sender(address);
-    tx.set_gas_budget(gas_config.get_budget());
-    tx.set_gas_price(nexus_client.get_reference_gas_price());
-
-    tx.add_gas_objects(vec![sui::tx::Input::owned(
-        *gas_coin.object_id(),
-        gas_coin.version(),
-        *gas_coin.digest(),
-    )]);
-
-    let tx = tx.finish().map_err(|e| NexusCliError::Any(e.into()))?;
-
-    let signature = signer.sign_tx(&tx).await.map_err(NexusCliError::Nexus)?;
-
-    let response = signer
-        .execute_tx(tx, signature, &mut gas_coin)
-        .await
-        .map_err(NexusCliError::Nexus)?;
-
-    gas_config.release_gas_coin(gas_coin).await;
 
     notify_success!(
         "Transaction digest: {digest}",

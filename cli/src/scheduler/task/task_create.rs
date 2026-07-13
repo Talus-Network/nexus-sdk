@@ -11,13 +11,19 @@ use {
     },
     nexus_sdk::{
         events::NexusEventKind,
-        nexus::scheduler::{CreateTaskParams, GeneratorKind, OccurrenceRequest},
-        types::{PolicySymbol, StorageConf},
+        move_bindings::primitives::policy::Symbol,
+        nexus::scheduler::{
+            CreateTaskParams,
+            CreateTaskTapPayment,
+            GeneratorKind,
+            OccurrenceRequest,
+        },
+        walrus::StorageConf,
     },
     std::collections::HashMap,
 };
 
-/// Create a scheduler task and optionally enqueue the initial occurrence.
+/// Create a scheduled task and optionally enqueue the initial occurrence.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_task(
     dag_id: sui::types::Address,
@@ -31,10 +37,12 @@ pub(crate) async fn create_task(
     schedule_deadline_offset_ms: Option<u64>,
     schedule_priority_fee_per_gas_unit: u64,
     generator: GeneratorKind,
+    prepay_amount: u64,
+    occurrence_budget: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
-        "Creating scheduler task for DAG '{dag_id}'",
+        "Creating scheduled task for DAG '{dag_id}'",
         dag_id = dag_id
     );
 
@@ -67,7 +75,7 @@ pub(crate) async fn create_task(
                     testnet_command = "Or for testnet simply: $ nexus conf set --data-storage.testnet"
                 ))
             })?;
-        input_data.insert(vertex, committed);
+        input_data.insert(vertex, committed.into_map());
     }
 
     let schedule_requested = schedule_start_ms.is_some()
@@ -96,7 +104,7 @@ pub(crate) async fn create_task(
         )));
     }
 
-    let tx_handle = loading!("Submitting scheduler task transaction...");
+    let tx_handle = loading!("Submitting scheduled task transaction...");
 
     let result = nexus_client
         .scheduler()
@@ -108,6 +116,15 @@ pub(crate) async fn create_task(
             execution_priority_fee_per_gas_unit,
             initial_schedule,
             generator,
+            agent_id: None,
+            skill_id: None,
+            tap_payment: Some(CreateTaskTapPayment::UserFunded {
+                prepay_amount,
+                refund_recipient: None,
+                occurrence_budget,
+                selected_dag: None,
+                authorization_templates: Vec::new(),
+            }),
         })
         .await
         .map_err(NexusCliError::Nexus)?;
@@ -116,7 +133,7 @@ pub(crate) async fn create_task(
 
     let mut result_json = serde_json::json!({
         "digest": result.tx_digest,
-        "task_id": result.task_id,
+        "scheduled_task_id": result.task_id,
     });
 
     let mut scheduled_event_display = None;
@@ -128,9 +145,17 @@ pub(crate) async fn create_task(
             scheduled_event_display = describe_occurrence_event(&event);
         }
     }
+    if let Some(tap_payment) = result.tap_payment.as_ref() {
+        result_json["tap_payment"] = serde_json::json!({
+            "agent_id": tap_payment.agent_id,
+            "skill_id": tap_payment.skill_id,
+            "prepay_amount": tap_payment.prepay_amount,
+            "occurrence_budget": tap_payment.occurrence_budget,
+        });
+    }
 
     notify_success!(
-        "Scheduler task created: {task_id}",
+        "Scheduled task created: {task_id}",
         task_id = result.task_id.to_string().truecolor(100, 100, 100)
     );
 
@@ -153,27 +178,23 @@ fn describe_occurrence_event(event: &NexusEventKind) -> Option<String> {
     match event {
         NexusEventKind::RequestScheduledOccurrence(env) => Some(format!(
             "task={} start_ms={} (generator={}, priority={})",
-            env.request.task,
+            env.request.task.bytes,
             env.start_ms,
             describe_generator(&env.request.generator),
             env.priority
         )),
-        NexusEventKind::RequestScheduledWalk(env) => Some(format!(
-            "walk for dag execution start_ms={} (priority={})",
-            env.start_ms, env.priority
-        )),
         NexusEventKind::OccurrenceScheduled(e) => Some(format!(
             "task={} (generator={})",
-            e.task,
+            e.task.bytes,
             describe_generator(&e.generator)
         )),
         _ => None,
     }
 }
 
-fn describe_generator(symbol: &PolicySymbol) -> String {
+fn describe_generator(symbol: &Symbol) -> String {
     match symbol {
-        PolicySymbol::Witness(name) => name.name.clone(),
-        PolicySymbol::Uid(uid) => uid.to_string(),
+        Symbol::Witness { pos0 } => pos0.to_string(),
+        Symbol::Uid { pos0 } => pos0.bytes.to_string(),
     }
 }

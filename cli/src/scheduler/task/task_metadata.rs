@@ -10,7 +10,7 @@ use {
     serde_json::json,
 };
 
-/// Update all metadata entries for a scheduler task.
+/// Update all metadata entries for a scheduled task.
 pub(crate) async fn update_task_metadata(
     task_id: sui::types::Address,
     metadata: Vec<String>,
@@ -38,7 +38,7 @@ pub(crate) async fn update_task_metadata(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "task_id": task_id,
+        "scheduled_task_id": task_id,
         "metadata_entries": metadata_pairs.len(),
     }))?;
 

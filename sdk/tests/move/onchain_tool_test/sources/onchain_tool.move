@@ -1,8 +1,10 @@
 module onchain_tool::onchain_tool;
 
+use onchain_tool::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
+use onchain_tool::proof_of_uid::{Self as proof_of_uid, ProofOfUID};
 
 /// One-time witness for package initialization.
 public struct ONCHAIN_TOOL has drop {}
@@ -18,11 +20,6 @@ public struct RandomCounter has key {
     count: u64,
     /// Store the witness object that identifies this tool.
     witness: Bag,
-}
-
-/// Placeholder for ProofOfUID.
-public struct ProofOfUID {
-    id: UID,
 }
 
 /// Tool execution output variants.
@@ -61,7 +58,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 }
 
 /// Execute function that takes a ProofOfUID worksheet as its first argument.
-/// The tool must stamp the worksheet with the witness ID to prove it was executed.
+/// The tool must stamp the worksheet with the tool witness ID to prove it was executed.
 /// This allows the Nexus framework to verify that the tool was actually invoked.
 ///
 /// This execute function implements conditional logic:
@@ -69,17 +66,20 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 /// - If increase_with = 0, the execution should return an error output variant.
 /// - If increase_with > 100, the counter is increased and returns the LargeIncrement variant.
 ///
-/// We also need to return output data from the onchain tool execution.
-/// We can do this in various ways, one being by simply returning the data directly
-/// from the execute function call. When we do this, we need to consume this output
-/// data for the next call, so we make it a hot potato that is being consumed in submit_on_chain_tool_eval_for_walk.
-public fun execute(
-    worksheet: &mut ProofOfUID,
+/// The production Nexus ABI finalizes output through an owned OnchainToolResult
+/// argument and does not return values from execute.
+entry fun execute(
+    worksheet: ProofOfUID,
+    result: OnchainToolResult,
     counter: &mut RandomCounter,
     increase_with: u64,
     _ctx: &mut TxContext,
 ) {
     let old_count = counter.count;
+    proof_of_uid::delete(worksheet);
+    onchain_tool_result::delete_for_testing(result);
+    let _ = old_count;
+    let _ = increase_with;
 }
 
 // === Getters ===
@@ -94,8 +94,8 @@ fun witness(self: &RandomCounter): &OnchainToolWitness {
     self.witness.borrow(b"witness")
 }
 
-public fun witness_id(self: &RandomCounter): ID {
-    self.witness().id.to_inner()
+public fun tool_witness_id(self: &RandomCounter): ID {
+    object::uid_to_inner(&self.witness().id)
 }
 
 #[test_only]

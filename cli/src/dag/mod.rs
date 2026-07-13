@@ -1,11 +1,15 @@
+mod dag_abort_expired_execution;
 mod dag_execute;
+mod dag_execution_cost;
 mod dag_inspect_execution;
 mod dag_publish;
 mod dag_validate;
 
 use {
     crate::prelude::*,
+    dag_abort_expired_execution::*,
     dag_execute::*,
+    dag_execution_cost::*,
     dag_inspect_execution::*,
     dag_publish::*,
     dag_validate::*,
@@ -27,14 +31,14 @@ pub(crate) enum DagCommand {
     },
 
     #[command(
-        about = "Publish a Nexus DAG JSON file to the currently active Sui net. This commands also performs validation on the file before publishing."
+        about = "Publish a Nexus DAG spec file to the currently active Sui net. This command also performs validation on the file before publishing."
     )]
     Publish {
-        /// The path to the Nexus DAG JSON file to publish.
+        /// The path to the Nexus DAG spec file to publish.
         #[arg(
             long = "path",
             short = 'p',
-            help = "The path to the Nexus DAG JSON file to publish",
+            help = "The path to the Nexus DAG spec file to publish",
             value_parser = ValueParser::from(expand_tilde)
         )]
         path: PathBuf,
@@ -96,13 +100,23 @@ pub(crate) enum DagCommand {
             default_value_t = 0u64
         )]
         priority_fee_per_gas_unit: u64,
+        #[arg(
+            long = "payment-coin",
+            help = "SUI coin object ID to lock as the standard TAP execution payment.",
+            value_name = "OBJECT_ID"
+        )]
+        payment_coin: Option<sui::types::Address>,
+        #[arg(
+            long = "payment-budget",
+            help = "Optional payment budget in MIST. Defaults to the full payment coin balance.",
+            value_name = "AMOUNT"
+        )]
+        payment_budget: Option<u64>,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(
-        about = "Inspect a Nexus DAG execution process based on the provided object ID and execution digest."
-    )]
+    #[command(about = "Inspect a Nexus DAG execution.")]
     InspectExecution {
         /// The object ID of the Nexus DAGExecution object.
         #[arg(
@@ -112,13 +126,39 @@ pub(crate) enum DagCommand {
             value_name = "OBJECT_ID"
         )]
         dag_execution_id: sui::types::Address,
-        /// The entry group to invoke.
+    },
+
+    #[command(about = "Show the standard TAP execution payment consumed by a DAG execution.")]
+    ExecutionCost {
+        /// The object ID of the Nexus DAGExecution object.
         #[arg(
-            long = "execution-checkpoint",
-            short = 'c',
-            help = "The checkpoint of the transaction that triggered the execution."
+            long = "dag-execution-id",
+            short = 'e',
+            help = "The object ID of the Nexus DAGExecution object.",
+            value_name = "OBJECT_ID"
         )]
-        execution_checkpoint: u64,
+        dag_execution_id: sui::types::Address,
+    },
+
+    #[command(about = "Trigger the ToolGas-assisted abort flow for an expired DAG execution.")]
+    AbortExpiredExecution {
+        /// The object ID of the Nexus DAGExecution object.
+        #[arg(
+            long = "dag-execution-id",
+            short = 'e',
+            help = "The object ID of the Nexus DAGExecution object.",
+            value_name = "OBJECT_ID"
+        )]
+        dag_execution_id: sui::types::Address,
+        /// Optional ToolGas object ID to require. When omitted, the first eligible candidate is used.
+        #[arg(
+            long = "tool-gas-id",
+            help = "ToolGas object ID to use when it is eligible for this abort.",
+            value_name = "OBJECT_ID"
+        )]
+        tool_gas_id: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
     },
 }
 
@@ -142,6 +182,8 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             remote,
             inspect,
             priority_fee_per_gas_unit,
+            payment_coin,
+            payment_budget,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -154,6 +196,8 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 remote,
                 inspect,
                 priority_fee_per_gas_unit,
+                payment_coin,
+                payment_budget,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -161,9 +205,26 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         }
 
         // == `$ nexus dag inspect-execution` ==
-        DagCommand::InspectExecution {
+        DagCommand::InspectExecution { dag_execution_id } => {
+            inspect_dag_execution(dag_execution_id).await
+        }
+
+        // == `$ nexus dag execution-cost` ==
+        DagCommand::ExecutionCost { dag_execution_id } => execution_cost(dag_execution_id).await,
+
+        // == `$ nexus dag abort-expired-execution` ==
+        DagCommand::AbortExpiredExecution {
             dag_execution_id,
-            execution_checkpoint,
-        } => inspect_dag_execution(dag_execution_id, execution_checkpoint).await,
+            tool_gas_id,
+            gas,
+        } => {
+            abort_expired_execution(
+                dag_execution_id,
+                tool_gas_id,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }

@@ -28,13 +28,13 @@ impl std::fmt::Display for TaskStateRequest {
     }
 }
 
-/// Toggle scheduler task state between paused, resumed, or canceled.
+/// Toggle scheduled task state between paused, resumed, or canceled.
 pub(crate) async fn set_task_state(
     task_id: sui::types::Address,
     gas: GasArgs,
     request: TaskStateRequest,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("{request} scheduler task '{task_id}'");
+    command_title!("{request} scheduled task '{task_id}'");
 
     let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
 
@@ -58,7 +58,7 @@ pub(crate) async fn set_task_state(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "task_id": task_id,
+        "scheduled_task_id": task_id,
         "state": match request {
             TaskStateRequest::Pause => "paused",
             TaskStateRequest::Resume => "resumed",

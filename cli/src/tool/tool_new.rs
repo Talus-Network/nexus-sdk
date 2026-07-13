@@ -2,10 +2,7 @@ use {
     crate::{command_title, display::json_output, loading, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
-    tokio::{
-        fs::{create_dir_all, File},
-        io::AsyncWriteExt,
-    },
+    tokio::fs::create_dir_all,
 };
 
 /// Available templates for tool generation.
@@ -147,16 +144,10 @@ pub(crate) async fn create_new_tool(
             }
         };
 
-        let mut file = match File::create(path).await {
-            Ok(file) => file,
-            Err(e) => {
-                writing_file.error();
-
-                return Err(NexusCliError::Io(e));
-            }
-        };
-
-        if let Err(e) = file.write_all(content.as_bytes()).await {
+        // `tokio::fs::write` flushes and closes the file before returning; a
+        // dropped `tokio::fs::File` does not flush its buffer, which can leave a
+        // scaffolded file empty for a reader racing the drop.
+        if let Err(e) = tokio::fs::write(path, content.as_bytes()).await {
             writing_file.error();
 
             return Err(NexusCliError::Io(e));
@@ -227,7 +218,6 @@ mod tests {
         assert!(move_toml_contents.contains("edition = \"2024.beta\""));
         assert!(move_toml_contents.contains("nexus_primitives"));
         assert!(move_toml_contents.contains("nexus_workflow"));
-        assert!(move_toml_contents.contains("nexus_interface"));
 
         // Check that the main Move file was written with correct contents.
         let move_file_path = tempdir.join("test_tool/sources/test_tool.move");
@@ -237,12 +227,23 @@ mod tests {
         assert!(move_contents.contains("public struct TEST_TOOL has drop {}"));
         assert!(move_contents.contains("public struct TestToolWitness has key, store"));
         assert!(move_contents.contains("public struct TestToolState has key"));
+        assert!(move_contents.contains("witness: Bag"));
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
-        assert!(move_contents.contains("public fun execute("));
-        assert!(move_contents.contains("worksheet: &mut ProofOfUID"));
-        assert!(move_contents.contains("): TaggedOutput"));
-        assert!(move_contents.contains("public fun witness_id(self: &TestToolState): ID"));
+        assert!(move_contents.contains("entry fun execute("));
+        assert!(
+            move_contents.contains("use nexus_interface::authorization::AgentVertexAuthorization;")
+        );
+        assert!(move_contents.contains(
+            "use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};"
+        ));
+        assert!(move_contents.contains("authorization: ProvenValue<AgentVertexAuthorization>"));
+        assert!(move_contents.contains("worksheet: ProofOfUID"));
+        assert!(move_contents.contains("result: OnchainToolResult"));
+        assert!(move_contents.contains("worksheet.stamp_with_data(&state.witness().id"));
+        assert!(move_contents
+            .contains("onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);"));
+        assert!(move_contents.contains("public fun tool_witness_id(self: &TestToolState): ID"));
         assert!(
             move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")
         );

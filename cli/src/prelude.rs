@@ -22,7 +22,8 @@ pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
 
 /// Various Nexus RPC URLs.
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev/";
-pub(crate) const TESTNET_NEXUS_RPC_URL: &str = "https://rpc-testnet.taluslabs.dev/";
+pub(crate) const TESTNET_NEXUS_RPC_URL: &str = "https://fullnode.testnet.sui.io/";
+pub(crate) const MAINNET_NEXUS_RPC_URL: &str = "https://fullnode.mainnet.sui.io/";
 
 /// objects.toml locations for each network.
 pub(crate) const DEVNET_OBJECTS_TOML: &str = concat!(
@@ -37,7 +38,11 @@ pub(crate) const TESTNET_OBJECTS_TOML: &str = concat!(
     "/objects.testnet.toml"
 );
 
-pub(crate) const _MAINNET_OBJECTS_TOML: &str = "";
+pub(crate) const MAINNET_OBJECTS_TOML: &str = concat!(
+    "https://storage.googleapis.com/production-talus-sui-objects/v",
+    env!("CARGO_PKG_VERSION"),
+    "/objects.mainnet.toml"
+);
 
 /// What is the default gas budget to use? (0.1 SUI)
 pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;

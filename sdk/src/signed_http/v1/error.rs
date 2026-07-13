@@ -16,7 +16,7 @@ pub enum SignedHttpError {
     },
     #[error("invalid signature length {0}, expected 64")]
     InvalidSignatureLength(usize),
-    #[error("invalid json in signed input: {0}")]
+    #[error("invalid signed input JSON: {0}")]
     InvalidSignedInputJson(#[source] serde_json::Error),
     #[error("unknown leader key (leader_id={leader_id}, leader_kid={leader_kid})")]
     UnknownLeaderKey { leader_id: String, leader_kid: u64 },

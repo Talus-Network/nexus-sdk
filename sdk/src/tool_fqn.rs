@@ -108,6 +108,10 @@ impl FromStr for ToolFqn {
             anyhow::bail!("Tool version too large");
         };
 
+        if version == 0 {
+            anyhow::bail!("Tool version cannot be zero");
+        }
+
         Ok(Self {
             domain,
             name,
@@ -231,10 +235,14 @@ mod tests {
         assert_matches!(invalid_characters2, Err(e) if e.to_string().contains("Invalid tool FQN format"));
 
         let version_too_large: u64 = u32::MAX as u64 + 1;
-
         let version_too_large =
             format!("xyz.taluslabs.example@{version_too_large}").parse::<ToolFqn>();
 
         assert_matches!(version_too_large, Err(e) if e.to_string().contains("Tool version too large"));
+
+        let version_zero: u32 = 0;
+        let version_zero = format!("xyz.taluslabs.example@{version_zero}").parse::<ToolFqn>();
+
+        assert_matches!(version_zero, Err(e) if e.to_string().contains("Tool version cannot be zero"));
     }
 }

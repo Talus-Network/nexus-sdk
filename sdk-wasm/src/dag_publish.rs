@@ -1,6 +1,6 @@
 use {
     nexus_sdk::{
-        dag::validator,
+        dag::{json::parse_dag_spec, validator},
         types::{Dag, EdgeKind, StorageKind, VertexKind},
     },
     serde::{Deserialize, Serialize},
@@ -122,7 +122,17 @@ pub fn build_dag_publish_transaction(dag_json: &str, nexus_objects_json: &str) -
     };
 
     // Validate DAG
-    if let Err(e) = validator::validate(dag.clone()) {
+    let dag_spec = match parse_dag_spec(dag_json) {
+        Ok(dag_spec) => dag_spec,
+        Err(e) => {
+            return PublishResult {
+                is_success: false,
+                error_message: Some(format!("DAG JSON parsing error: {}", e)),
+                transaction_data: None,
+            };
+        }
+    };
+    if let Err(e) = validator::validate(&dag_spec) {
         return PublishResult {
             is_success: false,
             error_message: Some(format!("DAG validation error: {}", e)),

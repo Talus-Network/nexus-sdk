@@ -3,10 +3,6 @@
 //!
 //! This way we can use, for example `sui::types::Address` in our code.
 
-pub mod tx {
-    pub use sui_transaction_builder::{unresolved::*, *};
-}
-
 pub mod types {
     pub use sui_sdk_types::*;
 }
@@ -26,8 +22,11 @@ pub mod traits {
 
 pub const MIST_PER_SUI: u64 = 1_000_000_000;
 
-/// Move build and package management re-exported for testing.
-#[cfg(feature = "test_utils")]
+/// Move build support for production package publishing and tests.
+#[cfg(any(feature = "move_publish", feature = "test_utils"))]
 pub mod build {
-    pub use {move_package_alt::schema::Environment, sui_move_build::BuildConfig};
+    pub use {
+        move_package_alt::schema::Environment,
+        sui_move_build::{BuildConfig, CompiledPackage},
+    };
 }

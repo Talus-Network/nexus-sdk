@@ -431,18 +431,34 @@ impl Config {
         // Spawn reload task
         let reload_path = path.clone();
         tokio::spawn(async move {
-            // Debounce interval to let writes settle
             let debounce_duration = Duration::from_millis(500);
+            let poll_interval = Duration::from_secs(2);
+            let mut poll_tick = tokio::time::interval(poll_interval);
+            let mut last_modified = file_modified(reload_path.clone()).await;
 
-            while rx.recv().await.is_some() {
-                // Debounce: wait for writes to settle
-                tokio::time::sleep(debounce_duration).await;
+            loop {
+                tokio::select! {
+                    maybe_event = rx.recv() => {
+                        if maybe_event.is_none() {
+                            break;
+                        }
 
-                // Drain any additional events that arrived during debounce
-                while rx.try_recv().is_ok() {}
+                        // Debounce writes that arrive in a burst.
+                        tokio::time::sleep(debounce_duration).await;
+                        while rx.try_recv().is_ok() {}
+                    }
+                    _ = poll_tick.tick() => {
+                        let current_modified = file_modified(reload_path.clone()).await;
 
-                match ToolkitRuntimeConfig::from_path(&reload_path) {
-                    Ok(new_config) => {
+                        if current_modified == last_modified {
+                            continue;
+                        }
+                    }
+                }
+
+                match reload_config(reload_path.clone()).await {
+                    Ok((new_config, current_modified)) => {
+                        last_modified = current_modified;
                         let mut guard = config.write().unwrap();
                         *guard = Arc::new(new_config);
                         tracing::info!("Reloaded toolkit config from {}", reload_path.display());
@@ -460,6 +476,24 @@ impl Config {
 
         Ok(watcher)
     }
+}
+
+async fn file_modified(path: PathBuf) -> Option<std::time::SystemTime> {
+    tokio::task::spawn_blocking(move || fs::metadata(path).and_then(|meta| meta.modified()).ok())
+        .await
+        .unwrap_or(None)
+}
+
+async fn reload_config(
+    path: PathBuf,
+) -> anyhow::Result<(ToolkitRuntimeConfig, Option<std::time::SystemTime>)> {
+    tokio::task::spawn_blocking(move || {
+        let config = ToolkitRuntimeConfig::from_path(&path)?;
+        let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+        Ok((config, modified))
+    })
+    .await
+    .context("config reload task failed")?
 }
 
 #[cfg(test)]
@@ -706,6 +740,7 @@ mod tests {
         assert!(cfg.source_path().is_none());
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn config_watcher_loads_default_without_env_var() {
         let _guard = ENV_VAR_LOCK.lock().unwrap();
@@ -721,6 +756,7 @@ mod tests {
         assert_eq!(config.invoke_max_body_bytes(), 10 * 1024 * 1024);
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn config_watcher_loads_from_file() {
         let _guard = ENV_VAR_LOCK.lock().unwrap();
@@ -759,6 +795,7 @@ mod tests {
         let _ = fs::remove_file(&path);
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn config_watcher_reloads_on_file_change() {
         let _guard = ENV_VAR_LOCK.lock().unwrap();
@@ -829,6 +866,7 @@ mod tests {
         let _ = fs::remove_file(&path);
     }
 
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn config_watcher_keeps_old_on_invalid_update() {
         let _guard = ENV_VAR_LOCK.lock().unwrap();

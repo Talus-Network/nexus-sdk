@@ -10,7 +10,7 @@ use {
     serde_json::json,
 };
 
-/// Configure or update the periodic schedule for a scheduler task.
+/// Configure or update the periodic schedule for a scheduled task.
 pub(crate) async fn set_periodic_task(
     task_id: sui::types::Address,
     first_start_ms: u64,
@@ -46,7 +46,7 @@ pub(crate) async fn set_periodic_task(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "task_id": task_id,
+        "scheduled_task_id": task_id,
         "period_ms": period_ms,
         "deadline_offset_ms": deadline_offset_ms,
         "max_iterations": max_iterations,

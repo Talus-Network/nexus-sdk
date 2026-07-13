@@ -1,5 +1,6 @@
 mod tool_auth;
 mod tool_claim_collateral;
+mod tool_inspect;
 mod tool_list;
 mod tool_new;
 mod tool_register_offchain;
@@ -13,6 +14,7 @@ use {
     crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
+    tool_inspect::inspect_tool,
     tool_list::*,
     tool_new::*,
     tool_register_offchain::register_off_chain_tool,
@@ -68,8 +70,25 @@ pub(crate) enum ToolAuthCommand {
         )]
         description: Option<String>,
 
+        #[arg(
+            long = "skip-if-active",
+            help = "Skip registration if the same public key is already the active key (idempotent). Useful in CI to avoid re-registering an unchanged key."
+        )]
+        skip_if_active: bool,
+
         #[command(flatten)]
         gas: GasArgs,
+    },
+
+    #[command(about = "List all registered message-signing keys for a tool.")]
+    ListKeys {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
     },
 
     #[command(
@@ -128,8 +147,21 @@ pub(crate) enum ToolAuthCommand {
 pub(crate) enum RegisterCommand {
     #[command(about = "Register an offchain tool")]
     Offchain {
-        #[arg(long = "url", short = 'u', help = "The URL of the offchain tool")]
-        url: reqwest::Url,
+        #[arg(
+            long = "url",
+            short = 'u',
+            help = "The URL of the offchain tool. Required unless --from-meta is provided.",
+            required_unless_present = "from_meta"
+        )]
+        url: Option<reqwest::Url>,
+
+        #[arg(
+            long = "from-meta",
+            help = "Path to a JSON file containing tool metadata (as produced by the tool binary's --meta flag), or '-' to read from stdin. Skips the live HTTP validation step.",
+            value_name = "FILE|-",
+            conflicts_with = "batch"
+        )]
+        from_meta: Option<String>,
 
         #[arg(
             long = "collateral-coin",
@@ -150,7 +182,7 @@ pub(crate) enum RegisterCommand {
 
         #[arg(
             long = "batch",
-            help = "Should all tools on a webserver be registered at once?"
+            help = "Should all tools on a webserver be registered at once? Incompatible with --from-meta."
         )]
         batch: bool,
 
@@ -204,12 +236,12 @@ pub(crate) enum RegisterCommand {
         timeout: std::time::Duration,
 
         #[arg(
-            long = "witness-id",
+            long = "tool-witness-id",
             short = 'w',
-            help = "The witness object ID that proves the tool's identity.",
+            help = "The tool witness object ID used as the on-chain execution stamp locator.",
             value_name = "OBJECT_ID"
         )]
-        witness_id: sui::types::Address,
+        tool_witness_id: sui::types::Address,
 
         #[arg(
             long = "collateral-coin",
@@ -224,6 +256,12 @@ pub(crate) enum RegisterCommand {
             help = "If this flag is set, the tool owner caps will not be saved to the local config file."
         )]
         no_save: bool,
+
+        #[arg(
+            long = "workflow-authorization-cap-first",
+            help = "Use the cap-gated WAC register_on_chain_tool_with_workflow_authorization_cap entrypoint."
+        )]
+        workflow_authorization_cap_first: bool,
 
         #[command(flatten)]
         gas: GasArgs,
@@ -369,6 +407,19 @@ pub(crate) enum ToolCommand {
         //
     },
 
+    #[command(
+        about = "Inspect a registered tool by FQN. Returns the derived Tool/ToolGas IDs and the full on-chain `Tool` record (HTTP or Sui variant) when it exists."
+    )]
+    Inspect {
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The FQN of the tool to inspect.",
+            value_name = "FQN"
+        )]
+        tool_fqn: ToolFqn,
+    },
+
     #[command(about = "Manage tool auth for signed HTTP.")]
     Auth {
         #[command(subcommand)]
@@ -425,6 +476,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         ToolCommand::Register { tool_type } => match tool_type {
             RegisterCommand::Offchain {
                 url,
+                from_meta,
                 collateral_coin,
                 invocation_cost,
                 batch,
@@ -433,6 +485,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             } => {
                 register_off_chain_tool(
                     url,
+                    from_meta,
                     collateral_coin,
                     invocation_cost,
                     batch,
@@ -448,9 +501,10 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 tool_fqn,
                 description,
                 timeout,
-                witness_id,
+                tool_witness_id,
                 collateral_coin,
                 no_save,
+                workflow_authorization_cap_first,
                 gas,
             } => {
                 register_onchain_tool(
@@ -459,9 +513,10 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     tool_fqn,
                     description,
                     timeout,
-                    witness_id,
+                    tool_witness_id,
                     collateral_coin,
                     no_save,
+                    workflow_authorization_cap_first,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
                 )
@@ -512,6 +567,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool list` ==
         ToolCommand::List { .. } => list_tools().await,
+
+        // == `$ nexus tool inspect` ==
+        ToolCommand::Inspect { tool_fqn } => inspect_tool(tool_fqn).await,
 
         // == `$ nexus tool auth` ==
         ToolCommand::Auth { cmd } => handle_tool_auth(cmd).await,

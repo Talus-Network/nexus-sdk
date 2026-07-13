@@ -1,5 +1,8 @@
 use {
-    crate::types::{Dag, EdgeKind, DEFAULT_ENTRY_GROUP},
+    crate::{
+        move_bindings::interface::graph::EdgeKind,
+        types::{DagSpec, DEFAULT_ENTRY_GROUP},
+    },
     anyhow::{bail, Result as AnyResult},
     petgraph::{
         graph::{DiGraph, NodeIndex},
@@ -19,7 +22,7 @@ type GraphAndVertexEntryGroups = (
 /// See our wiki for more information on the rules:
 /// <https://docs.talus.network/talus-documentation/devs/index/workflow#rules>
 /// <https://docs.talus.network/talus-documentation/devs/index-1/cli#nexus-dag>
-pub fn validate(dag: Dag) -> AnyResult<()> {
+pub fn validate(dag: &DagSpec) -> AnyResult<()> {
     // Parse the dag into a petgraph DiGraph.
     let (graph, vertex_entry_groups) = try_into_graph(dag)?;
 
@@ -371,9 +374,9 @@ impl std::fmt::Display for GraphNode {
     }
 }
 
-/// [Dag] to [petgraph::graph::DiGraph]. Also performs structure checks on the
+/// [`DagSpec`] to [petgraph::graph::DiGraph]. Also performs structure checks on the
 /// graph.
-fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
+fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
     let mut graph = DiGraph::<GraphNode, EdgeKind>::new();
 
     // Build a hash map of graph nodes that are part of entry groups. If there
@@ -381,8 +384,8 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     // ports specified are part of the default entry group.
     let mut vertex_entry_groups: HashMap<GraphNode, Vec<String>> = HashMap::new();
 
-    if let Some(entry_groups) = &dag.entry_groups {
-        for entry_group in entry_groups {
+    if !dag.entry_groups.is_empty() {
+        for entry_group in &dag.entry_groups {
             for vertex in &entry_group.vertices {
                 let vertex_ident = GraphNode::Vertex {
                     name: vertex.clone(),
@@ -407,7 +410,7 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
         // If there are no entry groups, all vertices that have entry ports
         // specified are part of the default entry group.
         for vertex in &dag.vertices {
-            if vertex.entry_ports.is_none() {
+            if vertex.entry_ports.is_empty() {
                 continue;
             }
 
@@ -560,11 +563,11 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     // Check that entry ports are not defined twice and that they have no edges
     // leading into them.
     for vertex in &dag.vertices {
-        let Some(entry_ports) = &vertex.entry_ports else {
+        if vertex.entry_ports.is_empty() {
             continue;
-        };
+        }
 
-        for entry_port in entry_ports {
+        for entry_port in &vertex.entry_ports {
             let entry_port_ident = GraphNode::InputPort {
                 vertex: vertex.name.clone(),
                 name: entry_port.name.clone(),
@@ -581,12 +584,10 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
     }
 
     // Check that none of the default value input ports are in the graph.
-    let default_values = dag.default_values.unwrap_or_default();
-
-    for default_value in default_values {
+    for default_value in &dag.default_values {
         let default_value = GraphNode::InputPort {
-            vertex: default_value.vertex,
-            name: default_value.input_port,
+            vertex: default_value.vertex.clone(),
+            name: default_value.input_port.clone(),
         };
 
         if graph_nodes.contains_key(&default_value) || all_entry_ports.contains(&default_value) {
@@ -598,9 +599,10 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
 
     // Check that outputs are not defined on vertices that have outgoing edges.
     for vertex in &dag.vertices {
-        let outputs = dag.outputs.clone().unwrap_or_default();
-
-        let has_outputs = outputs.iter().any(|output| output.vertex == vertex.name);
+        let has_outputs = dag
+            .outputs
+            .iter()
+            .any(|output| output.vertex == vertex.name);
         let has_edges = dag.edges.iter().any(|edge| edge.from.vertex == vertex.name);
 
         let vertex_ident = GraphNode::Vertex {
@@ -668,258 +670,242 @@ fn try_into_graph(dag: Dag) -> AnyResult<GraphAndVertexEntryGroups> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::Dag, assert_matches::assert_matches};
+    use {super::*, assert_matches::assert_matches};
+
+    fn parse(input: &str) -> Result<DagSpec, serde_json::Error> {
+        crate::dag::json::parse_dag_spec(input)
+    }
 
     // == Various graph shapes ==
 
     #[test]
     fn test_ig_story_planner_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/ig_story_planner_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/ig_story_planner_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/immediately_converges_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/immediately_converges_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_immediately_converges_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/immediately_converges_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/immediately_converges_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: b.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
     fn test_intertwined_valid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/intertwined_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/intertwined_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_intertwined_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/intertwined_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/intertwined_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
     fn test_multiple_output_ports_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/multiple_output_ports_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/multiple_output_ports_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
     fn test_multiple_output_ports_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/multiple_output_ports_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/multiple_output_ports_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_multiple_goals_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/multiple_goals_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/multiple_goals_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_dead_ends_valid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/dead_ends_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/dead_ends_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_valid() {
-        let dag: Dag = serde_json::from_str(include_str!(
+        let dag = parse(include_str!(
             "_dags/multiple_entry_multiple_goal_valid.json"
         ))
         .unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_multiple_entry_multiple_goal_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!(
+        let dag = parse(include_str!(
             "_dags/multiple_entry_multiple_goal_invalid.json"
         ))
         .unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: c.1' has a race condition on it when invoking group 'group_a'"));
     }
 
     #[test]
     fn test_branched_net_zero_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/branched_net_zero_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/branched_net_zero_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: d.1' has a race condition on it when invoking group '_default_group'"));
     }
 
     #[test]
     fn test_entry_groups_valid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/entry_groups_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/entry_groups_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_twice_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/entry_groups_twice_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/entry_groups_twice_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn test_entry_groups_ne_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/entry_groups_ne_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/entry_groups_ne_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' is unreachable when invoking group 'group_b'"));
     }
 
     #[test]
     fn test_entry_groups_tm_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/entry_groups_tm_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/entry_groups_tm_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: e.2' has a race condition on it when invoking group 'group_b'"));
     }
 
     #[test]
     fn both_loops_valid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/both_loops_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/both_loops_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     #[test]
     fn missing_do_while_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/missing_do_while_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/missing_do_while_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Vertex 'until_11' has a break edge but no corresponding do-while edge."));
     }
 
     #[test]
     fn missing_break_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/missing_break_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/missing_break_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Vertex 'until_11' has a do-while edge but no corresponding break edge."));
     }
 
     #[test]
     fn collect_without_for_each_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/collect_without_for_each_invalid.json"))
-                .unwrap();
+        let dag = parse(include_str!("_dags/collect_without_for_each_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Output port: a.ok.result' has a collect edge without for-each"));
     }
 
     #[test]
     fn nested_for_each_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/nested_for_each_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/nested_for_each_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Output port: b.ok.result' has a nested for-each"));
     }
 
     #[test]
     fn do_while_in_for_each_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/do_while_in_for_each_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/do_while_in_for_each_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Output port: b.also_ok.loop' has a do-while or break edge inside a for-each"));
     }
 
     #[test]
     fn unclosed_for_each_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/unclosed_for_each_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/unclosed_for_each_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' has a for-each edge without a corresponding collect"));
     }
 
     #[test]
     fn do_while_and_break_same_variant_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!(
+        let dag = parse(include_str!(
             "_dags/do_while_and_break_same_variant_invalid.json"
         ))
         .unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Output variant: b.ok' has both a do-while and a break edge, but they must branch."));
     }
 
     #[test]
     fn do_while_nested_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/do_while_nested_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/do_while_nested_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Do-while edge at 'Output port: c.also_ok.loop' has a nested loop inside."));
     }
 
     #[test]
     fn test_double_do_while_static_valid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/double_do_while_static_valid.json")).unwrap();
+        let dag = parse(include_str!("_dags/double_do_while_static_valid.json")).unwrap();
 
-        assert!(validate(dag).is_ok());
+        assert!(validate(&dag).is_ok());
     }
 
     // == Cyclic or no input graphs ==
 
     #[test]
     fn test_cyclic_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/cyclic_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/cyclic_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: a.input' has an edge leading to it and therefore cannot be an entry port."));
     }
@@ -928,62 +914,57 @@ mod tests {
 
     #[test]
     fn test_undefined_connections_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/undefined_connections_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' is not connected to the DAG."));
     }
 
     #[test]
     fn test_output_and_edge_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/output_and_edge_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/output_and_edge_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: a' cannot have both outgoing edges and ports marked as output."));
     }
 
     #[test]
     fn test_def_val_on_input_port_invalid() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/has_def_on_input_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/has_def_on_input_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Input port: location_decider.context' is an entry port or has an edge leading into it and therefore cannot have a default value."));
     }
 
     #[test]
     fn test_references_non_existing_vertex() {
-        let dag: Dag =
-            serde_json::from_str(include_str!("_dags/references_non_existing_vertex.json"))
-                .unwrap();
+        let dag = parse(include_str!("_dags/references_non_existing_vertex.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("Entry group 'group_a' references a non-existing vertex 'invalid'."));
     }
 
     #[test]
     fn test_empty_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!("_dags/empty_invalid.json")).unwrap();
+        let dag = parse(include_str!("_dags/empty_invalid.json")).unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("The DAG has no entry vertices or ports."));
     }
 
     #[test]
     fn test_both_vertex_and_entry_vertex_invalid() {
-        let dag: Dag = serde_json::from_str(include_str!(
+        let dag = parse(include_str!(
             "_dags/both_vertex_and_entry_vertex_invalid.json"
         ))
         .unwrap();
 
-        let res = validate(dag);
+        let res = validate(&dag);
 
         assert_matches!(res, Err(e) if e.to_string().contains("'Vertex: b' is defined multiple times."));
     }

@@ -8,13 +8,13 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::types::Task,
+    nexus_sdk::move_bindings::scheduler::scheduler::Task,
     serde_json::json,
 };
 
-/// Inspect a scheduler task and display metadata plus raw JSON output.
+/// Inspect a scheduled task and display metadata plus raw JSON output.
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
-    command_title!("Inspecting scheduler task '{task_id}'", task_id = task_id);
+    command_title!("Inspecting scheduled task '{task_id}'", task_id = task_id);
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
     let crawler = nexus_client.crawler();
@@ -37,9 +37,11 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
         owner = task_data.owner.to_string().truecolor(100, 100, 100)
     );
 
-    let metadata = task_data.metadata.values.inner();
+    let metadata = &task_data.metadata.values.contents;
     item!("Metadata entries: {count}", count = metadata.len());
-    for (key, value) in metadata.iter().take(10) {
+    for entry in metadata.iter().take(10) {
+        let key = std::str::from_utf8(&entry.key.bytes).unwrap_or("<invalid utf8>");
+        let value = std::str::from_utf8(&entry.value.bytes).unwrap_or("<invalid utf8>");
         item!(
             "  {key}: {value}",
             key = key.truecolor(100, 100, 100),

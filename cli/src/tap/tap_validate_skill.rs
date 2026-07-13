@@ -1,0 +1,288 @@
+use {super::*, nexus_sdk::dag, std::path::Path};
+
+pub(crate) async fn read_skill_config(path: &PathBuf) -> AnyResult<SkillConfig, NexusCliError> {
+    let text = tokio::fs::read_to_string(path)
+        .await
+        .map_err(NexusCliError::Io)?;
+    serde_json::from_str(&text).map_err(|e| NexusCliError::Any(e.into()))
+}
+
+pub(crate) fn resolve_relative(base_file: &Path, path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        return path;
+    }
+
+    base_file
+        .parent()
+        .map(|parent| parent.join(&path))
+        .unwrap_or(path)
+}
+
+pub(crate) fn tap_package_path_for_config(config_path: &Path) -> PathBuf {
+    resolve_relative(config_path, PathBuf::from("tap"))
+}
+
+pub(crate) fn validate_dag_file(dag_path: &std::path::Path) -> AnyResult<()> {
+    let dag_text = std::fs::read_to_string(dag_path)
+        .map_err(|error| anyhow!("failed to read DAG file '{}': {error}", dag_path.display()))?;
+    let dag = dag::json::parse_dag_spec(&dag_text)
+        .map_err(|error| anyhow!("failed to parse DAG spec '{}': {error}", dag_path.display()))?;
+
+    dag::validator::validate(&dag).map_err(|error| {
+        anyhow!(
+            "DAG validation failed for '{}': {error}",
+            dag_path.display()
+        )
+    })
+}
+
+pub(crate) fn validate_tap_package_manifest(manifest_path: &std::path::Path) -> AnyResult<String> {
+    let manifest_text = std::fs::read_to_string(manifest_path).map_err(|error| {
+        anyhow!(
+            "failed to read TAP package manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+    let manifest: toml::Value = toml::from_str(&manifest_text).map_err(|error| {
+        anyhow!(
+            "failed to parse TAP package manifest '{}': {error}",
+            manifest_path.display()
+        )
+    })?;
+
+    let package_name = manifest
+        .get("package")
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "TAP package manifest '{}' is missing [package].name",
+                manifest_path.display()
+            )
+        })?;
+    let package_name = package_name.to_string();
+
+    // Require the new-style 2024 layout. Old-style manifests cannot resolve
+    // their dependency graph against new-style published Nexus packages.
+    let package_table = manifest
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| {
+            anyhow!(
+                "TAP package manifest '{}' is missing the [package] table",
+                manifest_path.display()
+            )
+        })?;
+    if !package_table.contains_key("version") {
+        bail!(
+            "TAP package manifest '{}' is missing [package].version — required \
+             by the new-style 2024 Sui Move package format. Add `version = \"1.0.0\"` \
+             (or your own version) to the [package] table.",
+            manifest_path.display()
+        );
+    }
+    let edition = package_table
+        .get("edition")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| {
+            anyhow!(
+                "TAP package manifest '{}' is missing [package].edition",
+                manifest_path.display()
+            )
+        })?;
+    if edition != "2024" {
+        bail!(
+            "TAP package manifest '{}' uses edition = \"{edition}\" — the new-style \
+             2024 Sui Move package format requires edition = \"2024\" (drop any \
+             `.beta` suffix).",
+            manifest_path.display()
+        );
+    }
+    if manifest.get("addresses").is_some() {
+        bail!(
+            "TAP package manifest '{}' declares an [addresses] table, which marks \
+             the package as old-style. New-style 2024 packages must omit [addresses] \
+             and rely on per-environment `Published.toml` files instead.",
+            manifest_path.display()
+        );
+    }
+    if manifest
+        .get("environments")
+        .and_then(toml::Value::as_table)
+        .is_none()
+    {
+        bail!(
+            "TAP package manifest '{}' is missing an [environments] table. New-style \
+             2024 packages need at least one `<env_alias> = \"<chain-id>\"` entry so \
+             Sui can pick the right `Published.toml` for each dep. Run \
+             `sui client chain-identifier` while your target env is active to get \
+             the chain id.",
+            manifest_path.display()
+        );
+    }
+
+    Ok(package_name)
+}
+
+pub(crate) fn collect_move_source_files(root: &std::path::Path) -> AnyResult<Vec<PathBuf>> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut files = Vec::new();
+
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).map_err(|error| {
+            anyhow!(
+                "failed to read source directory '{}': {error}",
+                dir.display()
+            )
+        })? {
+            let entry = entry.map_err(|error| {
+                anyhow!(
+                    "failed to inspect TAP package source entry in '{}': {error}",
+                    dir.display()
+                )
+            })?;
+            let file_type = entry.file_type().map_err(|error| {
+                anyhow!(
+                    "failed to read TAP package source entry type '{}': {error}",
+                    entry.path().display()
+                )
+            })?;
+            let path = entry.path();
+
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if path.extension().and_then(|value| value.to_str()) == Some("move") {
+                files.push(path);
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+pub(crate) fn validate_tap_package_sources(
+    tap_package_path: &Path,
+    package_name: &str,
+) -> AnyResult<()> {
+    let sources_dir = tap_package_path.join("sources");
+    if !sources_dir.exists() {
+        bail!(
+            "TAP package sources directory '{}' does not exist",
+            sources_dir.display()
+        );
+    }
+
+    let source_files = collect_move_source_files(&sources_dir)?;
+    if source_files.is_empty() {
+        bail!(
+            "TAP package '{}' has no Move source files under '{}'",
+            package_name,
+            sources_dir.display()
+        );
+    }
+
+    let module_pattern = Regex::new(&format!(
+        r"(?m)^\s*module\s+{}::[A-Za-z_][A-Za-z0-9_]*\s*;",
+        regex::escape(package_name)
+    ))?;
+
+    for source_file in &source_files {
+        let source_text = std::fs::read_to_string(source_file).map_err(|error| {
+            anyhow!(
+                "failed to read TAP source file '{}': {error}",
+                source_file.display()
+            )
+        })?;
+        if module_pattern.is_match(&source_text) {
+            return Ok(());
+        }
+    }
+
+    bail!(
+        "TAP package '{}' has no source file declaring `module {}::...;` under '{}'",
+        package_name,
+        package_name,
+        sources_dir.display()
+    );
+}
+
+pub(crate) async fn validate_skill(config_path: PathBuf) -> AnyResult<SkillConfig, NexusCliError> {
+    command_title!("Validating TAP skill config '{}'", config_path.display());
+
+    let handle = loading!("Validating TAP skill config...");
+    let config = read_skill_config(&config_path).await?;
+
+    config
+        .validate()
+        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
+
+    let dag_path = resolve_relative(&config_path, config.dag_path.clone());
+    if !dag_path.exists() {
+        handle.error();
+        return Err(NexusCliError::Any(anyhow!(
+            "DAG file '{}' does not exist",
+            dag_path.display()
+        )));
+    }
+    if let Err(error) = validate_dag_file(&dag_path) {
+        handle.error();
+        return Err(NexusCliError::Any(error));
+    }
+
+    let tap_package = tap_package_path_for_config(&config_path);
+    let move_toml = tap_package.join("Move.toml");
+    if !move_toml.exists() {
+        handle.error();
+        return Err(NexusCliError::Any(anyhow!(
+            "TAP package Move.toml '{}' does not exist",
+            move_toml.display()
+        )));
+    }
+    let package_name = match validate_tap_package_manifest(&move_toml) {
+        Ok(package_name) => package_name,
+        Err(error) => {
+            handle.error();
+            return Err(NexusCliError::Any(error));
+        }
+    };
+    if let Err(error) = validate_tap_package_sources(&tap_package, &package_name) {
+        handle.error();
+        return Err(NexusCliError::Any(error));
+    }
+
+    handle.success();
+    json_output(&validate_skill_result_json(&config))?;
+
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn read_skill_config_reports_json_parse_errors() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let path = tempdir.path().join("skill.tap.json");
+        tokio::fs::write(&path, "{")
+            .await
+            .expect("write invalid JSON");
+
+        let error = read_skill_config(&path)
+            .await
+            .expect_err("invalid config JSON should fail");
+
+        assert!(
+            error.to_string().contains("EOF while parsing"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_relative_without_parent_uses_input_path() {
+        assert_eq!(
+            resolve_relative(std::path::Path::new("skill.tap.json"), PathBuf::from("tap")),
+            PathBuf::from("tap")
+        );
+    }
+}
