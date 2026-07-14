@@ -2,7 +2,7 @@ use crate::{
     move_bindings::{
         interface::{
             graph::{EdgeKind, PostFailureAction},
-            verifier::VerifierConfig,
+            verifier::ToolVerifierMode,
         },
         primitives::data::NexusData,
     },
@@ -19,8 +19,6 @@ pub struct DagSpec {
     pub edges: Vec<DagEdge>,
     pub default_values: Vec<DagDefaultValue>,
     pub post_failure_action: Option<PostFailureAction>,
-    pub leader_verifier: Option<VerifierConfig>,
-    pub tool_verifier: Option<VerifierConfig>,
     pub entry_groups: Vec<DagEntryGroup>,
     pub outputs: Vec<DagOutput>,
 }
@@ -42,8 +40,7 @@ pub struct DagVertex {
     pub name: String,
     pub entry_ports: Vec<DagEntryPort>,
     pub post_failure_action: Option<PostFailureAction>,
-    pub leader_verifier: Option<VerifierConfig>,
-    pub tool_verifier: Option<VerifierConfig>,
+    pub verifier: Option<ToolVerifierMode>,
 }
 
 #[derive(Clone, Debug)]

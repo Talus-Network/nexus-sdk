@@ -64,6 +64,24 @@ impl Crawler {
         Self { client }
     }
 
+    /// Fetch a published Move package descriptor for ABI inspection.
+    pub async fn get_package(
+        &self,
+        package_id: sui::types::Address,
+    ) -> anyhow::Result<sui::grpc::Package> {
+        let request = sui::grpc::GetPackageRequest::default().with_package_id(package_id);
+        self.client
+            .lock()
+            .await
+            .package_client()
+            .get_package(request)
+            .await
+            .map_err(|e| anyhow!("Could not fetch package '{package_id}': {e}"))?
+            .into_inner()
+            .package
+            .ok_or_else(|| anyhow!("Package '{package_id}' was not returned"))
+    }
+
     async fn get_object_parsed<T>(
         &self,
         object_id: sui::types::Address,

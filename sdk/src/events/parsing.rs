@@ -1088,30 +1088,19 @@ mod direct_event_tests {
             }
         );
         check!(
-            "VerificationVerdictEvent",
-            check!(@tag objects.workflow_pkg_id, "execution_events", "VerificationVerdictEvent"),
-            VerificationVerdictEvent {
+            "ToolVerificationResolved",
+            check!(@tag objects.workflow_pkg_id, "execution_events", "ToolVerificationResolved"),
+            ToolVerificationResolved {
                 dag: id(addr(0x52)),
                 execution: id(addr(0x53)),
                 walk_index: 64,
                 vertex: RuntimeVertex::plain("verified"),
-                leader: addr(0x54),
-                submission_kind:
-                    crate::move_bindings::interface::verifier::VerificationSubmissionKind::Success,
-                failure_evidence_kind:
-                    crate::move_bindings::interface::verifier::FailureEvidenceKind::ToolEvidence,
-                leader_verifier_mode:
-                    crate::move_bindings::interface::verifier::VerifierMode::LeaderRegisteredKey,
-                leader_verifier_method: MoveString::from("leader"),
-                tool_verifier_mode:
-                    crate::move_bindings::interface::verifier::VerifierMode::ToolVerifierContract,
-                tool_verifier_method: MoveString::from("tool"),
-                checked_leader_kid: MoveOption::from_option(Some(65)),
-                checked_tool_kid: MoveOption::from_option(Some(66)),
-                payload_or_reason_hash: vec![4, 5],
-                checked_identity: vec![6, 7],
-                verdict_reference: vec![8, 9],
-                verdict: crate::move_bindings::interface::verifier::VerificationVerdict::Accepted,
+                leader_cap_id: id(addr(0x54)),
+                tool_id: id(addr(0x55)),
+                verifier_kind:
+                    crate::move_bindings::interface::verifier::ToolVerifierMode::External,
+                verifier_witness_id: MoveOption::from_option(Some(id(addr(0x56)))),
+                decision: crate::move_bindings::interface::verifier::VerifierDecision::Accept,
             }
         );
         check!(

@@ -8,9 +8,10 @@ use {
         prelude::*,
         sui::*,
         tool::tool_validate::{
+            build_tool_http_client,
             output_schema_has_top_level_one_of,
             parse_tool_meta_json,
-            validate_off_chain_tool,
+            validate_off_chain_tool_with_client,
         },
     },
     nexus_sdk::{
@@ -232,6 +233,9 @@ async fn register_one_tool(
         .inspect_tool(&meta.fqn)
         .await
         .map_err(NexusCliError::Nexus)?;
+    let tool_ref = super::tool_inspect::normalized_tool_ref_json(
+        inspection.tool.as_ref().map(|tool| tool.reference()),
+    )?;
 
     Ok((
         json!({
@@ -240,6 +244,7 @@ async fn register_one_tool(
             "tool_gas_id": inspection.tool_gas_id,
             "owner_cap_over_tool_id": over_tool_id,
             "owner_cap_over_gas_id": over_gas_id,
+            "tool_ref": tool_ref,
             "tool": inspection.tool,
         }),
         Some((meta.fqn, caps)),
@@ -305,10 +310,11 @@ pub(crate) async fn register_off_chain_tool(
         let url = url.expect(
             "--url is required when --from-meta is not provided (clap should enforce this)",
         );
+        let tool_http_client = build_tool_http_client()?;
 
         let urls = if batch {
             // Fetch all tools on the webserver.
-            let response = reqwest::Client::new()
+            let response = tool_http_client
                 .get(url.join("/tools").expect("Joining URL must be valid"))
                 .send()
                 .await
@@ -326,7 +332,7 @@ pub(crate) async fn register_off_chain_tool(
         };
 
         for tool_url in urls {
-            let meta = validate_off_chain_tool(tool_url).await?;
+            let meta = validate_off_chain_tool_with_client(tool_url, &tool_http_client).await?;
 
             command_title!(
                 "Registering Tool '{fqn}' at '{url}'",

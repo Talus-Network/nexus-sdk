@@ -5543,6 +5543,46 @@
           ]
         },
         {
+          "name": "from_bcs_parts",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "storage",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "one",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "many",
+              "ty": {
+                "Vector": {
+                  "Vector": "U8"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusData"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "inline_many",
           "visibility": "Public",
           "is_entry": false,
@@ -5806,6 +5846,54 @@
                   "name": "DataTypeHint"
                 },
                 "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "typed_from_bcs_parts",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "type_hint",
+              "ty": "U8"
+            },
+            {
+              "name": "data",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "data",
+                    "name": "NexusData"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "TypedNexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
               }
             }
           ]
@@ -12103,6 +12191,48 @@
       ],
       "functions": [
         {
+          "name": "from_bcs_bytes",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "bytes",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "tagged_output",
+                        "name": "TaggedOutput"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "into_parts",
           "visibility": "Public",
           "is_entry": false,
@@ -12224,6 +12354,52 @@
                   "name": "TaggedOutput"
                 },
                 "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "read_vec_vec_u8",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "bytes",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "offset",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": "U64"
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": {
+                      "Vector": "U8"
+                    }
+                  }
+                ]
               }
             }
           ]

@@ -110,9 +110,32 @@ impl<'a> NexusPtbBuilder<'a> {
         )?)
     }
 
+    /// Add a runtime-owned Move call with already validated type arguments.
+    pub fn call_function_with_type_args(
+        &mut self,
+        package: sui::types::Address,
+        module: impl AsRef<str>,
+        function: impl AsRef<str>,
+        type_arguments: Vec<sui::types::TypeTag>,
+        arguments: Vec<Argument>,
+    ) -> anyhow::Result<Argument> {
+        let mut target = CallTarget::new(package, module.as_ref(), function.as_ref())?;
+        target.type_arguments = type_arguments;
+        Ok(self.tx.call_target(target, arguments)?)
+    }
+
     /// Build a Move `0x1::ascii::String` from bytes.
     pub fn ascii_string(&mut self, value: impl AsRef<str>) -> Result<Argument, BuildError> {
         ascii_string(&mut self.tx, value)
+    }
+
+    /// Build a Move `0x1::string::String` from UTF-8 bytes.
+    pub fn move_string(&mut self, value: impl AsRef<str>) -> anyhow::Result<Argument> {
+        let bytes = self.tx.arg(&value.as_ref().as_bytes().to_vec())?;
+        self.call_target(
+            || CallTarget::new(move_std::call_package(), "string", "utf8"),
+            vec![bytes],
+        )
     }
 
     /// Build a Move `0x2::object::ID` from an address/object ID.
@@ -209,81 +232,20 @@ impl<'a> NexusPtbBuilder<'a> {
         self.call_target(target, vec![])
     }
 
-    /// Build a generated `interface::verifier::VerifierMode`.
-    pub(crate) fn verifier_mode(
+    /// Build a generated `interface::verifier::ToolVerifierMode`.
+    pub(crate) fn tool_verifier_mode(
         &mut self,
-        mode: &interface::verifier::VerifierMode,
+        mode: &interface::verifier::ToolVerifierMode,
     ) -> anyhow::Result<Argument> {
         let target = match mode {
-            interface::verifier::VerifierMode::None => {
+            interface::verifier::ToolVerifierMode::None => {
                 interface::verifier::verifier_mode_none_target
             }
-            interface::verifier::VerifierMode::LeaderRegisteredKey => {
-                interface::verifier::verifier_mode_authenticated_communication_target
+            interface::verifier::ToolVerifierMode::RegisteredKey => {
+                interface::verifier::verifier_mode_registered_key_target
             }
-            interface::verifier::VerifierMode::ToolVerifierContract => {
-                interface::verifier::verifier_mode_tool_verifier_contract_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerifierConfig`.
-    pub(crate) fn verifier_config(
-        &mut self,
-        config: &interface::verifier::VerifierConfig,
-    ) -> anyhow::Result<Argument> {
-        let mode = self.verifier_mode(&config.mode)?;
-        let method = self.ascii_string(&config.method)?;
-        self.call_target(
-            interface::verifier::verifier_config_target,
-            vec![mode, method],
-        )
-    }
-
-    /// Build a generated `interface::verifier::FailureEvidenceKind`.
-    pub(crate) fn failure_evidence_kind(
-        &mut self,
-        evidence_kind: &interface::verifier::FailureEvidenceKind,
-    ) -> anyhow::Result<Argument> {
-        let target = match evidence_kind {
-            interface::verifier::FailureEvidenceKind::ToolEvidence => {
-                interface::verifier::failure_evidence_kind_tool_evidence_target
-            }
-            interface::verifier::FailureEvidenceKind::LeaderEvidence => {
-                interface::verifier::failure_evidence_kind_leader_evidence_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerificationSubmissionKind`.
-    pub(crate) fn verification_submission_kind(
-        &mut self,
-        submission_kind: &interface::verifier::VerificationSubmissionKind,
-    ) -> anyhow::Result<Argument> {
-        let target = match submission_kind {
-            interface::verifier::VerificationSubmissionKind::Success => {
-                interface::verifier::verification_submission_kind_success_target
-            }
-            interface::verifier::VerificationSubmissionKind::ErrEval => {
-                interface::verifier::verification_submission_kind_err_eval_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerifierDecision`.
-    pub(crate) fn verifier_decision(
-        &mut self,
-        decision: &interface::verifier::VerifierDecision,
-    ) -> anyhow::Result<Argument> {
-        let target = match decision {
-            interface::verifier::VerifierDecision::Accept => {
-                interface::verifier::verifier_decision_accept_target
-            }
-            interface::verifier::VerifierDecision::Reject => {
-                interface::verifier::verifier_decision_reject_target
+            interface::verifier::ToolVerifierMode::External => {
+                interface::verifier::verifier_mode_external_target
             }
         };
         self.call_target(target, vec![])

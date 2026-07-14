@@ -1,7 +1,10 @@
 use {
     crate::{
         move_bindings::{
-            registry::tool_registry as tool_registry_binding,
+            registry::{
+                registered_key_verifier as registered_key_verifier_binding,
+                tool_registry as tool_registry_binding,
+            },
             sui_framework::transfer as transfer_binding,
             workflow::gas as gas_binding,
         },
@@ -13,6 +16,21 @@ use {
     std::time::Duration,
     sui::types::{Argument, ProgrammableTransaction},
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalVerifierObjectInput {
+    pub object_ref: sui::types::ObjectReference,
+    pub object_type: sui::types::TypeTag,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternalVerifierRegistrationInput {
+    pub package_id: sui::types::Address,
+    pub module_name: String,
+    pub function_name: String,
+    /// Ordered immutable shared objects; object zero is the verifier witness.
+    pub verifier_objects: Vec<ExternalVerifierObjectInput>,
+}
 
 fn finish_registration(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
@@ -175,12 +193,105 @@ pub fn unregister_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let tool = tx.shared_object(tool, true)?;
+        let registry = tx.shared_object(&objects.tool_registry, true)?;
+        let verifier_registry = tx.shared_object(&objects.verifier_registry, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
         let clock = tx.clock()?;
 
         tx.call_target(
             tool_registry_binding::unregister_target,
-            vec![tool, owner_cap, clock],
+            vec![tool, registry, verifier_registry, owner_cap, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Configure a Tool for the built-in two-signature RegisteredKey verifier.
+pub fn configure_registered_key_verifier_ptb(
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    tool_key_binding: &sui::types::ObjectReference,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let registry = tx.shared_object(&objects.tool_registry, true)?;
+        let tool = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let network_auth = tx.shared_object(&objects.network_auth, false)?;
+        let tool_key_binding = tx.shared_object(tool_key_binding, false)?;
+        tx.call_target(
+            registered_key_verifier_binding::configure_tool_target,
+            vec![registry, tool, owner_cap, network_auth, tool_key_binding],
+        )?;
+        Ok(())
+    })
+}
+
+/// Register one Tool-bound external verifier and its immutable shared object arguments.
+pub fn register_external_verifier_ptb(
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    input: &ExternalVerifierRegistrationInput,
+) -> anyhow::Result<ProgrammableTransaction> {
+    let witness = input
+        .verifier_objects
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("external verifier requires a witness at object zero"))?;
+    if input
+        .verifier_objects
+        .iter()
+        .any(|object| *object.object_ref.object_id() == sui::types::Address::ZERO)
+    {
+        anyhow::bail!("external verifier object IDs must not be zero");
+    }
+    let mut unique_ids = std::collections::HashSet::new();
+    if input
+        .verifier_objects
+        .iter()
+        .any(|object| !unique_ids.insert(*object.object_ref.object_id()))
+    {
+        anyhow::bail!("external verifier objects must be unique");
+    }
+
+    move_boundary::ptb(objects, |tx| {
+        let registry = tx.shared_object(&objects.tool_registry, true)?;
+        let verifier_registry = tx.shared_object(&objects.verifier_registry, true)?;
+        let tool_arg = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let tool_id = tx.object_id(*tool.object_id())?;
+        let package_id = tx.object_id(input.package_id)?;
+        let module_name = tx.ascii_string(&input.module_name)?;
+        let function_name = tx.ascii_string(&input.function_name)?;
+        let witness_arg = tx.shared_object(&witness.object_ref, false)?;
+        let registration = tx.call_function_with_type_args(
+            objects.registry_pkg_id,
+            "verifier_registry",
+            "new_external_registration",
+            vec![witness.object_type.clone()],
+            vec![tool_id, package_id, module_name, function_name, witness_arg],
+        )?;
+
+        for object in input.verifier_objects.iter().skip(1) {
+            let object_arg = tx.shared_object(&object.object_ref, false)?;
+            tx.call_function_with_type_args(
+                objects.registry_pkg_id,
+                "verifier_registry",
+                "add_obj",
+                vec![object.object_type.clone()],
+                vec![registration, object_arg],
+            )?;
+        }
+
+        tx.call_target(
+            tool_registry_binding::register_external_verifier_target,
+            vec![
+                registry,
+                verifier_registry,
+                tool_arg,
+                owner_cap,
+                registration,
+            ],
         )?;
         Ok(())
     })
@@ -225,4 +336,155 @@ pub fn update_tool_timeout_ptb(
         )?;
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::types::DefaultDagExecutorTarget, sui::types::Command};
+
+    fn addr(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    fn object_ref(value: &'static str, version: u64, digest: u8) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(
+            addr(value),
+            version,
+            sui::types::Digest::from([digest; 32]),
+        )
+    }
+
+    fn nexus_objects() -> NexusObjects {
+        NexusObjects {
+            workflow_pkg_id: addr("0x1"),
+            scheduler_pkg_id: addr("0x11"),
+            primitives_pkg_id: addr("0x2"),
+            interface_pkg_id: addr("0x3"),
+            network_id: addr("0x4"),
+            registry_pkg_id: addr("0x5"),
+            tool_registry: object_ref("0x6", 1, 6),
+            verifier_registry: object_ref("0x7", 1, 7),
+            network_auth: object_ref("0x8", 1, 8),
+            agent_registry: object_ref("0xc", 1, 12),
+            default_dag_executor: DefaultDagExecutorTarget {
+                agent_id: addr("0xa1"),
+                skill_id: 177,
+            },
+            gas_service: object_ref("0xd", 1, 13),
+            leader_registry: object_ref("0xe", 1, 14),
+            priority_fee_vault: object_ref("0xf", 1, 15),
+            workflow_original_pkg_id: None,
+            scheduler_original_pkg_id: None,
+        }
+    }
+
+    fn move_calls(ptb: &ProgrammableTransaction) -> Vec<&sui::types::MoveCall> {
+        ptb.commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn object_type(
+        address: &'static str,
+        module: &'static str,
+        name: &'static str,
+    ) -> sui::types::TypeTag {
+        sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            addr(address),
+            sui::types::Identifier::from_static(module),
+            sui::types::Identifier::from_static(name),
+            vec![],
+        )))
+    }
+
+    #[test]
+    fn unregister_updates_tool_and_verifier_registries_atomically() {
+        let objects = nexus_objects();
+        let ptb = unregister_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+        )
+        .unwrap();
+        let calls = move_calls(&ptb);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
+        assert_eq!(calls[0].function.as_str(), "unregister");
+        assert_eq!(calls[0].arguments.len(), 5);
+    }
+
+    #[test]
+    fn registered_key_configuration_uses_current_five_object_abi() {
+        let objects = nexus_objects();
+        let ptb = configure_registered_key_verifier_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+            &object_ref("0x22", 4, 22),
+        )
+        .unwrap();
+        let calls = move_calls(&ptb);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].module.as_str(), "registered_key_verifier");
+        assert_eq!(calls[0].function.as_str(), "configure_tool");
+        assert_eq!(calls[0].arguments.len(), 5);
+    }
+
+    #[test]
+    fn external_registration_keeps_witness_first_and_appends_objects_in_order() {
+        let objects = nexus_objects();
+        let witness_type = object_type("0x40", "state", "Witness");
+        let config_type = object_type("0x40", "state", "Config");
+        let input = ExternalVerifierRegistrationInput {
+            package_id: addr("0x41"),
+            module_name: "verifier".to_string(),
+            function_name: "verify".to_string(),
+            verifier_objects: vec![
+                ExternalVerifierObjectInput {
+                    object_ref: object_ref("0x42", 5, 42),
+                    object_type: witness_type.clone(),
+                },
+                ExternalVerifierObjectInput {
+                    object_ref: object_ref("0x43", 6, 43),
+                    object_type: config_type.clone(),
+                },
+            ],
+        };
+        let ptb = register_external_verifier_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+            &input,
+        )
+        .unwrap();
+        let calls = move_calls(&ptb)
+            .into_iter()
+            .filter(|call| {
+                matches!(
+                    call.function.as_str(),
+                    "new_external_registration" | "add_obj" | "register_external_verifier"
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            calls
+                .iter()
+                .map(|call| call.function.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "new_external_registration",
+                "add_obj",
+                "register_external_verifier",
+            ]
+        );
+        assert_eq!(calls[0].type_arguments, vec![witness_type]);
+        assert_eq!(calls[1].type_arguments, vec![config_type]);
+        assert_eq!(calls[0].arguments.len(), 5);
+        assert_eq!(calls[1].arguments.len(), 2);
+        assert_eq!(calls[2].arguments.len(), 5);
+    }
 }

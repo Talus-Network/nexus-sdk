@@ -5,9 +5,8 @@ use {
         move_bindings::{
             interface::{
                 graph::{EdgeKind, PostFailureAction},
-                verifier::{VerifierConfig, VerifierMode},
+                verifier::ToolVerifierMode,
             },
-            move_std::ascii::String as MoveString,
             primitives::data::NexusData,
         },
         types::{
@@ -27,7 +26,15 @@ use {
 };
 
 pub fn parse_dag_spec(input: &str) -> Result<DagSpec, serde_json::Error> {
-    serde_json::from_str::<DagDocument>(input).map(Into::into)
+    let document = serde_json::from_str::<DagDocument>(input)?;
+    if document.vertices.iter().any(|vertex| {
+        matches!(&vertex.kind, VertexKindDocument::OnChain { .. }) && vertex.verifier.is_some()
+    }) {
+        return Err(serde::de::Error::custom(
+            "on-chain vertices cannot configure an off-chain verifier",
+        ));
+    }
+    Ok(document.into())
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -37,10 +44,6 @@ struct DagDocument {
     default_values: Option<Vec<DefaultValueDocument>>,
     #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     post_failure_action: Option<PostFailureAction>,
-    #[serde(default, deserialize_with = "deserialize_verifier_config_option")]
-    leader_verifier: Option<VerifierConfig>,
-    #[serde(default, deserialize_with = "deserialize_verifier_config_option")]
-    tool_verifier: Option<VerifierConfig>,
     entry_groups: Option<Vec<EntryGroupDocument>>,
     outputs: Option<Vec<OutputPortDocument>>,
 }
@@ -57,8 +60,6 @@ impl From<DagDocument> for DagSpec {
                 .map(Into::into)
                 .collect(),
             post_failure_action: document.post_failure_action,
-            leader_verifier: document.leader_verifier,
-            tool_verifier: document.tool_verifier,
             entry_groups: document
                 .entry_groups
                 .unwrap_or_default()
@@ -111,10 +112,8 @@ struct VertexDocument {
     entry_ports: Option<Vec<EntryPortDocument>>,
     #[serde(default, deserialize_with = "deserialize_post_failure_action_option")]
     post_failure_action: Option<PostFailureAction>,
-    #[serde(default, deserialize_with = "deserialize_verifier_config_option")]
-    leader_verifier: Option<VerifierConfig>,
-    #[serde(default, deserialize_with = "deserialize_verifier_config_option")]
-    tool_verifier: Option<VerifierConfig>,
+    #[serde(default, deserialize_with = "deserialize_verifier_mode_option")]
+    verifier: Option<ToolVerifierMode>,
 }
 
 impl From<VertexDocument> for DagVertex {
@@ -129,8 +128,7 @@ impl From<VertexDocument> for DagVertex {
                 .map(Into::into)
                 .collect(),
             post_failure_action: document.post_failure_action,
-            leader_verifier: document.leader_verifier,
-            tool_verifier: document.tool_verifier,
+            verifier: document.verifier,
         }
     }
 }
@@ -169,32 +167,17 @@ fn post_failure_action_from_name(name: &str) -> Result<PostFailureAction, String
     }
 }
 
-fn deserialize_verifier_config_option<'de, D>(
+fn deserialize_verifier_mode_option<'de, D>(
     deserializer: D,
-) -> Result<Option<VerifierConfig>, D::Error>
+) -> Result<Option<ToolVerifierMode>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Option::<VerifierConfigInput>::deserialize(deserializer)
-        .map(|value| value.map(VerifierConfigInput::into_inner))
+    Option::<VerifierModeInput>::deserialize(deserializer)
+        .map(|value| value.and_then(|mode| (mode.0 != ToolVerifierMode::None).then_some(mode.0)))
 }
 
-#[derive(Deserialize)]
-struct VerifierConfigInput {
-    mode: VerifierModeInput,
-    method: String,
-}
-
-impl VerifierConfigInput {
-    fn into_inner(self) -> VerifierConfig {
-        VerifierConfig {
-            mode: self.mode.0,
-            method: MoveString::from(self.method),
-        }
-    }
-}
-
-struct VerifierModeInput(VerifierMode);
+struct VerifierModeInput(ToolVerifierMode);
 
 impl<'de> Deserialize<'de> for VerifierModeInput {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -208,15 +191,11 @@ impl<'de> Deserialize<'de> for VerifierModeInput {
     }
 }
 
-fn verifier_mode_from_name(name: &str) -> Result<VerifierMode, String> {
+fn verifier_mode_from_name(name: &str) -> Result<ToolVerifierMode, String> {
     match name {
-        "none" | "None" => Ok(VerifierMode::None),
-        "leader_registered_key" | "LeaderRegisteredKey" | "leaderRegisteredKey" => {
-            Ok(VerifierMode::LeaderRegisteredKey)
-        }
-        "tool_verifier_contract" | "ToolVerifierContract" | "toolVerifierContract" => {
-            Ok(VerifierMode::ToolVerifierContract)
-        }
+        "none" => Ok(ToolVerifierMode::None),
+        "registered_key" => Ok(ToolVerifierMode::RegisteredKey),
+        "external" => Ok(ToolVerifierMode::External),
         _ => Err(format!("unknown verifier mode `{name}`")),
     }
 }
@@ -399,7 +378,7 @@ impl From<InputPortDocument> for DagInput {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::move_bindings::interface::verifier::VerifierMode};
+    use super::*;
 
     #[test]
     fn test_dag_deserialize_post_failure_action() {
@@ -500,15 +479,19 @@ mod tests {
     }
 
     #[test]
-    fn test_dag_deserialize_verifier_config() {
-        let dag: DagDocument = serde_json::from_str(
+    fn test_dag_deserialize_vertex_verifier_mode() {
+        let dag = parse_dag_spec(
             r#"{
-                "leader_verifier": { "mode": "LeaderRegisteredKey", "method": "signed_http_v1" },
                 "vertices": [
                     {
                         "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
                         "name": "root",
-                        "tool_verifier": { "mode": "ToolVerifierContract", "method": "demo_verifier_v1" }
+                        "verifier": "registered_key"
+                    },
+                    {
+                        "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@2" },
+                        "name": "external",
+                        "verifier": "external"
                     }
                 ],
                 "edges": []
@@ -517,19 +500,26 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            dag.leader_verifier,
-            Some(VerifierConfig {
-                mode: VerifierMode::LeaderRegisteredKey,
-                method: "signed_http_v1".into(),
-            })
+            dag.vertices[0].verifier,
+            Some(ToolVerifierMode::RegisteredKey)
         );
-        assert_eq!(
-            dag.vertices[0].tool_verifier,
-            Some(VerifierConfig {
-                mode: VerifierMode::ToolVerifierContract,
-                method: "demo_verifier_v1".into(),
-            })
-        );
+        assert_eq!(dag.vertices[1].verifier, Some(ToolVerifierMode::External));
+    }
+
+    #[test]
+    fn test_dag_rejects_verifier_on_onchain_vertex() {
+        let error = parse_dag_spec(
+            r#"{
+                "vertices": [{
+                    "kind": { "variant": "on_chain", "tool_fqn": "xyz.tool.test@1" },
+                    "name": "root",
+                    "verifier": "registered_key"
+                }],
+                "edges": []
+            }"#,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("on-chain vertices"));
     }
 
     #[test]

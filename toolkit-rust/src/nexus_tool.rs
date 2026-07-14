@@ -14,9 +14,8 @@ use {
 /// Authenticated request context available to tools when signed HTTP is enabled.
 ///
 /// This context is produced by the toolkit runtime after it has:
-/// - verified the invoker's signature on the invocation request, and
-/// - verified the request freshness window (`iat_ms`/`exp_ms`), and
-/// - verified the request body hash, method/path/query binding, and tool id.
+/// - verified the Leader signature over the supplied canonical input hash, and
+/// - reserved the request nonce in the Tool's offchain replay cache.
 ///
 /// Tools can use this context inside [`NexusTool::authorize`] to implement their own
 /// admission policy (allowlists, task gating, rate-limits, etc) without any on-chain reads.
@@ -24,7 +23,7 @@ use {
 /// Terminology:
 /// - Invoker: the node calling the tool (in Nexus, the Leader).
 /// - Responder: the node serving the request (in Nexus, the Tool).
-pub type AuthContext = nexus_sdk::signed_http::v1::engine::AuthContextV1;
+pub type AuthContext = nexus_sdk::signed_http::v2::wire::AuthenticatedRequest;
 
 /// This trait defines the interface for a Nexus Tool. It forces implementation
 /// of the following methods:

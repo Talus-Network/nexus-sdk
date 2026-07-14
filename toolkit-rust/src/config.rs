@@ -21,25 +21,24 @@
 //! If the config includes a `signed_http` section in `required` mode, the runtime:
 //! - Rejects any `/invoke` request that does not carry valid signature headers.
 //! - Rejects any request signed by a Leader not present in the local allowlist.
-//! - Signs the tool response (including error responses after authentication) so the Leader can verify provenance.
+//! - Signs the exact BCS `TaggedOutput` result bytes so they can be submitted onchain.
 //!
 //! Operational note: if you run tools behind a gateway/proxy, ensure it forwards the `X-Nexus-Sig-*`
 //! headers. If these headers are stripped, signed HTTP will fail closed.
 //!
 //! The signature protocol itself lives in `nexus-sdk` under
-//! [`nexus_sdk::signed_http::v1`](nexus_sdk::signed_http::v1).
+//! [`nexus_sdk::signed_http::v2`](nexus_sdk::signed_http::v2).
 //!
-//! # Example config (v1)
+//! # Example config (v2)
 //! ```json
 //! {
-//!   "version": 1,
+//!   "version": 2,
 //!   "invoke_max_body_bytes": 10485760,
 //!   "signed_http": {
 //!     "mode": "required",
 //!     "allowed_leaders_path": "./allowed_leaders.json",
 //!     "tools": {
 //!       "xyz.dummy.tool@1": {
-//!         "tool_kid": 0,
 //!         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
 //!       }
 //!     }
@@ -67,13 +66,12 @@
 //! tools.insert(
 //!     tool_id.to_string(),
 //!     json!({
-//!         "tool_kid": 0,
 //!         "tool_signing_key": tool_sk_hex,
 //!     }),
 //! );
 //!
 //! let cfg_json = serde_json::to_string_pretty(&json!({
-//!     "version": 1,
+//!     "version": 2,
 //!     "invoke_max_body_bytes": 123,
 //!     "signed_http": {
 //!         "mode": "required",
@@ -103,7 +101,7 @@ use {
     ed25519_dalek::SigningKey,
     nexus_sdk::signed_http::{
         keys::parse_ed25519_signing_key,
-        v1::wire::{AllowedLeadersFileV1, AllowedLeadersV1},
+        v2::wire::{AllowedLeaders, AllowedLeadersFileV1},
     },
     notify::{Event, RecommendedWatcher, RecursiveMode, Watcher},
     serde::Deserialize,
@@ -120,8 +118,6 @@ use {
 pub const ENV_TOOLKIT_CONFIG_PATH: &str = "NEXUS_TOOLKIT_CONFIG_PATH";
 
 const DEFAULT_INVOKE_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
-const DEFAULT_MAX_CLOCK_SKEW_MS: u64 = 30_000;
-const DEFAULT_MAX_VALIDITY_MS: u64 = 60_000;
 
 /// Signed HTTP mode for the toolkit runtime.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -147,15 +143,12 @@ pub struct ToolkitRuntimeConfig {
 
 #[derive(Clone)]
 pub(crate) struct SignedHttpRuntimeConfig {
-    pub(crate) allowed_leaders: Arc<AllowedLeadersV1>,
-    pub(crate) max_clock_skew_ms: u64,
-    pub(crate) max_validity_ms: u64,
+    pub(crate) allowed_leaders: Arc<AllowedLeaders>,
     pub(crate) tools: BTreeMap<String, SignedHttpToolRuntimeConfig>,
 }
 
 #[derive(Clone)]
 pub(crate) struct SignedHttpToolRuntimeConfig {
-    pub(crate) tool_kid: u64,
     pub(crate) tool_signing_key: SigningKey,
 }
 
@@ -174,7 +167,7 @@ impl ToolkitRuntimeConfig {
         let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
         let mut cfg = Self::from_json_bytes(&bytes).with_context(|| {
             format!(
-                "failed to parse {} (expected ToolkitRuntimeConfig v1 JSON)",
+                "failed to parse {} (expected ToolkitRuntimeConfig v2 JSON)",
                 path.display()
             )
         })?;
@@ -184,7 +177,7 @@ impl ToolkitRuntimeConfig {
 
     /// Parse config from JSON bytes.
     pub fn from_json_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
-        let file: ToolkitRuntimeConfigFileV1 =
+        let file: ToolkitRuntimeConfigFileV2 =
             serde_json::from_slice(bytes).context("invalid JSON")?;
         Self::try_from(file)
     }
@@ -229,16 +222,18 @@ impl ToolkitRuntimeConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct ToolkitRuntimeConfigFileV1 {
+#[serde(deny_unknown_fields)]
+struct ToolkitRuntimeConfigFileV2 {
     pub version: u8,
     #[serde(default)]
     pub invoke_max_body_bytes: Option<u64>,
     #[serde(default)]
-    pub signed_http: Option<SignedHttpConfigFileV1>,
+    pub signed_http: Option<SignedHttpConfigFileV2>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct SignedHttpConfigFileV1 {
+#[serde(deny_unknown_fields)]
+struct SignedHttpConfigFileV2 {
     /// Defaults to `required` when omitted.
     #[serde(default)]
     pub mode: SignedHttpMode,
@@ -251,31 +246,26 @@ struct SignedHttpConfigFileV1 {
     #[serde(default)]
     pub allowed_leaders: Option<AllowedLeadersFileV1>,
 
-    #[serde(default)]
-    pub max_clock_skew_ms: Option<u64>,
-    #[serde(default)]
-    pub max_validity_ms: Option<u64>,
-
     /// Per-tool signing material, keyed by `tool_id` string.
     #[serde(default)]
-    pub tools: BTreeMap<String, SignedHttpToolConfigFileV1>,
+    pub tools: BTreeMap<String, SignedHttpToolConfigFileV2>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct SignedHttpToolConfigFileV1 {
-    pub tool_kid: u64,
+#[serde(deny_unknown_fields)]
+struct SignedHttpToolConfigFileV2 {
     /// Hex or base64 encoding of a 32-byte Ed25519 private key.
     ///
     /// This also accepts Sui keytool encoding: base64 of `0x00 || sk32`.
     pub tool_signing_key: String,
 }
 
-impl TryFrom<ToolkitRuntimeConfigFileV1> for ToolkitRuntimeConfig {
+impl TryFrom<ToolkitRuntimeConfigFileV2> for ToolkitRuntimeConfig {
     type Error = anyhow::Error;
 
-    fn try_from(file: ToolkitRuntimeConfigFileV1) -> Result<Self, Self::Error> {
-        if file.version != 1 {
-            anyhow::bail!("unsupported config version {}, expected 1", file.version);
+    fn try_from(file: ToolkitRuntimeConfigFileV2) -> Result<Self, Self::Error> {
+        if file.version != 2 {
+            anyhow::bail!("unsupported config version {}, expected 2", file.version);
         }
 
         let invoke_max_body_bytes = file
@@ -297,11 +287,11 @@ impl TryFrom<ToolkitRuntimeConfigFileV1> for ToolkitRuntimeConfig {
 }
 
 fn load_signed_http_config(
-    file: SignedHttpConfigFileV1,
+    file: SignedHttpConfigFileV2,
 ) -> anyhow::Result<SignedHttpRuntimeConfig> {
     let allowed_leaders = match (file.allowed_leaders, file.allowed_leaders_path) {
-        (Some(inline), _) => AllowedLeadersV1::try_from(inline).map_err(anyhow::Error::new)?,
-        (None, Some(path)) => AllowedLeadersV1::from_path(path).map_err(anyhow::Error::new)?,
+        (Some(inline), _) => AllowedLeaders::try_from(inline).map_err(anyhow::Error::new)?,
+        (None, Some(path)) => AllowedLeaders::from_path(path).map_err(anyhow::Error::new)?,
         (None, None) => {
             anyhow::bail!("signed_http requires either allowed_leaders or allowed_leaders_path")
         }
@@ -320,7 +310,6 @@ fn load_signed_http_config(
         tools.insert(
             tool_id,
             SignedHttpToolRuntimeConfig {
-                tool_kid: tool.tool_kid,
                 tool_signing_key: signing_key,
             },
         );
@@ -328,8 +317,6 @@ fn load_signed_http_config(
 
     Ok(SignedHttpRuntimeConfig {
         allowed_leaders,
-        max_clock_skew_ms: file.max_clock_skew_ms.unwrap_or(DEFAULT_MAX_CLOCK_SKEW_MS),
-        max_validity_ms: file.max_validity_ms.unwrap_or(DEFAULT_MAX_VALIDITY_MS),
         tools,
     })
 }
@@ -514,13 +501,12 @@ mod tests {
         tools.insert(
             tool_id.to_string(),
             json!({
-                "tool_kid": 7,
                 "tool_signing_key": tool_sk_hex,
             }),
         );
 
         serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "invoke_max_body_bytes": 123,
             "signed_http": {
                 "mode": "required",
@@ -534,8 +520,6 @@ mod tests {
                         }],
                     }],
                 },
-                "max_clock_skew_ms": 10,
-                "max_validity_ms": 20,
                 "tools": tools,
             },
         }))
@@ -556,10 +540,12 @@ mod tests {
         assert!(cfg.signed_http_is_required());
         assert!(cfg.has_tool(tool_id));
 
-        let signed = cfg.signed_http().unwrap();
-        assert_eq!(signed.max_clock_skew_ms, 10);
-        assert_eq!(signed.max_validity_ms, 20);
-        assert!(signed.allowed_leaders.source_path().is_none());
+        assert!(cfg
+            .signed_http()
+            .unwrap()
+            .allowed_leaders
+            .source_path()
+            .is_none());
     }
 
     #[test]
@@ -591,13 +577,12 @@ mod tests {
         fs::write(&path, allowlist_json).unwrap();
 
         let cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders_path": path.display().to_string(),
                 "tools": {
                     "xyz.demo.tool@1": {
-                        "tool_kid": 0,
                         "tool_signing_key": tool_sk_hex,
                     },
                 },
@@ -617,7 +602,7 @@ mod tests {
     #[test]
     fn signed_http_disabled_is_ignored() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "signed_http": {
                 "mode": "disabled",
             },
@@ -630,12 +615,11 @@ mod tests {
     #[test]
     fn signed_http_requires_allowlist() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "tools": {
                     "demo": {
-                        "tool_kid": 0,
                         "tool_signing_key": "00",
                     },
                 },
@@ -648,7 +632,7 @@ mod tests {
     #[test]
     fn signed_http_requires_tool_entries() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "signed_http": {
                 "mode": "required",
                 "allowed_leaders": {
@@ -662,9 +646,38 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_config_version() {
+    fn removed_signed_http_claim_fields_are_rejected() {
         let cfg_json = serde_json::to_string(&json!({
             "version": 2,
+            "signed_http": {
+                "mode": "disabled",
+                "max_clock_skew_ms": 10,
+            },
+        }))
+        .unwrap();
+        assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
+
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 2,
+            "signed_http": {
+                "mode": "required",
+                "allowed_leaders": { "version": 1, "leaders": [] },
+                "tools": {
+                    "demo": {
+                        "tool_kid": 0,
+                        "tool_signing_key": hex::encode([7; 32]),
+                    },
+                },
+            },
+        }))
+        .unwrap();
+        assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_config_version() {
+        let cfg_json = serde_json::to_string(&json!({
+            "version": 1,
         }))
         .unwrap();
         assert!(ToolkitRuntimeConfig::from_json_str(&cfg_json).is_err());
@@ -731,7 +744,7 @@ mod tests {
     #[test]
     fn from_json_str_has_no_source_path() {
         let cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
         }))
         .unwrap();
         let cfg = ToolkitRuntimeConfig::from_json_str(&cfg_json).unwrap();
@@ -829,7 +842,7 @@ mod tests {
 
         // Update the config file with new values
         let new_cfg_json = serde_json::to_string(&json!({
-            "version": 1,
+            "version": 2,
             "invoke_max_body_bytes": 456,
             "signed_http": {
                 "mode": "required",
@@ -845,7 +858,6 @@ mod tests {
                 },
                 "tools": {
                     "xyz.demo.tool@1": {
-                        "tool_kid": 7,
                         "tool_signing_key": tool_sk_hex,
                     },
                 },

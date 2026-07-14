@@ -33,6 +33,20 @@ pub struct SuiInstance {
     pub faucet_port: u16,
 }
 
+/// Returns why Docker-backed tests cannot run in the current environment.
+pub async fn docker_unavailable_reason() -> Option<String> {
+    let docker = match client::docker_client_instance().await {
+        Ok(docker) => docker,
+        Err(error) => return Some(format!("failed to create Docker client: {error}")),
+    };
+
+    docker
+        .version()
+        .await
+        .err()
+        .map(|error| format!("failed to query Docker daemon: {error}"))
+}
+
 /// Spins up a Sui container and returns its handle and mapped RPC and faucet
 /// ports.
 pub async fn setup_sui_instance() -> SuiInstance {

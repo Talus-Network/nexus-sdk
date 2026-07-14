@@ -31,7 +31,7 @@ use {
                 dag as dag_move,
                 graph::{self as graph_move, RuntimeVertex},
                 payment::{ExecutionPayment, ExecutionPaymentVertexLock},
-                verifier::{FailureEvidenceKind, VerifierConfig, VerifierMode},
+                verifier::{FailureEvidenceKind, ToolVerifierMode},
             },
             move_std::type_name::TypeName,
             primitives::{data::NexusData, onchain_tool_result::OnchainToolResult},
@@ -472,6 +472,7 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
         NexusEventKind::WalkAdvanced(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkFailed(e) => Some(e.execution.clone().into()),
         NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution.clone().into()),
+        NexusEventKind::ToolVerificationResolved(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkAborted(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkCancelled(e) => Some(e.execution.clone().into()),
         NexusEventKind::EndStateReached(e) => Some(e.execution.clone().into()),
@@ -550,31 +551,8 @@ async fn build_execution_completion_result(
     })
 }
 
-pub fn verifier_mode_requires_proof(mode: VerifierMode) -> bool {
-    matches!(
-        mode,
-        VerifierMode::LeaderRegisteredKey | VerifierMode::ToolVerifierContract
-    )
-}
-
-pub fn effective_verifier_config(
-    dag_default: &VerifierConfig,
-    vertex_override: Option<&VerifierConfig>,
-) -> VerifierConfig {
-    vertex_override
-        .cloned()
-        .unwrap_or_else(|| dag_default.clone())
-}
-
-pub fn dag_vertex_requires_verifier_proof(
-    dag: &dag_move::DAG,
-    vertex: &graph_move::VertexInfo,
-) -> bool {
-    verifier_mode_requires_proof(
-        effective_verifier_config(&dag.leader_verifier, vertex.leader_verifier.as_option()).mode,
-    ) || verifier_mode_requires_proof(
-        effective_verifier_config(&dag.tool_verifier, vertex.tool_verifier.as_option()).mode,
-    )
+pub fn dag_vertex_requires_tool_verification(vertex: &graph_move::VertexInfo) -> bool {
+    vertex.verifier_mode != ToolVerifierMode::None
 }
 
 pub async fn fetch_dag_vertices_bcs(
@@ -1046,7 +1024,7 @@ pub async fn fetch_dag_outputs_bcs(
         .await
 }
 
-pub async fn offchain_success_requires_verifier_proof(
+pub async fn offchain_success_requires_tool_verification(
     crawler: &Crawler,
     dag_object_id: sui::types::Address,
     next_vertex: &RuntimeVertex,
@@ -1061,7 +1039,7 @@ pub async fn offchain_success_requires_verifier_proof(
         )
     })?;
 
-    Ok(dag_vertex_requires_verifier_proof(&dag.data, &vertex))
+    Ok(dag_vertex_requires_tool_verification(&vertex))
 }
 
 pub async fn fetch_vertex_input_port_names(
@@ -2196,7 +2174,7 @@ mod tests {
                         SkillPaymentPolicy,
                         VertexExecutionPaymentSettlementKind,
                     },
-                    verifier::{VerifierConfig, VerifierMode},
+                    verifier::{ToolVerifierMode, VerifierDecision},
                     version::InterfaceVersion,
                 },
                 move_std::{
@@ -2219,6 +2197,7 @@ mod tests {
                         EndStateReachedEvent,
                         ExecutionFinishedEvent,
                         TerminalErrEvalRecordedEvent,
+                        ToolVerificationResolved,
                         WalkAdvancedEvent,
                     },
                     execution_failure::WorkflowFailureClass,
@@ -2352,8 +2331,6 @@ mod tests {
             outputs: MoveTable::new(sui_mocks::mock_sui_address(), 0),
             defaults_to_input_ports: MoveTable::new(sui_mocks::mock_sui_address(), 0),
             post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
-            leader_verifier: VerifierConfig::default(),
-            tool_verifier: VerifierConfig::default(),
         }
     }
 
@@ -2445,8 +2422,8 @@ mod tests {
             },
             input_ports: VecSet { contents: vec![] },
             post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
-            leader_verifier: MoveOption::from_option(None::<VerifierConfig>),
-            tool_verifier: MoveOption::from_option(None::<VerifierConfig>),
+            tool_id: object_id(sui::types::Address::from_static("0x42")),
+            verifier_mode: ToolVerifierMode::None,
         }
     }
 
@@ -2507,6 +2484,31 @@ mod tests {
             .expect("fetch should succeed");
 
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn onchain_result_state_reports_no_result_when_dynamic_fields_are_absent() {
+        let execution_id = sui::types::Address::from_static("0xe1");
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(3)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::ListDynamicFieldsResponse::default(),
+                ))
+            });
+        let crawler = crawler_from_mocks(
+            sui_mocks::grpc::MockLedgerService::new(),
+            state_service_mock,
+        )
+        .await;
+
+        let state = fetch_onchain_tool_result_state_for_walk(&crawler, execution_id, 7)
+            .await
+            .expect("absent dynamic fields should be a valid empty state");
+
+        assert!(matches!(state, OnchainToolResultState::NoResult));
     }
 
     #[tokio::test]
@@ -3645,6 +3647,26 @@ mod tests {
         assert_eq!(event_execution_id(&event), Some(execution));
     }
 
+    #[test]
+    fn test_event_execution_id_supports_tool_verification_resolved() {
+        let execution = sui::types::Address::TWO;
+        let event = NexusEventKind::ToolVerificationResolved(ToolVerificationResolved {
+            dag: object_id(sui::types::Address::ZERO),
+            execution: object_id(execution),
+            walk_index: 2,
+            vertex: RuntimeVertex::plain("verified"),
+            leader_cap_id: object_id(sui::types::Address::THREE),
+            tool_id: object_id(sui::types::Address::from_static("0x4")),
+            verifier_kind: ToolVerifierMode::External,
+            verifier_witness_id: MoveOption::from_option(Some(object_id(
+                sui::types::Address::from_static("0x5"),
+            ))),
+            decision: VerifierDecision::Accept,
+        });
+
+        assert_eq!(event_execution_id(&event), Some(execution));
+    }
+
     #[cfg(feature = "walrus")]
     #[test]
     fn test_terminal_state_from_execution_finished() {
@@ -4474,16 +4496,11 @@ mod tests {
     }
 
     #[test]
-    fn dag_vertex_requires_verifier_proof_prefers_vertex_override() {
-        let mut dag = dag_bcs(0);
-        dag.leader_verifier = VerifierConfig {
-            mode: VerifierMode::LeaderRegisteredKey,
-            method: "signed_http_v1".into(),
-        };
+    fn dag_vertex_requires_tool_verification_reads_vertex_mode() {
         let mut vertex = offchain_vertex_info(&fqn!("xyz.example.tool@1"));
-        vertex.leader_verifier = MoveOption::from_option(Some(VerifierConfig::default()));
-
-        assert!(!dag_vertex_requires_verifier_proof(&dag, &vertex));
+        assert!(!dag_vertex_requires_tool_verification(&vertex));
+        vertex.verifier_mode = ToolVerifierMode::External;
+        assert!(dag_vertex_requires_tool_verification(&vertex));
     }
 
     #[test]

@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   function parameter names. Network package metadata remains authoritative, and regeneration
   without source keeps deterministic `argN` names.
 - Added support for new priority fee system.
+- Added SDK models and transaction builders for per-vertex `None`, RegisteredKey, and External Tool verification, including verifier-first PTB construction and `VerificationVerdict` consumption.
+- Added canonical RegisteredKey Tool-input hashing, auxiliary BCS encoding, leader-signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
+- Added Tool registry queries and External verifier registration preflight that validate the public Move ABI, Tool binding, witness-first ordering, and immutable shared-object arguments.
+- Added signed-HTTP v2 request and response helpers for leader signatures over canonical input hashes and Tool signatures over exact BCS result bytes.
 
 #### Changed
 
@@ -21,12 +25,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID
   churn when the same Move ABI is rebound from another deployment.
+- Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
+- Offchain submission builders now invoke `verify_none`, the built-in RegisteredKey verifier, or the registered External verifier before committing the returned verdict.
+- Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
+
+#### Removed
+
+- Removed signed-HTTP v1 engine, wire, claim, and transcript APIs in favor of the minimal v2 input-hash and response-signature protocol.
 
 ### `nexus-cli`
 
 #### Added
 
 - Added support for new priority fee system in commands.
+- Added `tool configure-verifier` commands for configuring built-in RegisteredKey verification or registering an External verifier with its package, module, function, witness, and immutable shared objects.
+
+#### Changed
+
+- Tool registration, inspection, validation, and unregistration now expose and maintain the simplified Tool verifier configuration and nested onchain Tool reference shape.
+
+### `nexus-toolkit`
+
+#### Added
+
+- Added optional signed-HTTP v2 enforcement with inline or file-backed leader allowlists, per-Tool signing keys, live allowlist reload, exact-retry response caching, conflicting nonce rejection, and in-flight request protection.
+- Added direct TLS termination through `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH`, which must be configured together.
+
+#### Changed
+
+- `/invoke` now returns exact BCS `TaggedOutput` result bytes instead of JSON output enums; only canonical result bodies are signed, while local HTTP and authentication errors remain unsigned JSON.
+- `AuthContext` now exposes the v2 authenticated leader identity, key id, canonical input hash, leader signature, and nonce.
+- Enabled Warp TLS and the SDK `types` feature required for canonical Tool output encoding.
 
 ## [`2.0.0-rc.4`] - 2026-07-09
 

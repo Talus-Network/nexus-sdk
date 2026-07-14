@@ -3732,24 +3732,8 @@
                   }
                 },
                 {
-                  "name": "supported_verifier_methods",
-                  "position": 2,
-                  "ty": {
-                    "Vector": {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x1",
-                          "module": "ascii",
-                          "name": "String"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  }
-                },
-                {
                   "name": "stake_manager",
-                  "position": 3,
+                  "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -3774,7 +3758,7 @@
                 },
                 {
                   "name": "claim_token",
-                  "position": 4,
+                  "position": 3,
                   "ty": {
                     "Vector": "U8"
                   }
@@ -5975,84 +5959,6 @@
           ]
         },
         {
-          "name": "leader_supports_required_verifier_methods",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_verifier",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_verifier",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "leader_total_shares",
           "visibility": "Public",
           "is_entry": false,
@@ -6493,77 +6399,6 @@
                   "inner": {
                     "Vector": "U8"
                   }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "rank_active_leaders_stake_weighted_for_verifier_method",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "seed",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
                 }
               }
             }
@@ -7150,113 +6985,6 @@
             {
               "name": "new_max_transaction_budget",
               "ty": "U64"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "set_supported_verifier_methods",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa3",
-                              "module": "leader_cap",
-                              "name": "OverNetwork"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "verifier_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "methods",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x1",
-                      "module": "ascii",
-                      "name": "String"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            },
-            {
-              "name": "_ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
             }
           ],
           "return_types": []
@@ -7983,61 +7711,6 @@
           ]
         },
         {
-          "name": "supports_verifier_method",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "suspend_if_token",
           "visibility": "Public",
           "is_entry": false,
@@ -8581,14 +8254,14 @@
                   "position": 1,
                   "fields": [
                     {
-                      "name": "fqn",
+                      "name": "tool_id",
                       "position": 0,
                       "ty": {
                         "Datatype": {
                           "type_name": {
-                            "address": "0x1",
-                            "module": "ascii",
-                            "name": "String"
+                            "address": "0x2",
+                            "module": "object",
+                            "name": "ID"
                           },
                           "type_arguments": []
                         }
@@ -9077,6 +8750,35 @@
       ],
       "functions": [
         {
+          "name": "active_key_is_usable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "binding",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "network_auth",
+                        "name": "KeyBinding"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
           "name": "append_bytes",
           "visibility": "Private",
           "is_entry": false,
@@ -9386,13 +9088,13 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "fqn",
+              "name": "tool_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -10065,10 +9767,6 @@
               }
             },
             {
-              "name": "claimed_key_id",
-              "ty": "U64"
-            },
-            {
               "name": "signature",
               "ty": {
                 "Ref": {
@@ -10702,7 +10400,16 @@
             },
             {
               "name": "leader_cap_id",
-              "ty": "Address"
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "amount",
@@ -10873,90 +10580,16 @@
     },
     "registered_key_verifier": {
       "name": "registered_key_verifier",
-      "datatypes": [
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "registered_key_verifier",
-            "name": "RegisteredKeyValidation"
-          },
-          "module": "registered_key_verifier",
-          "name": "RegisteredKeyValidation",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "resolved_leader_kid",
-                  "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "resolved_tool_kid",
-                  "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "payload_sha256",
-                  "position": 2,
-                  "ty": {
-                    "Vector": "U8"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      ],
+      "datatypes": [],
       "functions": [
         {
-          "name": "expected_outcome_for_submission_kind",
+          "name": "assert_binding",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  "U8"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_supports_submission_kind",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "registry",
+              "name": "network_auth",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -10964,8 +10597,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
+                        "module": "network_auth",
+                        "name": "NetworkAuth"
                       },
                       "type_arguments": []
                     }
@@ -10974,53 +10607,56 @@
               }
             },
             {
-              "name": "method",
+              "name": "binding",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "network_auth",
+                        "name": "KeyBinding"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             },
             {
-              "name": "submission_kind",
+              "name": "identity",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
+                    "address": "0xa3",
+                    "module": "network_auth",
+                    "name": "IdentityKey"
                   },
                   "type_arguments": []
                 }
               }
             }
           ],
-          "return_types": [
-            "Bool"
-          ]
+          "return_types": []
         },
         {
-          "name": "validate_and_stamp_transcript",
+          "name": "configure_tool",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "registry",
+              "name": "tool_registry",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
                       },
                       "type_arguments": []
                     }
@@ -11028,6 +10664,98 @@
                 }
               }
             },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "tool_registry",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "network_auth",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "network_auth",
+                        "name": "NetworkAuth"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_key_binding",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "network_auth",
+                        "name": "KeyBinding"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "verify",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
             {
               "name": "worksheet",
               "ty": {
@@ -11047,187 +10775,19 @@
               }
             },
             {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "verifier_credential",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": "Address"
-            },
-            {
-              "name": "walk_index",
-              "ty": "U64"
-            },
-            {
-              "name": "vertex_name",
+              "name": "result",
               "ty": {
                 "Vector": "U8"
               }
             },
             {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "network_auth",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "NetworkAuth"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_key_binding",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "KeyBinding"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_key_binding",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "KeyBinding"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "expected_request_body_sha256",
+              "name": "auxiliary",
               "ty": {
                 "Vector": "U8"
               }
             },
             {
-              "name": "expected_response_body_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "expected_payload_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "validate_transcript",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "registry",
+              "name": "verifier_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -11245,66 +10805,20 @@
               }
             },
             {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "verifier_credential",
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
-                    "Vector": "U8"
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
                   }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": "Address"
-            },
-            {
-              "name": "walk_index",
-              "ty": "U64"
-            },
-            {
-              "name": "vertex_name",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
                 }
               }
             },
@@ -11361,317 +10875,19 @@
                   }
                 }
               }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "expected_request_body_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "expected_response_body_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "expected_payload_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
             }
           ],
           "return_types": [
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
+                  "address": "0xa2",
+                  "module": "verifier",
+                  "name": "VerificationVerdict"
                 },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
+                "type_arguments": []
               }
             }
-          ]
-        },
-        {
-          "name": "validate_transcript_inner",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "verifier_credential",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": "Address"
-            },
-            {
-              "name": "walk_index",
-              "ty": "U64"
-            },
-            {
-              "name": "vertex_name",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "network_auth",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "NetworkAuth"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_key_binding",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "KeyBinding"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_key_binding",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "KeyBinding"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "expected_request_body_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "expected_response_body_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "expected_payload_sha256",
-              "ty": {
-                "Vector": "U8"
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "validation_payload_sha256",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": "U8"
-            }
-          ]
-        },
-        {
-          "name": "validation_resolved_leader_kid",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "validation_resolved_tool_kid",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "registered_key_verifier",
-                        "name": "RegisteredKeyValidation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         }
       ]
@@ -11958,39 +11174,23 @@
                   }
                 },
                 {
-                  "name": "supported_verifier_methods",
-                  "position": 9,
-                  "ty": {
-                    "Vector": {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x1",
-                          "module": "ascii",
-                          "name": "String"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  }
-                },
-                {
                   "name": "workflow_authorization_cap_first",
-                  "position": 10,
+                  "position": 9,
                   "ty": "Bool"
                 },
                 {
                   "name": "lock_duration_ms",
-                  "position": 11,
+                  "position": 10,
                   "ty": "U64"
                 },
                 {
                   "name": "registered_at_ms",
-                  "position": 12,
+                  "position": 11,
                   "ty": "U64"
                 },
                 {
                   "name": "unregistered_at_ms",
-                  "position": 13,
+                  "position": 12,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12187,8 +11387,69 @@
                   }
                 },
                 {
-                  "name": "timeouts",
+                  "name": "tool_ids",
                   "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "linked_table",
+                        "name": "LinkedTable"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "ascii",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "registered_tools",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        "Bool"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "timeouts",
+                  "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12213,36 +11474,34 @@
                   }
                 },
                 {
-                  "name": "off_chain_verifier_methods",
-                  "position": 2,
+                  "name": "verifier_support",
+                  "position": 4,
                   "ty": {
                     "Datatype": {
                       "type_name": {
                         "address": "0x2",
-                        "module": "linked_table",
-                        "name": "LinkedTable"
+                        "module": "table",
+                        "name": "Table"
                       },
                       "type_arguments": [
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x1",
-                              "module": "ascii",
-                              "name": "String"
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
                             },
                             "type_arguments": []
                           }
                         },
                         {
-                          "Vector": {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0x1",
-                                "module": "ascii",
-                                "name": "String"
-                              },
-                              "type_arguments": []
-                            }
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "verifier",
+                              "name": "ToolVerifierSupport"
+                            },
+                            "type_arguments": []
                           }
                         }
                       ]
@@ -12251,7 +11510,7 @@
                 },
                 {
                   "name": "on_chain_tool_witnesses",
-                  "position": 3,
+                  "position": 5,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12286,7 +11545,7 @@
                 },
                 {
                   "name": "workflow_authorization_cap_first",
-                  "position": 4,
+                  "position": 6,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -12312,12 +11571,12 @@
                 },
                 {
                   "name": "mist_collateral_to_lock",
-                  "position": 5,
+                  "position": 7,
                   "ty": "U64"
                 },
                 {
                   "name": "lock_duration_ms",
-                  "position": 6,
+                  "position": 8,
                   "ty": "U64"
                 }
               ]
@@ -12885,6 +12144,80 @@
           "return_types": []
         },
         {
+          "name": "configure_registered_key_support",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "tool_registry",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "contains_tool",
           "visibility": "Public",
           "is_entry": false,
@@ -12916,6 +12249,48 @@
                     "address": "0x1",
                     "module": "ascii",
                     "name": "String"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "contains_tool_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -13210,139 +12585,6 @@
           ]
         },
         {
-          "name": "off_chain_tool_supports_required_verifier_methods",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_verifier",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_verifier",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "off_chain_tool_supports_verifier_method",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "on_chain_tool_takes_workflow_authorization_cap_first",
           "visibility": "Public",
           "is_entry": false,
@@ -13383,6 +12625,162 @@
           "return_types": [
             "Bool"
           ]
+        },
+        {
+          "name": "on_chain_tool_witness_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "fqn",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "ascii",
+                    "name": "String"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "register_external_verifier",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "tool_registry",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registration",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa3",
+                    "module": "verifier_registry",
+                    "name": "ExternalVerifierRegistration"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "register_off_chain_tool",
@@ -14319,7 +13717,7 @@
               "name": "registry",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -14386,6 +13784,91 @@
                           }
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "retire",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
                     }
                   }
                 }
@@ -14515,113 +13998,6 @@
           "return_types": []
         },
         {
-          "name": "set_off_chain_supported_verifier_methods",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa3",
-                              "module": "tool_registry",
-                              "name": "OverTool"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "verifier_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "methods",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x1",
-                      "module": "ascii",
-                      "name": "String"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
           "name": "set_verified",
           "visibility": "Public",
           "is_entry": false,
@@ -14728,6 +14104,42 @@
               }
             },
             {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "_slashing_cap",
               "ty": {
                 "Ref": {
@@ -14804,6 +14216,112 @@
           ]
         },
         {
+          "name": "supports_verifier_mode",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "mode",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "verifier",
+                    "name": "ToolVerifierMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "tool_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "fqn",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "ascii",
+                    "name": "String"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "tool_timeout_ms",
           "visibility": "Public",
           "is_entry": false,
@@ -14862,6 +14380,42 @@
                         "address": "0xa3",
                         "module": "tool_registry",
                         "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
                       },
                       "type_arguments": []
                     }
@@ -15134,6 +14688,68 @@
           "return_types": []
         },
         {
+          "name": "verifier_support",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "verifier",
+                        "name": "ToolVerifierSupport"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "vertex_requires_authorization_grant",
           "visibility": "Public",
           "is_entry": false,
@@ -15252,6 +14868,147 @@
           "return_types": [
             "U64"
           ]
+        },
+        {
+          "name": "with_registered_vertex",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "dag_object",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "dag",
+                    "name": "DAG"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "Vertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "dag",
+                  "name": "DAG"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "with_vertex_verifier_mode",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "dag_object",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "dag",
+                    "name": "DAG"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "vertex",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "Vertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "mode",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "verifier",
+                    "name": "ToolVerifierMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "dag",
+                  "name": "DAG"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
         }
       ]
     },
@@ -15262,55 +15019,36 @@
           "type_name": {
             "address": "0xa3",
             "module": "verifier_registry",
-            "name": "BuiltInMethodStamp"
+            "name": "ExternalVerifierRecord"
           },
           "module": "verifier_registry",
-          "name": "BuiltInMethodStamp",
+          "name": "ExternalVerifierRecord",
           "abilities": [
-            "Store",
-            "Key"
+            "Copy",
+            "Drop",
+            "Store"
           ],
           "type_parameters": [],
           "kind": {
             "Struct": {
               "fields": [
                 {
-                  "name": "id",
+                  "name": "method_id",
                   "position": 0,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
+                        "address": "0xa2",
+                        "module": "verifier",
+                        "name": "VerifierMethodId"
                       },
                       "type_arguments": []
                     }
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "verifier_registry",
-            "name": "RegisteredKeyVerifierCheckEvent"
-          },
-          "module": "verifier_registry",
-          "name": "RegisteredKeyVerifierCheckEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                },
                 {
-                  "name": "registry",
-                  "position": 0,
+                  "name": "witness_id",
+                  "position": 1,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -15323,290 +15061,20 @@
                   }
                 },
                 {
-                  "name": "method",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "submission_kind",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerificationSubmissionKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "passed",
-                  "position": 3,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "verifier_registry",
-            "name": "RegisteredKeyVerifierWitness"
-          },
-          "module": "verifier_registry",
-          "name": "RegisteredKeyVerifierWitness",
-          "abilities": [
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "verifier_registry",
-            "name": "VerifierImplementation"
-          },
-          "module": "verifier_registry",
-          "name": "VerifierImplementation",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "BuiltIn",
-                  "position": 0,
-                  "fields": [
-                    {
-                      "name": "witness",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "ExternalV1",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "witness",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    },
-                    {
-                      "name": "interface_version",
-                      "position": 1,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0xa2",
-                            "module": "version",
-                            "name": "InterfaceVersion"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "verifier_registry",
-            "name": "VerifierMethodRecord"
-          },
-          "module": "verifier_registry",
-          "name": "VerifierMethodRecord",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "method",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "implementation",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierImplementation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "shared_objects",
+                  "name": "immutable_shared_objects",
                   "position": 2,
                   "ty": {
                     "Vector": {
                       "Datatype": {
                         "type_name": {
-                          "address": "0xa1",
-                          "module": "shared_object",
-                          "name": "SharedObjectRef"
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
                         },
                         "type_arguments": []
                       }
                     }
                   }
-                },
-                {
-                  "name": "capabilities",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierMethodCapabilities"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "call_shape",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCallShape"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
-                  "name": "credential_identity",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCredentialIdentity"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
-                  "name": "witness_type",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x1",
-                              "module": "type_name",
-                              "name": "TypeName"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
                 }
               ]
             }
@@ -15616,10 +15084,10 @@
           "type_name": {
             "address": "0xa3",
             "module": "verifier_registry",
-            "name": "VerifierMethodRegisteredEvent"
+            "name": "ExternalVerifierRegistered"
           },
           "module": "verifier_registry",
-          "name": "VerifierMethodRegisteredEvent",
+          "name": "ExternalVerifierRegistered",
           "abilities": [
             "Copy",
             "Drop"
@@ -15643,120 +15111,8 @@
                   }
                 },
                 {
-                  "name": "method",
+                  "name": "tool_id",
                   "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "implementation",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierImplementation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "capabilities",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierMethodCapabilities"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "call_shape",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCallShape"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
-                  "name": "credential_identity",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCredentialIdentity"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "verifier_registry",
-            "name": "VerifierMethodUpdatedEvent"
-          },
-          "module": "verifier_registry",
-          "name": "VerifierMethodUpdatedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "registry",
-                  "position": 0,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -15769,94 +15125,91 @@
                   }
                 },
                 {
-                  "name": "method",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "implementation",
+                  "name": "method_id",
                   "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierImplementation"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "capabilities",
-                  "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa2",
                         "module": "verifier",
-                        "name": "VerifierMethodCapabilities"
+                        "name": "VerifierMethodId"
                       },
                       "type_arguments": []
                     }
                   }
                 },
                 {
-                  "name": "call_shape",
-                  "position": 4,
+                  "name": "witness_id",
+                  "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCallShape"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "verifier_registry",
+            "name": "ExternalVerifierRegistration"
+          },
+          "module": "verifier_registry",
+          "name": "ExternalVerifierRegistration",
+          "abilities": [],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "method_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "verifier",
+                        "name": "VerifierMethodId"
+                      },
+                      "type_arguments": []
                     }
                   }
                 },
                 {
-                  "name": "credential_identity",
-                  "position": 5,
+                  "name": "witness_id",
+                  "position": 1,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa2",
-                              "module": "verifier",
-                              "name": "VerifierCredentialIdentity"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "immutable_shared_objects",
+                  "position": 2,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
                     }
                   }
                 }
@@ -15894,8 +15247,22 @@
                   }
                 },
                 {
-                  "name": "methods",
+                  "name": "registered_key_witness",
                   "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "external_methods",
+                  "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -15907,9 +15274,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x1",
-                              "module": "ascii",
-                              "name": "String"
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
                             },
                             "type_arguments": []
                           }
@@ -15919,7 +15286,7 @@
                             "type_name": {
                               "address": "0xa3",
                               "module": "verifier_registry",
-                              "name": "VerifierMethodRecord"
+                              "name": "ExternalVerifierRecord"
                             },
                             "type_arguments": []
                           }
@@ -15984,10 +15351,10 @@
           "type_name": {
             "address": "0xa3",
             "module": "verifier_registry",
-            "name": "VerifierRegistryCreatedEvent"
+            "name": "VerifierRegistryCreated"
           },
           "module": "verifier_registry",
-          "name": "VerifierRegistryCreatedEvent",
+          "name": "VerifierRegistryCreated",
           "abilities": [
             "Copy",
             "Drop"
@@ -16009,6 +15376,20 @@
                       "type_arguments": []
                     }
                   }
+                },
+                {
+                  "name": "registered_key_witness",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               ]
             }
@@ -16017,22 +15398,29 @@
       ],
       "functions": [
         {
-          "name": "assert_admin",
-          "visibility": "Private",
+          "name": "add_obj",
+          "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Key"
+              ],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
             {
               "name": "self",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa3",
                         "module": "verifier_registry",
-                        "name": "VerifierRegistry"
+                        "name": "ExternalVerifierRegistration"
                       },
                       "type_arguments": []
                     }
@@ -16041,19 +15429,12 @@
               }
             },
             {
-              "name": "admin",
+              "name": "obj",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistryAdminCap"
-                      },
-                      "type_arguments": []
-                    }
+                    "TypeParameter": 0
                   }
                 }
               }
@@ -16062,7 +15443,7 @@
           "return_types": []
         },
         {
-          "name": "assert_method_registered",
+          "name": "external_method",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -16086,563 +15467,13 @@
               }
             },
             {
-              "name": "method",
+              "name": "tool_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_method_supports_submission_kind",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierMethodRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_methods_registered",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "methods",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x1",
-                          "module": "ascii",
-                          "name": "String"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_registered_external_result_stamp_map",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "stamps",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "vec_map",
-                        "name": "VecMap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        },
-                        {
-                          "Vector": "U8"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "result",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierContractResult"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_registered_method_stamp",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "worksheet",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "proof_of_uid",
-                        "name": "ProofOfUID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_registered_method_stamp_map",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "stamps",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "vec_map",
-                        "name": "VecMap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        },
-                        {
-                          "Vector": "U8"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "assert_verifier_method_registered_for_config",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "emit_registered_key_check",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "passed",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "method_call_shape",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierCallShape"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_capabilities",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -16655,7 +15486,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "verifier",
-                  "name": "VerifierMethodCapabilities"
+                  "name": "VerifierMethodId"
                 },
                 "type_arguments": []
               }
@@ -16663,7 +15494,7 @@
           ]
         },
         {
-          "name": "method_credential_identity",
+          "name": "external_objects",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -16687,239 +15518,13 @@
               }
             },
             {
-              "name": "method",
+              "name": "tool_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierCredentialIdentity"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_external_witness",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_implementation",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa3",
-                  "module": "verifier_registry",
-                  "name": "VerifierImplementation"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_record",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa3",
-                  "module": "verifier_registry",
-                  "name": "VerifierMethodRecord"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_shared_objects",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -16931,9 +15536,9 @@
               "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa1",
-                    "module": "shared_object",
-                    "name": "SharedObjectRef"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -16942,7 +15547,58 @@
           ]
         },
         {
-          "name": "method_witness",
+          "name": "external_record",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa3",
+                  "module": "verifier_registry",
+                  "name": "ExternalVerifierRecord"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "external_witness_id",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -16966,13 +15622,13 @@
               }
             },
             {
-              "name": "method",
+              "name": "tool_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -16983,28 +15639,17 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
                 },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
+                "type_arguments": []
               }
             }
           ]
         },
         {
-          "name": "method_witness_type",
+          "name": "has_external_method",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -17028,13 +15673,13 @@
               }
             },
             {
-              "name": "method",
+              "name": "tool_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -17042,27 +15687,7 @@
             }
           ],
           "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "type_name",
-                        "name": "TypeName"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
+            "Bool"
           ]
         },
         {
@@ -17114,97 +15739,7 @@
           ]
         },
         {
-          "name": "register_builtin_method_inner",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "_witness",
-              "ty": {
-                "TypeParameter": 0
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "supports_success",
-              "ty": "Bool"
-            },
-            {
-              "name": "supports_err_eval",
-              "ty": "Bool"
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "register_external_method",
+          "name": "new_external_registration",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [
@@ -17217,56 +15752,54 @@
           ],
           "parameters": [
             {
-              "name": "self",
+              "name": "tool_id",
               "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
                 }
               }
             },
             {
-              "name": "admin",
+              "name": "package_id",
               "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistryAdminCap"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
                 }
               }
             },
             {
-              "name": "uid",
+              "name": "module_name",
               "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "ascii",
+                    "name": "String"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "function_name",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "ascii",
+                    "name": "String"
+                  },
+                  "type_arguments": []
                 }
               }
             },
@@ -17280,26 +15813,24 @@
                   }
                 }
               }
-            },
-            {
-              "name": "interface_version",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "version",
-                    "name": "InterfaceVersion"
-                  },
-                  "type_arguments": []
-                }
-              }
             }
           ],
-          "return_types": []
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa3",
+                  "module": "verifier_registry",
+                  "name": "ExternalVerifierRegistration"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
         },
         {
-          "name": "register_signed_http_builtin_method",
-          "visibility": "Private",
+          "name": "register_external_method",
+          "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -17322,163 +15853,28 @@
               }
             },
             {
-              "name": "ctx",
+              "name": "tool_id",
               "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
                 }
               }
-            }
-          ],
-          "return_types": [
+            },
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "registered_key_verifier_check_event_method",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
+              "name": "registration",
               "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "RegisteredKeyVerifierCheckEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "registered_key_verifier_check_event_passed",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "RegisteredKeyVerifierCheckEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "registered_key_verifier_check_event_registry",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "RegisteredKeyVerifierCheckEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "registered_key_verifier_check_event_submission_kind",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "RegisteredKeyVerifierCheckEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa3",
+                    "module": "verifier_registry",
+                    "name": "ExternalVerifierRegistration"
+                  },
+                  "type_arguments": []
                 }
               }
             }
@@ -17489,12 +15885,133 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "verifier",
-                  "name": "VerificationSubmissionKind"
+                  "name": "VerifierMethodId"
                 },
                 "type_arguments": []
               }
             }
           ]
+        },
+        {
+          "name": "registered_key_witness_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "registered_key_witness_uid",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "object",
+                      "name": "UID"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "remove_external_method",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "send_admin_cap_to_sender",
@@ -17559,168 +16076,13 @@
           "return_types": []
         },
         {
-          "name": "stamp_builtin_method_witness",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "_witness",
-              "ty": {
-                "TypeParameter": 0
-              }
-            },
-            {
-              "name": "worksheet",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "proof_of_uid",
-                        "name": "ProofOfUID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "stamp_registered_key_builtin_method",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "worksheet",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "proof_of_uid",
-                        "name": "ProofOfUID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "submission_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerificationSubmissionKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "supports_method",
+          "name": "verify_none",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "_self",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -17738,253 +16100,9 @@
               }
             },
             {
-              "name": "method",
+              "name": "result",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "upsert_method",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "method",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "implementation",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa3",
-                    "module": "verifier_registry",
-                    "name": "VerifierImplementation"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "shared_objects",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa1",
-                      "module": "shared_object",
-                      "name": "SharedObjectRef"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            },
-            {
-              "name": "capabilities",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerifierMethodCapabilities"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "call_shape",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "verifier",
-                          "name": "VerifierCallShape"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "credential_identity",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "verifier",
-                          "name": "VerifierCredentialIdentity"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "witness_type",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x1",
-                          "module": "type_name",
-                          "name": "TypeName"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "verifier_requires_proof",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "config",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "with_default_leader_verifier",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag_object",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "dag",
-                    "name": "DAG"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerifierConfig"
-                  },
-                  "type_arguments": []
-                }
+                "Vector": "U8"
               }
             }
           ],
@@ -17993,226 +16111,8 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa2",
-                  "module": "dag",
-                  "name": "DAG"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "with_default_tool_verifier",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag_object",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "dag",
-                    "name": "DAG"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerifierConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "dag",
-                  "name": "DAG"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "with_vertex_leader_verifier",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag_object",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "dag",
-                    "name": "DAG"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "vertex",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "Vertex"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerifierConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "dag",
-                  "name": "DAG"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "with_vertex_tool_verifier",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag_object",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "dag",
-                    "name": "DAG"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "vertex",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "Vertex"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "verifier",
-                    "name": "VerifierConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "dag",
-                  "name": "DAG"
+                  "module": "verifier",
+                  "name": "VerificationVerdict"
                 },
                 "type_arguments": []
               }

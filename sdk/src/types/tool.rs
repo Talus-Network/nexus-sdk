@@ -209,7 +209,6 @@ mod tests {
                 value: 0,
                 phantom_t0: std::marker::PhantomData,
             },
-            supported_verifier_methods: vec![],
             workflow_authorization_cap_first: true,
             lock_duration_ms: 0,
             registered_at_ms: 0,

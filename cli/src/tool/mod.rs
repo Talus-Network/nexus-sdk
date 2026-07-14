@@ -1,5 +1,6 @@
 mod tool_auth;
 mod tool_claim_collateral;
+mod tool_configure_verifier;
 mod tool_inspect;
 mod tool_list;
 mod tool_new;
@@ -14,6 +15,7 @@ use {
     crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
+    tool_configure_verifier::configure_verifier,
     tool_inspect::inspect_tool,
     tool_list::*,
     tool_new::*,
@@ -269,6 +271,52 @@ pub(crate) enum RegisterCommand {
 }
 
 #[derive(Subcommand)]
+pub(crate) enum ConfigureVerifierCommand {
+    #[command(about = "Configure the built-in RegisteredKey verifier for an offchain Tool.")]
+    RegisteredKey {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "OwnerCap<OverTool> object ID (defaults to saved CLI config for this tool).",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Configure a public External verifier for an offchain Tool.")]
+    External {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(
+            long = "owner-cap",
+            short = 'o',
+            help = "OwnerCap<OverTool> object ID (defaults to saved CLI config for this tool).",
+            value_name = "OBJECT_ID"
+        )]
+        owner_cap: Option<sui::types::Address>,
+        #[arg(long = "package", short = 'p', value_name = "PACKAGE_ID")]
+        package: sui::types::Address,
+        #[arg(long = "module", short = 'm', value_name = "MODULE")]
+        module: sui::types::Identifier,
+        #[arg(long = "function", short = 'f', value_name = "FUNCTION")]
+        function: sui::types::Identifier,
+        #[arg(
+            long = "verifier-object",
+            value_name = "OBJECT_ID",
+            required = true,
+            num_args = 1..
+        )]
+        verifier_objects: Vec<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
 pub(crate) enum ValidateCommand {
     #[command(about = "Validate an offchain tool")]
     Offchain {
@@ -352,6 +400,12 @@ pub(crate) enum ToolCommand {
         skip_confirmation: bool,
         #[command(flatten)]
         gas: GasArgs,
+    },
+
+    #[command(about = "Configure the verifier supported by an offchain Tool.")]
+    ConfigureVerifier {
+        #[command(subcommand)]
+        verifier: ConfigureVerifierCommand,
     },
 
     #[command(about = "Claim collateral for a tool identified by its FQN.")]
@@ -540,6 +594,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             )
             .await
         }
+
+        // == `$ nexus tool configure-verifier` ==
+        ToolCommand::ConfigureVerifier { verifier } => configure_verifier(verifier).await,
 
         // == `$ nexus tool claim-collateral` ==
         ToolCommand::ClaimCollateral {

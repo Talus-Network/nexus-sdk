@@ -14,7 +14,6 @@ use crate::move_bindings::{
 };
 use crate::{
     move_bindings::{
-        move_std::ascii::String as MoveString,
         registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth},
         sui_framework::object::ID,
     },
@@ -31,12 +30,10 @@ impl IdentityKey {
         }
     }
 
-    /// Construct a generated Move `IdentityKey::Tool` value from a tool FQN string.
-    pub fn tool_fqn(fqn: &str) -> Self {
+    /// Construct a generated Move `IdentityKey::Tool` value from its stable Tool object ID.
+    pub fn tool(tool_id: sui::types::Address) -> Self {
         Self::Tool {
-            fqn: MoveString {
-                bytes: fqn.as_bytes().to_vec(),
-            },
+            tool_id: ID { bytes: tool_id },
         }
     }
 
@@ -48,11 +45,11 @@ impl IdentityKey {
         }
     }
 
-    /// Tool FQN string for tool identities.
-    pub fn tool_fqn_string(&self) -> Option<String> {
+    /// Stable Tool object ID for tool identities.
+    pub fn tool_id(&self) -> Option<sui::types::Address> {
         match self {
             Self::Leader { .. } => None,
-            Self::Tool { fqn } => Some(String::from(fqn.clone())),
+            Self::Tool { tool_id } => Some(tool_id.bytes),
         }
     }
 }
@@ -153,11 +150,11 @@ mod tests {
 
         let leader = IdentityKey::leader(address);
         assert_eq!(leader.leader_cap_id(), Some(address));
-        assert_eq!(leader.tool_fqn_string(), None);
+        assert_eq!(leader.tool_id(), None);
 
-        let tool = IdentityKey::tool_fqn("xyz.demo.tool@1");
+        let tool = IdentityKey::tool(address);
         assert_eq!(tool.leader_cap_id(), None);
-        assert_eq!(tool.tool_fqn_string().as_deref(), Some("xyz.demo.tool@1"));
+        assert_eq!(tool.tool_id(), Some(address));
     }
 
     #[test]
@@ -208,7 +205,7 @@ mod tests {
                 id,
                 vec![
                     IdentityKey::leader(first_leader),
-                    IdentityKey::tool_fqn("xyz.demo.tool@1"),
+                    IdentityKey::tool(id),
                     IdentityKey::leader(second_leader),
                 ],
             )
