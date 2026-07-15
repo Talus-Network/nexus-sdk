@@ -230,7 +230,7 @@
                   "ty": "Address"
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 5,
                   "ty": "U64"
                 },
@@ -2517,7 +2517,7 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -2678,7 +2678,11 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -2772,7 +2776,11 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -3017,7 +3025,7 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -3257,7 +3265,7 @@
               "ty": "Address"
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -3398,11 +3406,11 @@
               "ty": "U64"
             },
             {
-              "name": "prepay_amount",
+              "name": "prepay_amount_mist",
               "ty": "U64"
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -13595,13 +13603,28 @@
                   }
                 },
                 {
-                  "name": "max_budget",
+                  "name": "max_budget_mist",
                   "position": 7,
                   "ty": "U64"
                 },
                 {
-                  "name": "locked_budget",
+                  "name": "gas_budget_mist",
                   "position": 8,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_reserve_mist",
+                  "position": 9,
+                  "ty": "U64"
+                },
+                {
+                  "name": "locked_budget_mist",
+                  "position": 10,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_percentage",
+                  "position": 11,
                   "ty": "U64"
                 }
               ]
@@ -13802,18 +13825,28 @@
                   }
                 },
                 {
-                  "name": "max_budget",
+                  "name": "max_budget_mist",
                   "position": 7,
                   "ty": "U64"
                 },
                 {
-                  "name": "locked_budget",
+                  "name": "gas_budget_mist",
                   "position": 8,
                   "ty": "U64"
                 },
                 {
-                  "name": "funds",
+                  "name": "priority_fee_reserve_mist",
                   "position": 9,
+                  "ty": "U64"
+                },
+                {
+                  "name": "locked_budget_mist",
+                  "position": 10,
+                  "ty": "U64"
+                },
+                {
+                  "name": "funds",
+                  "position": 11,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -13838,22 +13871,37 @@
                 },
                 {
                   "name": "consumed",
-                  "position": 10,
+                  "position": 12,
+                  "ty": "U64"
+                },
+                {
+                  "name": "tool_fee_charged",
+                  "position": 13,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_charged",
+                  "position": 14,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_percentage",
+                  "position": 15,
                   "ty": "U64"
                 },
                 {
                   "name": "accomplished",
-                  "position": 11,
+                  "position": 16,
                   "ty": "Bool"
                 },
                 {
                   "name": "refunded",
-                  "position": 12,
+                  "position": 17,
                   "ty": "Bool"
                 },
                 {
                   "name": "final_state",
-                  "position": 13,
+                  "position": 18,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -13867,7 +13915,7 @@
                 },
                 {
                   "name": "tool_cost_snapshot",
-                  "position": 14,
+                  "position": 19,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -13886,7 +13934,7 @@
                 },
                 {
                   "name": "locked_vertices",
-                  "position": 15,
+                  "position": 20,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -13899,6 +13947,75 @@
                       }
                     }
                   }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa2",
+            "module": "payment",
+            "name": "ExecutionPaymentFeesRecordedEvent"
+          },
+          "module": "payment",
+          "name": "ExecutionPaymentFeesRecordedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "payment_id",
+                  "position": 0,
+                  "ty": "Address"
+                },
+                {
+                  "name": "execution_id",
+                  "position": 1,
+                  "ty": "Address"
+                },
+                {
+                  "name": "agent_id",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "skill_id",
+                  "position": 3,
+                  "ty": "U64"
+                },
+                {
+                  "name": "gas_fee_mist",
+                  "position": 4,
+                  "ty": "U64"
+                },
+                {
+                  "name": "tool_fee_mist",
+                  "position": 5,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_mist",
+                  "position": 6,
+                  "ty": "U64"
+                },
+                {
+                  "name": "priority_fee_percentage",
+                  "position": 7,
+                  "ty": "U64"
                 }
               ]
             }
@@ -14055,7 +14172,7 @@
                   }
                 },
                 {
-                  "name": "max_budget",
+                  "name": "max_budget_mist",
                   "position": 6,
                   "ty": "U64"
                 },
@@ -15069,7 +15186,7 @@
                   }
                 },
                 {
-                  "name": "occurrence_budget",
+                  "name": "occurrence_budget_mist",
                   "position": 7,
                   "ty": "U64"
                 },
@@ -15236,12 +15353,12 @@
                   }
                 },
                 {
-                  "name": "prepaid_amount",
+                  "name": "prepaid_amount_mist",
                   "position": 7,
                   "ty": "U64"
                 },
                 {
-                  "name": "occurrence_budget",
+                  "name": "occurrence_budget_mist",
                   "position": 8,
                   "ty": "U64"
                 },
@@ -15338,12 +15455,12 @@
                   }
                 },
                 {
-                  "name": "prepaid_amount",
+                  "name": "prepaid_amount_mist",
                   "position": 7,
                   "ty": "U64"
                 },
                 {
-                  "name": "occurrence_budget",
+                  "name": "occurrence_budget_mist",
                   "position": 8,
                   "ty": "U64"
                 },
@@ -15522,7 +15639,7 @@
                   "ty": "U64"
                 },
                 {
-                  "name": "occurrence_budget",
+                  "name": "occurrence_budget_mist",
                   "position": 7,
                   "ty": "U64"
                 },
@@ -15562,7 +15679,7 @@
                   "position": 1,
                   "fields": [
                     {
-                      "name": "max_budget",
+                      "name": "max_budget_mist",
                       "position": 0,
                       "ty": "U64"
                     }
@@ -15855,6 +15972,33 @@
           "return_types": []
         },
         {
+          "name": "assert_payment_charges_within_budget",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "assert_payment_policy",
           "visibility": "Public",
           "is_entry": false,
@@ -15905,7 +16049,7 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
               "ty": "U64"
             }
           ],
@@ -16000,6 +16144,26 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "budget_split_mist",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64",
+            "U64"
+          ]
         },
         {
           "name": "can_lock_payment_vertex_with_amount",
@@ -16139,6 +16303,44 @@
                 ]
               }
             }
+          ]
+        },
+        {
+          "name": "checked_add_u64",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "left",
+              "ty": "U64"
+            },
+            {
+              "name": "right",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "checked_percent_floor",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": "U64"
+            },
+            {
+              "name": "percent",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -16316,6 +16518,59 @@
           "return_types": []
         },
         {
+          "name": "consume_priority_fee_for_settlement",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_delta",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "destroy_execution_payment_receipt_unchecked_for_testing",
           "visibility": "Public",
           "is_entry": false,
@@ -16331,6 +16586,33 @@
                     "name": "ExecutionPaymentReceipt"
                   },
                   "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_execution_payment_fees_recorded",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -16759,6 +17041,25 @@
           ]
         },
         {
+          "name": "gas_budget_mist_for_max_budget_mist",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "lock_execution_payment_vertex_internal",
           "visibility": "Private",
           "is_entry": false,
@@ -16998,7 +17299,11 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -17138,7 +17443,11 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -17372,7 +17681,11 @@
               }
             },
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -17482,6 +17795,10 @@
               "ty": "U64"
             },
             {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            },
+            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -17585,7 +17902,7 @@
               }
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -17738,7 +18055,7 @@
               }
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -17882,7 +18199,7 @@
               }
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -17993,11 +18310,11 @@
               }
             },
             {
-              "name": "prepaid_amount",
+              "name": "prepaid_amount_mist",
               "ty": "U64"
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -18101,6 +18418,68 @@
         },
         {
           "name": "payment_available_gas",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "payment_available_settlement_charge",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "payable_leader_gas",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "payment_available_settlement_funds",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18283,6 +18662,35 @@
         },
         {
           "name": "payment_funds",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "payment_gas_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18506,6 +18914,35 @@
           ]
         },
         {
+          "name": "payment_leader_gas_consumed",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "payment_locked_amount",
           "visibility": "Private",
           "is_entry": false,
@@ -18535,7 +18972,7 @@
           ]
         },
         {
-          "name": "payment_locked_budget",
+          "name": "payment_locked_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18593,7 +19030,7 @@
           ]
         },
         {
-          "name": "payment_max_budget",
+          "name": "payment_max_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18628,7 +19065,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "max_budget",
+              "name": "max_budget_mist",
               "ty": "U64"
             }
           ],
@@ -18670,7 +19107,7 @@
           ]
         },
         {
-          "name": "payment_policy_max_budget",
+          "name": "payment_policy_max_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18710,6 +19147,93 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "payment_priority_fee_charged",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "payment_priority_fee_percentage",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "payment_priority_fee_reserve_mist",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -19122,6 +19646,107 @@
           "return_types": [
             "Bool"
           ]
+        },
+        {
+          "name": "priority_charge_for",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "priority_fee_mist_for_gas_budget",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "gas_budget_mist",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "priority_fee_percentage",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "recompute_payment_budget_split",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "refill_execution_payment_from_agent_vault_balance",
@@ -20005,7 +20630,7 @@
           ]
         },
         {
-          "name": "scheduled_occurrence_record_budget",
+          "name": "scheduled_occurrence_record_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -20340,7 +20965,7 @@
           ]
         },
         {
-          "name": "scheduled_payment_reserve_occurrence_budget",
+          "name": "scheduled_payment_reserve_occurrence_budget_mist",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -21049,6 +21674,105 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "settlement_charge_missing",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "payable_leader_gas",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "settlement_charge_required",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "payable_leader_gas",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "settlement_priority_delta_for_leader_gas",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "payment",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "ExecutionPayment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "payable_leader_gas",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {

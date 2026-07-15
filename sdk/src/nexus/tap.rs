@@ -136,7 +136,7 @@ pub struct CreateAgentTaskParams {
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, NexusData>>,
     pub metadata: Vec<(String, String)>,
-    pub execution_priority_fee_per_gas_unit: u64,
+    pub execution_priority_fee_percentage: Option<u64>,
     pub initial_schedule: Option<crate::nexus::scheduler::OccurrenceRequest>,
     pub generator: crate::nexus::scheduler::GeneratorKind,
     pub agent_id: AgentId,
@@ -163,15 +163,15 @@ pub struct SetAgentTaskStateResult {
 #[derive(Clone, Debug)]
 pub enum AgentTaskPayment {
     UserFunded {
-        prepay_amount: u64,
+        prepay_amount_mist: u64,
         refund_recipient: Option<sui::types::Address>,
-        occurrence_budget: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
     AgentVault {
-        prepay_amount: u64,
-        occurrence_budget: u64,
+        prepay_amount_mist: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
@@ -705,7 +705,7 @@ impl TapActions {
             entry_group,
             input_data,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             initial_schedule: initial_schedule_request,
             generator,
             agent_id,
@@ -733,40 +733,40 @@ impl TapActions {
         let agent =
             agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
 
-        let (prepay_amount, occurrence_budget) = match &payment {
+        let (prepay_amount_mist, occurrence_budget_mist) = match &payment {
             AgentTaskPayment::UserFunded {
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
                 ..
-            } => (*prepay_amount, *occurrence_budget),
+            } => (*prepay_amount_mist, *occurrence_budget_mist),
             AgentTaskPayment::AgentVault {
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
                 ..
-            } => (*prepay_amount, *occurrence_budget),
+            } => (*prepay_amount_mist, *occurrence_budget_mist),
         };
         let payment_input = match &payment {
             AgentTaskPayment::UserFunded {
-                prepay_amount,
+                prepay_amount_mist,
                 refund_recipient,
-                occurrence_budget,
+                occurrence_budget_mist,
                 selected_dag,
                 authorization_templates,
             } => tap_tx::AgentTaskPaymentPtbInput::UserFunded {
-                prepay_amount: *prepay_amount,
+                prepay_amount_mist: *prepay_amount_mist,
                 refund_recipient: *refund_recipient,
-                occurrence_budget: *occurrence_budget,
+                occurrence_budget_mist: *occurrence_budget_mist,
                 selected_dag: *selected_dag,
                 authorization_templates: authorization_templates.clone(),
             },
             AgentTaskPayment::AgentVault {
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
                 selected_dag,
                 authorization_templates,
             } => tap_tx::AgentTaskPaymentPtbInput::AgentVault {
-                prepay_amount: *prepay_amount,
-                occurrence_budget: *occurrence_budget,
+                prepay_amount_mist: *prepay_amount_mist,
+                occurrence_budget_mist: *occurrence_budget_mist,
                 selected_dag: *selected_dag,
                 authorization_templates: authorization_templates.clone(),
             },
@@ -777,7 +777,7 @@ impl TapActions {
             address,
             &metadata,
             generator.into(),
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             entry_group.as_str(),
             &input_data,
             agent_id,
@@ -813,7 +813,7 @@ impl TapActions {
                 agent_input,
                 schedule.start_offset_ms.expect("validated start offset"),
                 schedule.deadline_offset_ms,
-                schedule.priority_fee_per_gas_unit,
+                schedule.priority_fee_percentage,
             )
             .map_err(NexusError::TransactionBuilding)?;
             let schedule_response = self.client.submit_transaction(schedule_tx, address).await?;
@@ -830,8 +830,8 @@ impl TapActions {
             tap_payment: Some(crate::nexus::scheduler::CreateTaskTapPaymentResult {
                 agent_id,
                 skill_id,
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
             }),
         })
     }
@@ -2635,13 +2635,18 @@ mod tests {
             payment_policy:
                 crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
             source_kind: PaymentSourceKind::user_funded(sui::types::Address::from_static("0x1")),
-            max_budget: 1_000_000,
-            locked_budget: 0,
+            max_budget_mist: 1_000_000,
+            gas_budget_mist: 833_334,
+            priority_fee_reserve_mist: 166_666,
+            locked_budget_mist: 0,
             funds: crate::move_bindings::sui_framework::balance::Balance {
                 value: 1_000_000,
                 phantom_t0: std::marker::PhantomData,
             },
             consumed: 0,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 20,
             tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
@@ -2665,16 +2670,21 @@ mod tests {
             interface_revision: InterfaceVersion::new(1),
             payment_policy:
                 crate::move_bindings::interface::payment::SkillPaymentPolicy::AgentFunded {
-                    max_budget: 100,
+                    max_budget_mist: 100,
                 },
             source_kind: PaymentSourceKind::agent_funded(agent_id),
-            max_budget: 100,
-            locked_budget: 0,
+            max_budget_mist: 100,
+            gas_budget_mist: 84,
+            priority_fee_reserve_mist: 16,
+            locked_budget_mist: 0,
             funds: crate::move_bindings::sui_framework::balance::Balance {
                 value: 100,
                 phantom_t0: std::marker::PhantomData,
             },
             consumed: 0,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 20,
             accomplished: false,
             refunded: false,
             final_state: ExecutionPaymentFinalState::Pending,
@@ -2687,7 +2697,7 @@ mod tests {
         assert_eq!(
             payment.payment_policy,
             crate::move_bindings::interface::payment::SkillPaymentPolicy::AgentFunded {
-                max_budget: 100
+                max_budget_mist: 100
             }
         );
         assert_eq!(

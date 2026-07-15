@@ -50,12 +50,12 @@ pub(crate) async fn execution_cost(
         "Budget: {} locked from max {}",
         format!(
             "{} MIST",
-            result.locked_budget.to_formatted_string(&Locale::en)
+            result.locked_budget_mist.to_formatted_string(&Locale::en)
         )
         .truecolor(100, 100, 100),
         format!(
             "{} MIST",
-            result.max_budget.to_formatted_string(&Locale::en)
+            result.max_budget_mist.to_formatted_string(&Locale::en)
         )
         .truecolor(100, 100, 100)
     );
@@ -69,8 +69,8 @@ pub(crate) async fn execution_cost(
 
     json_output(&serde_json::json!({
         "payment_id": result.payment_id,
-        "max_budget": result.max_budget,
-        "locked_budget": result.locked_budget,
+        "max_budget_mist": result.max_budget_mist,
+        "locked_budget_mist": result.locked_budget_mist,
         "consumed": result.consumed,
         "outstanding_locks": result.outstanding_locks,
         "accomplished": result.accomplished,

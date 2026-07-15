@@ -18,7 +18,7 @@ use {
         move_boundary,
         sui,
         transactions::{self, agent_input::AgentInput},
-        types::{AgentId, NexusObjects, SkillId},
+        types::{effective_priority_fee_percentage, AgentId, NexusObjects, SkillId},
     },
     std::collections::{HashMap, HashSet},
     sui::types::ProgrammableTransaction,
@@ -38,7 +38,14 @@ pub(crate) struct PeriodicScheduleInputs {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_percentage: Option<u64>,
+}
+
+fn move_priority_fee_percentage(
+    priority_fee_percentage: Option<u64>,
+) -> anyhow::Result<MoveOption<u64>> {
+    effective_priority_fee_percentage(priority_fee_percentage)?;
+    Ok(MoveOption::from_option(priority_fee_percentage))
 }
 
 // Shared helper for turning a scheduled task object ref into a mutable shared argument.
@@ -99,9 +106,9 @@ pub(crate) fn new_default_agent_task(
     execution: sui::types::Argument,
     registry: sui::types::Argument,
     prepayment_coin: sui::types::Argument,
-    occurrence_budget: u64,
+    occurrence_budget_mist: u64,
 ) -> anyhow::Result<sui::types::Argument> {
-    let occurrence_budget = tx.arg(&occurrence_budget)?;
+    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
     tx.call_target(
         scheduler_binding::new_default_agent_task_target,
         vec![
@@ -110,7 +117,7 @@ pub(crate) fn new_default_agent_task(
             execution,
             registry,
             prepayment_coin,
-            occurrence_budget,
+            occurrence_budget_mist,
         ],
     )
 }
@@ -123,24 +130,19 @@ pub(crate) fn create_default_agent_task_ptb(
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     metadata: &[(String, String)],
     generator: OccurrenceGenerator,
-    priority_fee_per_gas_unit: u64,
-    prepay_amount: u64,
-    occurrence_budget: u64,
+    priority_fee_percentage: Option<u64>,
+    prepay_amount_mist: u64,
+    occurrence_budget_mist: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let metadata = new_metadata(tx, metadata.iter().cloned())?;
         let constraints = new_constraints_policy(tx, generator)?;
-        let execution = new_execution_policy(
-            tx,
-            dag_id,
-            priority_fee_per_gas_unit,
-            entry_group,
-            input_data,
-        )?;
+        let execution =
+            new_execution_policy(tx, dag_id, priority_fee_percentage, entry_group, input_data)?;
         let registry = tx.shared_object(&objects.agent_registry, true)?;
-        let prepay_amount = tx.arg(&prepay_amount)?;
+        let prepay_amount_mist = tx.arg(&prepay_amount_mist)?;
         let gas = tx.gas();
-        let prepayment_coin = tx.split_coins(gas, vec![prepay_amount])?;
+        let prepayment_coin = tx.split_coins(gas, vec![prepay_amount_mist])?;
         let task = new_default_agent_task(
             tx,
             metadata,
@@ -148,7 +150,7 @@ pub(crate) fn create_default_agent_task_ptb(
             execution,
             registry,
             prepayment_coin,
-            occurrence_budget,
+            occurrence_budget_mist,
         )?;
 
         tx.call_target(
@@ -290,7 +292,7 @@ fn register_periodic_generator(
 pub(crate) fn new_execution_policy(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag_id: sui::types::Address,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
 ) -> anyhow::Result<sui::types::Argument> {
@@ -324,7 +326,8 @@ pub(crate) fn new_execution_policy(
 
     let dag_id_arg = tx.object_id(dag_id)?;
     let network_id_arg = tx.object_id(objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+    let priority_fee_percentage =
+        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
 
     let entry_group = tx.graph_entry_group(entry_group)?;
 
@@ -336,7 +339,7 @@ pub(crate) fn new_execution_policy(
         network_id_arg,
         entry_group,
         with_vertex_inputs,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
     )?;
 
     register_begin_default_agent_execution(tx, execution, config)?;
@@ -348,7 +351,7 @@ pub(crate) fn new_execution_policy(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn new_agent_execution_policy(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_id: AgentId,
@@ -386,7 +389,8 @@ pub(crate) fn new_agent_execution_policy(
 
     let agent_id_arg = tx.object_id(agent_id)?;
     let network_id_arg = tx.object_id(objects.network_id)?;
-    let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+    let priority_fee_percentage =
+        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
     let entry_group = tx.graph_entry_group(entry_group)?;
 
     let with_vertex_inputs = build_inputs_vec_map(tx, input_data)?;
@@ -397,7 +401,7 @@ pub(crate) fn new_agent_execution_policy(
         network_id_arg,
         entry_group,
         with_vertex_inputs,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         skill_id,
         selected_dag,
         &[],
@@ -553,13 +557,14 @@ pub(crate) fn add_occurrence_absolute_for_task_for_self_ptb(
     task: &sui::types::ObjectReference,
     start_time_ms: u64,
     deadline_offset_ms: Option<u64>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let task = shared_task_arg(tx, task)?;
         let start_time_ms = tx.arg(&start_time_ms)?;
         let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+        let priority_fee_percentage =
+            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
         tx.call_target(
@@ -568,7 +573,7 @@ pub(crate) fn add_occurrence_absolute_for_task_for_self_ptb(
                 task,
                 start_time_ms,
                 deadline_offset_ms,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage,
                 leader_registry,
                 clock,
             ],
@@ -583,13 +588,14 @@ pub(crate) fn add_occurrence_relative_for_task_for_self_ptb(
     task: &sui::types::ObjectReference,
     start_offset_ms: u64,
     deadline_offset_ms: Option<u64>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let task = shared_task_arg(tx, task)?;
         let start_offset_ms = tx.arg(&start_offset_ms)?;
         let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+        let priority_fee_percentage =
+            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
         tx.call_target(
@@ -598,7 +604,7 @@ pub(crate) fn add_occurrence_relative_for_task_for_self_ptb(
                 task,
                 start_offset_ms,
                 deadline_offset_ms,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage,
                 leader_registry,
                 clock,
             ],
@@ -614,14 +620,15 @@ pub(crate) fn add_occurrence_relative_for_agent_task_for_self_ptb(
     agent: AgentInput,
     start_offset_ms: u64,
     deadline_offset_ms: Option<u64>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let task = shared_task_arg(tx, task)?;
         let agent = agent.immutable_ptb_argument(tx)?;
         let start_offset_ms = tx.arg(&start_offset_ms)?;
         let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+        let priority_fee_percentage =
+            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
         tx.call_target(
@@ -631,7 +638,7 @@ pub(crate) fn add_occurrence_relative_for_agent_task_for_self_ptb(
                 agent,
                 start_offset_ms,
                 deadline_offset_ms,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage,
                 leader_registry,
                 clock,
             ],
@@ -652,7 +659,9 @@ pub(crate) fn configure_periodic_for_task_for_self_ptb(
         let period_ms = tx.arg(&schedule.period_ms)?;
         let deadline_offset_ms = tx.arg(&MoveOption::from_option(schedule.deadline_offset_ms))?;
         let max_iterations = tx.arg(&MoveOption::from_option(schedule.max_iterations))?;
-        let priority_fee_per_gas_unit = tx.arg(&schedule.priority_fee_per_gas_unit)?;
+        let priority_fee_percentage = tx.arg(&move_priority_fee_percentage(
+            schedule.priority_fee_percentage,
+        )?)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
         tx.call_target(
@@ -663,7 +672,7 @@ pub(crate) fn configure_periodic_for_task_for_self_ptb(
                 period_ms,
                 deadline_offset_ms,
                 max_iterations,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage,
                 leader_registry,
                 clock,
             ],
@@ -806,4 +815,114 @@ fn register_begin_agent_execution(
         scheduler_binding::register_begin_agent_execution_target,
         vec![policy, config],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_utils::sui_mocks::{mock_nexus_objects, mock_sui_object_ref},
+        sui::types::{Argument, Command, Input, MoveCall},
+    };
+
+    fn scheduler_call<'a>(ptb: &'a ProgrammableTransaction, function: &str) -> &'a MoveCall {
+        ptb.commands
+            .iter()
+            .find_map(|command| {
+                let Command::MoveCall(call) = command else {
+                    return None;
+                };
+                (call.module.as_str() == "scheduler" && call.function.as_str() == function)
+                    .then_some(call)
+            })
+            .unwrap_or_else(|| panic!("missing scheduler::{function} call"))
+    }
+
+    fn pure_input<'a>(ptb: &'a ProgrammableTransaction, argument: &Argument) -> &'a [u8] {
+        let Argument::Input(index) = argument else {
+            panic!("expected input argument, got {argument:?}");
+        };
+        let Some(Input::Pure(bytes)) = ptb.inputs.get(*index as usize) else {
+            panic!("expected pure input at index {index}");
+        };
+        bytes
+    }
+
+    fn assert_priority_option(
+        ptb: &ProgrammableTransaction,
+        argument: &Argument,
+        expected: Option<u64>,
+    ) {
+        let expected = bcs::to_bytes(&MoveOption::from_option(expected))
+            .expect("Move priority option should serialize");
+        assert_eq!(pure_input(ptb, argument), expected);
+    }
+
+    #[test]
+    fn queue_occurrence_encodes_explicit_priority_as_move_option() {
+        let objects = mock_nexus_objects();
+        let ptb = add_occurrence_absolute_for_task_for_self_ptb(
+            &objects,
+            &mock_sui_object_ref(),
+            1_000,
+            Some(5_000),
+            Some(77),
+        )
+        .expect("queue occurrence PTB should build");
+
+        let call = scheduler_call(&ptb, "add_occurrence_absolute_for_task");
+        assert_priority_option(&ptb, &call.arguments[3], Some(77));
+    }
+
+    #[test]
+    fn queue_occurrence_encodes_omitted_priority_as_move_none() {
+        let objects = mock_nexus_objects();
+        let ptb = add_occurrence_absolute_for_task_for_self_ptb(
+            &objects,
+            &mock_sui_object_ref(),
+            1_000,
+            None,
+            None,
+        )
+        .expect("queue occurrence PTB should build");
+
+        let call = scheduler_call(&ptb, "add_occurrence_absolute_for_task");
+        assert_priority_option(&ptb, &call.arguments[3], None);
+    }
+
+    #[test]
+    fn periodic_schedule_encodes_explicit_priority_as_move_option() {
+        let objects = mock_nexus_objects();
+        let ptb = configure_periodic_for_task_for_self_ptb(
+            &objects,
+            &mock_sui_object_ref(),
+            PeriodicScheduleInputs {
+                first_start_ms: 1_000,
+                period_ms: 500,
+                deadline_offset_ms: None,
+                max_iterations: Some(2),
+                priority_fee_percentage: Some(88),
+            },
+        )
+        .expect("periodic schedule PTB should build");
+
+        let call = scheduler_call(&ptb, "new_or_modify_periodic_for_task");
+        assert_priority_option(&ptb, &call.arguments[5], Some(88));
+    }
+
+    #[test]
+    fn scheduler_occurrence_rejects_invalid_explicit_priority() {
+        let error = add_occurrence_absolute_for_task_for_self_ptb(
+            &mock_nexus_objects(),
+            &mock_sui_object_ref(),
+            1_000,
+            None,
+            Some(crate::types::MIN_PRIORITY_FEE_PERCENTAGE - 1),
+        )
+        .expect_err("invalid explicit priority must fail before PTB submission");
+
+        assert!(error
+            .to_string()
+            .contains("priority fee percentage must be in 10..=10000"));
+    }
 }

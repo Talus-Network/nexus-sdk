@@ -73,7 +73,7 @@ pub struct CreateTaskParams {
     pub entry_group: String,
     pub input_data: HashMap<String, HashMap<String, NexusData>>,
     pub metadata: Vec<(String, String)>,
-    pub execution_priority_fee_per_gas_unit: u64,
+    pub execution_priority_fee_percentage: Option<u64>,
     pub initial_schedule: Option<OccurrenceRequest>,
     pub generator: GeneratorKind,
     /// When both `agent_id` and `skill_id` are supplied, the task is built
@@ -90,16 +90,16 @@ pub struct CreateTaskParams {
 pub enum CreateTaskTapPayment {
     /// Reserve funded from the transaction sender's SUI balance.
     UserFunded {
-        prepay_amount: u64,
+        prepay_amount_mist: u64,
         refund_recipient: Option<sui::types::Address>,
-        occurrence_budget: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
     /// Reserve funded from the selected agent's vault.
     AgentFunded {
-        prepay_amount: u64,
-        occurrence_budget: u64,
+        prepay_amount_mist: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
@@ -117,8 +117,8 @@ pub struct CreateTaskResult {
 pub struct CreateTaskTapPaymentResult {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
-    pub prepay_amount: u64,
-    pub occurrence_budget: u64,
+    pub prepay_amount_mist: u64,
+    pub occurrence_budget_mist: u64,
 }
 
 /// Result returned after enqueuing an occurrence.
@@ -134,7 +134,7 @@ pub struct OccurrenceRequest {
     pub deadline_ms: Option<u64>,
     pub start_offset_ms: Option<u64>,
     pub deadline_offset_ms: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_percentage: Option<u64>,
 }
 
 impl OccurrenceRequest {
@@ -143,7 +143,7 @@ impl OccurrenceRequest {
         deadline_ms: Option<u64>,
         start_offset_ms: Option<u64>,
         deadline_offset_ms: Option<u64>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         require_start: bool,
     ) -> Result<Self, NexusError> {
         validate_schedule_options(
@@ -159,7 +159,7 @@ impl OccurrenceRequest {
             deadline_ms,
             start_offset_ms,
             deadline_offset_ms,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
         })
     }
 }
@@ -178,7 +178,7 @@ pub struct PeriodicScheduleConfig {
     pub period_ms: u64,
     pub deadline_offset_ms: Option<u64>,
     pub max_iterations: Option<u64>,
-    pub priority_fee_per_gas_unit: u64,
+    pub priority_fee_percentage: Option<u64>,
 }
 
 pub struct PeriodicScheduleResult {
@@ -211,8 +211,8 @@ fn create_task_payment_result(
 
     match tap_payment {
         CreateTaskTapPayment::UserFunded {
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
             ..
         } => {
             let (agent_id, skill_id) = agent_binding.unwrap_or((
@@ -223,13 +223,13 @@ fn create_task_payment_result(
             Ok(Some(CreateTaskTapPaymentResult {
                 agent_id,
                 skill_id,
-                prepay_amount: *prepay_amount,
-                occurrence_budget: *occurrence_budget,
+                prepay_amount_mist: *prepay_amount_mist,
+                occurrence_budget_mist: *occurrence_budget_mist,
             }))
         }
         CreateTaskTapPayment::AgentFunded {
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
             ..
         } => {
             let Some((agent_id, skill_id)) = agent_binding else {
@@ -242,8 +242,8 @@ fn create_task_payment_result(
             Ok(Some(CreateTaskTapPaymentResult {
                 agent_id,
                 skill_id,
-                prepay_amount: *prepay_amount,
-                occurrence_budget: *occurrence_budget,
+                prepay_amount_mist: *prepay_amount_mist,
+                occurrence_budget_mist: *occurrence_budget_mist,
             }))
         }
     }
@@ -260,7 +260,7 @@ impl SchedulerActions {
             entry_group,
             input_data,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             initial_schedule: initial_schedule_request,
             generator,
             agent_id,
@@ -284,26 +284,26 @@ impl SchedulerActions {
         if let Some((agent_id, skill_id)) = agent_binding {
             let payment = match tap_payment {
                 Some(CreateTaskTapPayment::UserFunded {
-                    prepay_amount,
+                    prepay_amount_mist,
                     refund_recipient,
-                    occurrence_budget,
+                    occurrence_budget_mist,
                     selected_dag,
                     authorization_templates,
                 }) => crate::nexus::tap::AgentTaskPayment::UserFunded {
-                    prepay_amount,
+                    prepay_amount_mist,
                     refund_recipient,
-                    occurrence_budget,
+                    occurrence_budget_mist,
                     selected_dag,
                     authorization_templates,
                 },
                 Some(CreateTaskTapPayment::AgentFunded {
-                    prepay_amount,
-                    occurrence_budget,
+                    prepay_amount_mist,
+                    occurrence_budget_mist,
                     selected_dag,
                     authorization_templates,
                 }) => crate::nexus::tap::AgentTaskPayment::AgentVault {
-                    prepay_amount,
-                    occurrence_budget,
+                    prepay_amount_mist,
+                    occurrence_budget_mist,
                     selected_dag,
                     authorization_templates,
                 },
@@ -322,7 +322,7 @@ impl SchedulerActions {
                     entry_group,
                     input_data,
                     metadata,
-                    execution_priority_fee_per_gas_unit,
+                    execution_priority_fee_percentage,
                     initial_schedule: initial_schedule_request,
                     generator,
                     agent_id,
@@ -338,8 +338,8 @@ impl SchedulerActions {
             create_task_payment_result(&tap_payment, agent_binding, &self.client.nexus_objects)?;
 
         let Some(CreateTaskTapPayment::UserFunded {
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
             refund_recipient,
             selected_dag,
             authorization_templates,
@@ -365,9 +365,9 @@ impl SchedulerActions {
             &input_data,
             &metadata,
             generator.into(),
-            execution_priority_fee_per_gas_unit,
-            *prepay_amount,
-            *occurrence_budget,
+            execution_priority_fee_percentage,
+            *prepay_amount_mist,
+            *occurrence_budget_mist,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
@@ -476,7 +476,7 @@ impl SchedulerActions {
                 period_ms: config.period_ms,
                 deadline_offset_ms: config.deadline_offset_ms,
                 max_iterations: config.max_iterations,
-                priority_fee_per_gas_unit: config.priority_fee_per_gas_unit,
+                priority_fee_percentage: config.priority_fee_percentage,
             },
         )
         .map_err(NexusError::TransactionBuilding)?;
@@ -526,7 +526,7 @@ impl SchedulerActions {
                 &task_ref,
                 start_ms,
                 deadline_offset,
-                request.priority_fee_per_gas_unit,
+                request.priority_fee_percentage,
             )
         } else {
             scheduler_tx::add_occurrence_relative_for_task_for_self_ptb(
@@ -534,7 +534,7 @@ impl SchedulerActions {
                 &task_ref,
                 request.start_offset_ms.expect("validated start offset"),
                 request.deadline_offset_ms,
-                request.priority_fee_per_gas_unit,
+                request.priority_fee_percentage,
             )
         }
         .map_err(NexusError::TransactionBuilding)?;
@@ -1155,7 +1155,7 @@ mod tests {
             entry_group: graph_move::EntryGroup::new("entry"),
             inputs: vec_map::VecMap { contents: vec![] },
             invoker: sui::types::Address::ZERO,
-            priority_fee_per_gas_unit: 0,
+            priority_fee_percentage: 0,
             authorization_templates: vec![],
         }
     }
@@ -1335,7 +1335,7 @@ mod tests {
                 }],
             },
             invoker,
-            priority_fee_per_gas_unit: 1000,
+            priority_fee_percentage: 1000,
             authorization_templates: vec![],
         };
 
@@ -1408,7 +1408,7 @@ mod tests {
             entry_group: graph_move::EntryGroup::new("entry"),
             inputs: vec_map::VecMap { contents: vec![] },
             invoker: sui::types::Address::ZERO,
-            priority_fee_per_gas_unit: 0,
+            priority_fee_percentage: 0,
             authorization_templates: vec![],
         };
 
@@ -1471,15 +1471,15 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![("team".into(), "sdk".into())],
-            execution_priority_fee_per_gas_unit: 1,
+            execution_priority_fee_percentage: Some(10),
             initial_schedule: None,
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
             tap_payment: Some(CreateTaskTapPayment::UserFunded {
-                prepay_amount: 1_000,
+                prepay_amount_mist: 1_000,
                 refund_recipient: None,
-                occurrence_budget: 100,
+                occurrence_budget_mist: 100,
                 selected_dag: None,
                 authorization_templates: vec![],
             }),
@@ -1499,8 +1499,8 @@ mod tests {
             Some(CreateTaskTapPaymentResult {
                 agent_id: nexus_objects.default_dag_executor.agent_id,
                 skill_id: nexus_objects.default_dag_executor.skill_id,
-                prepay_amount: 1_000,
-                occurrence_budget: 100,
+                prepay_amount_mist: 1_000,
+                occurrence_budget_mist: 100,
             })
         );
     }
@@ -1588,7 +1588,7 @@ mod tests {
         .await;
 
         let initial_schedule =
-            OccurrenceRequest::new(Some(1_000), Some(2_000), None, None, 5, true)
+            OccurrenceRequest::new(Some(1_000), Some(2_000), None, None, Some(50), true)
                 .expect("valid request");
 
         let params = CreateTaskParams {
@@ -1596,15 +1596,15 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 5,
+            execution_priority_fee_percentage: Some(50),
             initial_schedule: Some(initial_schedule),
             generator: GeneratorKind::Queue,
             agent_id: None,
             skill_id: None,
             tap_payment: Some(CreateTaskTapPayment::UserFunded {
-                prepay_amount: 2_000,
+                prepay_amount_mist: 2_000,
                 refund_recipient: None,
-                occurrence_budget: 200,
+                occurrence_budget_mist: 200,
                 selected_dag: None,
                 authorization_templates: vec![],
             }),
@@ -1629,8 +1629,8 @@ mod tests {
             Some(CreateTaskTapPaymentResult {
                 agent_id: nexus_objects.default_dag_executor.agent_id,
                 skill_id: nexus_objects.default_dag_executor.skill_id,
-                prepay_amount: 2_000,
-                occurrence_budget: 200,
+                prepay_amount_mist: 2_000,
+                occurrence_budget_mist: 200,
             })
         );
     }
@@ -1656,7 +1656,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: HashMap::new(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 0,
+            execution_priority_fee_percentage: None,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
             agent_id: None,
@@ -1733,15 +1733,15 @@ mod tests {
             entry_group: "entry".into(),
             input_data: sample_input_data(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 7,
+            execution_priority_fee_percentage: Some(70),
             initial_schedule: None,
             generator: GeneratorKind::Queue,
             agent_id: Some(agent_id),
             skill_id: Some(3),
             tap_payment: Some(CreateTaskTapPayment::UserFunded {
-                prepay_amount: 100,
+                prepay_amount_mist: 100,
                 refund_recipient: None,
-                occurrence_budget: 25,
+                occurrence_budget_mist: 25,
                 selected_dag: None,
                 authorization_templates: vec![],
             }),
@@ -1761,8 +1761,8 @@ mod tests {
             Some(CreateTaskTapPaymentResult {
                 agent_id,
                 skill_id: 3,
-                prepay_amount: 100,
-                occurrence_budget: 25,
+                prepay_amount_mist: 100,
+                occurrence_budget_mist: 25,
             })
         );
     }
@@ -1795,7 +1795,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: HashMap::new(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 0,
+            execution_priority_fee_percentage: None,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
             agent_id: Some(sui::types::Address::generate(&mut rng)),
@@ -1814,7 +1814,7 @@ mod tests {
             entry_group: "entry".into(),
             input_data: HashMap::new(),
             metadata: vec![],
-            execution_priority_fee_per_gas_unit: 0,
+            execution_priority_fee_percentage: None,
             initial_schedule: None,
             generator: GeneratorKind::Queue,
             agent_id: None,
@@ -1985,7 +1985,7 @@ mod tests {
         .await;
 
         let request =
-            OccurrenceRequest::new(Some(2_000), Some(2_500), None, None, 7, true).unwrap();
+            OccurrenceRequest::new(Some(2_000), Some(2_500), None, None, Some(70), true).unwrap();
 
         let result = nexus_client
             .scheduler()
@@ -2051,8 +2051,8 @@ mod tests {
         )
         .await;
 
-        let request =
-            OccurrenceRequest::new(None, None, Some(500), Some(900), 4, true).expect("valid");
+        let request = OccurrenceRequest::new(None, None, Some(500), Some(900), Some(40), true)
+            .expect("valid");
 
         let result = nexus_client
             .scheduler()
@@ -2112,7 +2112,7 @@ mod tests {
             period_ms: 5_000,
             deadline_offset_ms: Some(1_000),
             max_iterations: Some(5),
-            priority_fee_per_gas_unit: 20,
+            priority_fee_percentage: Some(20),
         };
 
         let result = nexus_client
@@ -2177,16 +2177,16 @@ mod tests {
 
     #[test]
     fn test_occurrence_request_validation_rules() {
-        assert!(OccurrenceRequest::new(Some(10), Some(20), None, None, 1, true).is_ok());
-        assert!(OccurrenceRequest::new(None, None, Some(5), Some(15), 1, true).is_ok());
+        assert!(OccurrenceRequest::new(Some(10), Some(20), None, None, None, true).is_ok());
+        assert!(OccurrenceRequest::new(None, None, Some(5), Some(15), None, true).is_ok());
 
-        let err = OccurrenceRequest::new(None, None, None, None, 1, true).unwrap_err();
+        let err = OccurrenceRequest::new(None, None, None, None, None, true).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Provide either")));
 
-        let err = OccurrenceRequest::new(Some(50), Some(40), None, None, 1, true).unwrap_err();
+        let err = OccurrenceRequest::new(Some(50), Some(40), None, None, None, true).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Deadline")));
 
-        let err = OccurrenceRequest::new(None, None, None, Some(10), 1, false).unwrap_err();
+        let err = OccurrenceRequest::new(None, None, None, Some(10), None, false).unwrap_err();
         assert!(matches!(err, NexusError::Configuration(msg) if msg.contains("Deadline flags")));
     }
 

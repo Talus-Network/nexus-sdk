@@ -197,7 +197,7 @@
                   "ty": "U64"
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 4,
                   "ty": "U64"
                 },
@@ -258,7 +258,7 @@
                   }
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 2,
                   "ty": "U64"
                 },
@@ -332,7 +332,7 @@
                   }
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 3,
                   "ty": "U64"
                 },
@@ -522,7 +522,7 @@
                   }
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 7,
                   "ty": "U64"
                 }
@@ -651,7 +651,7 @@
                   }
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 5,
                   "ty": "U64"
                 },
@@ -1261,8 +1261,19 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
-              "ty": "U64"
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
             },
             {
               "name": "leader_registry",
@@ -1383,8 +1394,19 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
-              "ty": "U64"
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
             },
             {
               "name": "leader_registry",
@@ -1487,8 +1509,19 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
-              "ty": "U64"
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
             },
             {
               "name": "leader_registry",
@@ -2523,7 +2556,7 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             }
           ],
@@ -3036,7 +3069,7 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -3488,7 +3521,7 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -3917,11 +3950,11 @@
               }
             },
             {
-              "name": "prepay_amount",
+              "name": "prepay_amount_mist",
               "ty": "U64"
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -4144,7 +4177,7 @@
               }
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -4402,7 +4435,7 @@
               "ty": "Address"
             },
             {
-              "name": "occurrence_budget",
+              "name": "occurrence_budget_mist",
               "ty": "U64"
             },
             {
@@ -4554,8 +4587,19 @@
               }
             },
             {
-              "name": "priority_fee_per_gas_unit",
-              "ty": "U64"
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
             },
             {
               "name": "leader_registry",
@@ -5360,6 +5404,32 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "priority_fee_percentage",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "priority_fee_percentage",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {

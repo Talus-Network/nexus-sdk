@@ -92,14 +92,13 @@ pub(crate) enum DagCommand {
             help = "Whether to inspect the DAG execution process. If not provided, command returns after submitting the transaction."
         )]
         inspect: bool,
-        /// Priority fee per gas unit for the DAG execution.
+        /// Priority fee percentage for the DAG execution.
         #[arg(
-            long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit to pass to the DAG execution. Defaults to 0 when omitted.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
+            long = "priority-fee-percentage",
+            help = "Optional priority fee percentage to pass to the DAG execution.",
+            value_name = "PERCENTAGE"
         )]
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         #[arg(
             long = "payment-coin",
             help = "SUI coin object ID to lock as the standard TAP execution payment.",
@@ -107,11 +106,11 @@ pub(crate) enum DagCommand {
         )]
         payment_coin: Option<sui::types::Address>,
         #[arg(
-            long = "payment-budget",
-            help = "Optional payment budget in MIST. Defaults to the full payment coin balance.",
-            value_name = "AMOUNT"
+            long = "payment-max-budget-mist",
+            help = "Optional maximum payment budget in MIST, including gas and priority fee. Defaults to the full payment coin balance.",
+            value_name = "MIST"
         )]
-        payment_budget: Option<u64>,
+        payment_max_budget_mist: Option<u64>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -181,9 +180,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
             input_json,
             remote,
             inspect,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             payment_coin,
-            payment_budget,
+            payment_max_budget_mist,
             gas,
         } => {
             // Optional: Check auth at CLI level instead of inside execute_dag
@@ -195,9 +194,9 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
                 input_json,
                 remote,
                 inspect,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage.unwrap_or(20),
                 payment_coin,
-                payment_budget,
+                payment_max_budget_mist,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )

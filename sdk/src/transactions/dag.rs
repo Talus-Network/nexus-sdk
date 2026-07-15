@@ -44,6 +44,7 @@ use {
         sui,
         transactions::{agent_input::AgentInput, scheduler, tap},
         types::{
+            effective_priority_fee_percentage,
             AgentId,
             AuthenticatedOffchainRequestEvidence,
             AuthenticatedOffchainVerifierEvidence,
@@ -287,7 +288,7 @@ pub struct AgentDagExecuteInput {
     pub payment_source: Vec<u8>,
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
-    pub payment_max_budget: u64,
+    pub payment_max_budget_mist: u64,
 }
 
 /// PTB template for creating a new empty DAG.
@@ -1038,6 +1039,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let result = tx.shared_object_by_id(result.0, result.1, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let clock = tx.clock()?;
 
         consume_on_chain_tool_result_for_walk(
@@ -1048,6 +1050,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
             result,
             leader_cap,
             leader_registry,
+            priority_fee_vault,
             walk_index,
             next_vertex,
             tool_witness_id,
@@ -1628,6 +1631,7 @@ pub fn consume_on_chain_tool_result_for_walk(
     result: sui::types::Argument,
     leader_cap: sui::types::Argument,
     leader_registry: sui::types::Argument,
+    priority_fee_vault: sui::types::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
@@ -1650,6 +1654,7 @@ pub fn consume_on_chain_tool_result_for_walk(
             result,
             leader_cap,
             leader_registry,
+            priority_fee_vault,
             walk_index,
             expected_vertex,
             tool_witness_id,
@@ -1757,6 +1762,8 @@ fn settle_committed_tool_result_for_walk_by_leader(
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     tool_registry: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    priority_fee_vault: sui::types::Argument,
     leader_cap: sui::types::Argument,
     walk_index: u64,
     commit_tx_digest: Vec<u8>,
@@ -1775,6 +1782,8 @@ fn settle_committed_tool_result_for_walk_by_leader(
             dag,
             execution,
             tool_registry,
+            leader_registry,
+            priority_fee_vault,
             leader_cap,
             walk_index,
             commit_tx_digest,
@@ -1808,6 +1817,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let clock = tx.clock()?;
 
         settle_committed_tool_result_for_walk_by_leader(
@@ -1815,6 +1825,8 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
             dag,
             execution,
             tool_registry,
+            leader_registry,
+            priority_fee_vault,
             leader_cap,
             walk_index,
             commit_tx_digest,
@@ -1893,12 +1905,22 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
         let dag = tx.shared_object(dag, false)?;
         let execution = tx.shared_object(execution, true)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let walk_index = tx.arg(&walk_index)?;
         let clock = tx.clock()?;
 
         tx.call_target(
             execution_settlement_binding::settle_committed_tool_result_for_walk_target,
-            vec![dag, execution, tool_registry, walk_index, clock],
+            vec![
+                dag,
+                execution,
+                tool_registry,
+                leader_registry,
+                priority_fee_vault,
+                walk_index,
+                clock,
+            ],
         )?;
         Ok(())
     })
@@ -1912,6 +1934,7 @@ pub fn settle_onchain_tool_result_for_walk(
     tool_registry: sui::types::Argument,
     result: sui::types::Argument,
     leader_registry: sui::types::Argument,
+    priority_fee_vault: sui::types::Argument,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
@@ -1929,6 +1952,7 @@ pub fn settle_onchain_tool_result_for_walk(
             tool_registry,
             result,
             leader_registry,
+            priority_fee_vault,
             walk_index,
             expected_vertex,
             tool_witness_id,
@@ -1955,6 +1979,7 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let result = tx.shared_object(result, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let clock = tx.clock()?;
 
         settle_onchain_tool_result_for_walk(
@@ -1964,6 +1989,7 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
             tool_registry,
             result,
             leader_registry,
+            priority_fee_vault,
             walk_index,
             expected_vertex,
             tool_witness_id,
@@ -2024,6 +2050,8 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
         let dag = tx.shared_object(dag, false)?;
         let execution = tx.object_from_owner(execution, execution_owner, true)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
         let commit_tx_digest = tx.arg(&commit_tx_digest)?;
@@ -2037,6 +2065,8 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 dag,
                 execution,
                 tool_registry,
+                leader_registry,
+                priority_fee_vault,
                 leader_cap,
                 walk_index,
                 commit_tx_digest,
@@ -2200,7 +2230,7 @@ fn begin_user_funded_agent_execution(
     agent: sui::types::Argument,
     dag: sui::types::Argument,
     _dag_id: sui::types::Argument,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2212,7 +2242,7 @@ fn begin_user_funded_agent_execution(
     let entry_group = tx.graph_entry_group(entry_group)?;
     let with_vertex_inputs = begin_execution_inputs_arg(tx, input_data)?;
 
-    let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+    let priority_fee_percentage = tx.arg(&priority_fee_percentage)?;
 
     let agent_id = tx.object_id(agent_execution.agent_id)?;
     let agent_config = tap::agent_execution_config_arg(
@@ -2221,13 +2251,13 @@ fn begin_user_funded_agent_execution(
         network,
         entry_group,
         with_vertex_inputs,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         agent_execution.skill_id,
         agent_execution.selected_dag,
         &agent_execution.authorization_templates,
     )?;
 
-    let payment_max_budget = tx.arg(&agent_execution.payment_max_budget)?;
+    let payment_max_budget_mist = tx.arg(&agent_execution.payment_max_budget_mist)?;
 
     tx.call_target(
         execution_entries_binding::begin_user_funded_agent_execution_target,
@@ -2238,7 +2268,7 @@ fn begin_user_funded_agent_execution(
             tool_registry,
             agent_config,
             payment_coin,
-            payment_max_budget,
+            payment_max_budget_mist,
             clock,
         ],
     )
@@ -2251,7 +2281,7 @@ fn begin_default_dag_execution(
     agent_registry: sui::types::Argument,
     dag: sui::types::Argument,
     dag_id: sui::types::Argument,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: u64,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2263,17 +2293,17 @@ fn begin_default_dag_execution(
     let entry_group = tx.graph_entry_group(entry_group)?;
     let with_vertex_inputs = begin_execution_inputs_arg(tx, input_data)?;
 
-    let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+    let priority_fee_percentage = tx.arg(&priority_fee_percentage)?;
     let config = tap::default_agent_execution_config_arg(
         tx,
         dag_id,
         network,
         entry_group,
         with_vertex_inputs,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
     )?;
 
-    let payment_max_budget = tx.arg(&agent_execution.payment_max_budget)?;
+    let payment_max_budget_mist = tx.arg(&agent_execution.payment_max_budget_mist)?;
 
     tx.call_target(
         execution_entries_binding::begin_default_dag_execution_target,
@@ -2283,7 +2313,7 @@ fn begin_default_dag_execution(
             tool_registry,
             config,
             payment_coin,
-            payment_max_budget,
+            payment_max_budget_mist,
             clock,
         ],
     )
@@ -2311,7 +2341,7 @@ pub(crate) fn append_execute_agent_dag(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag: &sui::types::ObjectReference,
     agent: AgentInput,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2321,7 +2351,7 @@ pub(crate) fn append_execute_agent_dag(
         tx,
         dag,
         Some(agent),
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         entry_group,
         input_data,
         agent_execution,
@@ -2335,7 +2365,7 @@ pub(crate) fn execute_agent_dag_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     agent: AgentInput,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2346,7 +2376,7 @@ pub(crate) fn execute_agent_dag_ptb(
             tx,
             dag,
             agent,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             input_data,
             agent_execution,
@@ -2359,7 +2389,7 @@ pub(crate) fn execute_agent_dag_ptb(
 pub fn execute_default_agent_dag_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2369,7 +2399,7 @@ pub fn execute_default_agent_dag_ptb(
         append_execute_default_agent_dag(
             tx,
             dag,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             input_data,
             agent_execution,
@@ -2382,7 +2412,7 @@ pub fn execute_default_agent_dag_ptb(
 pub(crate) fn append_execute_default_agent_dag(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag: &sui::types::ObjectReference,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2392,7 +2422,7 @@ pub(crate) fn append_execute_default_agent_dag(
         tx,
         dag,
         None,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         entry_group,
         input_data,
         agent_execution,
@@ -2406,7 +2436,7 @@ fn execute_agent_dag_internal(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag: &sui::types::ObjectReference,
     agent: Option<AgentInput>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &HashMap<String, HashMap<String, NexusData>>,
     agent_execution: &AgentDagExecuteInput,
@@ -2428,17 +2458,19 @@ fn execute_agent_dag_internal(
 
     let clock = tx.clock()?;
 
+    let priority_fee_percentage = effective_priority_fee_percentage(priority_fee_percentage)?;
+    let locked_payment_budget_mist = agent_execution.payment_max_budget_mist;
     let payment_coin = if let Some(payment_coin_ref) = agent_execution.payment_coin.as_ref() {
         let owned_payment_coin = tx.owned_object(payment_coin_ref)?;
         match agent_execution.payment_coin_balance {
-            Some(balance) if balance > agent_execution.payment_max_budget => {
-                let payment_amount = tx.arg(&agent_execution.payment_max_budget)?;
+            Some(balance) if balance > locked_payment_budget_mist => {
+                let payment_amount = tx.arg(&locked_payment_budget_mist)?;
                 tx.split_coins(owned_payment_coin, vec![payment_amount])?
             }
             _ => owned_payment_coin,
         }
     } else {
-        let payment_amount = tx.arg(&agent_execution.payment_max_budget)?;
+        let payment_amount = tx.arg(&locked_payment_budget_mist)?;
         let gas = tx.gas();
         tx.split_coins(gas, vec![payment_amount])?
     };
@@ -2450,7 +2482,7 @@ fn execute_agent_dag_internal(
             agent_registry,
             dag,
             dag_id,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             input_data,
             agent_execution,
@@ -2467,7 +2499,7 @@ fn execute_agent_dag_internal(
             agent,
             dag,
             dag_id,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             input_data,
             agent_execution,
@@ -2535,6 +2567,7 @@ mod tests {
             },
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
+            priority_fee_vault: object_ref("0xf", 1, 15),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -2557,6 +2590,44 @@ mod tests {
                     && call.function.as_str() == function
             })
             .unwrap_or_else(|| panic!("missing move call {module}::{function}"))
+    }
+
+    fn input_for_argument<'a>(
+        ptb: &'a ProgrammableTransaction,
+        argument: &sui::types::Argument,
+    ) -> &'a sui::types::Input {
+        let sui::types::Argument::Input(index) = argument else {
+            panic!("expected input argument, got {argument:?}");
+        };
+        ptb.inputs
+            .get(*index as usize)
+            .unwrap_or_else(|| panic!("missing input at index {index}"))
+    }
+
+    fn expect_shared_object_arg(
+        ptb: &ProgrammableTransaction,
+        argument: &sui::types::Argument,
+        expected: &sui::types::ObjectReference,
+        expected_mutable: bool,
+    ) {
+        let sui::types::Input::Shared(shared) = input_for_argument(ptb, argument) else {
+            panic!("expected shared object input, got {argument:?}");
+        };
+        assert_eq!(shared.object_id(), *expected.object_id());
+        assert_eq!(shared.version(), expected.version());
+        assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
+    fn expect_u64_arg(
+        ptb: &ProgrammableTransaction,
+        argument: &sui::types::Argument,
+        expected: u64,
+    ) {
+        let sui::types::Input::Pure(bytes) = input_for_argument(ptb, argument) else {
+            panic!("expected pure u64 input, got {argument:?}");
+        };
+        let actual = bcs::from_bytes::<u64>(bytes).expect("u64 pure argument should decode");
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -2595,5 +2666,170 @@ mod tests {
 
         assert!(lock_payment < execute);
         assert_eq!(execute, ptb.commands.len() - 1);
+    }
+
+    #[test]
+    fn consume_on_chain_tool_result_uses_priority_fee_vault_argument() {
+        let objects = nexus_objects();
+        let next_vertex = RuntimeVertex::plain("counter_increment");
+
+        let ptb = consume_on_chain_tool_result_for_walk_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            &[],
+            9,
+            &next_vertex,
+            (addr("0x70"), 10),
+            addr("0x71"),
+            123,
+            45,
+            None,
+        )
+        .expect("ptb should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id),
+            "execution_submission",
+            "consume_on_chain_tool_result_for_walk",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected consume call");
+        };
+
+        assert_eq!(call.arguments.len(), 13);
+        expect_shared_object_arg(&ptb, &call.arguments[5], &objects.leader_registry, false);
+        expect_shared_object_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, true);
+        expect_u64_arg(&ptb, &call.arguments[7], 9);
+        expect_u64_arg(&ptb, &call.arguments[10], 123);
+        expect_u64_arg(&ptb, &call.arguments[11], 45);
+    }
+
+    #[test]
+    fn settle_committed_tool_result_by_leader_uses_priority_fee_vault_argument() {
+        let objects = nexus_objects();
+
+        let ptb = settle_committed_tool_result_for_walk_by_leader_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            &HashSet::new(),
+            11,
+            vec![9, 8, 7],
+            123,
+            45,
+            None,
+        )
+        .expect("ptb should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id),
+            "execution_settlement",
+            "settle_committed_tool_result_for_walk_by_leader",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected settlement call");
+        };
+
+        assert_eq!(call.arguments.len(), 11);
+        expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
+        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, true);
+        expect_u64_arg(&ptb, &call.arguments[6], 11);
+        expect_u64_arg(&ptb, &call.arguments[8], 123);
+        expect_u64_arg(&ptb, &call.arguments[9], 45);
+    }
+
+    #[test]
+    fn permissionless_settle_committed_tool_result_uses_priority_fee_vault_argument() {
+        let objects = nexus_objects();
+
+        let ptb = settle_committed_tool_result_for_walk_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            13,
+        )
+        .expect("ptb should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id),
+            "execution_settlement",
+            "settle_committed_tool_result_for_walk",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected permissionless settlement call");
+        };
+
+        assert_eq!(call.arguments.len(), 7);
+        expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
+        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, true);
+        expect_u64_arg(&ptb, &call.arguments[5], 13);
+    }
+
+    #[test]
+    fn settle_onchain_tool_result_uses_priority_fee_vault_argument() {
+        let objects = nexus_objects();
+        let next_vertex = RuntimeVertex::plain("counter_increment");
+
+        let ptb = settle_onchain_tool_result_for_walk_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            &object_ref("0x70", 9, 70),
+            15,
+            &next_vertex,
+            addr("0x71"),
+        )
+        .expect("ptb should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id),
+            "execution_settlement",
+            "settle_onchain_tool_result_for_walk",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected on-chain settlement call");
+        };
+
+        assert_eq!(call.arguments.len(), 10);
+        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
+        expect_shared_object_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, true);
+        expect_u64_arg(&ptb, &call.arguments[6], 15);
+    }
+
+    #[test]
+    fn execute_default_agent_dag_rejects_invalid_explicit_priority() {
+        let objects = nexus_objects();
+        let agent_execution = AgentDagExecuteInput {
+            agent_id: addr("0xa1"),
+            skill_id: 177,
+            selected_dag: None,
+            authorization_templates: Vec::new(),
+            payment_source: Vec::new(),
+            payment_coin: None,
+            payment_coin_balance: None,
+            payment_max_budget_mist: 100,
+        };
+
+        let error = execute_default_agent_dag_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            Some(crate::types::MIN_PRIORITY_FEE_PERCENTAGE - 1),
+            "group1",
+            &HashMap::new(),
+            &agent_execution,
+            &HashSet::new(),
+        )
+        .expect_err("invalid explicit priority must fail before PTB submission");
+
+        assert!(error
+            .to_string()
+            .contains("priority fee percentage must be in 10..=10000"));
     }
 }

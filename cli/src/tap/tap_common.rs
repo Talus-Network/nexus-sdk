@@ -21,13 +21,13 @@ pub(crate) fn decode_hex_arg(value: &str, name: &str) -> AnyResult<Vec<u8>, Nexu
 
 pub(crate) fn agent_execute_options_from_cli(
     payment_source_hex: String,
-    payment_max_budget: u64,
+    payment_max_budget_mist: u64,
 ) -> AnyResult<AgentDagExecuteOptions, NexusCliError> {
     Ok(AgentDagExecuteOptions {
         payment_source: decode_hex_arg(&payment_source_hex, "payment-source")?,
         payment_coin: None,
         payment_coin_balance: None,
-        payment_max_budget,
+        payment_max_budget_mist,
     })
 }
 

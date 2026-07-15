@@ -7,6 +7,7 @@ use {
             scheduler::{CreateTaskParams, CreateTaskTapPayment, GeneratorKind, OccurrenceRequest},
             tap::fetch_configured_active_tap_skill_execution_target,
         },
+        types::effective_priority_fee_percentage,
         walrus::StorageConf,
     },
     std::collections::HashMap,
@@ -18,6 +19,20 @@ pub(crate) enum TapTaskPaymentSourceArg {
     AgentFunded,
 }
 
+fn validated_priority_fee_percentages(
+    execution_priority_fee_percentage: Option<u64>,
+    schedule_priority_fee_percentage: Option<u64>,
+) -> AnyResult<(Option<u64>, Option<u64>), NexusCliError> {
+    effective_priority_fee_percentage(execution_priority_fee_percentage)
+        .map_err(NexusCliError::Any)?;
+    effective_priority_fee_percentage(schedule_priority_fee_percentage)
+        .map_err(NexusCliError::Any)?;
+    Ok((
+        execution_priority_fee_percentage,
+        schedule_priority_fee_percentage,
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn schedule_tap_task(
     agent_id: sui::types::Address,
@@ -27,19 +42,25 @@ pub(crate) async fn schedule_tap_task(
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
     metadata: Vec<String>,
-    execution_priority_fee_per_gas_unit: u64,
+    execution_priority_fee_percentage: Option<u64>,
     schedule_start_ms: Option<u64>,
     schedule_start_offset_ms: Option<u64>,
     schedule_deadline_offset_ms: Option<u64>,
-    schedule_priority_fee_per_gas_unit: u64,
+    schedule_priority_fee_percentage: Option<u64>,
     generator: GeneratorKind,
     payment_source: TapTaskPaymentSourceArg,
-    prepay_amount: u64,
+    prepay_amount_mist: u64,
     refund_recipient: Option<sui::types::Address>,
-    occurrence_budget: u64,
+    occurrence_budget_mist: u64,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
+    let (execution_priority_fee_percentage, schedule_priority_fee_percentage) =
+        validated_priority_fee_percentages(
+            execution_priority_fee_percentage,
+            schedule_priority_fee_percentage,
+        )?;
+
     if matches!(payment_source, TapTaskPaymentSourceArg::AgentFunded) && refund_recipient.is_some()
     {
         return Err(NexusCliError::Any(anyhow!(
@@ -105,7 +126,7 @@ pub(crate) async fn schedule_tap_task(
                 None,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_percentage,
                 true,
             )
             .map_err(NexusCliError::Nexus)?,
@@ -122,15 +143,15 @@ pub(crate) async fn schedule_tap_task(
 
     let tap_payment = match payment_source {
         TapTaskPaymentSourceArg::UserFunded => CreateTaskTapPayment::UserFunded {
-            prepay_amount,
+            prepay_amount_mist,
             refund_recipient,
-            occurrence_budget,
+            occurrence_budget_mist,
             selected_dag: runtime_selected_dag,
             authorization_templates: Vec::new(),
         },
         TapTaskPaymentSourceArg::AgentFunded => CreateTaskTapPayment::AgentFunded {
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
             selected_dag: runtime_selected_dag,
             authorization_templates: Vec::new(),
         },
@@ -144,7 +165,7 @@ pub(crate) async fn schedule_tap_task(
             entry_group: entry_group.clone(),
             input_data,
             metadata: metadata_pairs,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             initial_schedule,
             generator,
             agent_id: Some(agent_id),
@@ -197,6 +218,61 @@ fn resolve_scheduled_tap_dag_selection(
 mod tests {
     use super::*;
 
+    #[test]
+    fn omitted_cli_priority_fee_percentages_reach_validation_as_none() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tap",
+            "schedule-task",
+            "--agent-id",
+            "0xa",
+            "--skill-id",
+            "7",
+            "--payment-source",
+            "user-funded",
+            "--prepay-amount-mist",
+            "1",
+            "--occurrence-budget-mist",
+            "1",
+        ])
+        .expect("schedule-task arguments parse");
+        let crate::Command::Tap(TapCommand::ScheduleTask {
+            execution_priority_fee_percentage,
+            schedule_priority_fee_percentage,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected TAP schedule-task command")
+        };
+        let percentages = validated_priority_fee_percentages(
+            execution_priority_fee_percentage,
+            schedule_priority_fee_percentage,
+        )
+        .expect("omitted percentages are valid");
+
+        assert_eq!(percentages, (None, None));
+    }
+
+    #[test]
+    fn explicit_zero_priority_fee_percentage_is_rejected() {
+        let err = validated_priority_fee_percentages(Some(0), None)
+            .expect_err("explicit zero must fail SDK percentage validation");
+
+        assert!(
+            err.to_string()
+                .contains("priority fee percentage must be in"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn valid_explicit_priority_fee_percentages_are_forwarded() {
+        let percentages = validated_priority_fee_percentages(Some(10), Some(25))
+            .expect("valid explicit percentages are accepted");
+
+        assert_eq!(percentages, (Some(10), Some(25)));
+    }
+
     #[tokio::test]
     async fn schedule_tap_task_rejects_refund_for_agent_vault_before_rpc() {
         let err = schedule_tap_task(
@@ -207,11 +283,11 @@ mod tests {
             None,
             Vec::new(),
             Vec::new(),
-            0,
             None,
             None,
             None,
-            0,
+            None,
+            None,
             GeneratorKind::Queue,
             TapTaskPaymentSourceArg::AgentFunded,
             1,

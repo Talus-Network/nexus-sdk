@@ -158,12 +158,10 @@ async fn list_payments(
 }
 
 /// Wrap the on-chain `nexus_workflow::execution_settlement::accomplish_tap_execution_payment*`
-/// PTBs. With no agent supplied, the SDK builds the invoker-funded PTB
-/// (`accomplish_tap_execution_payment`) and the shared `DAGExecution` is
-/// the only input. When `--alias` or `--agent-id` resolves to an agent,
-/// the SDK additionally fetches the agent's object ref and routes through
-/// `accomplish_tap_execution_payment_from_agent_vault` so the payment
-/// settles out of the agent's vault.
+/// PTBs. With no agent supplied, the SDK builds the invoker-funded accomplishment
+/// PTB. When `--alias` or `--agent-id` resolves to an agent, the SDK
+/// additionally fetches the agent's object ref and routes through the
+/// agent-vault accomplishment path.
 async fn resolve_payment(
     execution_id: sui::types::Address,
     alias: Option<String>,

@@ -15,7 +15,13 @@ use {
         move_boundary,
         sui,
         transactions::{agent_input::AgentInput, scheduler::OccurrenceGenerator},
-        types::{AgentId, NexusObjects, SkillId, TapPublishArtifact},
+        types::{
+            effective_priority_fee_percentage,
+            AgentId,
+            NexusObjects,
+            SkillId,
+            TapPublishArtifact,
+        },
     },
     sui::types::ProgrammableTransaction,
 };
@@ -248,15 +254,15 @@ pub(crate) fn bind_agent_skill_ptb(
 #[derive(Clone, Debug)]
 pub(crate) enum AgentTaskPaymentPtbInput {
     UserFunded {
-        prepay_amount: u64,
+        prepay_amount_mist: u64,
         refund_recipient: Option<sui::types::Address>,
-        occurrence_budget: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
     AgentVault {
-        prepay_amount: u64,
-        occurrence_budget: u64,
+        prepay_amount_mist: u64,
+        occurrence_budget_mist: u64,
         selected_dag: Option<sui::types::Address>,
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
@@ -268,7 +274,7 @@ pub(crate) fn create_agent_task_ptb(
     sender: sui::types::Address,
     metadata: &[(String, String)],
     generator: OccurrenceGenerator,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
     agent_id: AgentId,
@@ -286,7 +292,7 @@ pub(crate) fn create_agent_task_ptb(
         let constraints = crate::transactions::scheduler::new_constraints_policy(tx, generator)?;
         let execution = crate::transactions::scheduler::new_agent_execution_policy(
             tx,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             input_data,
             agent_id,
@@ -297,16 +303,16 @@ pub(crate) fn create_agent_task_ptb(
 
         let task = match payment {
             AgentTaskPaymentPtbInput::UserFunded {
-                prepay_amount,
+                prepay_amount_mist,
                 refund_recipient,
-                occurrence_budget,
+                occurrence_budget_mist,
                 selected_dag,
                 authorization_templates,
             } => {
                 let agent = agent.clone().immutable_ptb_argument(tx)?;
-                let prepay_amount = tx.arg(prepay_amount)?;
+                let prepay_amount_mist = tx.arg(prepay_amount_mist)?;
                 let gas = tx.gas();
-                let prepayment_coin = tx.split_coins(gas, vec![prepay_amount])?;
+                let prepayment_coin = tx.split_coins(gas, vec![prepay_amount_mist])?;
                 new_invoker_funded_agent_task(
                     tx,
                     metadata,
@@ -315,20 +321,20 @@ pub(crate) fn create_agent_task_ptb(
                     registry,
                     agent,
                     agent_id,
-                    priority_fee_per_gas_unit,
+                    priority_fee_percentage,
                     entry_group,
                     input_data,
                     skill_id,
                     *selected_dag,
                     prepayment_coin,
                     refund_recipient.unwrap_or(sender),
-                    *occurrence_budget,
+                    *occurrence_budget_mist,
                     authorization_templates.clone(),
                 )?
             }
             AgentTaskPaymentPtbInput::AgentVault {
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
                 selected_dag,
                 authorization_templates,
             } => {
@@ -341,13 +347,13 @@ pub(crate) fn create_agent_task_ptb(
                     registry,
                     agent,
                     agent_id,
-                    priority_fee_per_gas_unit,
+                    priority_fee_percentage,
                     entry_group,
                     input_data,
                     skill_id,
                     *selected_dag,
-                    *prepay_amount,
-                    *occurrence_budget,
+                    *prepay_amount_mist,
+                    *occurrence_budget_mist,
                     authorization_templates.clone(),
                 )?
             }
@@ -371,20 +377,20 @@ pub(crate) fn new_invoker_funded_agent_task(
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     agent_id: AgentId,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
     prepayment_coin: sui::types::Argument,
     refund_recipient: sui::types::Address,
-    occurrence_budget: u64,
+    occurrence_budget_mist: u64,
     authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 ) -> anyhow::Result<sui::types::Argument> {
     let agent_config = scheduled_agent_execution_config_arg(
         tx,
         agent_id,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         entry_group,
         input_data,
         skill_id,
@@ -392,7 +398,7 @@ pub(crate) fn new_invoker_funded_agent_task(
         &authorization_templates,
     )?;
     let refund_recipient = tx.arg(&refund_recipient)?;
-    let occurrence_budget = tx.arg(&occurrence_budget)?;
+    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
     tx.call_target(
         scheduler_binding::new_invoker_funded_agent_task_target,
         vec![
@@ -404,7 +410,7 @@ pub(crate) fn new_invoker_funded_agent_task(
             agent_config,
             prepayment_coin,
             refund_recipient,
-            occurrence_budget,
+            occurrence_budget_mist,
         ],
     )
 }
@@ -419,27 +425,27 @@ pub(crate) fn new_agent_funded_task(
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     agent_id: AgentId,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
-    prepay_amount: u64,
-    occurrence_budget: u64,
+    prepay_amount_mist: u64,
+    occurrence_budget_mist: u64,
     authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
 ) -> anyhow::Result<sui::types::Argument> {
     let agent_config = scheduled_agent_execution_config_arg(
         tx,
         agent_id,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         entry_group,
         input_data,
         skill_id,
         selected_dag,
         &authorization_templates,
     )?;
-    let prepay_amount = tx.arg(&prepay_amount)?;
-    let occurrence_budget = tx.arg(&occurrence_budget)?;
+    let prepay_amount_mist = tx.arg(&prepay_amount_mist)?;
+    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
     tx.call_target(
         scheduler_binding::new_agent_funded_task_target,
         vec![
@@ -449,8 +455,8 @@ pub(crate) fn new_agent_funded_task(
             registry,
             agent,
             agent_config,
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
         ],
     )
 }
@@ -506,11 +512,11 @@ fn payment_policy_arg(
         SkillPaymentPolicy::UserFunded => {
             tx.call_target(payment_binding::payment_policy_user_funded_target, vec![])?
         }
-        SkillPaymentPolicy::AgentFunded { max_budget } => {
-            let max_budget = tx.arg(max_budget)?;
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => {
+            let max_budget_mist = tx.arg(max_budget_mist)?;
             tx.call_target(
                 payment_binding::payment_policy_agent_funded_target,
-                vec![max_budget],
+                vec![max_budget_mist],
             )?
         }
     })
@@ -536,7 +542,7 @@ pub(crate) fn default_agent_execution_config_arg(
     network: sui::types::Argument,
     entry_group: sui::types::Argument,
     inputs: sui::types::Argument,
-    priority_fee_per_gas_unit: sui::types::Argument,
+    priority_fee_percentage: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
     tx.call_target(
         agent_binding::new_default_agent_execution_config_target,
@@ -545,7 +551,7 @@ pub(crate) fn default_agent_execution_config_arg(
             network,
             entry_group,
             inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
         ],
     )
 }
@@ -557,7 +563,7 @@ pub(crate) fn agent_execution_config_arg(
     network: sui::types::Argument,
     entry_group: sui::types::Argument,
     inputs: sui::types::Argument,
-    priority_fee_per_gas_unit: sui::types::Argument,
+    priority_fee_percentage: sui::types::Argument,
     skill_id: SkillId,
     selected_dag: Option<sui::types::Address>,
     authorization_templates: &[AgentVertexAuthorizationTemplate],
@@ -574,7 +580,7 @@ pub(crate) fn agent_execution_config_arg(
             network,
             entry_group,
             inputs,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             skill_id,
             selected_dag,
             authorization_templates,
@@ -586,7 +592,7 @@ pub(crate) fn agent_execution_config_arg(
 fn scheduled_agent_execution_config_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     agent_id: AgentId,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     entry_group: &str,
     input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
     skill_id: SkillId,
@@ -598,14 +604,15 @@ fn scheduled_agent_execution_config_arg(
     let network = tx.object_id(objects.network_id)?;
     let entry_group = tx.graph_entry_group(entry_group)?;
     let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, input_data)?;
-    let priority_fee_per_gas_unit = tx.arg(&priority_fee_per_gas_unit)?;
+    let priority_fee_percentage =
+        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
     agent_execution_config_arg(
         tx,
         agent_id,
         network,
         entry_group,
         inputs,
-        priority_fee_per_gas_unit,
+        priority_fee_percentage,
         skill_id,
         selected_dag,
         authorization_templates,

@@ -234,6 +234,7 @@ mod tests {
             },
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
+            priority_fee_vault: object_ref("0xf", 1, 15),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

@@ -31,14 +31,14 @@ pub(crate) async fn create_task(
     mut input_json: Option<serde_json::Value>,
     remote: Vec<String>,
     metadata: Vec<String>,
-    execution_priority_fee_per_gas_unit: u64,
+    execution_priority_fee_percentage: Option<u64>,
     schedule_start_ms: Option<u64>,
     schedule_start_offset_ms: Option<u64>,
     schedule_deadline_offset_ms: Option<u64>,
-    schedule_priority_fee_per_gas_unit: u64,
+    schedule_priority_fee_percentage: Option<u64>,
     generator: GeneratorKind,
-    prepay_amount: u64,
-    occurrence_budget: u64,
+    prepay_amount_mist: u64,
+    occurrence_budget_mist: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
@@ -89,7 +89,7 @@ pub(crate) async fn create_task(
                 None,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_percentage,
                 true,
             )
             .map_err(NexusCliError::Nexus)?,
@@ -113,15 +113,15 @@ pub(crate) async fn create_task(
             entry_group: entry_group.clone(),
             input_data,
             metadata: metadata_pairs,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             initial_schedule,
             generator,
             agent_id: None,
             skill_id: None,
             tap_payment: Some(CreateTaskTapPayment::UserFunded {
-                prepay_amount,
+                prepay_amount_mist,
                 refund_recipient: None,
-                occurrence_budget,
+                occurrence_budget_mist,
                 selected_dag: None,
                 authorization_templates: Vec::new(),
             }),
@@ -149,8 +149,8 @@ pub(crate) async fn create_task(
         result_json["tap_payment"] = serde_json::json!({
             "agent_id": tap_payment.agent_id,
             "skill_id": tap_payment.skill_id,
-            "prepay_amount": tap_payment.prepay_amount,
-            "occurrence_budget": tap_payment.occurrence_budget,
+            "prepay_amount_mist": tap_payment.prepay_amount_mist,
+            "occurrence_budget_mist": tap_payment.occurrence_budget_mist,
         });
     }
 

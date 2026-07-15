@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Move binding regeneration now accepts an optional matching Move source root for restoring
   function parameter names. Network package metadata remains authoritative, and regeneration
   without source keeps deterministic `argN` names.
+- Added support for new priority fee system.
 
 #### Changed
 
@@ -20,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID
   churn when the same Move ABI is rebound from another deployment.
+
+### `nexus-cli`
+
+#### Added
+
+- Added support for new priority fee system in commands.
 
 ## [`2.0.0-rc.4`] - 2026-07-09
 
