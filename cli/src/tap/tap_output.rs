@@ -163,7 +163,7 @@ pub(crate) fn agent_execute_result_json(
             "skill_id": submit.skill_id,
             "dag_id": submit.dag_id,
             "skill_revision_key": submit.skill_revision_key,
-            "payment_max_budget": submit.payment_max_budget,
+            "payment_max_budget_mist": submit.payment_max_budget_mist,
         }))
     })
 }
@@ -197,8 +197,8 @@ pub(crate) fn schedule_task_result_json(
         "tap_payment": result.tap_payment.as_ref().map(|payment| json!({
             "agent_id": payment.agent_id,
             "skill_id": payment.skill_id,
-            "prepay_amount": payment.prepay_amount,
-            "occurrence_budget": payment.occurrence_budget,
+            "prepay_amount_mist": payment.prepay_amount_mist,
+            "occurrence_budget_mist": payment.occurrence_budget_mist,
         })),
         "initial_schedule": result.initial_schedule.as_ref().map(|schedule| json!({
             "digest": schedule.tx_digest,
@@ -259,8 +259,8 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
         "interface_revision": payment.interface_revision,
         "payment_policy": payment.payment_policy,
         "source_kind": payment.source_kind,
-        "max_budget": payment.max_budget,
-        "locked_budget": payment.locked_budget,
+        "max_budget_mist": payment.max_budget_mist,
+        "locked_budget_mist": payment.locked_budget_mist,
         "funds": payment.funds,
         "consumed": payment.consumed,
         "accomplished": payment.accomplished,
@@ -483,8 +483,10 @@ mod tests {
                 nexus_sdk::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                     sui::types::Address::from_static("0xee"),
                 ),
-            max_budget: 1_000,
-            locked_budget: 0,
+            max_budget_mist: 1_000,
+            gas_budget_mist: 333,
+            priority_fee_reserve_mist: 666,
+            locked_budget_mist: 0,
             funds: nexus_sdk::move_bindings::sui_framework::balance::Balance {
                 value: 1_000,
                 phantom_t0: std::marker::PhantomData,
@@ -497,6 +499,9 @@ mod tests {
             refunded,
             final_state,
             locked_vertices: vec![],
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 200,
         }
     }
 
@@ -634,7 +639,7 @@ mod tests {
                     skill_id: 11,
                     interface_revision: InterfaceVersion::new(3),
                 },
-                payment_max_budget: 99,
+                payment_max_budget_mist: 99,
             }),
         };
 
@@ -654,7 +659,7 @@ mod tests {
             serde_json::json!({ "inner": 3 })
         );
         assert_eq!(
-            output["submit"]["payment_max_budget"],
+            output["submit"]["payment_max_budget_mist"],
             serde_json::json!(99)
         );
     }
@@ -697,8 +702,8 @@ mod tests {
             tap_payment: Some(nexus_sdk::nexus::scheduler::CreateTaskTapPaymentResult {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                prepay_amount: 500,
-                occurrence_budget: 50,
+                prepay_amount_mist: 500,
+                occurrence_budget_mist: 50,
             }),
         };
 
@@ -719,11 +724,11 @@ mod tests {
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
         assert_eq!(
-            output["tap_payment"]["prepay_amount"],
+            output["tap_payment"]["prepay_amount_mist"],
             serde_json::json!(500)
         );
         assert_eq!(
-            output["tap_payment"]["occurrence_budget"],
+            output["tap_payment"]["occurrence_budget_mist"],
             serde_json::json!(50)
         );
         assert!(output["initial_schedule"].is_null());

@@ -26,6 +26,111 @@ pub type SkillId = u64;
 pub const fn skill_id(value: u64) -> SkillId {
     value
 }
+pub const DEFAULT_PRIORITY_FEE_PERCENTAGE: u64 = 20;
+pub const MIN_PRIORITY_FEE_PERCENTAGE: u64 = 10;
+pub const MAX_PRIORITY_FEE_PERCENTAGE: u64 = 10000;
+
+/// Inputs for validating or deriving a base gas budget within a total escrow amount.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriorityPaymentBudgetInput {
+    pub max_budget_mist: u64,
+    pub priority_fee_percentage: Option<u64>,
+    pub gas_budget_mist: Option<u64>,
+}
+
+/// Integer-only priority payment quote matching the on-chain floor arithmetic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriorityPaymentBudgetQuote {
+    pub max_budget_mist: u64,
+    pub priority_fee_percentage: u64,
+    pub gas_budget_mist: u64,
+    pub priority_fee_reserve_mist: u64,
+    pub reserved_budget_mist: u64,
+}
+
+/// Returns the priority when it is inside the explicit on-chain range.
+pub fn normalized_priority_fee_percentage(priority_fee_percentage: u64) -> Option<u64> {
+    (MIN_PRIORITY_FEE_PERCENTAGE..=MAX_PRIORITY_FEE_PERCENTAGE)
+        .contains(&priority_fee_percentage)
+        .then_some(priority_fee_percentage)
+}
+
+/// Resolves an optional priority, defaulting omission to `20` and rejecting invalid explicit values.
+pub fn effective_priority_fee_percentage(
+    priority_fee_percentage: Option<u64>,
+) -> anyhow::Result<u64> {
+    match priority_fee_percentage {
+        None => Ok(DEFAULT_PRIORITY_FEE_PERCENTAGE),
+        Some(priority_fee_percentage) => normalized_priority_fee_percentage(priority_fee_percentage)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "priority fee percentage must be in {MIN_PRIORITY_FEE_PERCENTAGE}..={MAX_PRIORITY_FEE_PERCENTAGE}, got {priority_fee_percentage}"
+                )
+            }),
+    }
+}
+
+/// Computes `floor(gas_budget_mist * priority_fee_percentage / 100)` with widened arithmetic.
+pub fn priority_fee_mist_for_gas_budget(
+    gas_budget_mist: u64,
+    priority_fee_percentage: u64,
+) -> anyhow::Result<u64> {
+    let priority_fee_mist = u128::from(gas_budget_mist)
+        .checked_mul(u128::from(priority_fee_percentage))
+        .map(|value| value / 100)
+        .ok_or_else(|| anyhow::anyhow!("priority fee calculation overflows u128"))?;
+    u64::try_from(priority_fee_mist)
+        .map_err(|_| anyhow::anyhow!("priority fee calculation overflows u64"))
+}
+
+/// Computes the maximal gas budget satisfying `gas + floor(gas * percentage / 100) <= max`.
+pub fn gas_budget_mist_for_max_budget_mist(
+    max_budget_mist: u64,
+    priority_fee_percentage: u64,
+) -> anyhow::Result<u64> {
+    let numerator = u128::from(max_budget_mist)
+        .checked_mul(100)
+        .and_then(|value| value.checked_add(99))
+        .ok_or_else(|| anyhow::anyhow!("gas budget numerator overflows u128"))?;
+    let denominator = u128::from(priority_fee_percentage)
+        .checked_add(100)
+        .ok_or_else(|| anyhow::anyhow!("gas budget denominator overflows u128"))?;
+    u64::try_from(numerator / denominator)
+        .map_err(|_| anyhow::anyhow!("gas budget calculation overflows u64"))
+}
+
+/// Validates an explicit gas budget or derives the maximal budget for the supplied total escrow.
+pub fn quote_priority_payment_budget(
+    input: PriorityPaymentBudgetInput,
+) -> anyhow::Result<PriorityPaymentBudgetQuote> {
+    let priority_fee_percentage = effective_priority_fee_percentage(input.priority_fee_percentage)?;
+    let gas_budget_mist = match input.gas_budget_mist {
+        Some(gas_budget_mist) => gas_budget_mist,
+        None => {
+            gas_budget_mist_for_max_budget_mist(input.max_budget_mist, priority_fee_percentage)?
+        }
+    };
+
+    let priority_fee_reserve_mist =
+        priority_fee_mist_for_gas_budget(gas_budget_mist, priority_fee_percentage)?;
+    let reserved_budget_mist = gas_budget_mist
+        .checked_add(priority_fee_reserve_mist)
+        .ok_or_else(|| anyhow::anyhow!("priority payment total overflows u64"))?;
+    if reserved_budget_mist > input.max_budget_mist {
+        return Err(anyhow::anyhow!(
+            "gas budget {gas_budget_mist} MIST plus priority fee reserve {priority_fee_reserve_mist} MIST exceeds maximum budget {} MIST",
+            input.max_budget_mist
+        ));
+    }
+
+    Ok(PriorityPaymentBudgetQuote {
+        max_budget_mist: input.max_budget_mist,
+        priority_fee_percentage,
+        gas_budget_mist,
+        priority_fee_reserve_mist,
+        reserved_budget_mist,
+    })
+}
 
 /// Key for a pinned skill interface revision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -375,7 +480,7 @@ pub fn validate_execution_payment_options(
     agent_id: AgentId,
     policy: &SkillPaymentPolicy,
     payment_source: &[u8],
-    payment_max_budget: u64,
+    payment_max_budget_mist: u64,
     payer: sui::types::Address,
 ) -> anyhow::Result<()> {
     match policy {
@@ -389,12 +494,12 @@ pub fn validate_execution_payment_options(
                 );
             }
         }
-        SkillPaymentPolicy::AgentFunded { max_budget } => {
-            if payment_max_budget == 0 || payment_max_budget > *max_budget {
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => {
+            if payment_max_budget_mist == 0 || payment_max_budget_mist > *max_budget_mist {
                 anyhow::bail!(
                     "standard TAP agent-funded payment budget {} must be positive and no greater than skill policy max {}",
-                    payment_max_budget,
-                    max_budget
+                    payment_max_budget_mist,
+                    max_budget_mist
                 );
             }
             let expected = bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id))?;
@@ -548,7 +653,9 @@ mod tests {
     fn requirements() -> SkillRequirement {
         SkillRequirement {
             input_commitment: vec![1],
-            payment_policy: SkillPaymentPolicy::AgentFunded { max_budget: 100 },
+            payment_policy: SkillPaymentPolicy::AgentFunded {
+                max_budget_mist: 100,
+            },
             schedule_policy: SkillSchedulePolicy::default(),
             fixed_tools: Vec::new(),
         }
@@ -721,7 +828,9 @@ mod tests {
         let agent_source =
             bcs::to_bytes(&PaymentSourceKind::agent_funded(agent)).expect("agent vault source");
 
-        let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
+        let agent_funded = SkillPaymentPolicy::AgentFunded {
+            max_budget_mist: 100,
+        };
         validate_execution_payment_options(agent, &agent_funded, &agent_source, 100, payer)
             .expect("agent-funded source at policy cap");
         assert!(
@@ -820,6 +929,169 @@ mod tests {
         assert_eq!(typed.identity(), agent);
 
         assert!(bcs::from_bytes::<PaymentSourceKind>(&[9]).is_err());
+    }
+
+    #[test]
+    fn priority_budget_quote_derives_maximal_gas_with_default_percentage() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 120,
+            priority_fee_percentage: None,
+            gas_budget_mist: None,
+        })
+        .expect("quote should fit");
+
+        assert_eq!(quote.max_budget_mist, 120);
+        assert_eq!(
+            quote.priority_fee_percentage,
+            DEFAULT_PRIORITY_FEE_PERCENTAGE
+        );
+        assert_eq!(quote.gas_budget_mist, 100);
+        assert_eq!(quote.priority_fee_reserve_mist, 20);
+        assert_eq!(quote.reserved_budget_mist, 120);
+
+        let next_reserve = priority_fee_mist_for_gas_budget(
+            quote.gas_budget_mist + 1,
+            quote.priority_fee_percentage,
+        )
+        .unwrap();
+        assert!(quote.gas_budget_mist + 1 + next_reserve > 120);
+    }
+
+    #[test]
+    fn priority_budget_quote_preserves_explicit_gas_that_exactly_consumes_ceiling() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 10_100,
+            priority_fee_percentage: Some(MAX_PRIORITY_FEE_PERCENTAGE),
+            gas_budget_mist: Some(100),
+        })
+        .expect("quote should fit");
+
+        assert_eq!(quote.gas_budget_mist, 100);
+        assert_eq!(quote.priority_fee_reserve_mist, 10_000);
+        assert_eq!(quote.reserved_budget_mist, 10_100);
+    }
+
+    #[test]
+    fn priority_budget_quote_preserves_explicit_gas_below_ceiling() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 121,
+            priority_fee_percentage: Some(20),
+            gas_budget_mist: Some(100),
+        })
+        .expect("quote should fit below the ceiling");
+
+        assert_eq!(quote.gas_budget_mist, 100);
+        assert_eq!(quote.priority_fee_reserve_mist, 20);
+        assert_eq!(quote.reserved_budget_mist, 120);
+    }
+
+    #[test]
+    fn priority_budget_quote_rejects_explicit_gas_above_ceiling() {
+        let error = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 119,
+            priority_fee_percentage: Some(20),
+            gas_budget_mist: Some(100),
+        })
+        .expect_err("gas plus reserve must fit the maximum budget");
+
+        assert!(error
+            .to_string()
+            .contains("exceeds maximum budget 119 MIST"));
+    }
+
+    #[test]
+    fn priority_budget_quote_uses_default_percentage_with_explicit_gas() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 120,
+            priority_fee_percentage: None,
+            gas_budget_mist: Some(99),
+        })
+        .expect("default percentage should validate supplied gas");
+
+        assert_eq!(
+            quote.priority_fee_percentage,
+            DEFAULT_PRIORITY_FEE_PERCENTAGE
+        );
+        assert_eq!(quote.gas_budget_mist, 99);
+        assert_eq!(quote.priority_fee_reserve_mist, 19);
+        assert_eq!(quote.reserved_budget_mist, 118);
+    }
+
+    #[test]
+    fn priority_budget_quote_derives_gas_with_explicit_percentage() {
+        let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 10_100,
+            priority_fee_percentage: Some(MAX_PRIORITY_FEE_PERCENTAGE),
+            gas_budget_mist: None,
+        })
+        .expect("explicit percentage should derive maximal gas");
+
+        assert_eq!(quote.gas_budget_mist, 100);
+        assert_eq!(quote.priority_fee_reserve_mist, 10_000);
+        assert_eq!(quote.reserved_budget_mist, 10_100);
+    }
+
+    #[test]
+    fn direct_gas_budget_formula_is_maximal_at_u64_boundary() {
+        let max_budget_mist = u64::MAX;
+        let priority_fee_percentage = MAX_PRIORITY_FEE_PERCENTAGE;
+        let gas_budget_mist =
+            gas_budget_mist_for_max_budget_mist(max_budget_mist, priority_fee_percentage)
+                .expect("widened formula should support a maximum total budget");
+        let priority_fee_reserve_mist =
+            priority_fee_mist_for_gas_budget(gas_budget_mist, priority_fee_percentage).unwrap();
+
+        assert!(
+            u128::from(gas_budget_mist) + u128::from(priority_fee_reserve_mist)
+                <= u128::from(max_budget_mist)
+        );
+        let next_gas_budget_mist = gas_budget_mist + 1;
+        let next_priority_fee_mist =
+            priority_fee_mist_for_gas_budget(next_gas_budget_mist, priority_fee_percentage)
+                .unwrap();
+        assert!(
+            u128::from(next_gas_budget_mist) + u128::from(next_priority_fee_mist)
+                > u128::from(max_budget_mist)
+        );
+    }
+
+    #[test]
+    fn priority_budget_quote_defaults_omission_and_rejects_invalid_priority() {
+        assert_eq!(
+            effective_priority_fee_percentage(None).expect("missing priority uses default"),
+            DEFAULT_PRIORITY_FEE_PERCENTAGE
+        );
+        assert_eq!(
+            effective_priority_fee_percentage(Some(MIN_PRIORITY_FEE_PERCENTAGE))
+                .expect("minimum priority is valid"),
+            MIN_PRIORITY_FEE_PERCENTAGE
+        );
+        assert_eq!(
+            effective_priority_fee_percentage(Some(MAX_PRIORITY_FEE_PERCENTAGE))
+                .expect("maximum priority is valid"),
+            MAX_PRIORITY_FEE_PERCENTAGE
+        );
+
+        let below_minimum = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+            max_budget_mist: 100,
+            priority_fee_percentage: Some(9),
+            gas_budget_mist: None,
+        })
+        .expect_err("explicit priority below the on-chain minimum must fail");
+        assert!(below_minimum.to_string().contains("10..=10000"));
+
+        assert!(effective_priority_fee_percentage(Some(MAX_PRIORITY_FEE_PERCENTAGE + 1)).is_err());
+        assert_eq!(
+            normalized_priority_fee_percentage(MAX_PRIORITY_FEE_PERCENTAGE + 1),
+            None
+        );
+    }
+
+    #[test]
+    fn priority_fee_math_floors_and_rejects_overflow() {
+        assert_eq!(priority_fee_mist_for_gas_budget(9, 10).unwrap(), 0);
+        assert_eq!(priority_fee_mist_for_gas_budget(10, 10).unwrap(), 1);
+        assert!(priority_fee_mist_for_gas_budget(u64::MAX, MAX_PRIORITY_FEE_PERCENTAGE).is_err());
     }
 
     #[test]

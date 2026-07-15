@@ -44,6 +44,7 @@ pub struct NexusObjects {
     pub default_dag_executor: DefaultDagExecutorTarget,
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
+    pub priority_fee_vault: sui::types::ObjectReference,
 
     /// Original (defining) package address for the workflow package.
     ///
@@ -353,6 +354,11 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             ),
             leader_registry: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            priority_fee_vault: sui::types::ObjectReference::new(
                 sui::types::Address::generate(&mut rng),
                 1,
                 sui::types::Digest::generate(&mut rng),

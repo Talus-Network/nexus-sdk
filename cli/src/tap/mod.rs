@@ -178,11 +178,11 @@ pub(crate) enum TapCommand {
         )]
         payment_mode: ArtifactPaymentMode,
         #[arg(
-            long = "agent-funded-max-budget",
-            help = "Maximum budget for agent-funded skills.",
-            value_name = "AMOUNT"
+            long = "agent-funded-max-budget-mist",
+            help = "Maximum budget in MIST for agent-funded skills.",
+            value_name = "MIST"
         )]
-        agent_funded_max_budget: Option<u64>,
+        agent_funded_max_budget_mist: Option<u64>,
         #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
         recurrence_kind: String,
         #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
@@ -311,12 +311,11 @@ pub(crate) enum TapCommand {
         )]
         remote: Vec<String>,
         #[arg(
-            long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit for the DAG execution. Defaults to 0 when omitted.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
+            long = "priority-fee-percentage",
+            help = "Optional priority fee percentage for the DAG execution.",
+            value_name = "PERCENTAGE"
         )]
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         #[arg(
             long = "payment-source-hex",
             help = "Payment source bytes as hex.",
@@ -325,12 +324,12 @@ pub(crate) enum TapCommand {
         )]
         payment_source_hex: String,
         #[arg(
-            long = "payment-max-budget",
-            help = "Maximum standard TAP payment budget.",
-            value_name = "AMOUNT",
+            long = "payment-max-budget-mist",
+            help = "Maximum standard TAP payment budget in MIST, including gas and priority fee.",
+            value_name = "MIST",
             default_value_t = 0u64
         )]
-        payment_max_budget: u64,
+        payment_max_budget_mist: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -372,22 +371,14 @@ pub(crate) enum TapCommand {
         remote: Vec<String>,
         #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
         metadata: Vec<String>,
-        #[arg(
-            long = "execution-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        execution_priority_fee_per_gas_unit: u64,
+        #[arg(long = "execution-priority-fee-percentage", value_name = "PERCENTAGE")]
+        execution_priority_fee_percentage: Option<u64>,
         #[command(flatten)]
         schedule_start: crate::scheduler::task::ScheduleStartOptions,
         #[command(flatten)]
         schedule_deadline: crate::scheduler::task::ScheduleDeadlineOptions,
-        #[arg(
-            long = "schedule-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        schedule_priority_fee_per_gas_unit: u64,
+        #[arg(long = "schedule-priority-fee-percentage", value_name = "PERCENTAGE")]
+        schedule_priority_fee_percentage: Option<u64>,
         #[arg(
             long = "generator",
             value_enum,
@@ -397,12 +388,12 @@ pub(crate) enum TapCommand {
         generator: crate::scheduler::task::TaskGeneratorArg,
         #[arg(long = "payment-source", value_enum, value_name = "SOURCE")]
         payment_source: TapTaskPaymentSourceArg,
-        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
-        prepay_amount: u64,
+        #[arg(long = "prepay-amount-mist", value_name = "MIST")]
+        prepay_amount_mist: u64,
         #[arg(long = "refund-recipient", value_name = "ADDRESS")]
         refund_recipient: Option<sui::types::Address>,
-        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
-        occurrence_budget: u64,
+        #[arg(long = "occurrence-budget-mist", value_name = "MIST")]
+        occurrence_budget_mist: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -569,7 +560,7 @@ pub(crate) enum PaymentsCommand {
         all: bool,
     },
     #[command(
-        about = "Resolve a standard TAP payment by returning funds to the invoker given the execution is finished. Routes through `accomplish_tap_execution_payment_from_agent_vault` when `--alias`/`--agent-id` is supplied, otherwise calls `accomplish_tap_execution_payment`."
+        about = "Resolve a standard TAP payment. Routes through the agent-vault settlement when `--alias`/`--agent-id` is supplied."
     )]
     Resolve {
         #[arg(
@@ -684,7 +675,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             interface_revision,
             payment_mode,
-            agent_funded_max_budget,
+            agent_funded_max_budget_mist,
             recurrence_kind,
             min_interval_ms,
             max_occurrences,
@@ -697,7 +688,7 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 dag_id,
                 interface_revision,
                 payment_mode,
-                agent_funded_max_budget,
+                agent_funded_max_budget_mist,
                 recurrence_kind,
                 min_interval_ms,
                 max_occurrences,
@@ -747,9 +738,9 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             entry_group,
             input_json,
             remote,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             payment_source_hex,
-            payment_max_budget,
+            payment_max_budget_mist,
             gas,
         } => {
             execute_agent_dag_skill(
@@ -758,9 +749,9 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 entry_group,
                 input_json,
                 remote,
-                priority_fee_per_gas_unit,
+                priority_fee_percentage,
                 payment_source_hex,
-                payment_max_budget,
+                payment_max_budget_mist,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -774,15 +765,15 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             input_json,
             remote,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             schedule_start,
             schedule_deadline,
-            schedule_priority_fee_per_gas_unit,
+            schedule_priority_fee_percentage,
             generator,
             payment_source,
-            prepay_amount,
+            prepay_amount_mist,
             refund_recipient,
-            occurrence_budget,
+            occurrence_budget_mist,
             gas,
         } => {
             let crate::scheduler::task::ScheduleStartOptions {
@@ -800,16 +791,16 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 input_json,
                 remote,
                 metadata,
-                execution_priority_fee_per_gas_unit,
+                execution_priority_fee_percentage,
                 schedule_start_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_percentage,
                 generator.into(),
                 payment_source,
-                prepay_amount,
+                prepay_amount_mist,
                 refund_recipient,
-                occurrence_budget,
+                occurrence_budget_mist,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -949,7 +940,7 @@ mod tests {
             dag_id: sui::types::Address::from_static("0xd"),
             interface_revision: 1,
             payment_mode: ArtifactPaymentMode::UserFunded,
-            agent_funded_max_budget: None,
+            agent_funded_max_budget_mist: None,
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
             max_occurrences: 1,
@@ -1165,9 +1156,9 @@ mod tests {
             entry_group: DEFAULT_ENTRY_GROUP.to_string(),
             input_json: serde_json::json!({}),
             remote: Vec::new(),
-            priority_fee_per_gas_unit: 0,
+            priority_fee_percentage: None,
             payment_source_hex: "0xinvalid".to_string(),
-            payment_max_budget: 0,
+            payment_max_budget_mist: 0,
             gas: gas_args(),
         })
         .await
@@ -1662,7 +1653,7 @@ public struct WeatherSkill has drop {}
             agent_execute_options_from_cli("0x0102".to_string(), 99).expect("valid options");
 
         assert_eq!(options.payment_source, vec![1, 2]);
-        assert_eq!(options.payment_max_budget, 99);
+        assert_eq!(options.payment_max_budget_mist, 99);
     }
 
     #[test]

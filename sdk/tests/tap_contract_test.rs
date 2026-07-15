@@ -118,11 +118,11 @@ fn tap_payment_policy_arg(
         SkillPaymentPolicy::UserFunded => {
             tx.call_target(payment_binding::payment_policy_user_funded_target, vec![])
         }
-        SkillPaymentPolicy::AgentFunded { max_budget } => {
-            let max_budget = tx.arg(max_budget)?;
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => {
+            let max_budget_mist = tx.arg(max_budget_mist)?;
             tx.call_target(
                 payment_binding::payment_policy_agent_funded_target,
-                vec![max_budget],
+                vec![max_budget_mist],
             )
         }
     }
@@ -230,6 +230,7 @@ fn nexus_objects() -> NexusObjects {
         },
         gas_service: object_ref("0xd", 1, 13),
         leader_registry: object_ref("0xe", 1, 14),
+        priority_fee_vault: object_ref("0xf", 1, 15),
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }
@@ -502,7 +503,9 @@ fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
     )
     .expect("user-funded payer address source validates");
 
-    let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
+    let agent_funded = SkillPaymentPolicy::AgentFunded {
+        max_budget_mist: 100,
+    };
     assert!(
         nexus_sdk::types::validate_execution_payment_options(
             agent_id,
@@ -644,8 +647,12 @@ fn update_skill_compatibility_builds_dag_and_policy_calls() {
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent_arg = tx.shared_object(&agent, true)?;
         let skill_id = tx.arg(&177_u64)?;
-        let payment_policy =
-            tap_payment_policy_arg(tx, &SkillPaymentPolicy::AgentFunded { max_budget: 100 })?;
+        let payment_policy = tap_payment_policy_arg(
+            tx,
+            &SkillPaymentPolicy::AgentFunded {
+                max_budget_mist: 100,
+            },
+        )?;
         let schedule_policy = tap_schedule_policy_arg(
             tx,
             &SkillSchedulePolicy {

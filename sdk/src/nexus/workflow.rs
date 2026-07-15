@@ -9,12 +9,14 @@ use crate::{
     move_bindings::interface::{agent::SkillDagBinding, graph::InputPort},
     types::{
         payment_source_from_address,
+        quote_priority_payment_budget,
         resolve_active_tap_skill_execution_target,
         resolve_default_tap_dag_executor,
         validate_execution_payment_options,
         AgentId,
         AgentRegistrySnapshot,
         DefaultDagExecutorRecord,
+        PriorityPaymentBudgetInput,
         SkillId,
         SkillRevisionLookupKey,
         DEFAULT_ENTRY_GROUP,
@@ -90,7 +92,7 @@ pub struct TapExecutionSubmitMetadata {
     pub skill_id: SkillId,
     pub dag_id: sui::types::Address,
     pub skill_revision_key: SkillRevisionLookupKey,
-    pub payment_max_budget: u64,
+    pub payment_max_budget_mist: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -371,7 +373,33 @@ pub struct AgentDagExecuteOptions {
     pub payment_source: Vec<u8>,
     pub payment_coin: Option<sui::types::ObjectReference>,
     pub payment_coin_balance: Option<u64>,
-    pub payment_max_budget: u64,
+    pub payment_max_budget_mist: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ResolvedAgentDagPaymentBudget {
+    payment_max_budget_mist: u64,
+}
+
+fn resolve_agent_dag_payment_budget(
+    options: &AgentDagExecuteOptions,
+    priority_fee_percentage: Option<u64>,
+) -> anyhow::Result<ResolvedAgentDagPaymentBudget> {
+    let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
+        max_budget_mist: options.payment_max_budget_mist,
+        priority_fee_percentage,
+        gas_budget_mist: None,
+    })?;
+    if quote.gas_budget_mist == 0 {
+        return Err(anyhow!(
+            "TAP execution payment max budget {} MIST cannot fund a nonzero gas budget",
+            options.payment_max_budget_mist
+        ));
+    }
+
+    Ok(ResolvedAgentDagPaymentBudget {
+        payment_max_budget_mist: options.payment_max_budget_mist,
+    })
 }
 
 #[cfg(feature = "walrus")]
@@ -427,8 +455,8 @@ pub struct InspectExecutionCompletionResult {
 
 pub struct ExecutionCostResult {
     pub payment_id: sui::types::Address,
-    pub max_budget: u64,
-    pub locked_budget: u64,
+    pub max_budget_mist: u64,
+    pub locked_budget_mist: u64,
     pub consumed: u64,
     pub outstanding_locks: u64,
     pub accomplished: bool,
@@ -1125,8 +1153,7 @@ impl WorkflowActions {
     /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
     /// is expected.
     ///
-    /// `priority_fee_per_gas_unit` is the per-transaction priority fee to pass
-    /// down to the DAG execution.
+    /// `priority_fee_percentage` is normalized to the effective priority fee used by payment setup.
     ///
     /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
     #[cfg(feature = "walrus")]
@@ -1134,7 +1161,7 @@ impl WorkflowActions {
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
     ) -> Result<ExecuteResult, NexusError> {
@@ -1142,7 +1169,7 @@ impl WorkflowActions {
         self.execute_default_agent_dag(
             dag_object_id,
             entry_data,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group,
             storage_conf,
             AgentDagExecuteOptions {
@@ -1150,7 +1177,7 @@ impl WorkflowActions {
                     .map_err(NexusError::TransactionBuilding)?,
                 payment_coin: None,
                 payment_coin_balance: None,
-                payment_max_budget: self.client.gas.get_budget(),
+                payment_max_budget_mist: self.client.gas.get_budget(),
             },
         )
         .await
@@ -1164,7 +1191,7 @@ impl WorkflowActions {
         &self,
         dag_object_id: sui::types::Address,
         entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         options: AgentDagExecuteOptions,
@@ -1200,19 +1227,21 @@ impl WorkflowActions {
         let default_executor = resolve_default_agent_dag_executor(nexus_objects, &registry.data)
             .map_err(NexusError::Parsing)?;
 
+        let payment_budget = resolve_agent_dag_payment_budget(&options, priority_fee_percentage)
+            .map_err(NexusError::TransactionBuilding)?;
         validate_execution_payment_options(
             default_executor.target.agent_id,
             &default_executor.skill_revision.requirements.payment_policy,
             &options.payment_source,
-            options.payment_max_budget,
+            payment_budget.payment_max_budget_mist,
             address,
         )
         .map_err(NexusError::TransactionBuilding)?;
         if let Some(balance) = options.payment_coin_balance {
-            if balance < options.payment_max_budget {
+            if balance < payment_budget.payment_max_budget_mist {
                 return Err(NexusError::TransactionBuilding(anyhow!(
                     "TAP execution payment coin balance {balance} is below requested budget {}",
-                    options.payment_max_budget
+                    payment_budget.payment_max_budget_mist
                 )));
             }
         }
@@ -1224,7 +1253,7 @@ impl WorkflowActions {
             payment_source: options.payment_source,
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
-            payment_max_budget: options.payment_max_budget,
+            payment_max_budget_mist: payment_budget.payment_max_budget_mist,
         };
 
         let transaction_input_data = input_data
@@ -1240,7 +1269,7 @@ impl WorkflowActions {
         let tx = dag::execute_default_agent_dag_ptb(
             nexus_objects,
             &dag.object_ref(),
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &transaction_input_data,
             &agent_execution,
@@ -1299,7 +1328,7 @@ impl WorkflowActions {
                 skill_id: default_executor.target.skill_id,
                 dag_id: dag.object_id,
                 skill_revision_key: default_executor.skill_revision.key,
-                payment_max_budget: options.payment_max_budget,
+                payment_max_budget_mist: payment_budget.payment_max_budget_mist,
             }),
         })
     }
@@ -1315,7 +1344,7 @@ impl WorkflowActions {
         agent_id: AgentId,
         skill_id: SkillId,
         entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_per_gas_unit: u64,
+        priority_fee_percentage: Option<u64>,
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
         options: AgentDagExecuteOptions,
@@ -1366,19 +1395,21 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
+        let payment_budget = resolve_agent_dag_payment_budget(&options, priority_fee_percentage)
+            .map_err(NexusError::TransactionBuilding)?;
         validate_execution_payment_options(
             agent_id,
             &target.skill_revision.requirements.payment_policy,
             &options.payment_source,
-            options.payment_max_budget,
+            payment_budget.payment_max_budget_mist,
             address,
         )
         .map_err(NexusError::TransactionBuilding)?;
         if let Some(balance) = options.payment_coin_balance {
-            if balance < options.payment_max_budget {
+            if balance < payment_budget.payment_max_budget_mist {
                 return Err(NexusError::TransactionBuilding(anyhow!(
                     "TAP execution payment coin balance {balance} is below requested budget {}",
-                    options.payment_max_budget
+                    payment_budget.payment_max_budget_mist
                 )));
             }
         }
@@ -1390,7 +1421,7 @@ impl WorkflowActions {
             payment_source: options.payment_source,
             payment_coin: options.payment_coin,
             payment_coin_balance: options.payment_coin_balance,
-            payment_max_budget: options.payment_max_budget,
+            payment_max_budget_mist: payment_budget.payment_max_budget_mist,
         };
 
         let transaction_input_data = input_data
@@ -1409,7 +1440,7 @@ impl WorkflowActions {
             nexus_objects,
             &dag.object_ref(),
             agent_input,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
             &transaction_input_data,
             &agent_execution,
@@ -1466,7 +1497,7 @@ impl WorkflowActions {
                 skill_id,
                 dag_id,
                 skill_revision_key: target.skill_revision.key,
-                payment_max_budget: options.payment_max_budget,
+                payment_max_budget_mist: payment_budget.payment_max_budget_mist,
             }),
         })
     }
@@ -1624,8 +1655,9 @@ impl WorkflowActions {
     /// discover or submit ToolGas candidates.
     ///
     /// If a double-expired active walk is blocked by a finalized on-chain
-    /// result whose required stamps are insufficient, this prepends the
-    /// self-validating broken-result cleanup call before aborting.
+    /// result whose required stamps are insufficient, this returns a local
+    /// transaction-building error because the current workflow package no
+    /// longer exposes a broken-result cleanup entrypoint.
     pub async fn abort_expired_execution(
         &self,
         dag_execution_id: sui::types::Address,
@@ -1883,6 +1915,7 @@ impl WorkflowActions {
                     let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
                     let result = tx.shared_object(&result_ref, true)?;
                     let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+                    let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
                     let clock = tx.clock()?;
                     dag::settle_onchain_tool_result_for_walk(
                         tx,
@@ -1891,6 +1924,7 @@ impl WorkflowActions {
                         tool_registry,
                         result,
                         leader_registry,
+                        priority_fee_vault,
                         plan.walk_index,
                         &expected_vertex,
                         tool_witness_id,
@@ -2060,8 +2094,8 @@ impl ExecutionCostResult {
     fn from_payment(payment: ExecutionPayment) -> Self {
         Self {
             payment_id: payment.payment_id(),
-            max_budget: payment.max_budget,
-            locked_budget: payment.locked_budget,
+            max_budget_mist: payment.max_budget_mist,
+            locked_budget_mist: payment.locked_budget_mist,
             consumed: payment.consumed,
             outstanding_locks: payment.locks(),
             accomplished: payment.accomplished,
@@ -2345,7 +2379,7 @@ mod tests {
             entry_group: graph_move::EntryGroup::new(DEFAULT_ENTRY_GROUP),
             invoker: sui::types::Address::from_static("0x1"),
             created_at: 0,
-            priority_fee_per_gas_unit: 0,
+            priority_fee_percentage: 0,
             agent_id: object_id(sui::types::Address::from_static("0xa")),
             skill_id: 11,
             interface_version: InterfaceVersion::new(7),
@@ -3055,14 +3089,14 @@ mod tests {
             ])),
         )]);
 
-        let price_priority_fee = 0_u64;
+        let priority_fee_percentage = None;
 
         let result = client
             .workflow()
             .execute(
                 *dag_ref.object_id(),
                 entry_data,
-                price_priority_fee,
+                priority_fee_percentage,
                 None,
                 &StorageConf::default(),
             )
@@ -3072,7 +3106,7 @@ mod tests {
         assert_eq!(result.execution_object_id, execution_object_id);
         assert_eq!(result.tx_digest, tx_digest);
         let tap_execution = result.tap_execution.expect("TAP execution metadata");
-        assert_eq!(tap_execution.payment_max_budget, 1000);
+        assert_eq!(tap_execution.payment_max_budget_mist, 1000);
     }
 
     #[cfg(feature = "walrus")]
@@ -3222,11 +3256,11 @@ mod tests {
                 agent_id,
                 skill_id,
                 entry_data,
-                0,
+                None,
                 Some("custom"),
                 &StorageConf::default(),
                 AgentDagExecuteOptions {
-                    payment_max_budget: 100,
+                    payment_max_budget_mist: 100,
                     ..Default::default()
                 },
             )
@@ -3239,7 +3273,37 @@ mod tests {
         assert_eq!(metadata.agent_id, agent_id);
         assert_eq!(metadata.skill_id, skill_id);
         assert_eq!(metadata.dag_id, *dag_ref.object_id());
-        assert_eq!(metadata.payment_max_budget, 100);
+        assert_eq!(metadata.payment_max_budget_mist, 100);
+    }
+
+    #[test]
+    fn agent_dag_payment_max_budget_is_total_mist_ceiling() {
+        let budget = resolve_agent_dag_payment_budget(
+            &AgentDagExecuteOptions {
+                payment_max_budget_mist: 120,
+                ..Default::default()
+            },
+            Some(20),
+        )
+        .expect("total MIST ceiling should resolve");
+
+        assert_eq!(budget.payment_max_budget_mist, 120);
+    }
+
+    #[test]
+    fn agent_dag_payment_max_budget_requires_nonzero_gas_capacity() {
+        let error = resolve_agent_dag_payment_budget(
+            &AgentDagExecuteOptions {
+                payment_max_budget_mist: 0,
+                ..Default::default()
+            },
+            Some(20),
+        )
+        .expect_err("zero total ceiling cannot fund gas");
+
+        assert!(error
+            .to_string()
+            .contains("cannot fund a nonzero gas budget"));
     }
 
     #[tokio::test]
@@ -3755,13 +3819,18 @@ mod tests {
                     crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                         sui::types::Address::from_static("0x1"),
                     ),
-                max_budget: 100_000,
-                locked_budget: 100_000,
+                max_budget_mist: 100_000,
+                gas_budget_mist: 83_334,
+                priority_fee_reserve_mist: 16_666,
+                locked_budget_mist: 100_000,
                 funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 58_000,
                     phantom_t0: std::marker::PhantomData,
                 },
                 consumed: 42_000,
+                tool_fee_charged: 42_000,
+                priority_fee_charged: 0,
+                priority_fee_percentage: 20,
                 accomplished: true,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Accomplished,
@@ -3791,8 +3860,8 @@ mod tests {
             .expect("Failed to fetch execution cost");
 
         assert_eq!(result.payment_id, *payment_ref.object_id());
-        assert_eq!(result.max_budget, 100_000);
-        assert_eq!(result.locked_budget, 100_000);
+        assert_eq!(result.max_budget_mist, 100_000);
+        assert_eq!(result.locked_budget_mist, 100_000);
         assert_eq!(result.consumed, 42_000);
         assert_eq!(result.outstanding_locks, 0);
         assert!(result.accomplished);
@@ -3866,13 +3935,18 @@ mod tests {
                     crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                         sui::types::Address::from_static("0x1"),
                     ),
-                max_budget: 100_000,
-                locked_budget: 0,
+                max_budget_mist: 100_000,
+                gas_budget_mist: 83_334,
+                priority_fee_reserve_mist: 16_666,
+                locked_budget_mist: 0,
                 funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 100_000,
                     phantom_t0: std::marker::PhantomData,
                 },
                 consumed: 0,
+                tool_fee_charged: 0,
+                priority_fee_charged: 0,
+                priority_fee_percentage: 20,
                 accomplished: false,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Pending,
@@ -4003,13 +4077,18 @@ mod tests {
                     crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                         sui::types::Address::from_static("0x1"),
                     ),
-                max_budget: 100_000,
-                locked_budget: 10,
+                max_budget_mist: 100_000,
+                gas_budget_mist: 83_334,
+                priority_fee_reserve_mist: 16_666,
+                locked_budget_mist: 10,
                 funds: crate::move_bindings::sui_framework::balance::Balance {
                     value: 100_000,
                     phantom_t0: std::marker::PhantomData,
                 },
                 consumed: 0,
+                tool_fee_charged: 0,
+                priority_fee_charged: 0,
+                priority_fee_percentage: 20,
                 accomplished: false,
                 refunded: false,
                 final_state: ExecutionPaymentFinalState::Pending,

@@ -64,14 +64,14 @@ impl SkillPaymentPolicy {
         Self::UserFunded
     }
 
-    pub fn agent_funded(max_budget: u64) -> Self {
-        Self::AgentFunded { max_budget }
+    pub fn agent_funded(max_budget_mist: u64) -> Self {
+        Self::AgentFunded { max_budget_mist }
     }
 
-    pub fn max_budget(&self) -> u64 {
+    pub fn max_budget_mist(&self) -> u64 {
         match self {
             Self::UserFunded => 0,
-            Self::AgentFunded { max_budget } => *max_budget,
+            Self::AgentFunded { max_budget_mist } => *max_budget_mist,
         }
     }
 }

@@ -843,8 +843,11 @@ mod direct_event_tests {
                 interface_revision: interface_version(26),
                 payment_policy: payment_types::SkillPaymentPolicy::UserFunded,
                 source_kind: payment_source(),
-                max_budget: 27,
-                locked_budget: 28,
+                max_budget_mist: 27,
+                gas_budget_mist: 23,
+                priority_fee_reserve_mist: 4,
+                locked_budget_mist: 28,
+                priority_fee_percentage: 20,
             }
         );
         check!(
@@ -882,8 +885,8 @@ mod direct_event_tests {
                 skill_id: 30,
                 interface_version: interface_version(31),
                 source_kind: payment_source(),
-                prepaid_amount: 32,
-                occurrence_budget: 33,
+                prepaid_amount_mist: 32,
+                occurrence_budget_mist: 33,
                 stored_under_agent: false,
             }
         );
@@ -963,7 +966,7 @@ mod direct_event_tests {
                 interface_version: interface_version(43),
                 source_kind: payment_source(),
                 refill_amount: 44,
-                occurrence_budget: 45,
+                occurrence_budget_mist: 45,
                 remaining_funds: 46,
             }
         );
@@ -1168,6 +1171,15 @@ mod direct_event_tests {
             }
         );
         check!(
+            "ExecutionPaymentInsufficientSettlementEvent",
+            check!(@tag objects.workflow_pkg_id, "execution_events", "ExecutionPaymentInsufficientSettlementEvent"),
+            ExecutionPaymentInsufficientSettlementEvent {
+                execution: id(addr(0x5d)),
+                walk_index: 70,
+                required_shortfall: 71,
+            }
+        );
+        check!(
             "MissedOccurrenceEvent",
             check!(@tag objects.scheduler_pkg_id, "scheduler", "MissedOccurrenceEvent"),
             MissedOccurrenceEvent {
@@ -1175,7 +1187,7 @@ mod direct_event_tests {
                 start_time_ms: 70,
                 deadline_ms: MoveOption::from_option(Some(71)),
                 pruned_at: 72,
-                priority_fee_per_gas_unit: 73,
+                priority_fee_percentage: 73,
                 generator: generator(),
             }
         );
@@ -1186,7 +1198,7 @@ mod direct_event_tests {
                 task: id(addr(0x5e)),
                 start_time_ms: 74,
                 deadline_ms: MoveOption::from_option(None),
-                priority_fee_per_gas_unit: 75,
+                priority_fee_percentage: 75,
                 generator: generator(),
                 executed_at: 76,
             }
@@ -1200,7 +1212,7 @@ mod direct_event_tests {
                 deadline_offset_ms: MoveOption::from_option(Some(78)),
                 max_iterations: MoveOption::from_option(Some(79)),
                 generated: MoveOption::from_option(Some(80)),
-                priority_fee_per_gas_unit: 81,
+                priority_fee_percentage: 81,
                 last_generated_start_ms: MoveOption::from_option(Some(82)),
             }
         );
@@ -1277,6 +1289,6 @@ mod direct_event_tests {
             }
         );
 
-        assert_eq!(parsed, 46);
+        assert_eq!(parsed, 47);
     }
 }

@@ -16,6 +16,20 @@ use {
     },
 };
 
+fn agent_dag_execute_options_from_cli_budget(
+    owner: sui::types::Address,
+    payment_coin: sui::types::ObjectReference,
+    payment_coin_balance: u64,
+    payment_max_budget_mist: u64,
+) -> AnyResult<AgentDagExecuteOptions, NexusCliError> {
+    Ok(AgentDagExecuteOptions {
+        payment_source: payment_source_from_address(owner).map_err(NexusCliError::Any)?,
+        payment_coin: Some(payment_coin),
+        payment_coin_balance: Some(payment_coin_balance),
+        payment_max_budget_mist,
+    })
+}
+
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_dag(
@@ -24,9 +38,9 @@ pub(crate) async fn execute_dag(
     input_json: serde_json::Value,
     remote: Vec<String>,
     inspect: bool,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: u64,
     payment_coin: Option<sui::types::Address>,
-    payment_budget: Option<u64>,
+    payment_max_budget_mist: Option<u64>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -64,10 +78,10 @@ pub(crate) async fn execute_dag(
     }
     let (payment_coin, balance) =
         fetch_coin_with_balance(client.clone(), owner, Some(payment_coin_id), 0).await?;
-    let budget = payment_budget.unwrap_or(balance);
-    if budget > balance {
+    let payment_max_budget_mist = payment_max_budget_mist.unwrap_or(balance);
+    if payment_max_budget_mist > balance {
         return Err(NexusCliError::Any(anyhow!(
-            "payment budget {budget} exceeds payment coin balance {balance}"
+            "payment maximum budget {payment_max_budget_mist} MIST exceeds payment coin balance {balance} MIST"
         )));
     }
 
@@ -80,12 +94,12 @@ pub(crate) async fn execute_dag(
     // Store ports remote if they need to be stored remotely.
     let input_data =
         workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
-    let agent_dag_options = AgentDagExecuteOptions {
-        payment_source: payment_source_from_address(owner).map_err(NexusCliError::Any)?,
-        payment_coin: Some(payment_coin),
-        payment_coin_balance: Some(balance),
-        payment_max_budget: budget,
-    };
+    let agent_dag_options = agent_dag_execute_options_from_cli_budget(
+        owner,
+        payment_coin,
+        balance,
+        payment_max_budget_mist,
+    )?;
 
     let tx_handle = loading!("Crafting and executing transaction...");
 
@@ -94,7 +108,7 @@ pub(crate) async fn execute_dag(
         .execute_default_agent_dag(
             dag_id,
             input_data,
-            priority_fee_per_gas_unit,
+            Some(priority_fee_percentage),
             Some(&entry_group),
             &storage_conf,
             agent_dag_options,
@@ -145,4 +159,23 @@ pub(crate) async fn execute_dag(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, nexus_sdk::test_utils::sui_mocks};
+
+    #[test]
+    fn dag_execute_payment_budget_is_total_escrow() {
+        let owner = sui::types::Address::from_static("0xa11ce");
+        let payment_coin = sui_mocks::mock_sui_object_ref();
+
+        let options =
+            agent_dag_execute_options_from_cli_budget(owner, payment_coin.clone(), 1_000, 120)
+                .expect("CLI options should build");
+
+        assert_eq!(options.payment_coin, Some(payment_coin));
+        assert_eq!(options.payment_coin_balance, Some(1_000));
+        assert_eq!(options.payment_max_budget_mist, 120);
+    }
 }

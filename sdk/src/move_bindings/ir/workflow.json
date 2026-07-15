@@ -419,7 +419,7 @@
                   "ty": "U64"
                 },
                 {
-                  "name": "priority_fee_per_gas_unit",
+                  "name": "priority_fee_percentage",
                   "position": 5,
                   "ty": "U64"
                 },
@@ -3054,6 +3054,24 @@
                   }
                 }
               }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": []
@@ -3952,7 +3970,7 @@
               "ty": "Address"
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -4012,7 +4030,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -4229,7 +4247,7 @@
               "ty": "Address"
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -4265,7 +4283,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -4464,7 +4482,7 @@
               "ty": "Address"
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -4492,7 +4510,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -4726,7 +4744,7 @@
               "ty": "Address"
             },
             {
-              "name": "priority_fee_per_gas_unit",
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -5105,6 +5123,42 @@
                         "address": "0xa4",
                         "module": "execution",
                         "name": "CommittedToolResult"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }
@@ -7917,6 +7971,24 @@
                   }
                 }
               }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": [
@@ -7940,6 +8012,24 @@
                         "address": "0xa4",
                         "module": "execution",
                         "name": "CommittedToolResult"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -7996,6 +8086,24 @@
                         "address": "0xa4",
                         "module": "execution",
                         "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -9719,6 +9827,42 @@
                         "address": "0xa3",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }
@@ -11570,7 +11714,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -11721,7 +11865,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -11890,7 +12034,7 @@
               }
             },
             {
-              "name": "payment_max_budget",
+              "name": "payment_max_budget_mist",
               "ty": "U64"
             },
             {
@@ -17803,6 +17947,42 @@
               }
             },
             {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "walk_index",
               "ty": "U64"
             },
@@ -17898,6 +18078,42 @@
                         "address": "0xa3",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }
@@ -18044,6 +18260,42 @@
                         "address": "0xa3",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }
@@ -18225,6 +18477,24 @@
                         "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }
@@ -19686,6 +19956,24 @@
                         "address": "0xa3",
                         "module": "leader",
                         "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
                       },
                       "type_arguments": []
                     }

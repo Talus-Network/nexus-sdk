@@ -221,6 +221,7 @@ events! {
     crate::move_bindings::workflow::execution_events::WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
     crate::move_bindings::workflow::execution_events::EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
     crate::move_bindings::workflow::execution_events::ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
+    crate::move_bindings::workflow::execution_events::ExecutionPaymentInsufficientSettlementEvent => ExecutionPaymentInsufficientSettlement, "ExecutionPaymentInsufficientSettlementEvent",
     crate::move_bindings::scheduler::scheduler::MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
     crate::move_bindings::scheduler::scheduler::OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
     crate::move_bindings::scheduler::scheduler::PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",

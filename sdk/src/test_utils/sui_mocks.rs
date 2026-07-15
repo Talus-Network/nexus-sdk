@@ -56,6 +56,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         },
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
+        priority_fee_vault: mock_sui_object_ref(),
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }

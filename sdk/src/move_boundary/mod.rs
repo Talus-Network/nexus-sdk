@@ -545,6 +545,7 @@ mod tests {
             },
             gas_service: obj(6),
             leader_registry: obj(7),
+            priority_fee_vault: obj(8),
             workflow_original_pkg_id: Some(addr(0x40)),
             scheduler_original_pkg_id: Some(addr(0x50)),
         }

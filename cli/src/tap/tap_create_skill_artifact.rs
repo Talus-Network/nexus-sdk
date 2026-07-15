@@ -23,7 +23,7 @@ pub(crate) async fn create_skill_artifact(
     dag_id: sui::types::Address,
     interface_revision: u64,
     payment_mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
@@ -40,7 +40,7 @@ pub(crate) async fn create_skill_artifact(
         interface_revision,
         input_commitment,
         payment_mode,
-        agent_funded_max_budget,
+        agent_funded_max_budget_mist,
         recurrence_kind,
         min_interval_ms,
         max_occurrences,
@@ -68,7 +68,7 @@ fn build_artifact(
     interface_revision: u64,
     input_commitment: Vec<u8>,
     payment_mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
@@ -79,7 +79,7 @@ fn build_artifact(
         return Err(NexusCliError::Any(anyhow!("skill name must not be empty")));
     }
 
-    let payment_policy = payment_policy_from_cli(payment_mode, agent_funded_max_budget)?;
+    let payment_policy = payment_policy_from_cli(payment_mode, agent_funded_max_budget_mist)?;
     let schedule_policy = schedule_policy_from_cli(
         &recurrence_kind,
         min_interval_ms,
@@ -134,29 +134,29 @@ async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8
 
 fn payment_policy_from_cli(
     mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
 ) -> AnyResult<SkillPaymentPolicy, NexusCliError> {
     match mode {
         ArtifactPaymentMode::UserFunded => {
-            if let Some(max_budget) = agent_funded_max_budget {
+            if let Some(max_budget_mist) = agent_funded_max_budget_mist {
                 return Err(NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget={max_budget} is only valid with --payment-mode agent-funded"
+                    "--agent-funded-max-budget-mist={max_budget_mist} is only valid with --payment-mode agent-funded"
                 )));
             }
             Ok(SkillPaymentPolicy::user_funded())
         }
         ArtifactPaymentMode::AgentFunded => {
-            let max_budget = agent_funded_max_budget.ok_or_else(|| {
+            let max_budget_mist = agent_funded_max_budget_mist.ok_or_else(|| {
                 NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget is required with --payment-mode agent-funded"
+                    "--agent-funded-max-budget-mist is required with --payment-mode agent-funded"
                 ))
             })?;
-            if max_budget == 0 {
+            if max_budget_mist == 0 {
                 return Err(NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget must be greater than zero"
+                    "--agent-funded-max-budget-mist must be greater than zero"
                 )));
             }
-            Ok(SkillPaymentPolicy::agent_funded(max_budget))
+            Ok(SkillPaymentPolicy::agent_funded(max_budget_mist))
         }
     }
 }
@@ -258,7 +258,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("--agent-funded-max-budget is required"),
+                .contains("--agent-funded-max-budget-mist is required"),
             "unexpected error: {error}"
         );
     }

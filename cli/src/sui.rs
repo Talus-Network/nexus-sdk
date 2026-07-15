@@ -373,6 +373,11 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
+                [priority_fee_vault]
+                object_id = "0x14"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
                 [verifier_registry]
                 object_id = "0x12"
                 version = 1
@@ -450,6 +455,11 @@ mod tests {
             *objects.leader_registry.digest(),
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
+        assert_eq!(
+            *objects.priority_fee_vault.object_id(),
+            sui::types::Address::from_static("0x14")
+        );
+        assert_eq!(objects.priority_fee_vault.version(), 1);
         assert_eq!(
             *objects.verifier_registry.object_id(),
             sui::types::Address::from_static("0x12")

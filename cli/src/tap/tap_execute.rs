@@ -7,15 +7,15 @@ pub(crate) async fn execute_agent_dag_skill(
     entry_group: String,
     input_json: serde_json::Value,
     remote: Vec<String>,
-    priority_fee_per_gas_unit: u64,
+    priority_fee_percentage: Option<u64>,
     payment_source_hex: String,
-    payment_max_budget: u64,
+    payment_max_budget_mist: u64,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing agent DAG skill '{agent_id}:{skill_id}'");
 
-    let options = agent_execute_options_from_cli(payment_source_hex, payment_max_budget)?;
+    let options = agent_execute_options_from_cli(payment_source_hex, payment_max_budget_mist)?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     ensure_cli_mutable_agent(&nexus_client, agent_id).await?;
     let conf = CliConf::load().await.unwrap_or_default();
@@ -31,7 +31,7 @@ pub(crate) async fn execute_agent_dag_skill(
             agent_id,
             skill_id,
             input_data,
-            priority_fee_per_gas_unit,
+            priority_fee_percentage,
             Some(&entry_group),
             &storage_conf,
             options,
@@ -76,7 +76,7 @@ mod tests {
             DEFAULT_ENTRY_GROUP.to_string(),
             serde_json::json!({}),
             Vec::new(),
-            0,
+            None,
             "0xinvalid".to_string(),
             0,
             None,

@@ -78,24 +78,16 @@ pub(crate) enum TaskCommand {
         /// Metadata entries to attach to the task as key=value pairs.
         #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
         metadata: Vec<String>,
-        /// Priority fee per gas unit for DAG executions launched by the task.
-        #[arg(
-            long = "execution-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        execution_priority_fee_per_gas_unit: u64,
+        /// Optional priority fee percentage for DAG executions launched by the task.
+        #[arg(long = "execution-priority-fee-percentage", value_name = "PERCENTAGE")]
+        execution_priority_fee_percentage: Option<u64>,
         #[command(flatten)]
         schedule_start: ScheduleStartOptions,
         #[command(flatten)]
         schedule_deadline: ScheduleDeadlineOptions,
-        /// Priority fee per gas unit for the initial occurrence.
-        #[arg(
-            long = "schedule-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        schedule_priority_fee_per_gas_unit: u64,
+        /// Optional priority fee percentage for the initial occurrence.
+        #[arg(long = "schedule-priority-fee-percentage", value_name = "PERCENTAGE")]
+        schedule_priority_fee_percentage: Option<u64>,
         /// Generator responsible for producing future occurrences for this task.
         #[arg(
             long = "generator",
@@ -105,11 +97,11 @@ pub(crate) enum TaskCommand {
         )]
         generator: TaskGeneratorArg,
         /// Amount of SUI, in MIST, to reserve for default-agent scheduled execution payments.
-        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
-        prepay_amount: u64,
+        #[arg(long = "prepay-amount-mist", value_name = "MIST")]
+        prepay_amount_mist: u64,
         /// Maximum SUI, in MIST, that each occurrence may spend from the payment reserve.
-        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
-        occurrence_budget: u64,
+        #[arg(long = "occurrence-budget-mist", value_name = "MIST")]
+        occurrence_budget_mist: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -169,13 +161,13 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             input_json,
             remote,
             metadata,
-            execution_priority_fee_per_gas_unit,
+            execution_priority_fee_percentage,
             schedule_start,
             schedule_deadline,
-            schedule_priority_fee_per_gas_unit,
+            schedule_priority_fee_percentage,
             generator,
-            prepay_amount,
-            occurrence_budget,
+            prepay_amount_mist,
+            occurrence_budget_mist,
             gas,
         } => {
             let ScheduleStartOptions {
@@ -192,14 +184,14 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 input_json,
                 remote,
                 metadata,
-                execution_priority_fee_per_gas_unit,
+                execution_priority_fee_percentage,
                 schedule_start_ms,
                 schedule_start_offset_ms,
                 schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
+                schedule_priority_fee_percentage,
                 generator.into(),
-                prepay_amount,
-                occurrence_budget,
+                prepay_amount_mist,
+                occurrence_budget_mist,
                 gas,
             )
             .await
