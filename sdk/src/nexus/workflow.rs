@@ -1525,14 +1525,15 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                let payment_gas_config = self.client.gas_config();
-                payment_gas_config
-                    .release_gas_coin(sui::types::ObjectReference::new(
-                        updated_payment_coin.object_id(),
-                        updated_payment_coin.version(),
-                        updated_payment_coin.digest(),
-                    ))
-                    .await;
+                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                    payment_gas_pool
+                        .release_gas_coin(sui::types::ObjectReference::new(
+                            updated_payment_coin.object_id(),
+                            updated_payment_coin.version(),
+                            updated_payment_coin.digest(),
+                        ))
+                        .await;
+                }
             }
         }
 
@@ -1696,14 +1697,15 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                self.client
-                    .gas
-                    .release_gas_coin(sui::types::ObjectReference::new(
-                        updated_payment_coin.object_id(),
-                        updated_payment_coin.version(),
-                        updated_payment_coin.digest(),
-                    ))
-                    .await;
+                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                    payment_gas_pool
+                        .release_gas_coin(sui::types::ObjectReference::new(
+                            updated_payment_coin.object_id(),
+                            updated_payment_coin.version(),
+                            updated_payment_coin.digest(),
+                        ))
+                        .await;
+                }
             }
         }
 
@@ -2742,7 +2744,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         Crawler::new(Arc::new(Mutex::new(client)))
     }
 
@@ -5523,7 +5525,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
         let candidates = fetch_tool_gas_refs_for_abort_candidates(
             &crawler,

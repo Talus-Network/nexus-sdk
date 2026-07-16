@@ -204,7 +204,8 @@ pub(crate) fn update_skill_from_artifact_ptb(
     })
 }
 
-/// Build a PTB that deposits MIST from the transaction gas coin into an agent vault.
+/// Builds a [`ProgrammableTransaction`] that deposits MIST from the sender's
+/// address balance into an agent vault.
 pub(crate) fn deposit_agent_payment_vault_for_self_ptb(
     objects: &NexusObjects,
     agent: AgentInput,
@@ -212,9 +213,7 @@ pub(crate) fn deposit_agent_payment_vault_for_self_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let agent = agent.mutable_ptb_argument(tx)?;
-        let amount = tx.arg(&amount)?;
-        let gas = tx.gas();
-        let coin = tx.split_coins(gas, vec![amount])?;
+        let coin = tx.withdraw_sui_coin(amount)?;
         tx.call_target(
             agent_binding::deposit_agent_payment_vault_target,
             vec![agent, coin],
@@ -308,9 +307,7 @@ pub(crate) fn create_agent_task_ptb(
                 authorization_templates,
             } => {
                 let agent = agent.clone().immutable_ptb_argument(tx)?;
-                let prepay_amount_mist = tx.arg(prepay_amount_mist)?;
-                let gas = tx.gas();
-                let prepayment_coin = tx.split_coins(gas, vec![prepay_amount_mist])?;
+                let prepayment_coin = tx.withdraw_sui_coin(*prepay_amount_mist)?;
                 new_invoker_funded_agent_task(
                     tx,
                     metadata,

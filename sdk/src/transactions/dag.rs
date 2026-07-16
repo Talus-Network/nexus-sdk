@@ -515,7 +515,8 @@ pub(crate) fn accomplish_tap_execution_payment_for_self_ptb(
     })
 }
 
-/// Build a PTB that refills TAP execution payment from the transaction gas coin.
+/// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
+/// the sender's address balance.
 pub(crate) fn refill_tap_execution_payment_for_self_ptb(
     objects: &NexusObjects,
     execution: &sui::types::ObjectReference,
@@ -523,9 +524,7 @@ pub(crate) fn refill_tap_execution_payment_for_self_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let execution = tx.shared_object(execution, true)?;
-        let amount = tx.arg(&amount)?;
-        let gas = tx.gas();
-        let coin = tx.split_coins(gas, vec![amount])?;
+        let coin = tx.withdraw_sui_coin(amount)?;
         tx.call_target(
             execution_settlement_binding::refill_tap_execution_payment_target,
             vec![execution, coin],
@@ -2050,9 +2049,7 @@ fn execute_agent_dag_internal(
             _ => owned_payment_coin,
         }
     } else {
-        let payment_amount = tx.arg(&locked_payment_budget_mist)?;
-        let gas = tx.gas();
-        tx.split_coins(gas, vec![payment_amount])?
+        tx.withdraw_sui_coin(locked_payment_budget_mist)?
     };
 
     let results = if default_executor {

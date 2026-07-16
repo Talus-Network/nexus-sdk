@@ -4,6 +4,7 @@
 //!
 //! All CLI functionality should be exported to this module in the future.
 
+pub mod address_balance;
 pub mod client;
 pub mod crawler;
 pub mod error;

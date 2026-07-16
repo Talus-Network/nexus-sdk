@@ -269,9 +269,9 @@ impl EventPoller {
     ) -> Result<mpsc::Receiver<Result<EventPage, PollerError>>, PollerError> {
         let this = Arc::new(self);
 
-        // Validate the URL eagerly — actual clients are created per
-        // reconnection attempt so DNS is always re-resolved.
-        sui::grpc::Client::new(&this.rpc_url).map_err(|_| {
+        // Validate the URL eagerly. Reconnection attempts clone the endpoint's
+        // shared channel; tonic reconnects that channel as needed.
+        sui::grpc::client(&this.rpc_url).map_err(|_| {
             PollerError::Configuration(format!("Invalid GRPC URL '{}'", this.rpc_url))
         })?;
 
@@ -312,9 +312,10 @@ impl EventPoller {
 
                     tracing::info!("[EventPoller] Starting checkpoint stream from checkpoint {from_checkpoint:?} (is_reconnection={is_reconnection})");
 
-                    // Create a fresh client on each reconnection attempt so
-                    // DNS is re-resolved and stale connections are discarded.
-                    let mut client = match sui::grpc::Client::new(&this.rpc_url) {
+                    // Clone the endpoint's shared channel for this stream. A
+                    // clone has independent client state while tonic owns
+                    // connection recovery for the underlying channel.
+                    let mut client = match sui::grpc::client(&this.rpc_url) {
                         Ok(c) => c,
                         Err(e) => {
                             if send_page
@@ -399,7 +400,7 @@ impl EventPoller {
                         let mut client_pool: Vec<Arc<tokio::sync::Mutex<sui::grpc::Client>>> =
                             Vec::with_capacity(parallel);
                         for _ in 0..parallel {
-                            match sui::grpc::Client::new(&this.rpc_url) {
+                            match sui::grpc::client(&this.rpc_url) {
                                 Ok(c) => client_pool.push(Arc::new(tokio::sync::Mutex::new(c))),
                                 Err(e) => {
                                     if send_page
@@ -621,7 +622,7 @@ impl EventPoller {
         mut next_digest: mpsc::Receiver<PendingTransactionDigest>,
         send_page: mpsc::Sender<Result<EventPage, PollerError>>,
     ) -> Result<(), PollerError> {
-        let mut client = sui::grpc::Client::new(&self.rpc_url)
+        let mut client = sui::grpc::client(&self.rpc_url)
             .map(|client| self.transaction_client(client))
             .map_err(|_| {
                 PollerError::Configuration(format!("Invalid GRPC URL '{}'", self.rpc_url))
@@ -755,7 +756,7 @@ impl EventPoller {
                         }
                     }
 
-                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url)
+                    if let Ok(new_client) = sui::grpc::client(&self.rpc_url)
                         .map(|client| self.transaction_client(client))
                     {
                         client = new_client;

@@ -50,7 +50,7 @@ pub async fn find_owned_capability_by_what_for(
             "owner",
         ]));
 
-    let mut client = sui::grpc::Client::new(rpc_url)?;
+    let mut client = sui::grpc::client(rpc_url)?;
     let response = client
         .state_client()
         .list_owned_objects(request)

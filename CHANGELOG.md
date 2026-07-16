@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added an atomic PTB builder for registering multiple off chain tools and their initial network authorization keys from one address balance withdrawal.
 - Move binding regeneration now accepts an optional matching Move source root for restoring
   function parameter names. Network package metadata remains authoritative, and regeneration
   without source keeps deterministic `argN` names.
