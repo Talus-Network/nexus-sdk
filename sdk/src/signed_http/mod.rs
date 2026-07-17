@@ -1,6 +1,6 @@
-//! Minimal Leader-to-Tool signing transport.
+//! Leader-to-Tool signing transport.
 //!
-//! The protocol deliberately signs only the values consumed by the onchain RegisteredKey
+//! The offchain tool prepares signature consumed by the onchain RegisteredKey
 //! verifier:
 //! - the Leader signs `SHA-256(BCS(canonical_tool_inputs))`;
 //! - the Tool signs `domain || leader_signature || deterministic_nonce || SHA-256(result_bytes)`;

@@ -129,15 +129,6 @@ impl<'a> NexusPtbBuilder<'a> {
         ascii_string(&mut self.tx, value)
     }
 
-    /// Build a Move `0x1::string::String` from UTF-8 bytes.
-    pub fn move_string(&mut self, value: impl AsRef<str>) -> anyhow::Result<Argument> {
-        let bytes = self.tx.arg(&value.as_ref().as_bytes().to_vec())?;
-        self.call_target(
-            || CallTarget::new(move_std::call_package(), "string", "utf8"),
-            vec![bytes],
-        )
-    }
-
     /// Build a Move `0x2::object::ID` from an address/object ID.
     pub fn object_id(&mut self, object_id: sui::types::Address) -> Result<Argument, BuildError> {
         let address = self.tx.arg(&object_id)?;

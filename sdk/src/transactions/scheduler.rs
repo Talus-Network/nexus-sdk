@@ -82,9 +82,9 @@ where
     )?;
 
     for (key, value) in key_values.into_iter() {
-        let key = tx.move_string(key.as_ref())?;
+        let key = tx.arg(&MoveString::new(key.as_ref().as_bytes().to_vec()))?;
 
-        let value = tx.move_string(value.as_ref())?;
+        let value = tx.arg(&MoveString::new(value.as_ref().as_bytes().to_vec()))?;
 
         tx.call_target(
             vec_map_binding::insert_target::<MoveString, MoveString>,
