@@ -110,8 +110,8 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
-/// - Applies replay protection via `(tool_id, nonce)` (retries are safe; conflicting replays are rejected).
-/// - Returns the exact BCS `TaggedOutput` bytes and signs `leader_signature || SHA-256(result_bytes)`.
+/// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
+/// - Returns exact BCS `TaggedOutput` bytes and signs the nonce-bound v2 Tool response message.
 /// - Keeps nonce replay and cached-response handling entirely offchain.
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
@@ -130,7 +130,8 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 ///     "allowed_leaders_path": "./allowed_leaders.json",
 ///     "tools": {
 ///       "xyz.dummy.tool@1": {
-///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
+///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
+///         "replay_cache_ttl_ms": 300000
 ///       }
 ///     }
 ///   }
@@ -638,6 +639,7 @@ async fn invoke_handler<T: NexusTool>(
     let auth_runtime = auth.current().await;
     Ok(handle_invoke(
         &auth_runtime,
+        auth.replay(),
         headers,
         body_bytes,
         |auth_ctx, body_bytes| async move {
@@ -750,6 +752,37 @@ mod tests {
         let metadata = payload(b"metadata");
         assert_eq!(metadata.type_hint, DataTypeHint::Raw);
         assert_eq!(metadata.data.one, br#"{"source":"test"}"#);
+    }
+
+    #[test]
+    fn tagged_output_encoding_rejects_non_enum_shapes() {
+        assert!(encode_tagged_output(json!("plain value"))
+            .unwrap_err()
+            .to_string()
+            .contains("externally tagged enum"));
+        assert!(encode_tagged_output(json!({"Ok": {}, "Err": {}}))
+            .unwrap_err()
+            .to_string()
+            .contains("exactly one variant"));
+        assert!(encode_tagged_output(json!({"Ok": 1}))
+            .unwrap_err()
+            .to_string()
+            .contains("payload must be an object"));
+    }
+
+    #[test]
+    fn array_payloads_use_typed_encoding_only_when_all_elements_match() {
+        let homogeneous = typed_nexus_data(json!(["a", "b"])).unwrap();
+        assert_eq!(homogeneous.type_hint, DataTypeHint::String);
+        assert_eq!(homogeneous.data.many, vec![b"a".to_vec(), b"b".to_vec()]);
+
+        let mixed = typed_nexus_data(json!([1, true])).unwrap();
+        assert_eq!(mixed.type_hint, DataTypeHint::Raw);
+        assert_eq!(mixed.data.many, vec![b"1".to_vec(), b"true".to_vec()]);
+
+        let empty = typed_nexus_data(json!([])).unwrap();
+        assert_eq!(empty.type_hint, DataTypeHint::Raw);
+        assert!(empty.data.many.is_empty());
     }
 
     #[tokio::test]

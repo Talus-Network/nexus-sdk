@@ -416,6 +416,13 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
 #[test]
 fn request_walk_context_uses_required_agent_fields() {
     let event = request_walk_event();
+    let key = event
+        .skill_revision_key()
+        .expect("standard request must identify a skill revision");
+    assert_eq!(key.agent_id, addr("0xa1"));
+    assert_eq!(key.skill_id, 177);
+    assert_eq!(key.interface_revision, InterfaceVersion::new(7));
+
     let context = event
         .to_context()
         .expect("complete context should parse")

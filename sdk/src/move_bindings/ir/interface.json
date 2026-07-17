@@ -22024,15 +22024,22 @@
                   }
                 },
                 {
-                  "name": "leader_signature",
+                  "name": "nonce",
                   "position": 1,
                   "ty": {
                     "Vector": "U8"
                   }
                 },
                 {
-                  "name": "tool_signature",
+                  "name": "leader_signature",
                   "position": 2,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "tool_signature",
+                  "position": 3,
                   "ty": {
                     "Vector": "U8"
                   }
@@ -22071,6 +22078,65 @@
                   "ty": {
                     "Vector": "U8"
                   }
+                },
+                {
+                  "name": "nonce",
+                  "position": 2,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa2",
+            "module": "verifier",
+            "name": "ToolInvocationNoncePreimage"
+          },
+          "module": "verifier",
+          "name": "ToolInvocationNoncePreimage",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "execution_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "walk_index",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "vertex_name",
+                  "position": 2,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "iteration",
+                  "position": 3,
+                  "ty": "U64"
                 }
               ]
             }
@@ -22390,6 +22456,37 @@
         },
         {
           "name": "auxiliary_leader_signature",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "verifier",
+                        "name": "RegisteredKeyAuxiliary"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "auxiliary_nonce",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -23128,120 +23225,6 @@
           ]
         },
         {
-          "name": "method_function",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierMethodId"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_module",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierMethodId"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "ascii",
-                  "name": "String"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "method_package",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "VerifierMethodId"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "method_tool_id",
           "visibility": "Public",
           "is_entry": false,
@@ -23546,6 +23529,12 @@
             },
             {
               "name": "input_hash",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "nonce",
               "ty": {
                 "Vector": "U8"
               }
@@ -23906,6 +23895,37 @@
           ]
         },
         {
+          "name": "registered_key_stamp_nonce",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "verifier",
+                        "name": "RegisteredKeyStampData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
           "name": "registered_key_stamp_output_hash",
           "visibility": "Public",
           "is_entry": false,
@@ -23927,6 +23947,37 @@
                     }
                   }
                 }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "registered_key_tool_signature_message",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "leader_signature",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "nonce",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "output_hash",
+              "ty": {
+                "Vector": "U8"
               }
             }
           ],
@@ -24076,6 +24127,46 @@
                 },
                 "type_arguments": []
               }
+            }
+          ]
+        },
+        {
+          "name": "tool_invocation_nonce",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "execution_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "walk_index",
+              "ty": "U64"
+            },
+            {
+              "name": "vertex_name",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "iteration",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
             }
           ]
         },

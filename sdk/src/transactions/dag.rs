@@ -2289,6 +2289,7 @@ mod tests {
                 result: tagged_output(),
                 auxiliary: RegisteredKeyAuxiliary {
                     input_hash: vec![1; 32],
+                    nonce: vec![4; 32],
                     leader_signature: vec![2; 64],
                     tool_signature: vec![3; 64],
                 },
@@ -2564,5 +2565,49 @@ mod tests {
         assert!(error
             .to_string()
             .contains("priority fee percentage must be in 10..=10000"));
+    }
+
+    #[test]
+    fn publish_offchain_vertex_binds_registry_and_selected_verifier_mode() {
+        let dag = DagSpec {
+            vertices: vec![DagVertex {
+                kind: DagVertexKind::OffChain {
+                    tool_fqn: crate::fqn!("xyz.taluslabs.demo@1"),
+                },
+                name: "demo".to_string(),
+                entry_ports: vec![],
+                post_failure_action: None,
+                verifier: Some(ToolVerifierMode::RegisteredKey),
+            }],
+            ..Default::default()
+        };
+
+        let ptb = publish_ptb(&nexus_objects(), dag).unwrap();
+        let bind = move_call_index(&ptb, None, "tool_registry", "with_registered_vertex");
+        let mode = move_call_index(&ptb, None, "verifier", "verifier_mode_registered_key");
+        let configure = move_call_index(&ptb, None, "tool_registry", "with_vertex_verifier_mode");
+        assert!(bind < mode);
+        assert!(mode < configure);
+    }
+
+    #[test]
+    fn publish_rejects_verifier_mode_on_onchain_vertex() {
+        let dag = DagSpec {
+            vertices: vec![DagVertex {
+                kind: DagVertexKind::OnChain {
+                    tool_fqn: crate::fqn!("xyz.taluslabs.onchain@1"),
+                },
+                name: "onchain".to_string(),
+                entry_ports: vec![],
+                post_failure_action: None,
+                verifier: Some(ToolVerifierMode::External),
+            }],
+            ..Default::default()
+        };
+
+        assert!(publish_ptb(&nexus_objects(), dag)
+            .unwrap_err()
+            .to_string()
+            .contains("cannot configure an off-chain verifier"));
     }
 }

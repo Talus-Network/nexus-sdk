@@ -7862,6 +7862,32 @@
           ]
         },
         {
+          "name": "next_do_while_iteration",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "iteration",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U64"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "onchain_tool_result_key",
           "visibility": "Private",
           "is_entry": false,
@@ -18789,6 +18815,12 @@
             },
             {
               "name": "expected_input_hash",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "expected_nonce",
               "ty": {
                 "Vector": "U8"
               }

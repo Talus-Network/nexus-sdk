@@ -527,4 +527,33 @@ mod tests {
         assert_eq!(target.package, objects.workflow_pkg_id);
         assert_eq!(*tag.address(), objects.workflow_type_origin_pkg_id());
     }
+
+    #[test]
+    fn verifier_modes_call_the_matching_move_constructors() {
+        use crate::move_bindings::interface::verifier::ToolVerifierMode;
+
+        for (mode, expected_function) in [
+            (ToolVerifierMode::None, "verifier_mode_none"),
+            (
+                ToolVerifierMode::RegisteredKey,
+                "verifier_mode_registered_key",
+            ),
+            (ToolVerifierMode::External, "verifier_mode_external"),
+        ] {
+            let transaction = ptb(&objects(), |tx| {
+                tx.tool_verifier_mode(&mode)?;
+                Ok(())
+            })
+            .unwrap();
+            let call = transaction
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    sui::types::Command::MoveCall(call) => Some(call),
+                    _ => None,
+                })
+                .expect("mode constructor emits one Move call");
+            assert_eq!(call.function.as_str(), expected_function);
+        }
+    }
 }

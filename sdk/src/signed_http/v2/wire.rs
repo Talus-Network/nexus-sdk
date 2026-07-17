@@ -22,6 +22,7 @@ pub const SIGNATURE_VERSION_V2: &str = "2";
 
 const SHA256_LEN: usize = 32;
 const ED25519_SIGNATURE_LEN: usize = 64;
+const TOOL_RESPONSE_DOMAIN: &[u8] = b"nexus.signed_http.v2.tool_response";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EncodedRequestHeaders {
@@ -103,7 +104,7 @@ pub struct AuthenticatedRequest {
     pub leader_key_id: u64,
     pub input_hash: [u8; SHA256_LEN],
     pub leader_signature: [u8; ED25519_SIGNATURE_LEN],
-    pub nonce: String,
+    pub nonce: [u8; SHA256_LEN],
 }
 
 pub trait LeaderKeyResolver: Send + Sync {
@@ -114,7 +115,7 @@ pub fn sign_request(
     leader_id: impl Into<String>,
     leader_key_id: u64,
     input_hash: [u8; SHA256_LEN],
-    nonce: impl Into<String>,
+    nonce: [u8; SHA256_LEN],
     signing_key: &SigningKey,
 ) -> EncodedRequestHeaders {
     let signature = signing_key.sign(&input_hash).to_bytes();
@@ -123,7 +124,7 @@ pub fn sign_request(
         leader_key_id,
         input_hash: URL_SAFE_NO_PAD.encode(input_hash),
         leader_signature: URL_SAFE_NO_PAD.encode(signature),
-        nonce: nonce.into(),
+        nonce: URL_SAFE_NO_PAD.encode(nonce),
     }
 }
 
@@ -143,7 +144,7 @@ pub fn authenticate_request(
     let input_hash = decode_array::<SHA256_LEN>(headers.input_hash, HEADER_INPUT_HASH)?;
     let leader_signature =
         decode_array::<ED25519_SIGNATURE_LEN>(headers.leader_signature, HEADER_LEADER_SIGNATURE)?;
-    let nonce = required(headers.nonce, HEADER_NONCE)?.to_string();
+    let nonce = decode_array::<SHA256_LEN>(headers.nonce, HEADER_NONCE)?;
     let public_key = keys
         .leader_public_key(&leader_id, leader_key_id)
         .ok_or_else(|| SignedHttpError::UnknownLeaderKey {
@@ -168,10 +169,11 @@ pub fn authenticate_request(
 
 pub fn sign_response(
     leader_signature: &[u8; ED25519_SIGNATURE_LEN],
+    nonce: &[u8; SHA256_LEN],
     result_bytes: &[u8],
     signing_key: &SigningKey,
 ) -> EncodedResponseHeaders {
-    let message = tool_signature_message(leader_signature, result_bytes);
+    let message = tool_signature_message(leader_signature, nonce, result_bytes);
     EncodedResponseHeaders {
         tool_signature: URL_SAFE_NO_PAD.encode(signing_key.sign(&message).to_bytes()),
     }
@@ -180,6 +182,7 @@ pub fn sign_response(
 pub fn verify_response(
     headers: ResponseHeadersRef<'_>,
     leader_signature: &[u8; ED25519_SIGNATURE_LEN],
+    nonce: &[u8; SHA256_LEN],
     result_bytes: &[u8],
     tool_public_key: [u8; 32],
 ) -> Result<[u8; ED25519_SIGNATURE_LEN], SignedHttpError> {
@@ -188,7 +191,7 @@ pub fn verify_response(
         decode_array::<ED25519_SIGNATURE_LEN>(headers.tool_signature, HEADER_TOOL_SIGNATURE)?;
     verify_signature(
         tool_public_key,
-        &tool_signature_message(leader_signature, result_bytes),
+        &tool_signature_message(leader_signature, nonce, result_bytes),
         tool_signature,
         "tool".to_string(),
     )?;
@@ -197,10 +200,15 @@ pub fn verify_response(
 
 pub fn tool_signature_message(
     leader_signature: &[u8; ED25519_SIGNATURE_LEN],
+    nonce: &[u8; SHA256_LEN],
     result_bytes: &[u8],
 ) -> Vec<u8> {
-    let mut message = Vec::with_capacity(ED25519_SIGNATURE_LEN + SHA256_LEN);
+    let mut message = Vec::with_capacity(
+        TOOL_RESPONSE_DOMAIN.len() + ED25519_SIGNATURE_LEN + SHA256_LEN + SHA256_LEN,
+    );
+    message.extend_from_slice(TOOL_RESPONSE_DOMAIN);
     message.extend_from_slice(leader_signature);
+    message.extend_from_slice(nonce);
     message.extend_from_slice(&sha256(result_bytes));
     message
 }

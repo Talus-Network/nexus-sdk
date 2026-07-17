@@ -150,7 +150,10 @@ pub(crate) struct SignedHttpRuntimeConfig {
 #[derive(Clone)]
 pub(crate) struct SignedHttpToolRuntimeConfig {
     pub(crate) tool_signing_key: SigningKey,
+    pub(crate) replay_cache_ttl_ms: u64,
 }
+
+pub(crate) const DEFAULT_REPLAY_CACHE_TTL_MS: u64 = 300_000;
 
 impl ToolkitRuntimeConfig {
     /// Load config from [`ENV_TOOLKIT_CONFIG_PATH`] if set, otherwise return defaults.
@@ -258,6 +261,10 @@ struct SignedHttpToolConfigFileV2 {
     ///
     /// This also accepts Sui keytool encoding: base64 of `0x00 || sk32`.
     pub tool_signing_key: String,
+
+    /// Completed replay-entry lifetime in milliseconds. Defaults to five minutes.
+    #[serde(default)]
+    pub replay_cache_ttl_ms: Option<u64>,
 }
 
 impl TryFrom<ToolkitRuntimeConfigFileV2> for ToolkitRuntimeConfig {
@@ -304,6 +311,14 @@ fn load_signed_http_config(
 
     let mut tools: BTreeMap<String, SignedHttpToolRuntimeConfig> = BTreeMap::new();
     for (tool_id, tool) in file.tools {
+        let replay_cache_ttl_ms = tool
+            .replay_cache_ttl_ms
+            .unwrap_or(DEFAULT_REPLAY_CACHE_TTL_MS);
+        if replay_cache_ttl_ms == 0 {
+            anyhow::bail!(
+                "invalid signed_http.tools[\"{tool_id}\"].replay_cache_ttl_ms: must be greater than zero"
+            );
+        }
         let signing_key = parse_ed25519_signing_key(&tool.tool_signing_key).map_err(|e| {
             anyhow::anyhow!("invalid signed_http.tools[\"{tool_id}\"].tool_signing_key: {e}")
         })?;
@@ -311,6 +326,7 @@ fn load_signed_http_config(
             tool_id,
             SignedHttpToolRuntimeConfig {
                 tool_signing_key: signing_key,
+                replay_cache_ttl_ms,
             },
         );
     }

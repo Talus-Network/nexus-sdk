@@ -487,4 +487,60 @@ mod tests {
         assert_eq!(calls[1].arguments.len(), 2);
         assert_eq!(calls[2].arguments.len(), 5);
     }
+
+    #[test]
+    fn external_registration_requires_nonzero_unique_witness_and_objects() {
+        let objects = nexus_objects();
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
+        let base = ExternalVerifierRegistrationInput {
+            package_id: addr("0x41"),
+            module_name: "verifier".to_string(),
+            function_name: "verify".to_string(),
+            verifier_objects: vec![],
+        };
+
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("witness at object zero")
+        );
+
+        let object_type = object_type("0x40", "state", "Witness");
+        let zero = ExternalVerifierRegistrationInput {
+            verifier_objects: vec![ExternalVerifierObjectInput {
+                object_ref: object_ref("0x0", 1, 1),
+                object_type: object_type.clone(),
+            }],
+            ..base.clone()
+        };
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &zero)
+                .unwrap_err()
+                .to_string()
+                .contains("must not be zero")
+        );
+
+        let duplicate_ref = object_ref("0x42", 5, 42);
+        let duplicate = ExternalVerifierRegistrationInput {
+            verifier_objects: vec![
+                ExternalVerifierObjectInput {
+                    object_ref: duplicate_ref.clone(),
+                    object_type: object_type.clone(),
+                },
+                ExternalVerifierObjectInput {
+                    object_ref: duplicate_ref,
+                    object_type,
+                },
+            ],
+            ..base
+        };
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("must be unique")
+        );
+    }
 }

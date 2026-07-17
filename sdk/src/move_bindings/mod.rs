@@ -202,11 +202,11 @@ pub fn derive_walk_execution_event_task_id(
 ) -> anyhow::Result<sui::types::Address> {
     use sui_move::MoveStruct;
 
-    let (name, iteration) = match vertex {
-        RuntimeVertex::Plain { vertex } => (vertex, &0),
+    let (name, repetitive, iteration) = match vertex {
+        RuntimeVertex::Plain { vertex } => (vertex, false, 0),
         RuntimeVertex::WithIterator {
             vertex, iteration, ..
-        } => (vertex, iteration),
+        } => (vertex, true, *iteration),
     };
     let vertex_shape = interface::graph::Vertex::struct_tag_static();
     let vertex_tag = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
@@ -216,11 +216,13 @@ pub fn derive_walk_execution_event_task_id(
         vec![],
     )));
 
-    derive_object_id(
-        derive_object_id(execution, &vertex_tag, name)?,
-        &sui::types::TypeTag::U64,
-        iteration,
-    )
+    let vertex_task_id = derive_object_id(execution, &vertex_tag, name)?;
+    let runtime_task_id = if repetitive {
+        derive_object_id(vertex_task_id, &sui::types::TypeTag::Bool, &true)?
+    } else {
+        vertex_task_id
+    };
+    derive_object_id(runtime_task_id, &sui::types::TypeTag::U64, &iteration)
 }
 
 /// Derive the task ID associated with a scheduled occurrence event.
@@ -310,10 +312,40 @@ pub mod workflow {
 
 #[cfg(test)]
 mod tests {
-    use super::registry;
+    use {
+        super::{derive_walk_execution_event_task_id, interface::graph::RuntimeVertex, registry},
+        crate::sui,
+    };
 
     #[test]
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;
+    }
+
+    #[test]
+    fn walk_task_id_distinguishes_plain_from_zero_based_repetitive_execution() {
+        let interface = sui::types::Address::from_static("0x1");
+        let execution = sui::types::Address::from_static("0x2");
+        let plain = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::plain("vertex"),
+        )
+        .unwrap();
+        let repetitive_zero = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::with_iterator("vertex", 0, 2),
+        )
+        .unwrap();
+        let repetitive_one = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::with_iterator("vertex", 1, 2),
+        )
+        .unwrap();
+
+        assert_ne!(plain, repetitive_zero);
+        assert_ne!(repetitive_zero, repetitive_one);
     }
 }
