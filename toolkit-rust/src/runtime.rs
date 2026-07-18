@@ -371,8 +371,8 @@ pub fn routes_for_with_config_<T: NexusTool>(
     let invoke_max_body_bytes = toolkit_cfg.invoke_max_body_bytes();
 
     let tool_id = T::fqn().to_string();
-    let invoke_auth =
-        InvokeAuth::new_sync(config, tool_id).expect("Failed to load signed HTTP configuration");
+    let invoke_auth = InvokeAuth::new_sync(config, tool_id, T::timeout())
+        .expect("Failed to load signed HTTP configuration");
 
     // Invoke path is tool base URL path and `/invoke`.
     let invoke_route = warp::post()

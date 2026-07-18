@@ -19,12 +19,11 @@ use {
         collections::HashMap,
         future::Future,
         sync::{Arc, Mutex, RwLock},
-        time::{SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     },
     warp::http::{header::HeaderValue, HeaderMap, StatusCode},
 };
-
-const IN_FLIGHT_LEASE_MS: u64 = 60_000;
+const DEFAULT_IN_FLIGHT_LEASE_MS: u64 = 60_000;
 const JSON_CONTENT_TYPE: &str = "application/json";
 const TAGGED_OUTPUT_CONTENT_TYPE: &str = "application/vnd.nexus.tagged-output+bcs";
 
@@ -122,16 +121,23 @@ struct InvokeAuthState {
 }
 
 impl InvokeAuth {
-    pub(crate) fn new_sync(config: Arc<Config>, tool_id: String) -> anyhow::Result<Self> {
+    pub(crate) fn new_sync(
+        config: Arc<Config>,
+        tool_id: String,
+        invocation_timeout: Duration,
+    ) -> anyhow::Result<Self> {
         let current_config = config.current();
         let auth = InvokeAuthRuntime::from_toolkit_config_for_tool_id(&current_config, &tool_id)?;
         let config_ptr = Arc::as_ptr(&current_config) as usize;
+        let in_flight_lease_ms = u64::try_from(invocation_timeout.as_millis())
+            .unwrap_or(DEFAULT_IN_FLIGHT_LEASE_MS)
+            .max(1);
         Ok(Self {
             state: Arc::new(RwLock::new(InvokeAuthState {
                 auth: Arc::new(auth),
                 config_ptr,
             })),
-            replay: ReplayCache::new(IN_FLIGHT_LEASE_MS),
+            replay: ReplayCache::new(in_flight_lease_ms),
             tool_id,
             config,
         })
@@ -550,6 +556,14 @@ mod tests {
             crate::config::DEFAULT_REPLAY_CACHE_TTL_MS
         );
 
+        let invoke_auth = InvokeAuth::new_sync(
+            Config::from_config(Arc::new(required)),
+            "xyz.demo@1".to_string(),
+            Duration::from_secs(90),
+        )
+        .unwrap();
+        assert_eq!(invoke_auth.replay.in_flight_lease_ms, 90_000);
+
         let mut custom_json = config;
         custom_json["signed_http"]["tools"]["xyz.demo@1"]["replay_cache_ttl_ms"] =
             serde_json::json!(42);
@@ -702,6 +716,41 @@ mod tests {
         .await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(response.headers().get(HEADER_TOOL_SIGNATURE).is_none());
+    }
+
+    #[tokio::test]
+    async fn signed_invoke_in_flight_nonce_does_not_run_a_duplicate_callback() {
+        let leader = SigningKey::from_bytes(&[7; 32]);
+        let tool = SigningKey::from_bytes(&[9; 32]);
+        let runtime = signed_runtime(&leader, &tool);
+        let replay = ReplayCache::new(90_000);
+        let nonce = [4; 32];
+        let _active = match replay.begin(nonce, [1; 32], now_ms()) {
+            ReplayDecision::Proceed(reservation) => reservation,
+            _ => panic!("first request must reserve the nonce"),
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        for input_hash in [[1; 32], [2; 32]] {
+            let callback_calls = Arc::clone(&calls);
+            let response = handle_invoke(
+                &runtime,
+                &replay,
+                request_headers(&leader, input_hash, nonce),
+                Vec::new(),
+                move |_ctx, _body| async move {
+                    callback_calls.fetch_add(1, Ordering::SeqCst);
+                    (StatusCode::OK, vec![1], true)
+                },
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::CONFLICT);
+            assert_eq!(
+                to_bytes(response.into_body()).await.unwrap().as_ref(),
+                br#"{"details":"request with the same nonce is still processing","error":"request_in_flight"}"#
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
