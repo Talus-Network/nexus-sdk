@@ -745,9 +745,13 @@ mod tests {
             )
             .await;
             assert_eq!(response.status(), StatusCode::CONFLICT);
+            let body = to_bytes(response.into_body()).await.unwrap();
             assert_eq!(
-                to_bytes(response.into_body()).await.unwrap().as_ref(),
-                br#"{"details":"request with the same nonce is still processing","error":"request_in_flight"}"#
+                serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+                json!({
+                    "error": "request_in_flight",
+                    "details": "request with the same nonce is still processing",
+                })
             );
         }
         assert_eq!(calls.load(Ordering::SeqCst), 0);
