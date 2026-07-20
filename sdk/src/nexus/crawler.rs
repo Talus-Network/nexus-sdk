@@ -354,7 +354,8 @@ impl Crawler {
             .ok_or_else(|| anyhow!("Transaction '{digest}' not found"))?;
 
         let observed_digest = transaction
-            .digest_opt()?
+            .digest_opt()
+            .ok_or_else(|| anyhow!("Failed to get Executed Transaction for digest '{digest}'"))?
             .parse()
             .map_err(|e| anyhow!("Transaction '{digest}' response has an invalid digest: {e}"))?;
         if observed_digest != digest {
