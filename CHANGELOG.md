@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added canonical RegisteredKey Tool-input hashing, auxiliary BCS encoding, leader-signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
 - Added Tool registry queries and External verifier registration preflight that validate the public Move ABI, Tool binding, witness-first ordering, and immutable shared-object arguments.
 - Added signed-HTTP v2 request and response helpers for leader signatures over canonical input hashes and Tool signatures over exact BCS result bytes.
+- Execution inspection will use object history instead of checkpoint list.
 
 #### Changed
 
@@ -198,7 +199,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `tool register on-chain` now extracts the `OwnerCap<OverGas>` minted by the registration PTB (disambiguated from `OwnerCap<OverTool>` by its generic type parameter), reports it as `owner_cap_over_gas_id`, and persists it so later gas-management commands (`tool set-invocation-cost`, `gas tickets …`) can resolve it.
 - `tap scaffold` now writes a `tap/Move.toml` that declares all four published Nexus dependencies (`nexus_primitives`, `nexus_interface`, `nexus_registry`, `nexus_workflow`). The previous scaffold omitted `nexus_registry`, forcing authors to add it by hand before the package would compile against the TAP development guide's recommended template.
 - `tap validate-skill` and `tap publish-skill` no longer accept `--tap-package`. The flag was a redundant override of `tap_package_path` from the skill config; relying on it from a parent directory produced confusing double-prefixed paths (`tutorial-transfer/tutorial-transfer/tap/Move.toml does not exist`). Both commands now resolve the TAP package strictly from the config's `tap_package_path` (resolved relative to the config file's directory).
-- `dag inspect-execution` no longer accepts `--execution-checkpoint`. It now follows the `DAGExecution` object's on-chain versions and producing transactions without subscribing to checkpoints; JSON trace shape and ordering are unchanged.
+- `dag inspect-execution` no longer accepts `--execution-checkpoint`. The SDK now derives the starting checkpoint from the `DAGExecution` object's creation transaction (via `Crawler::get_object_creation_checkpoint`).
 
 #### Fixed
 
@@ -209,7 +210,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- `Crawler::get_object_update_reference(object_id, version)` and `Crawler::get_transaction_update(digest)` primitives for checkpoint-free object-version history reconstruction.
+- `Crawler::get_object_creation_checkpoint(object_id)` that resolves the checkpoint sequence number of the transaction that created a shared object by chaining three gRPC calls: current metadata (for `Owner::Shared(initial_shared_version)`) → version-pinned `GetObject` (for `previous_transaction`) → `BatchGetTransactions` (for `checkpoint`). Owned objects are rejected with a clear error.
 - `TapActions::inspect_endpoint` reading an endpoint object's on-chain metadata and returning an `EndpointInspection` carrying its object ref. In the current TAP model endpoint revisions live on the agent registry keyed by `(agent_id, skill_id, interface_revision)`, so use `tap registry show` to inspect revisions and active endpoints.
 - `TapActions::bind_agent_skill` composed PTB that runs `tap::create_agent` and `tap::register_skill` in a single transaction, with `BindAgentSkillParams` capturing operator and artifact, and `BindAgentSkillResult` capturing the transaction digest/checkpoint, agent/skill ids, agent object ref, and the derived config-digest plus its `TapConfigDigestInput`.
 - `TapActions::wait_for_payment_settled` poll helper with `WaitForPaymentResult` (final payment state, `terminal`, `elapsed_ms`, `timed_out`) and a `payment_is_terminal` free function that recognizes `accomplished`/`refunded`/non-`Pending` `TapExecutionPaymentFinalState`. A zero `poll_interval` is rejected with `NexusError::Configuration` to avoid busy-looping the poller.
@@ -222,7 +223,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- `WorkflowActions::inspect_execution` and `WorkflowActions::inspect_execution_until_completion` now take shared `InspectExecutionOptions` and reconstruct execution history exclusively from the versioned `DAGExecution` object and its producing transactions. Defaults are a one-hour total timeout and one-second poll interval; checkpoint-backed workflow inspection is removed while the independent global `EventPoller` remains available.
+- `WorkflowActions::inspect_execution` and `WorkflowActions::inspect_execution_until_completion` no longer take an `execution_checkpoint: u64` argument. The starting checkpoint is now derived internally by the SDK from the `DAGExecution` object's creation transaction via the new `Crawler::get_object_creation_checkpoint` helper (chain: current `Owner::Shared(initial_shared_version)` → version-pinned `previous_transaction` → transaction `checkpoint`). Callers should drop the second positional argument.
 - Added `max_transaction_budget` to `LeaderRegistry` model
 
 ### `docs`
