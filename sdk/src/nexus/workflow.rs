@@ -513,7 +513,7 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     }
 }
 
-fn version_or_none(version_or_none: Option<sui::types::Version>) -> String {
+fn version_or_none(version: Option<sui::types::Version>) -> String {
     version
         .map(|version| version.to_string())
         .unwrap_or_else(|| "none".to_string())

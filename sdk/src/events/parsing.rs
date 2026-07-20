@@ -210,7 +210,6 @@ mod direct_event_tests {
                     leader_cap::*,
                     priority_fee_vault::*,
                     tool_registry::*,
-                    verifier_registry::*,
                 },
                 scheduler::scheduler::*,
                 sui_framework::{
@@ -1468,23 +1467,22 @@ mod direct_event_tests {
             }
         );
         check!(
-            "PriorityFeeDepositedEvent",
-            check!(@tag objects.registry_pkg_id, "priority_fee_vault", "PriorityFeeDepositedEvent"),
-            PriorityFeeDepositedEvent {
-                vault: id(addr(0xd8)),
-                leader_cap_id: addr(0xd9),
-                amount: 80,
+            "PriorityFeeSwapEvent",
+            check!(@tag objects.registry_pkg_id, "priority_fee_vault", "PriorityFeeSwapEvent"),
+            PriorityFeeSwapEvent {
+                vault: id(addr(0xda)),
+                us_in: 83,
+                us_refunded: 84,
+                sui_out: 85,
             }
         );
         check!(
-            "RegisteredKeyVerifierCheckEvent",
-            check!(@tag objects.registry_pkg_id, "verifier_registry", "RegisteredKeyVerifierCheckEvent"),
-            RegisteredKeyVerifierCheckEvent {
-                registry: id(addr(0xda)),
-                method: MoveString::from("registered_key"),
-                submission_kind:
-                    crate::move_bindings::interface::verifier::VerificationSubmissionKind::Success,
-                passed: true,
+            "PriorityFeeDepositEvent",
+            check!(@tag objects.registry_pkg_id, "priority_fee_vault", "PriorityFeeDepositEvent"),
+            PriorityFeeDepositEvent {
+                vault: id(addr(0xd8)),
+                leader_cap_id: id(addr(0xd9)),
+                amount: 80,
             }
         );
         check!(
