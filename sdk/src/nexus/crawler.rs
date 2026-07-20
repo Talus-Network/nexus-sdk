@@ -6,7 +6,7 @@ use {
         move_bindings::sui_framework::table_vec::TableVec,
         sui::{self, traits::FieldMaskUtil},
     },
-    anyhow::{anyhow, bail},
+    anyhow::{anyhow, bail, Context as _},
     serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize},
     std::{
         collections::{HashMap, HashSet},
@@ -57,6 +57,25 @@ pub struct DynamicObjectFieldReference<K> {
 pub struct DynamicFieldReference<K> {
     pub name: K,
     pub field_id: sui::types::Address,
+}
+
+/// The on-chain reference that identifies the transaction which produced one
+/// version of an object.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ObjectUpdateReference {
+    pub owner: sui::types::Owner,
+    pub object_type: sui::types::StructTag,
+    pub version: sui::types::Version,
+    pub digest: sui::types::Digest,
+    pub previous_transaction: sui::types::Digest,
+}
+
+/// Effects and events fetched for one transaction that updated an object.
+#[derive(Clone, Debug)]
+pub struct TransactionUpdate {
+    pub digest: sui::types::Digest,
+    pub effects: sui::types::TransactionEffectsV2,
+    pub events: Vec<sui::types::Event>,
 }
 
 impl Crawler {
@@ -232,94 +251,141 @@ impl Crawler {
         })
     }
 
-    /// Resolve the checkpoint sequence number of the transaction that created
-    /// `object_id`. Used by event-replay flows (e.g. `WorkflowActions::
-    /// inspect_execution`) so callers do not need to pass an explicit
-    /// "start from this checkpoint" argument.
-    ///
-    /// Three RPCs are chained:
-    /// 1. `GetObject` for current metadata → reads the owner's
-    ///    `initial_shared_version` (the version at which the object was first
-    ///    made shared — its creation version on chain).
-    /// 2. `GetObject` time-travelled to that version with mask
-    ///    `[previous_transaction]` → returns the digest of the transaction
-    ///    that produced that version, i.e. the creation tx.
-    /// 3. `BatchGetTransactions` (single digest) with mask `[checkpoint]` →
-    ///    returns the checkpoint sequence number the creation tx was sealed
-    ///    in.
-    ///
-    /// Only shared objects are supported because owned objects can be created
-    /// in transactions whose initial lamport version is not deterministic
-    /// without an extra owner lookup; the inspect flow this powers always
-    /// receives a shared `DAGExecution`.
-    pub async fn get_object_creation_checkpoint(
+    /// Fetch the update reference for the latest or a historical object
+    /// version. Unlike [`Self::get_object_metadata`], this includes the
+    /// transaction digest that produced the requested version.
+    pub async fn get_object_update_reference(
         &self,
         object_id: sui::types::Address,
-    ) -> anyhow::Result<u64> {
-        // Step 1: current metadata → initial_shared_version.
-        let metadata = self.get_object_metadata(object_id).await?;
-        let sui::types::Owner::Shared(initial_version) = metadata.owner else {
-            bail!(
-                "Object '{object_id}' is not shared; cannot resolve a creation checkpoint via \
-                 initial_shared_version"
-            );
-        };
-
-        // Step 2: time-travel to the initial version, read previous_transaction.
-        let mut client = self.client.lock().await;
-        let request = sui::grpc::GetObjectRequest::default()
+        version: Option<sui::types::Version>,
+    ) -> anyhow::Result<ObjectUpdateReference> {
+        let mut request = sui::grpc::GetObjectRequest::default()
             .with_object_id(object_id)
-            .with_version(initial_version)
-            .with_read_mask(sui::grpc::FieldMask::from_paths(["previous_transaction"]));
-        let response = client
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "object_id",
+                "owner",
+                "object_type",
+                "version",
+                "digest",
+                "previous_transaction",
+            ]));
+        if let Some(version) = version {
+            request = request.with_version(version);
+        }
+
+        let object = self
+            .client
+            .lock()
+            .await
             .ledger_client()
             .get_object(request)
             .await
-            .map(|r| r.into_inner())
-            .map_err(|e| {
-                anyhow!(
-                    "Could not fetch object '{object_id}' at version {initial_version} to derive \
-                     its creation checkpoint: {e}"
-                )
+            .map(|response| response.into_inner().object)
+            .with_context(|| {
+                let version = version
+                    .map(|version| format!(" at version {version}"))
+                    .unwrap_or_default();
+                format!("Could not fetch object '{object_id}'{version}")
+            })?
+            .ok_or_else(|| {
+                let version = version
+                    .map(|version| format!(" at version {version}"))
+                    .unwrap_or_default();
+                anyhow!("Object '{object_id}'{version} not found")
             })?;
-        let creation_digest = response
-            .object
-            .and_then(|object| object.previous_transaction_opt().map(|s| s.to_string()))
+
+        let (owner, digest, observed_version, _) =
+            self.parse_object_metadata(object_id, &object)?;
+        let object_type = object
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for object '{object_id}'"))?
+            .parse()
+            .map_err(|e| anyhow!("Could not parse object type for object '{object_id}': {e}"))?;
+        if version.is_some_and(|requested| requested != observed_version) {
+            bail!(
+                "Requested object '{object_id}' at version {}, received version {observed_version}",
+                version.expect("checked as some")
+            );
+        }
+        let previous_transaction = object
+            .previous_transaction_opt()
             .ok_or_else(|| {
                 anyhow!(
-                    "Object '{object_id}' has no previous_transaction at version \
-                     {initial_version}; cannot derive its creation checkpoint"
+                    "Object '{object_id}' at version {observed_version} has no previous_transaction"
+                )
+            })?
+            .parse()
+            .map_err(|e| {
+                anyhow!(
+                    "Object '{object_id}' at version {observed_version} has an invalid previous_transaction: {e}"
                 )
             })?;
 
-        // Step 3: read the creation tx's checkpoint via batch_get_transactions
-        // (one entry) so the call shares the existing tx-fetch surface.
-        let tx_request = sui::grpc::BatchGetTransactionsRequest::default()
-            .with_digests(vec![creation_digest.clone()])
-            .with_read_mask(sui::grpc::FieldMask::from_paths(["checkpoint"]));
-        let tx_response = client
-            .ledger_client()
-            .batch_get_transactions(tx_request)
+        Ok(ObjectUpdateReference {
+            owner,
+            object_type,
+            version: observed_version,
+            digest,
+            previous_transaction,
+        })
+    }
+
+    /// Fetch and decode the effects and events for one object-update
+    /// transaction without requesting checkpoint data.
+    pub async fn get_transaction_update(
+        &self,
+        digest: sui::types::Digest,
+    ) -> anyhow::Result<TransactionUpdate> {
+        let request = sui::grpc::GetTransactionRequest::default()
+            .with_digest(digest.to_string())
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "digest",
+                "effects.bcs",
+                "events.events",
+            ]));
+        let transaction = self
+            .client
+            .lock()
             .await
-            .map(|r| r.into_inner())
-            .map_err(|e| {
-                anyhow!(
-                    "Could not fetch creation transaction '{creation_digest}' for object \
-                     '{object_id}': {e}"
-                )
-            })?;
-        let checkpoint = tx_response
-            .transactions
-            .first()
-            .and_then(|tx_result| tx_result.transaction().checkpoint_opt())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Creation transaction '{creation_digest}' for object '{object_id}' has no \
-                     checkpoint field set"
-                )
-            })?;
+            .ledger_client()
+            .get_transaction(request)
+            .await
+            .map(|response| response.into_inner().transaction)
+            .with_context(|| format!("Could not fetch transaction '{digest}'"))?
+            .ok_or_else(|| anyhow!("Transaction '{digest}' not found"))?;
 
-        Ok(checkpoint)
+        let observed_digest = transaction
+            .digest_opt()
+            .ok_or_else(|| anyhow!("Transaction '{digest}' response has no digest"))?
+            .parse()
+            .map_err(|e| anyhow!("Transaction '{digest}' response has an invalid digest: {e}"))?;
+        if observed_digest != digest {
+            bail!("Requested transaction '{digest}', received transaction '{observed_digest}'");
+        }
+
+        let effects = match sui::types::TransactionEffects::try_from(transaction.effects())
+            .map_err(|e| anyhow!("Could not decode effects for transaction '{digest}': {e}"))?
+        {
+            sui::types::TransactionEffects::V2(effects) => *effects,
+            sui::types::TransactionEffects::V1(_) => {
+                bail!("Transaction '{digest}' returned unsupported V1 effects")
+            }
+        };
+        if effects.transaction_digest != observed_digest {
+            bail!(
+                "Transaction '{observed_digest}' response contains effects for transaction '{}'; expected the effects transaction digest to match the requested transaction '{digest}'",
+                effects.transaction_digest
+            );
+        }
+        let events = sui::types::TransactionEvents::try_from(transaction.events())
+            .map_err(|e| anyhow!("Could not decode events for transaction '{digest}': {e}"))?
+            .0;
+
+        Ok(TransactionUpdate {
+            digest: observed_digest,
+            effects,
+            events,
+        })
     }
 
     /// Fetch many objects' metadata only in batch, omitting their content.
@@ -1860,63 +1926,48 @@ mod tests {
         );
     }
 
-    /// `get_object_creation_checkpoint` walks
-    /// `current metadata → initial_shared_version → version-pinned previous_transaction → transaction checkpoint`.
-    /// Verify the happy path returns the checkpoint mocked at the end of the
-    /// chain and that the helper is wired against the right three gRPC calls.
     #[tokio::test]
-    async fn get_object_creation_checkpoint_resolves_via_initial_shared_version() {
+    async fn get_transaction_update_rejects_mismatched_effects_digest() {
         let mut rng = rand::thread_rng();
-        let object_id = sui::types::Address::generate(&mut rng);
-        let object_ref =
-            sui::types::ObjectReference::new(object_id, 42, sui::types::Digest::generate(&mut rng));
-        let creation_tx_digest = sui::types::Digest::generate(&mut rng);
-        let creation_checkpoint = 4096_u64;
-        let initial_shared_version = 17_u64;
-
+        let requested_digest = sui::types::Digest::generate(&mut rng);
+        let effects_digest = sui::types::Digest::generate(&mut rng);
+        let effects =
+            sui::types::TransactionEffects::V2(Box::new(sui::types::TransactionEffectsV2 {
+                status: sui::types::ExecutionStatus::Success,
+                epoch: 1,
+                gas_used: sui::types::GasCostSummary {
+                    computation_cost: 0,
+                    storage_cost: 0,
+                    storage_rebate: 0,
+                    non_refundable_storage_fee: 0,
+                },
+                transaction_digest: effects_digest,
+                gas_object_index: None,
+                events_digest: None,
+                dependencies: vec![],
+                lamport_version: 1,
+                changed_objects: vec![],
+                unchanged_consensus_objects: vec![],
+                auxiliary_data_digest: None,
+            }));
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_object_creation_checkpoint(
-            &mut ledger_service_mock,
-            object_ref,
-            initial_shared_version,
-            creation_tx_digest,
-            creation_checkpoint,
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
-
-        let checkpoint = crawler
-            .get_object_creation_checkpoint(object_id)
-            .await
-            .expect("creation checkpoint resolves");
-
-        assert_eq!(checkpoint, creation_checkpoint);
-    }
-
-    /// Non-shared objects are out of scope: their creation version is not
-    /// recoverable via `Owner::Shared(initial_shared_version)`. The helper
-    /// must reject them with a clear error before issuing the
-    /// version-pinned fetch.
-    #[tokio::test]
-    async fn get_object_creation_checkpoint_rejects_owned_objects() {
-        let mut rng = rand::thread_rng();
-        let object_id = sui::types::Address::generate(&mut rng);
-        let owner_address = sui::types::Address::generate(&mut rng);
-        let object_ref =
-            sui::types::ObjectReference::new(object_id, 5, sui::types::Digest::generate(&mut rng));
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            object_ref,
-            sui::types::Owner::Address(owner_address),
-            None,
-        );
+        ledger_service_mock
+            .expect_get_transaction()
+            .times(1)
+            .returning(move |request| {
+                assert_eq!(
+                    request.get_ref().digest_opt(),
+                    Some(requested_digest.to_string().as_str())
+                );
+                let mut grpc_effects = sui::grpc::TransactionEffects::default();
+                grpc_effects.set_bcs(bcs::to_bytes(&effects).expect("effects serialize"));
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(requested_digest);
+                transaction.set_effects(grpc_effects);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(transaction);
+                Ok(tonic::Response::new(response))
+            });
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
@@ -1926,13 +1977,12 @@ mod tests {
         let crawler = Crawler::new(Arc::new(Mutex::new(client)));
 
         let error = crawler
-            .get_object_creation_checkpoint(object_id)
+            .get_transaction_update(requested_digest)
             .await
-            .expect_err("owned object must not derive a creation checkpoint");
-
-        assert!(
-            error.to_string().contains("not shared"),
-            "unexpected error: {error}"
-        );
+            .expect_err("mismatched effects digest must fail permanently");
+        let message = error.to_string();
+        assert!(message.contains(&requested_digest.to_string()));
+        assert!(message.contains(&effects_digest.to_string()));
+        assert!(message.contains("effects transaction digest"));
     }
 }

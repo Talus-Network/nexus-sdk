@@ -25,7 +25,7 @@ use crate::{
 };
 use {
     crate::{
-        events::{EventPage, NexusEvent, NexusEventKind},
+        events::{is_event_wrapper, FromSuiGrpcEvent, NexusEvent, NexusEventKind},
         move_bindings::{
             interface::{
                 dag as dag_move,
@@ -47,7 +47,12 @@ use {
             },
         },
         move_boundary,
-        nexus::{client::NexusClient, crawler::Crawler, error::NexusError, tap},
+        nexus::{
+            client::NexusClient,
+            crawler::{Crawler, ObjectUpdateReference, TransactionUpdate},
+            error::NexusError,
+            tap,
+        },
         sui,
         transactions::{dag, gas},
         types::{DagSpec, NexusObjects, Tool, ToolRef},
@@ -58,7 +63,7 @@ use {
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
-        time::Duration,
+        time::{Duration, Instant},
     },
 };
 
@@ -66,6 +71,9 @@ const COMMITTED_TOOL_RESULT_VALUE_TYPE_SUFFIX: &str = "::execution::CommittedToo
 const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
     "::execution::ExecutionPaymentInsufficientSettlement";
 const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
+const DEFAULT_EXECUTION_INSPECTION_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+const DEFAULT_EXECUTION_INSPECTION_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const MAX_TRANSACTION_NOT_FOUND_RETRIES: usize = 3;
 pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
     "walk is not double timeout expired";
 pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
@@ -430,6 +438,23 @@ pub struct InspectExecutionResult {
     pub poller: JoinHandle<Result<(), NexusError>>,
 }
 
+/// Controls execution-object inspection latency and its total wall-clock
+/// budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InspectExecutionOptions {
+    pub timeout: Duration,
+    pub poll_interval: Duration,
+}
+
+impl Default for InspectExecutionOptions {
+    fn default() -> Self {
+        Self {
+            timeout: DEFAULT_EXECUTION_INSPECTION_TIMEOUT,
+            poll_interval: DEFAULT_EXECUTION_INSPECTION_POLL_INTERVAL,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkflowExecutionTerminalState {
     Succeeded,
@@ -469,16 +494,255 @@ pub struct WorkflowActions {
 
 fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
+        NexusEventKind::ExecutionPaymentFeesRecorded(e) => Some(e.execution_id),
+        NexusEventKind::ExecutionPaymentToolCostSnapshotted(e) => Some(e.execution_id),
+        NexusEventKind::ExecutionPaymentVertexLocked(e) => Some(e.execution_id),
+        NexusEventKind::ExecutionPaymentVertexSettled(e) => Some(e.execution_id),
         NexusEventKind::WalkAdvanced(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkFailed(e) => Some(e.execution.clone().into()),
+        NexusEventKind::SubmissionFailureEvidenceRecorded(e) => Some(e.execution.clone().into()),
         NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution.clone().into()),
         NexusEventKind::ToolVerificationResolved(e) => Some(e.execution.clone().into()),
+        NexusEventKind::WalkPendingAbort(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkAborted(e) => Some(e.execution.clone().into()),
         NexusEventKind::WalkCancelled(e) => Some(e.execution.clone().into()),
         NexusEventKind::EndStateReached(e) => Some(e.execution.clone().into()),
         NexusEventKind::ExecutionFinished(e) => Some(e.execution.clone().into()),
+        NexusEventKind::ExecutionPaymentRefilled(e) => Some(e.execution_id),
         _ => None,
     }
+}
+
+fn last_reconstructed_version(version: Option<sui::types::Version>) -> String {
+    version
+        .map(|version| version.to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn is_transient_inspection_error(error: &NexusError) -> bool {
+    let NexusError::Rpc(error) = error else {
+        return false;
+    };
+
+    error.chain().any(|source| {
+        source
+            .downcast_ref::<tonic::Status>()
+            .is_some_and(|status| {
+                matches!(
+                    status.code(),
+                    tonic::Code::Unavailable
+                        | tonic::Code::DeadlineExceeded
+                        | tonic::Code::ResourceExhausted
+                        | tonic::Code::Aborted
+                )
+            })
+    })
+}
+
+fn is_transaction_not_found(error: &anyhow::Error) -> bool {
+    error.chain().any(|source| {
+        source
+            .downcast_ref::<tonic::Status>()
+            .is_some_and(|status| status.code() == tonic::Code::NotFound)
+    })
+}
+
+async fn fetch_transaction_update_with_visibility_retry(
+    crawler: &Crawler,
+    digest: sui::types::Digest,
+    poll_interval: Duration,
+    deadline: Instant,
+) -> anyhow::Result<TransactionUpdate> {
+    let mut retries = 0;
+
+    loop {
+        match crawler.get_transaction_update(digest).await {
+            Ok(update) => return Ok(update),
+            Err(error)
+                if retries < MAX_TRANSACTION_NOT_FOUND_RETRIES
+                    && is_transaction_not_found(&error) =>
+            {
+                let Some(retry_at) = Instant::now().checked_add(poll_interval) else {
+                    return Err(error);
+                };
+                if retry_at >= deadline {
+                    return Err(error);
+                }
+
+                retries += 1;
+                tokio::time::sleep_until(retry_at).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+async fn fetch_execution_update_events(
+    crawler: &Crawler,
+    nexus_objects: &NexusObjects,
+    dag_execution_id: sui::types::Address,
+    latest: ObjectUpdateReference,
+    last_delivered_version: Option<sui::types::Version>,
+    poll_interval: Duration,
+    deadline: Instant,
+) -> Result<Vec<NexusEvent>, NexusError> {
+    let mut cursor = latest;
+    let mut reverse_updates = Vec::new();
+    let expected_type = crate::move_bindings::struct_tag::<DAGExecution>(nexus_objects);
+    let last_reconstructed = last_reconstructed_version(last_delivered_version);
+
+    loop {
+        if !matches!(cursor.owner, sui::types::Owner::Shared(_)) {
+            return Err(NexusError::Parsing(anyhow!(
+                "Execution object '{dag_execution_id}' at version {} is not shared",
+                cursor.version
+            )));
+        }
+        if cursor.object_type != expected_type {
+            return Err(NexusError::Parsing(anyhow!(
+                "Execution object '{dag_execution_id}' at version {} has type '{}', expected '{}'",
+                cursor.version,
+                cursor.object_type,
+                expected_type
+            )));
+        }
+        if last_delivered_version == Some(cursor.version) {
+            break;
+        }
+        if let Some(last_delivered_version) = last_delivered_version {
+            if cursor.version < last_delivered_version {
+                return Err(NexusError::Rpc(anyhow!(
+                    "Execution object '{dag_execution_id}' moved backwards from delivered version {last_delivered_version} to observed version {}",
+                    cursor.version
+                )));
+            }
+        }
+
+        let update = fetch_transaction_update_with_visibility_retry(
+            crawler,
+            cursor.previous_transaction,
+            poll_interval,
+            deadline,
+        )
+            .await
+            .map_err(|error| {
+                NexusError::Rpc(error.context(format!(
+                    "Execution '{dag_execution_id}' history is incomplete: missing transaction '{}' for object version {}; last successfully reconstructed version {last_reconstructed}",
+                    cursor.previous_transaction, cursor.version
+                )))
+            })?;
+        if update.effects.lamport_version != cursor.version {
+            return Err(NexusError::Rpc(anyhow!(
+                "Transaction '{}' produced version {} while execution object '{dag_execution_id}' is at version {}",
+                update.digest,
+                update.effects.lamport_version,
+                cursor.version
+            )));
+        }
+
+        let changed = update
+            .effects
+            .changed_objects
+            .iter()
+            .find(|changed| changed.object_id == dag_execution_id)
+            .ok_or_else(|| {
+                NexusError::Rpc(anyhow!(
+                    "Transaction '{}' did not update execution object '{dag_execution_id}'",
+                    update.digest
+                ))
+            })?;
+        let output_digest = match &changed.output_state {
+            sui::types::ObjectOut::ObjectWrite { digest, .. } => *digest,
+            output => {
+                return Err(NexusError::Rpc(anyhow!(
+                    "Transaction '{}' has unsupported output state {output:?} for execution object '{dag_execution_id}'",
+                    update.digest
+                )))
+            }
+        };
+        if output_digest != cursor.digest {
+            return Err(NexusError::Rpc(anyhow!(
+                "Transaction '{}' output digest for execution object '{dag_execution_id}' does not match object version {}",
+                update.digest,
+                cursor.version
+            )));
+        }
+
+        let events = update
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(_, event)| is_event_wrapper(&event.type_, nexus_objects))
+            .map(|(index, event)| {
+                NexusEvent::from_sui_grpc_event(index as u64, update.digest, event, nexus_objects)
+                    .map_err(|error| {
+                        NexusError::Parsing(error.context(format!(
+                            "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
+                            update.digest
+                        )))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|event| event_execution_id(&event.data) == Some(dag_execution_id))
+            .collect::<Vec<_>>();
+        reverse_updates.push(events);
+
+        let (previous_version, previous_digest) = match &changed.input_state {
+            sui::types::ObjectIn::NotExist => {
+                if let Some(last_delivered_version) = last_delivered_version {
+                    return Err(NexusError::Rpc(anyhow!(
+                        "Execution object '{dag_execution_id}' update chain ended before delivered version {last_delivered_version}"
+                    )));
+                }
+                break;
+            }
+            sui::types::ObjectIn::Exist {
+                version, digest, ..
+            } => (*version, *digest),
+            input => {
+                return Err(NexusError::Rpc(anyhow!(
+                    "Transaction '{}' has unsupported input state {input:?} for execution object '{dag_execution_id}'",
+                    update.digest
+                )))
+            }
+        };
+
+        if previous_version >= cursor.version {
+            return Err(NexusError::Rpc(anyhow!(
+                "Execution object '{dag_execution_id}' update chain did not move backwards from version {} to {previous_version}",
+                cursor.version
+            )));
+        }
+        if last_delivered_version == Some(previous_version) {
+            break;
+        }
+        if let Some(last_delivered_version) = last_delivered_version {
+            if previous_version < last_delivered_version {
+                return Err(NexusError::Rpc(anyhow!(
+                    "Execution object '{dag_execution_id}' update chain crossed delivered version {last_delivered_version} at version {previous_version}"
+                )));
+            }
+        }
+
+        cursor = crawler
+            .get_object_update_reference(dag_execution_id, Some(previous_version))
+            .await
+            .map_err(|error| {
+                NexusError::Rpc(error.context(format!(
+                    "Execution '{dag_execution_id}' history is incomplete: missing object version {previous_version}; last successfully reconstructed version {last_reconstructed}"
+                )))
+            })?;
+        if cursor.digest != previous_digest {
+            return Err(NexusError::Rpc(anyhow!(
+                "Execution object '{dag_execution_id}' digest at historical version {previous_version} does not match transaction '{}' input",
+                update.digest
+            )));
+        }
+    }
+
+    reverse_updates.reverse();
+    Ok(reverse_updates.into_iter().flatten().collect())
 }
 
 #[cfg(feature = "walrus")]
@@ -1480,88 +1744,101 @@ impl WorkflowActions {
         })
     }
 
-    /// Inspect a DAG execution given its shared object ID.
+    /// Inspect a DAG execution by following updates to its shared object.
     ///
-    /// The starting checkpoint is derived from the object's creation
-    /// transaction via [`Crawler::get_object_creation_checkpoint`], so
-    /// callers do not need to track it themselves. Channel sender drops
-    /// once we observe an `ExecutionFinished` event or the timeout elapses.
-    ///
-    /// The poller task is also returned so that the user can ensure its
-    /// completion.
+    /// The inspector reconstructs every transaction in the execution
+    /// object's update chain, emits matching events chronologically, and then
+    /// polls for new object versions. It does not subscribe to checkpoints.
     pub async fn inspect_execution(
         &self,
         dag_execution_id: sui::types::Address,
-        timeout: Option<Duration>,
+        options: InspectExecutionOptions,
     ) -> Result<InspectExecutionResult, NexusError> {
-        // Derive the checkpoint that contains the DAGExecution's creation
-        // transaction so the poller catches up over the smallest possible
-        // window without the caller having to plumb it through.
-        let execution_checkpoint = self
-            .client
-            .crawler()
-            .get_object_creation_checkpoint(dag_execution_id)
-            .await
-            .map_err(NexusError::Rpc)?;
+        if options.poll_interval.is_zero() {
+            return Err(NexusError::Configuration(
+                "Execution inspection poll interval must be greater than zero".to_string(),
+            ));
+        }
 
-        // Setup MSPC channel.
+        let deadline = Instant::now() + options.timeout;
         let (tx, rx) = unbounded_channel::<NexusEvent>();
+        let crawler = self.client.crawler().clone();
+        let nexus_objects = self.client.nexus_objects.clone();
 
-        // Create some initial timings and restrictions.
-        let timeout = timeout.unwrap_or(Duration::from_secs(3600));
-        let poller = self.client.event_poller().clone();
-        let mut next_page = poller
-            .start_polling(Some(execution_checkpoint))
-            .map_err(|e| NexusError::Configuration(format!("{e}")))?;
-
-        let poller = {
-            tokio::spawn(async move {
-                let timeout = tokio::time::sleep(timeout);
-
-                tokio::pin!(timeout);
+        let poller = tokio::spawn(async move {
+            let inspection = async move {
+                let mut last_delivered_version = None;
 
                 loop {
-                    tokio::select! {
-                        maybe_page = next_page.recv() => {
-                            let events = match maybe_page {
-                                Some(Ok(EventPage { events, .. })) => events,
-                                Some(Err(e)) => return Err(NexusError::Channel(anyhow!("Error fetching events: {}", e))),
-                                None => return Err(NexusError::Channel(anyhow!("Event stream closed unexpectedly while inspecting DAG execution '{dag_execution_id}'"))),
-                            };
-
-                            let mut execution_finished_seen = false;
-
-                            for event in events {
-                                let Some(execution_id) = event_execution_id(&event.data) else {
-                                    continue;
-                                };
-
-                                // Only process events for the given execution ID.
-                                if execution_id != dag_execution_id {
-                                    continue;
-                                }
-
-                                if matches!(&event.data, NexusEventKind::ExecutionFinished(_)) {
-                                    tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-                                    execution_finished_seen = true;
-                                    continue;
-                                }
-
-                                tx.send(event).map_err(|e| NexusError::Channel(e.into()))?;
-                            }
-
-                            if execution_finished_seen {
-                                return Ok(());
-                            }
+                    let latest = match crawler
+                        .get_object_update_reference(dag_execution_id, None)
+                        .await
+                        .map_err(|error| {
+                            NexusError::Rpc(error.context(format!(
+                                "Could not inspect execution '{dag_execution_id}' latest object; last successfully reconstructed version {}",
+                                last_reconstructed_version(last_delivered_version)
+                            )))
+                        }) {
+                        Ok(latest) => latest,
+                        Err(error) if is_transient_inspection_error(&error) => {
+                            tokio::time::sleep(options.poll_interval).await;
+                            continue;
                         }
+                        Err(error) => return Err(error),
+                    };
 
-                        _ = &mut timeout => {
-                            return Err(NexusError::Timeout(anyhow!("Timeout {timeout:?} reached while inspecting DAG execution '{dag_execution_id}'")));
-                        }
+                    if last_delivered_version == Some(latest.version) {
+                        tokio::time::sleep(options.poll_interval).await;
+                        continue;
                     }
+
+                    let latest_version = latest.version;
+                    let events = loop {
+                        match fetch_execution_update_events(
+                            &crawler,
+                            &nexus_objects,
+                            dag_execution_id,
+                            latest.clone(),
+                            last_delivered_version,
+                            options.poll_interval,
+                            deadline,
+                        )
+                        .await
+                        {
+                            Ok(events) => break events,
+                            Err(error) if is_transient_inspection_error(&error) => {
+                                tokio::time::sleep(options.poll_interval).await;
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    };
+                    let execution_finished_seen = events
+                        .iter()
+                        .any(|event| matches!(event.data, NexusEventKind::ExecutionFinished(_)));
+
+                    for event in events {
+                        tx.send(event)
+                            .map_err(|error| NexusError::Channel(error.into()))?;
+                    }
+                    last_delivered_version = Some(latest_version);
+
+                    if execution_finished_seen {
+                        return Ok(());
+                    }
+
+                    tokio::time::sleep(options.poll_interval).await;
                 }
-            })
-        };
+            };
+
+            tokio::time::timeout_at(deadline, inspection)
+                .await
+                .map_err(|_| {
+                    NexusError::Timeout(anyhow!(
+                        "Timeout {:?} reached while inspecting DAG execution '{dag_execution_id}'",
+                        options.timeout
+                    ))
+                })?
+        });
 
         Ok(InspectExecutionResult {
             next_event: rx,
@@ -1570,17 +1847,15 @@ impl WorkflowActions {
     }
 
     /// Inspect a DAG execution until completion and return a structured summary
-    /// with resolved end-state data. The starting checkpoint is derived from
-    /// the execution object's creation transaction; see
-    /// [`Self::inspect_execution`] for details.
+    /// with resolved end-state data.
     #[cfg(feature = "walrus")]
     pub async fn inspect_execution_until_completion(
         &self,
         dag_execution_id: sui::types::Address,
-        timeout: Option<Duration>,
+        options: InspectExecutionOptions,
         storage_conf: &StorageConf,
     ) -> Result<InspectExecutionCompletionResult, NexusError> {
-        let mut inspection = self.inspect_execution(dag_execution_id, timeout).await?;
+        let mut inspection = self.inspect_execution(dag_execution_id, options).await?;
 
         let mut events = Vec::new();
 
@@ -2170,18 +2445,18 @@ mod tests {
                     dag as dag_move,
                     graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
+                        ExecutionPaymentFeesRecordedEvent,
                         ExecutionPaymentFinalState,
+                        ExecutionPaymentToolCostSnapshottedEvent,
+                        ExecutionPaymentVertexLockedEvent,
+                        ExecutionPaymentVertexSettledEvent,
                         SkillPaymentPolicy,
                         VertexExecutionPaymentSettlementKind,
                     },
                     verifier::{ToolVerifierMode, VerifierDecision},
                     version::InterfaceVersion,
                 },
-                move_std::{
-                    ascii::String as MoveString,
-                    option::Option as MoveOption,
-                    type_name::TypeName,
-                },
+                move_std::{ascii::String as MoveString, option::Option as MoveOption},
                 primitives::data::NexusData,
                 registry::agent_registry::{
                     AgentRecord,
@@ -2196,9 +2471,12 @@ mod tests {
                     execution_events::{
                         EndStateReachedEvent,
                         ExecutionFinishedEvent,
+                        ExecutionPaymentRefilledEvent,
+                        SubmissionFailureEvidenceRecordedEvent,
                         TerminalErrEvalRecordedEvent,
                         ToolVerificationResolved,
                         WalkAdvancedEvent,
+                        WalkPendingAbortEvent,
                     },
                     execution_failure::WorkflowFailureClass,
                 },
@@ -2208,7 +2486,10 @@ mod tests {
             types::{AgentRegistrySnapshot, DefaultDagExecutorTarget, SkillRecordContext},
         },
         serde::Serialize,
-        std::sync::Arc,
+        std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
         tokio::sync::Mutex,
     };
 
@@ -2785,87 +3066,156 @@ mod tests {
         }
     }
 
-    fn mock_events_get_checkpoint_with_supported_events(
-        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
-        objects: crate::types::NexusObjects,
+    fn supported_grpc_events(
+        objects: &crate::types::NexusObjects,
         nexus_events: Vec<NexusEventKind>,
-        cp: u64,
+    ) -> Vec<sui::grpc::Event> {
+        #[derive(Serialize)]
+        struct Wrapper<T> {
+            event: T,
+        }
+
+        nexus_events
+            .into_iter()
+            .map(|event| {
+                let module = if matches!(event, NexusEventKind::DAGCreated(_)) {
+                    "dag"
+                } else {
+                    "execution"
+                };
+                let event_type = format!(
+                    "{}::event::EventWrapper<{}::{module}::{}>",
+                    objects.primitives_pkg_id,
+                    objects.workflow_pkg_id,
+                    event.name()
+                );
+                let contents = match event {
+                    NexusEventKind::WalkAdvanced(event) => {
+                        bcs::to_bytes(&Wrapper { event }).unwrap()
+                    }
+                    NexusEventKind::EndStateReached(event) => {
+                        bcs::to_bytes(&Wrapper { event }).unwrap()
+                    }
+                    NexusEventKind::ExecutionFinished(event) => {
+                        bcs::to_bytes(&Wrapper { event }).unwrap()
+                    }
+                    NexusEventKind::TerminalErrEvalRecorded(event) => {
+                        bcs::to_bytes(&Wrapper { event }).unwrap()
+                    }
+                    NexusEventKind::DAGCreated(event) => bcs::to_bytes(&Wrapper { event }).unwrap(),
+                    _ => panic!("Unsupported event type for BCS serialization"),
+                };
+
+                let mut grpc_event = sui::grpc::Event::default();
+                grpc_event.set_package_id(objects.workflow_pkg_id);
+                grpc_event.set_module(module.to_string());
+                grpc_event.set_sender(sui::types::Address::ZERO);
+                grpc_event.set_event_type(event_type);
+                grpc_event.set_contents(contents);
+                grpc_event
+            })
+            .collect()
+    }
+
+    fn expect_object_update_reference(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        objects: &crate::types::NexusObjects,
+        object_ref: sui::types::ObjectReference,
+        initial_shared_version: sui::types::Version,
+        expected_requested_version: Option<sui::types::Version>,
+        previous_transaction: sui::types::Digest,
     ) {
+        let object_type = crate::move_bindings::struct_tag::<DAGExecution>(objects).to_string();
         ledger_service
-            .expect_get_checkpoint()
-            .returning(move |_request| {
-                let mut response = sui::grpc::GetCheckpointResponse::default();
-                let mut checkpoint = sui::grpc::Checkpoint::default();
-                let mut transactions = vec![];
-                for _ in 0..10 {
-                    let mut transaction = sui::grpc::ExecutedTransaction::default();
-                    transaction.set_digest(sui::types::Digest::ZERO);
-                    transactions.push(transaction);
-                }
-                checkpoint.set_transactions(transactions);
-                checkpoint.set_sequence_number(cp);
-                response.set_checkpoint(checkpoint);
+            .expect_get_object()
+            .times(1)
+            .returning(move |request| {
+                assert_eq!(request.get_ref().version, expected_requested_version);
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(*object_ref.object_id());
+                object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
+                    initial_shared_version,
+                )));
+                object.set_object_type(object_type.clone());
+                object.set_version(object_ref.version());
+                object.set_digest(*object_ref.digest());
+                object.set_previous_transaction(previous_transaction.to_string());
+                response.set_object(object);
                 Ok(tonic::Response::new(response))
             });
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    fn expect_transaction_update(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        objects: &crate::types::NexusObjects,
+        digest: sui::types::Digest,
+        execution_id: sui::types::Address,
+        version: sui::types::Version,
+        output_digest: sui::types::Digest,
+        input_state: sui::types::ObjectIn,
+        nexus_events: Vec<NexusEventKind>,
+    ) {
+        let grpc_events = supported_grpc_events(objects, nexus_events);
+        let served = Arc::new(AtomicBool::new(false));
         ledger_service
-            .expect_batch_get_transactions()
-            .returning(move |_request| {
-                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
-                let mut result = sui::grpc::GetTransactionResult::default();
+            .expect_get_transaction()
+            .withf(move |request| {
+                request.get_ref().digest_opt() == Some(digest.to_string().as_str())
+            })
+            .returning(move |request| {
+                if served.swap(true, Ordering::SeqCst) {
+                    return Err(tonic::Status::failed_precondition(format!(
+                        "transaction '{digest}' was fetched again after its object version was already reconstructed"
+                    )));
+                }
+                assert_eq!(
+                    request.get_ref().digest_opt(),
+                    Some(digest.to_string().as_str())
+                );
+                let effects = sui::types::TransactionEffects::V2(Box::new(
+                    sui::types::TransactionEffectsV2 {
+                        status: sui::types::ExecutionStatus::Success,
+                        epoch: 1,
+                        gas_used: sui::types::GasCostSummary {
+                            computation_cost: 0,
+                            storage_cost: 0,
+                            storage_rebate: 0,
+                            non_refundable_storage_fee: 0,
+                        },
+                        transaction_digest: digest,
+                        gas_object_index: None,
+                        events_digest: None,
+                        dependencies: vec![],
+                        lamport_version: version,
+                        changed_objects: vec![sui::types::ChangedObject {
+                            object_id: execution_id,
+                            input_state: input_state.clone(),
+                            output_state: sui::types::ObjectOut::ObjectWrite {
+                                digest: output_digest,
+                                owner: sui::types::Owner::Shared(1),
+                            },
+                            id_operation: if matches!(input_state, sui::types::ObjectIn::NotExist) {
+                                sui::types::IdOperation::Created
+                            } else {
+                                sui::types::IdOperation::None
+                            },
+                        }],
+                        unchanged_consensus_objects: vec![],
+                        auxiliary_data_digest: None,
+                    },
+                ));
+                let mut grpc_effects = sui::grpc::TransactionEffects::default();
+                grpc_effects.set_bcs(bcs::to_bytes(&effects).unwrap());
+                let mut events = sui::grpc::TransactionEvents::default();
+                events.set_events(grpc_events.clone());
                 let mut transaction = sui::grpc::ExecutedTransaction::default();
-                transaction.set_digest(sui::types::Digest::ZERO);
-                transaction.set_checkpoint(1);
-                let mut events = vec![];
-
-                #[derive(Serialize)]
-                struct Wrapper<T> {
-                    event: T,
-                }
-
-                for event in nexus_events.clone() {
-                    let module = if matches!(event, NexusEventKind::DAGCreated(_)) {
-                        "dag"
-                    } else {
-                        "execution"
-                    };
-                    let t = format!(
-                        "{}::event::EventWrapper<{}::{module}::{}>",
-                        objects.primitives_pkg_id,
-                        objects.workflow_pkg_id,
-                        event.name()
-                    );
-
-                    let mut grpc_event = sui::grpc::Event::default();
-                    grpc_event.set_package_id(objects.workflow_pkg_id);
-                    grpc_event.set_module(module.to_string());
-                    grpc_event.set_sender(sui::types::Address::ZERO);
-                    grpc_event.set_event_type(t);
-                    grpc_event.set_contents(match event {
-                        NexusEventKind::WalkAdvanced(e) => {
-                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
-                        }
-                        NexusEventKind::EndStateReached(e) => {
-                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
-                        }
-                        NexusEventKind::ExecutionFinished(e) => {
-                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
-                        }
-                        NexusEventKind::TerminalErrEvalRecorded(e) => {
-                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
-                        }
-                        NexusEventKind::DAGCreated(e) => {
-                            bcs::to_bytes(&Wrapper { event: e }).unwrap()
-                        }
-                        _ => panic!("Unsupported event type for BCS serialization"),
-                    });
-                    events.push(grpc_event);
-                }
-                let mut tx_events = sui::grpc::TransactionEvents::default();
-                tx_events.set_events(events);
-                transaction.set_events(tx_events);
-                result.set_transaction(transaction);
-                response.set_transactions(vec![result]);
+                transaction.set_digest(digest);
+                transaction.set_effects(grpc_effects);
+                transaction.set_events(events);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(transaction);
                 Ok(tonic::Response::new(response))
             });
     }
@@ -3307,99 +3657,177 @@ mod tests {
             .to_string()
             .contains("cannot fund a nonzero gas budget"));
     }
+    #[test]
+    fn inspect_execution_options_defaults_are_stable() {
+        assert_eq!(
+            InspectExecutionOptions::default(),
+            InspectExecutionOptions {
+                timeout: Duration::from_secs(60 * 60),
+                poll_interval: Duration::from_secs(1),
+            }
+        );
+    }
 
     #[tokio::test]
-    async fn test_workflow_actions_inspect_execution() {
+    async fn inspect_execution_rejects_zero_poll_interval_before_spawning() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .workflow()
+            .inspect_execution(
+                sui::types::Address::ZERO,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(1),
+                    poll_interval: Duration::ZERO,
+                },
+            )
+            .await;
+
+        assert!(matches!(result, Err(NexusError::Configuration(_))));
+    }
+    #[tokio::test]
+    async fn inspect_execution_replays_update_chain_in_order() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_object_creation_checkpoint(
-            &mut ledger_service_mock,
-            sui::types::ObjectReference::new(
-                execution_object_id,
-                42,
-                sui::types::Digest::generate(&mut rng),
-            ),
-            42,
-            sui::types::Digest::generate(&mut rng),
+        let version_1 = sui::types::ObjectReference::new(
+            execution_object_id,
             1,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let version_9 = sui::types::ObjectReference::new(
+            execution_object_id,
+            9,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let version_20 = sui::types::ObjectReference::new(
+            execution_object_id,
+            20,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let tx_1 = sui::types::Digest::generate(&mut rng);
+        let tx_9 = sui::types::Digest::generate(&mut rng);
+        let tx_20 = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            version_20.clone(),
+            1,
+            None,
+            tx_20,
+        );
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            version_9.clone(),
+            1,
+            Some(9),
+            tx_9,
+        );
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            version_1.clone(),
+            1,
+            Some(1),
+            tx_1,
         );
 
-        let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+        let walk_advanced = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: object_id(dag_object_id),
             execution: object_id(execution_object_id),
             walk_index: 0,
-            vertex: RuntimeVertex::Plain {
-                vertex: TypeName::new("initial").into(),
-            },
+            vertex: RuntimeVertex::plain("initial"),
             variant: output_variant("ok"),
             variant_ports_to_data: ports_data_map(vec![]),
         });
-
-        let end_state_reached_event = NexusEventKind::EndStateReached(EndStateReachedEvent {
+        let end_state_reached = NexusEventKind::EndStateReached(EndStateReachedEvent {
             dag: object_id(dag_object_id),
             execution: object_id(execution_object_id),
             walk_index: 0,
-            vertex: RuntimeVertex::Plain {
-                vertex: TypeName::new("initial").into(),
-            },
+            vertex: RuntimeVertex::plain("final"),
             variant: output_variant("ok"),
-            variant_ports_to_data: ports_data_map(vec![]),
+            variant_ports_to_data: ports_data_map(vec![("answer", b"42")]),
         });
-        let execution_finished_event = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
+        let execution_finished = NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
             dag: object_id(dag_object_id),
             execution: object_id(execution_object_id),
             has_any_walk_failed: false,
             has_any_walk_succeeded: true,
             was_aborted: false,
         });
-
-        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
-
-        sui_mocks::grpc::mock_events_get_checkpoint(
+        expect_transaction_update(
             &mut ledger_service_mock,
-            nexus_objects.clone(),
-            vec![
-                walk_advanced_event.clone(),
-                end_state_reached_event.clone(),
-                execution_finished_event.clone(),
-            ],
+            &nexus_objects,
+            tx_20,
+            execution_object_id,
+            20,
+            *version_20.digest(),
+            sui::types::ObjectIn::Exist {
+                version: 9,
+                digest: *version_9.digest(),
+                owner: sui::types::Owner::Shared(1),
+            },
+            vec![end_state_reached, execution_finished],
+        );
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            tx_9,
+            execution_object_id,
+            9,
+            *version_9.digest(),
+            sui::types::ObjectIn::Exist {
+                version: 1,
+                digest: *version_1.digest(),
+                owner: sui::types::Owner::Shared(1),
+            },
+            vec![walk_advanced],
+        );
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            tx_1,
+            execution_object_id,
             1,
+            *version_1.digest(),
+            sui::types::ObjectIn::NotExist,
+            vec![],
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
-
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
         let mut result = client
             .workflow()
-            .inspect_execution(execution_object_id, Some(std::time::Duration::from_secs(5)))
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(2),
+                    poll_interval: Duration::from_millis(10),
+                },
+            )
             .await
-            .expect("Failed to setup channel");
+            .expect("object inspection should start");
 
-        let mut events = vec![];
-
+        let mut events = Vec::new();
         while let Some(event) = result.next_event.recv().await {
-            match &event.data {
-                NexusEventKind::ExecutionFinished(_) => {
-                    events.push(event);
-
-                    break;
-                }
-                _ => events.push(event),
-            }
+            events.push(event);
         }
 
+        assert!(result.poller.await.unwrap().is_ok());
         assert_eq!(events.len(), 3);
         assert!(matches!(events[0].data, NexusEventKind::WalkAdvanced(_)));
         assert!(matches!(events[1].data, NexusEventKind::EndStateReached(_)));
@@ -3407,65 +3835,366 @@ mod tests {
             events[2].data,
             NexusEventKind::ExecutionFinished(_)
         ));
-        assert!(result.poller.await.unwrap().is_ok());
     }
 
     #[tokio::test]
-    async fn test_workflow_actions_inspect_execution_timeout() {
+    async fn inspect_execution_retries_transaction_not_found_after_visible_object_update() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_object_creation_checkpoint(
-            &mut ledger_service_mock,
-            sui::types::ObjectReference::new(
-                execution_object_id,
-                42,
-                sui::types::Digest::generate(&mut rng),
-            ),
-            42,
+        let version_1 = sui::types::ObjectReference::new(
+            execution_object_id,
+            1,
             sui::types::Digest::generate(&mut rng),
-            1,
         );
-
-        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
-
-        sui_mocks::grpc::mock_events_get_checkpoint(
+        let version_7 = sui::types::ObjectReference::new(
+            execution_object_id,
+            7,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let tx_1 = sui::types::Digest::generate(&mut rng);
+        let tx_7 = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
             &mut ledger_service_mock,
-            nexus_objects.clone(),
-            vec![],
+            &nexus_objects,
+            version_1.clone(),
             1,
+            None,
+            tx_1,
+        );
+        ledger_service_mock
+            .expect_get_object()
+            .times(1)
+            .returning(|_| Err(tonic::Status::aborted("retry object observation")));
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            version_7.clone(),
+            1,
+            None,
+            tx_7,
+        );
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            tx_1,
+            execution_object_id,
+            1,
+            *version_1.digest(),
+            sui::types::ObjectIn::NotExist,
+            vec![NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
+                dag: object_id(dag_object_id),
+                execution: object_id(execution_object_id),
+                walk_index: 0,
+                vertex: RuntimeVertex::plain("initial"),
+                variant: output_variant("ok"),
+                variant_ports_to_data: ports_data_map(vec![]),
+            })],
+        );
+        ledger_service_mock
+            .expect_get_transaction()
+            .withf(move |request| request.get_ref().digest_opt() == Some(tx_7.to_string().as_str()))
+            .times(1)
+            .returning(|_| Err(tonic::Status::not_found("transaction not visible yet")));
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            tx_7,
+            execution_object_id,
+            7,
+            *version_7.digest(),
+            sui::types::ObjectIn::Exist {
+                version: 1,
+                digest: *version_1.digest(),
+                owner: sui::types::Owner::Shared(1),
+            },
+            vec![NexusEventKind::ExecutionFinished(ExecutionFinishedEvent {
+                dag: object_id(dag_object_id),
+                execution: object_id(execution_object_id),
+                has_any_walk_failed: false,
+                has_any_walk_succeeded: true,
+                was_aborted: false,
+            })],
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
-
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
         let mut result = client
             .workflow()
-            .inspect_execution(execution_object_id, Some(std::time::Duration::from_secs(3)))
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(2),
+                    poll_interval: Duration::from_millis(10),
+                },
+            )
             .await
-            .expect("Failed to setup channel");
+            .expect("object inspection should start");
 
-        let mut events = vec![];
-
+        let mut events = Vec::new();
         while let Some(event) = result.next_event.recv().await {
             events.push(event);
         }
+        assert_eq!(events.len(), 2);
+        assert!(matches!(events[0].data, NexusEventKind::WalkAdvanced(_)));
+        assert!(matches!(
+            events[1].data,
+            NexusEventKind::ExecutionFinished(_)
+        ));
+        assert!(result.poller.await.unwrap().is_ok());
+    }
 
-        assert_eq!(events.len(), 0);
+    #[tokio::test]
+    async fn inspect_execution_does_not_refetch_unchanged_transaction() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let object_ref = sui::types::ObjectReference::new(
+            execution_object_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let update_tx = sui::types::Digest::generate(&mut rng);
+        let execution_type =
+            crate::move_bindings::struct_tag::<DAGExecution>(&nexus_objects).to_string();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        let repeated_ref = object_ref.clone();
+        ledger_service_mock
+            .expect_get_object()
+            .returning(move |request| {
+                assert_eq!(request.get_ref().version, None);
+                let mut response = sui::grpc::GetObjectResponse::default();
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(*repeated_ref.object_id());
+                object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(1)));
+                object.set_object_type(execution_type.clone());
+                object.set_version(repeated_ref.version());
+                object.set_digest(*repeated_ref.digest());
+                object.set_previous_transaction(update_tx.to_string());
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            update_tx,
+            execution_object_id,
+            1,
+            *object_ref.digest(),
+            sui::types::ObjectIn::NotExist,
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let mut result = client
+            .workflow()
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_millis(120),
+                    poll_interval: Duration::from_millis(20),
+                },
+            )
+            .await
+            .expect("object inspection should start");
+
+        assert!(result.next_event.recv().await.is_none());
         assert!(matches!(
             result.poller.await.unwrap(),
             Err(NexusError::Timeout(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn inspect_execution_surfaces_invalid_update_chain() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let object_ref = sui::types::ObjectReference::new(
+            execution_object_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let update_tx = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            object_ref,
+            1,
+            None,
+            update_tx,
+        );
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            update_tx,
+            execution_object_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+            sui::types::ObjectIn::NotExist,
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let mut result = client
+            .workflow()
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(1),
+                    poll_interval: Duration::from_millis(10),
+                },
+            )
+            .await
+            .expect("object inspection should start");
+
+        assert!(result.next_event.recv().await.is_none());
+        let error = result
+            .poller
+            .await
+            .unwrap()
+            .expect_err("invalid update chain should fail");
+        assert!(error.to_string().contains("output digest"));
+    }
+
+    #[tokio::test]
+    async fn inspect_execution_reports_missing_transaction_with_reconstruction_context() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let object_ref = sui::types::ObjectReference::new(
+            execution_object_id,
+            5,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let missing_tx = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            object_ref,
+            1,
+            None,
+            missing_tx,
+        );
+        ledger_service_mock
+            .expect_get_transaction()
+            .withf(move |request| {
+                request.get_ref().digest_opt() == Some(missing_tx.to_string().as_str())
+            })
+            .times(1 + MAX_TRANSACTION_NOT_FOUND_RETRIES)
+            .returning(|_| Err(tonic::Status::not_found("transaction pruned")));
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let mut result = client
+            .workflow()
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(1),
+                    poll_interval: Duration::from_millis(10),
+                },
+            )
+            .await
+            .expect("inspection task should start");
+
+        assert!(result.next_event.recv().await.is_none());
+        let error = result.poller.await.unwrap().expect_err("history must fail");
+        let message = error.to_string();
+        assert!(message.contains(&execution_object_id.to_string()));
+        assert!(message.contains(&missing_tx.to_string()));
+        assert!(message.contains("last successfully reconstructed version none"));
+    }
+
+    #[tokio::test]
+    async fn inspect_execution_reports_missing_historical_version() {
+        let mut rng = rand::thread_rng();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let execution_object_id = sui::types::Address::generate(&mut rng);
+        let version_9 = sui::types::ObjectReference::new(
+            execution_object_id,
+            9,
+            sui::types::Digest::generate(&mut rng),
+        );
+        let version_1_digest = sui::types::Digest::generate(&mut rng);
+        let tx_9 = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            version_9.clone(),
+            1,
+            None,
+            tx_9,
+        );
+        ledger_service_mock
+            .expect_get_object()
+            .times(1)
+            .returning(|request| {
+                assert_eq!(request.get_ref().version, Some(1));
+                Err(tonic::Status::not_found("historical object pruned"))
+            });
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            tx_9,
+            execution_object_id,
+            9,
+            *version_9.digest(),
+            sui::types::ObjectIn::Exist {
+                version: 1,
+                digest: version_1_digest,
+                owner: sui::types::Owner::Shared(1),
+            },
+            vec![],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let mut result = client
+            .workflow()
+            .inspect_execution(
+                execution_object_id,
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(1),
+                    poll_interval: Duration::from_millis(10),
+                },
+            )
+            .await
+            .expect("inspection task should start");
+
+        assert!(result.next_event.recv().await.is_none());
+        let error = result.poller.await.unwrap().expect_err("history must fail");
+        let message = error.to_string();
+        assert!(message.contains(&execution_object_id.to_string()));
+        assert!(message.contains("missing object version 1"));
+        assert!(message.contains("last successfully reconstructed version none"));
     }
 
     #[cfg(feature = "walrus")]
@@ -3475,22 +4204,12 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_object_id = sui::types::Address::generate(&mut rng);
         let execution_object_id = sui::types::Address::generate(&mut rng);
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_object_creation_checkpoint(
-            &mut ledger_service_mock,
-            sui::types::ObjectReference::new(
-                execution_object_id,
-                42,
-                sui::types::Digest::generate(&mut rng),
-            ),
+        let object_ref = sui::types::ObjectReference::new(
+            execution_object_id,
             42,
             sui::types::Digest::generate(&mut rng),
-            1,
         );
+        let update_tx = sui::types::Digest::generate(&mut rng);
 
         let walk_advanced_event = NexusEventKind::WalkAdvanced(WalkAdvancedEvent {
             dag: object_id(dag_object_id),
@@ -3529,32 +4248,46 @@ mod tests {
             was_aborted: false,
         });
 
-        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
-        mock_events_get_checkpoint_with_supported_events(
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        expect_object_update_reference(
             &mut ledger_service_mock,
-            nexus_objects.clone(),
+            &nexus_objects,
+            object_ref.clone(),
+            1,
+            None,
+            update_tx,
+        );
+        expect_transaction_update(
+            &mut ledger_service_mock,
+            &nexus_objects,
+            update_tx,
+            execution_object_id,
+            object_ref.version(),
+            *object_ref.digest(),
+            sui::types::ObjectIn::NotExist,
             vec![
                 walk_advanced_event,
                 terminal_err_eval_event,
                 end_state_reached_event,
                 execution_finished_event,
             ],
-            1,
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
-
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
 
         let result = client
             .workflow()
             .inspect_execution_until_completion(
                 execution_object_id,
-                Some(std::time::Duration::from_secs(5)),
+                InspectExecutionOptions {
+                    timeout: Duration::from_secs(2),
+                    poll_interval: Duration::from_millis(10),
+                },
                 &StorageConf::default(),
             )
             .await
@@ -3575,59 +4308,61 @@ mod tests {
             result.terminal_err_eval_recordings[0].failure_class,
             WorkflowFailureClass::TerminalToolFailure
         );
-        assert!(result.events.len() >= 2);
+        assert_eq!(result.events.len(), 4);
     }
 
-    #[cfg(feature = "walrus")]
     #[tokio::test]
-    async fn test_workflow_actions_inspect_execution_until_completion_timeout() {
-        let mut rng = rand::thread_rng();
+    async fn inspect_execution_total_timeout_covers_initial_request_retries() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_object_id = sui::types::Address::generate(&mut rng);
-
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_object_creation_checkpoint(
-            &mut ledger_service_mock,
-            sui::types::ObjectReference::new(
-                execution_object_id,
-                42,
-                sui::types::Digest::generate(&mut rng),
-            ),
-            42,
-            sui::types::Digest::generate(&mut rng),
-            1,
-        );
-        sui_mocks::grpc::mock_events_stream(&mut sub_service_mock, 2);
-        sui_mocks::grpc::mock_events_get_checkpoint(
-            &mut ledger_service_mock,
-            nexus_objects.clone(),
-            vec![],
-            1,
-        );
+        ledger_service_mock
+            .expect_get_object()
+            .times(1..)
+            .returning(|_| Err(tonic::Status::unavailable("temporary localnet outage")));
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
-
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
+        let mut result = client
             .workflow()
-            .inspect_execution_until_completion(
-                execution_object_id,
-                Some(std::time::Duration::from_secs(3)),
-                &StorageConf::default(),
+            .inspect_execution(
+                sui::types::Address::TWO,
+                InspectExecutionOptions {
+                    timeout: Duration::from_millis(80),
+                    poll_interval: Duration::from_millis(10),
+                },
             )
-            .await;
+            .await
+            .expect("inspection task should start");
 
-        assert!(matches!(result, Err(NexusError::Timeout(_))));
+        assert!(result.next_event.recv().await.is_none());
+        assert!(matches!(
+            result.poller.await.unwrap(),
+            Err(NexusError::Timeout(_))
+        ));
     }
 
+    #[test]
+    fn execution_inspection_retries_only_confirmed_transient_grpc_codes() {
+        for code in [
+            tonic::Code::Unavailable,
+            tonic::Code::DeadlineExceeded,
+            tonic::Code::ResourceExhausted,
+            tonic::Code::Aborted,
+        ] {
+            let error = NexusError::Rpc(
+                anyhow::Error::new(tonic::Status::new(code, "retry"))
+                    .context("inspection request failed"),
+            );
+            assert!(is_transient_inspection_error(&error), "{code:?}");
+        }
+
+        let permanent = NexusError::Rpc(anyhow::Error::new(tonic::Status::not_found("missing")));
+        assert!(!is_transient_inspection_error(&permanent));
+    }
     #[test]
     fn test_event_execution_id_supports_terminal_err_eval_recorded() {
         let execution = sui::types::Address::TWO;
@@ -3665,6 +4400,78 @@ mod tests {
         });
 
         assert_eq!(event_execution_id(&event), Some(execution));
+    }
+    #[test]
+    fn test_event_execution_id_supports_object_history_events() {
+        let execution = sui::types::Address::TWO;
+        let events = [
+            NexusEventKind::ExecutionPaymentFeesRecorded(ExecutionPaymentFeesRecordedEvent {
+                payment_id: sui::types::Address::ZERO,
+                execution_id: execution,
+                agent_id: object_id(sui::types::Address::THREE),
+                skill_id: 1,
+                gas_fee_mist: 2,
+                tool_fee_mist: 3,
+                priority_fee_mist: 4,
+                priority_fee_percentage: 5,
+            }),
+            NexusEventKind::ExecutionPaymentToolCostSnapshotted(
+                ExecutionPaymentToolCostSnapshottedEvent {
+                    payment_id: sui::types::Address::ZERO,
+                    execution_id: execution,
+                    agent_id: object_id(sui::types::Address::THREE),
+                    tool_fqn: b"demo::tool".to_vec(),
+                    cost: 6,
+                },
+            ),
+            NexusEventKind::ExecutionPaymentVertexLocked(ExecutionPaymentVertexLockedEvent {
+                payment_id: sui::types::Address::ZERO,
+                execution_id: execution,
+                agent_id: object_id(sui::types::Address::THREE),
+                vertex_key: b"vertex".to_vec(),
+                tool_fqn: b"demo::tool".to_vec(),
+                amount: 7,
+                settlement_kind: VertexExecutionPaymentSettlementKind::Ticket,
+            }),
+            NexusEventKind::ExecutionPaymentVertexSettled(ExecutionPaymentVertexSettledEvent {
+                payment_id: sui::types::Address::ZERO,
+                execution_id: execution,
+                agent_id: object_id(sui::types::Address::THREE),
+                vertex_key: b"vertex".to_vec(),
+                tool_fqn: b"demo::tool".to_vec(),
+                amount: 8,
+                settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
+                was_refunded: false,
+            }),
+            NexusEventKind::SubmissionFailureEvidenceRecorded(
+                SubmissionFailureEvidenceRecordedEvent {
+                    dag: object_id(sui::types::Address::ZERO),
+                    execution: object_id(execution),
+                    walk_index: 9,
+                    vertex: RuntimeVertex::plain("submission_failure"),
+                    failed_leader: sui::types::Address::THREE,
+                    winning_leader: MoveOption::from_option(None),
+                    reason: MoveString::from("invalid evidence"),
+                    err_eval_hash: vec![10, 11, 12],
+                },
+            ),
+            NexusEventKind::WalkPendingAbort(WalkPendingAbortEvent {
+                dag: object_id(sui::types::Address::ZERO),
+                execution: object_id(execution),
+                walk_index: 13,
+                vertex: RuntimeVertex::plain("pending_abort"),
+            }),
+            NexusEventKind::ExecutionPaymentRefilled(ExecutionPaymentRefilledEvent {
+                execution_id: execution,
+                payment_id: sui::types::Address::ZERO,
+                source: sui::types::Address::THREE,
+                refill_amount: 14,
+            }),
+        ];
+
+        for event in events {
+            assert_eq!(event_execution_id(&event), Some(execution));
+        }
     }
 
     #[cfg(feature = "walrus")]

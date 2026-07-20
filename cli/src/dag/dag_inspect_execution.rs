@@ -9,7 +9,7 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::{events::NexusEventKind, sui},
+    nexus_sdk::{events::NexusEventKind, nexus::workflow::InspectExecutionOptions, sui},
 };
 
 fn terminal_err_eval_trace_entry(event: &NexusEventKind) -> serde_json::Value {
@@ -42,10 +42,9 @@ fn terminal_err_eval_duplicate_suffix(event: &NexusEventKind) -> &'static str {
     }
 }
 
-/// Inspect a Nexus DAG execution process. The SDK derives the starting
-/// checkpoint from the DAGExecution object's creation transaction (see
-/// [`nexus_sdk::nexus::crawler::Crawler::get_object_creation_checkpoint`]),
-/// so callers no longer need to thread it through.
+/// Inspect a Nexus DAG execution process by following updates to its on-chain
+/// execution object. This avoids checkpoint subscription and catch-up while
+/// retaining the ordered execution trace.
 pub(crate) async fn inspect_dag_execution(
     dag_execution_id: sui::types::Address,
 ) -> AnyResult<(), NexusCliError> {
@@ -55,7 +54,7 @@ pub(crate) async fn inspect_dag_execution(
 
     let mut result = nexus_client
         .workflow()
-        .inspect_execution(dag_execution_id, None)
+        .inspect_execution(dag_execution_id, InspectExecutionOptions::default())
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -344,22 +343,16 @@ mod tests {
         );
     }
 
-    /// Pruned-checkpoint regression: when the SDK's catch-up loop hits a
-    /// gRPC `NotFound` for a checkpoint and surfaces a
-    /// `NexusError::Channel(...)` via `send_page`, the inspection task
-    /// terminates with `Err(...)`. Without this propagation the CLI would
-    /// just print `[]` and exit 0 — exactly the silent-empty-trace bug we
-    /// hit on the TAP development guide walkthrough. Asserts the failure
-    /// is bubbled up to `NexusCliError::Nexus` with the original message
-    /// intact.
+    /// An execution-object history failure from the SDK poller must reach the
+    /// CLI instead of being rendered as an empty successful trace.
     #[tokio::test]
     async fn await_poller_outcome_surfaces_nexus_error_when_poller_fails() {
-        let original = "Error fetching events: GRPC error: Failed to fetch checkpoint 108515 \
-             during catch-up: code: 'Some requested entity was not found'";
+        let original = "Execution '0x123' history is incomplete: missing transaction \
+             'tx-digest' for object version 42; last successfully reconstructed version 41";
         let original_owned = original.to_string();
         let handle = tokio::spawn(async move {
             Err::<(), nexus_sdk::nexus::error::NexusError>(
-                nexus_sdk::nexus::error::NexusError::Channel(anyhow!(original_owned)),
+                nexus_sdk::nexus::error::NexusError::Rpc(anyhow!(original_owned)),
             )
         });
 
@@ -369,13 +362,12 @@ mod tests {
 
         let rendered = format!("{err}");
         assert!(
-            rendered.contains("Channel error"),
-            "expected NexusCliError::Nexus(Channel(...)), got: {rendered}"
+            rendered.contains("RPC error"),
+            "expected NexusCliError::Nexus(Rpc(...)), got: {rendered}"
         );
         assert!(
-            rendered.contains("Checkpoint 108515 not found")
-                || rendered.contains("108515 during catch-up"),
-            "underlying RPC reason must be preserved in the surfaced error: {rendered}"
+            rendered.contains("missing transaction 'tx-digest' for object version 42"),
+            "execution history context must be preserved in the surfaced error: {rendered}"
         );
     }
 

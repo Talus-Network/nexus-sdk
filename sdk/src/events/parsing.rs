@@ -162,15 +162,20 @@ fn allows_foreign_emitter(event_name: &str) -> bool {
         "AgentSkillExecutionRequestedEvent"
             | "AgentSkillPaymentCreatedEvent"
             | "AgentVertexAuthorizationRequiredEvent"
+            | "ExecutionPaymentReceiptCreatedEvent"
+            | "ExecutionPaymentToolCostSnapshottedEvent"
+            | "ExecutionPaymentVertexLockedEvent"
             | "PaymentLockUpdateEvent"
             | "RequestScheduledOccurrenceEvent"
             | "RequestWalkExecutionEvent"
+            | "SkillContractRevisionedEvent"
+            | "SkillRegisteredEvent"
     )
 }
 
 /// Helper function to determine whether the provided struct tag corresponds to
 /// `nexus_primitives::event::EventWrapper`.
-fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
+pub(crate) fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
     crate::move_bindings::struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(
         objects, tag,
     ) || crate::move_bindings::struct_tag_matches::<
@@ -199,7 +204,14 @@ mod direct_event_tests {
                     type_name::TypeName,
                 },
                 primitives::policy::Symbol as PolicySymbol,
-                registry::{agent_registry::*, leader::*, leader_cap::*, tool_registry::*},
+                registry::{
+                    agent_registry::*,
+                    leader::*,
+                    leader_cap::*,
+                    priority_fee_vault::*,
+                    tool_registry::*,
+                    verifier_registry::*,
+                },
                 scheduler::scheduler::*,
                 sui_framework::{
                     object::ID,
@@ -684,6 +696,170 @@ mod direct_event_tests {
     }
 
     #[test]
+    fn from_sui_grpc_event_allows_foreign_emitter_for_skill_registered() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_event(
+            &objects,
+            addr(0xf3),
+            inner_tag(
+                objects.registry_pkg_id,
+                "agent_registry",
+                "SkillRegisteredEvent",
+                vec![],
+            ),
+            SkillRegisteredEvent {
+                agent_id: id(addr(0xaa)),
+                skill_id: 11,
+                dag_id: addr(0xab),
+                dag_binding: skill_dag_binding(),
+            },
+        );
+
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::SkillRegistered(SkillRegisteredEvent { skill_id: 11, .. })
+        ));
+    }
+
+    #[test]
+    fn from_sui_grpc_event_allows_foreign_emitter_for_skill_contract_revisioned() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_event(
+            &objects,
+            addr(0xf4),
+            inner_tag(
+                objects.registry_pkg_id,
+                "agent_registry",
+                "SkillContractRevisionedEvent",
+                vec![],
+            ),
+            SkillContractRevisionedEvent {
+                agent_id: id(addr(0xac)),
+                skill_id: 12,
+                current_interface_revision: interface_version(13),
+                dag_binding: skill_dag_binding(),
+                requirements: skill_requirements(),
+            },
+        );
+
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::SkillContractRevisioned(SkillContractRevisionedEvent {
+                skill_id: 12,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn from_sui_grpc_event_allows_foreign_emitter_for_execution_payment_receipt_created() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_event(
+            &objects,
+            addr(0xf5),
+            inner_tag(
+                objects.interface_pkg_id,
+                "payment",
+                "ExecutionPaymentReceiptCreatedEvent",
+                vec![],
+            ),
+            ExecutionPaymentReceiptCreatedEvent {
+                receipt_id: addr(0xad),
+                execution_id: addr(0xae),
+                payment_id: addr(0xaf),
+                agent_id: id(addr(0xb0)),
+                skill_id: 14,
+                source_kind: payment_source(),
+                stored_under_agent: true,
+            },
+        );
+
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::ExecutionPaymentReceiptCreated(ExecutionPaymentReceiptCreatedEvent {
+                skill_id: 14,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn from_sui_grpc_event_allows_foreign_emitter_for_execution_payment_tool_cost_snapshotted() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_event(
+            &objects,
+            addr(0xf6),
+            inner_tag(
+                objects.interface_pkg_id,
+                "payment",
+                "ExecutionPaymentToolCostSnapshottedEvent",
+                vec![],
+            ),
+            ExecutionPaymentToolCostSnapshottedEvent {
+                payment_id: addr(0xb1),
+                execution_id: addr(0xb2),
+                agent_id: id(addr(0xb3)),
+                tool_fqn: b"demo::tool".to_vec(),
+                cost: 15,
+            },
+        );
+
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::ExecutionPaymentToolCostSnapshotted(
+                ExecutionPaymentToolCostSnapshottedEvent { cost: 15, .. }
+            )
+        ));
+    }
+
+    #[test]
+    fn from_sui_grpc_event_allows_foreign_emitter_for_execution_payment_vertex_locked() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let event = wrapped_event(
+            &objects,
+            addr(0xf7),
+            inner_tag(
+                objects.interface_pkg_id,
+                "payment",
+                "ExecutionPaymentVertexLockedEvent",
+                vec![],
+            ),
+            ExecutionPaymentVertexLockedEvent {
+                payment_id: addr(0xb4),
+                execution_id: addr(0xb5),
+                agent_id: id(addr(0xb6)),
+                vertex_key: b"vertex".to_vec(),
+                tool_fqn: b"demo::tool".to_vec(),
+                amount: 16,
+                settlement_kind: payment_types::VertexExecutionPaymentSettlementKind::Paid,
+            },
+        );
+
+        let parsed =
+            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+
+        assert!(matches!(
+            parsed.data,
+            NexusEventKind::ExecutionPaymentVertexLocked(ExecutionPaymentVertexLockedEvent {
+                amount: 16,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn from_sui_grpc_event_rejects_foreign_emitter_for_regular_events() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
@@ -848,6 +1024,58 @@ mod direct_event_tests {
                 priority_fee_reserve_mist: 4,
                 locked_budget_mist: 28,
                 priority_fee_percentage: 20,
+            }
+        );
+        check!(
+            "ExecutionPaymentFeesRecordedEvent",
+            check!(@tag objects.interface_pkg_id, "payment", "ExecutionPaymentFeesRecordedEvent"),
+            ExecutionPaymentFeesRecordedEvent {
+                payment_id: addr(0xc7),
+                execution_id: addr(0xc8),
+                agent_id: id(addr(0xc9)),
+                skill_id: 44,
+                gas_fee_mist: 45,
+                tool_fee_mist: 46,
+                priority_fee_mist: 47,
+                priority_fee_percentage: 20,
+            }
+        );
+        check!(
+            "ExecutionPaymentToolCostSnapshottedEvent",
+            check!(@tag objects.interface_pkg_id, "payment", "ExecutionPaymentToolCostSnapshottedEvent"),
+            ExecutionPaymentToolCostSnapshottedEvent {
+                payment_id: addr(0xc1),
+                execution_id: addr(0xc2),
+                agent_id: id(addr(0xc3)),
+                tool_fqn: b"demo::tool".to_vec(),
+                cost: 42,
+            }
+        );
+        check!(
+            "ExecutionPaymentVertexLockedEvent",
+            check!(@tag objects.interface_pkg_id, "payment", "ExecutionPaymentVertexLockedEvent"),
+            ExecutionPaymentVertexLockedEvent {
+                payment_id: addr(0xca),
+                execution_id: addr(0xcb),
+                agent_id: id(addr(0xcc)),
+                vertex_key: b"vertex".to_vec(),
+                tool_fqn: b"demo::tool".to_vec(),
+                amount: 48,
+                settlement_kind: payment_types::VertexExecutionPaymentSettlementKind::Ticket,
+            }
+        );
+        check!(
+            "ExecutionPaymentVertexSettledEvent",
+            check!(@tag objects.interface_pkg_id, "payment", "ExecutionPaymentVertexSettledEvent"),
+            ExecutionPaymentVertexSettledEvent {
+                payment_id: addr(0xc4),
+                execution_id: addr(0xc5),
+                agent_id: id(addr(0xc6)),
+                vertex_key: b"vertex".to_vec(),
+                tool_fqn: b"demo::tool".to_vec(),
+                amount: 43,
+                settlement_kind: payment_types::VertexExecutionPaymentSettlementKind::Paid,
+                was_refunded: false,
             }
         );
         check!(
@@ -1072,6 +1300,20 @@ mod direct_event_tests {
             }
         );
         check!(
+            "SubmissionFailureEvidenceRecordedEvent",
+            check!(@tag objects.workflow_pkg_id, "execution_events", "SubmissionFailureEvidenceRecordedEvent"),
+            SubmissionFailureEvidenceRecordedEvent {
+                dag: id(addr(0xcf)),
+                execution: id(addr(0xd0)),
+                walk_index: 77,
+                vertex: RuntimeVertex::plain("submission_failure"),
+                failed_leader: addr(0xd1),
+                winning_leader: MoveOption::from_option(Some(addr(0xd2))),
+                reason: MoveString::from("invalid evidence"),
+                err_eval_hash: vec![10, 11, 12],
+            }
+        );
+        check!(
             "TerminalErrEvalRecordedEvent",
             check!(@tag objects.workflow_pkg_id, "execution_events", "TerminalErrEvalRecordedEvent"),
             TerminalErrEvalRecordedEvent {
@@ -1101,6 +1343,16 @@ mod direct_event_tests {
                     crate::move_bindings::interface::verifier::ToolVerifierMode::External,
                 verifier_witness_id: MoveOption::from_option(Some(id(addr(0x56)))),
                 decision: crate::move_bindings::interface::verifier::VerifierDecision::Accept,
+            }
+        );
+        check!(
+            "WalkPendingAbortEvent",
+            check!(@tag objects.workflow_pkg_id, "execution_events", "WalkPendingAbortEvent"),
+            WalkPendingAbortEvent {
+                dag: id(addr(0xd3)),
+                execution: id(addr(0xd4)),
+                walk_index: 78,
+                vertex: RuntimeVertex::plain("pending_abort"),
             }
         );
         check!(
@@ -1160,6 +1412,16 @@ mod direct_event_tests {
             }
         );
         check!(
+            "ExecutionPaymentRefilledEvent",
+            check!(@tag objects.workflow_pkg_id, "execution_events", "ExecutionPaymentRefilledEvent"),
+            ExecutionPaymentRefilledEvent {
+                execution_id: addr(0xd5),
+                payment_id: addr(0xd6),
+                source: addr(0xd7),
+                refill_amount: 79,
+            }
+        );
+        check!(
             "ExecutionPaymentInsufficientSettlementEvent",
             check!(@tag objects.workflow_pkg_id, "execution_events", "ExecutionPaymentInsufficientSettlementEvent"),
             ExecutionPaymentInsufficientSettlementEvent {
@@ -1203,6 +1465,26 @@ mod direct_event_tests {
                 generated: MoveOption::from_option(Some(80)),
                 priority_fee_percentage: 81,
                 last_generated_start_ms: MoveOption::from_option(Some(82)),
+            }
+        );
+        check!(
+            "PriorityFeeDepositedEvent",
+            check!(@tag objects.registry_pkg_id, "priority_fee_vault", "PriorityFeeDepositedEvent"),
+            PriorityFeeDepositedEvent {
+                vault: id(addr(0xd8)),
+                leader_cap_id: addr(0xd9),
+                amount: 80,
+            }
+        );
+        check!(
+            "RegisteredKeyVerifierCheckEvent",
+            check!(@tag objects.registry_pkg_id, "verifier_registry", "RegisteredKeyVerifierCheckEvent"),
+            RegisteredKeyVerifierCheckEvent {
+                registry: id(addr(0xda)),
+                method: MoveString::from("registered_key"),
+                submission_kind:
+                    crate::move_bindings::interface::verifier::VerificationSubmissionKind::Success,
+                passed: true,
             }
         );
         check!(
@@ -1278,6 +1560,6 @@ mod direct_event_tests {
             }
         );
 
-        assert_eq!(parsed, 47);
+        assert_eq!(parsed, 56);
     }
 }
