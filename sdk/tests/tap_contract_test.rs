@@ -110,6 +110,13 @@ fn tap_agent_registry_arg(
     Ok(tx.shared_object(&registry_ref, mutable)?)
 }
 
+fn tap_tool_registry_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+) -> anyhow::Result<sui::types::Argument> {
+    let registry_ref = tx.objects().tool_registry.clone();
+    Ok(tx.shared_object(&registry_ref, false)?)
+}
+
 fn tap_payment_policy_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     payment_policy: &SkillPaymentPolicy,
@@ -166,15 +173,17 @@ fn append_tap_register_skill(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
-    dag_id: sui::types::Address,
+    dag: sui::types::Argument,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: &SkillPaymentPolicy,
     schedule_policy: &SkillSchedulePolicy,
+    fixed_tools: &[FixedTool],
 ) -> anyhow::Result<sui::types::Argument> {
+    let tool_registry = tap_tool_registry_arg(tx)?;
     let payment_policy = tap_payment_policy_arg(tx, payment_policy)?;
     let schedule_policy = tap_schedule_policy_arg(tx, schedule_policy)?;
-    let dag_id = tx.arg(&dag_id)?;
+    let fixed_tools = tx.arg(&fixed_tools.to_vec())?;
     let description = tx.arg(&description)?;
     let input_commitment = tx.arg(&input_commitment)?;
 
@@ -183,11 +192,13 @@ fn append_tap_register_skill(
         vec![
             registry,
             agent,
-            dag_id,
+            tool_registry,
+            dag,
             description,
             input_commitment,
             payment_policy,
             schedule_policy,
+            fixed_tools,
         ],
     )
 }
@@ -592,6 +603,7 @@ fn standard_tap_events_are_nexus_events() {
 fn transaction_builders_select_tap_functions() {
     let objects = nexus_objects();
     let agent = object_ref("0xa1", 1, 0xa1);
+    let dag = object_ref("0xd1", 1, 0xd1);
     let tx = move_boundary::ptb(&objects, |tx| {
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
 
@@ -603,16 +615,18 @@ fn transaction_builders_select_tap_functions() {
 
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent = tx.shared_object(&agent, true)?;
+        let dag = tx.shared_object(&dag, false)?;
         let requirements = requirements();
         append_tap_register_skill(
             tx,
             registry,
             agent,
-            addr("0xd1"),
+            dag,
             b"demo".to_vec(),
             requirements.input_commitment,
             &requirements.payment_policy,
             &requirements.schedule_policy,
+            &requirements.fixed_tools,
         )
         .expect("register skill builder");
 
@@ -640,14 +654,16 @@ fn transaction_builders_select_tap_functions() {
 fn update_skill_compatibility_builds_dag_and_policy_calls() {
     let objects = nexus_objects();
     let agent = object_ref("0xa1", 1, 0xa1);
+    let dag = object_ref("0xd2", 1, 0xd2);
     let tx = move_boundary::ptb(&objects, |tx| {
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent_arg = tx.shared_object(&agent, true)?;
+        let tool_registry = tap_tool_registry_arg(tx)?;
+        let dag = tx.shared_object(&dag, false)?;
         let skill_id = tx.arg(&177_u64)?;
-        let dag_id = tx.arg(&addr("0xd2"))?;
         tx.call_target(
             agent_registry_binding::update_dag_target,
-            vec![registry, agent_arg, skill_id, dag_id],
+            vec![registry, agent_arg, tool_registry, dag, skill_id],
         )
         .expect("update dag builder");
 
@@ -724,15 +740,17 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
             .expect("create agent");
 
         let registry = tap_agent_registry_arg(tx, true).expect("registry");
+        let dag = tx.shared_object(&dag_ref, false)?;
         append_tap_register_skill(
             tx,
             registry,
             agent_object,
-            artifact.dag_id,
+            dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
             &artifact.requirements.payment_policy,
             &artifact.requirements.schedule_policy,
+            &artifact.requirements.fixed_tools,
         )
         .expect("register skill");
 

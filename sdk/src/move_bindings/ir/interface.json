@@ -8067,6 +8067,46 @@
           ]
         },
         {
+          "name": "vertex_names",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "Vertex"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "vertex_tool_fqns",
           "visibility": "Public",
           "is_entry": false,

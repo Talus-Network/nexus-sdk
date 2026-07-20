@@ -84,11 +84,11 @@ pub(crate) fn create_agent_for_self_ptb(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn register_skill_with_fixed_tools(
+pub(crate) fn register_skill(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
-    dag_id: sui::types::Address,
+    dag: sui::types::Argument,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: SkillPaymentPolicy,
@@ -103,7 +103,7 @@ pub(crate) fn register_skill_with_fixed_tools(
         registry,
         agent,
         tool_registry,
-        tx.arg(&dag_id)?,
+        dag,
         tx.arg(&description)?,
         tx.arg(&input_commitment)?,
         payment_policy,
@@ -111,27 +111,26 @@ pub(crate) fn register_skill_with_fixed_tools(
         fixed_tools,
     ];
 
-    tx.call_target(
-        agent_registry_binding::register_skill_with_fixed_tools_target,
-        args,
-    )
+    tx.call_target(agent_registry_binding::register_skill_target, args)
 }
 
 /// Build a PTB that registers a skill on an existing TAP agent.
 pub(crate) fn register_skill_ptb(
     objects: &NexusObjects,
     agent: AgentInput,
+    dag: &sui::types::ObjectReference,
     artifact: &TapPublishArtifact,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = agent.mutable_ptb_argument(tx)?;
+        let dag = tx.shared_object(dag, false)?;
 
-        register_skill_with_fixed_tools(
+        register_skill(
             tx,
             registry,
             agent,
-            artifact.dag_id,
+            dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
             artifact.requirements.payment_policy.clone(),
@@ -146,10 +145,11 @@ pub(crate) fn update_dag(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
+    dag: sui::types::Argument,
     skill_id: SkillId,
-    dag_id: sui::types::Address,
 ) -> anyhow::Result<sui::types::Argument> {
-    let args = vec![registry, agent, tx.arg(&skill_id)?, tx.arg(&dag_id)?];
+    let tool_registry = tool_registry_arg(tx, false)?;
+    let args = vec![registry, agent, tool_registry, dag, tx.arg(&skill_id)?];
 
     tx.call_target(agent_registry_binding::update_dag_target, args)
 }
@@ -179,6 +179,7 @@ pub(crate) fn update_skill_policies(
 pub(crate) fn update_skill_from_artifact_ptb(
     objects: &NexusObjects,
     agent: AgentInput,
+    dag: &sui::types::ObjectReference,
     skill_id: SkillId,
     artifact: &TapPublishArtifact,
 ) -> anyhow::Result<ProgrammableTransaction> {
@@ -187,14 +188,9 @@ pub(crate) fn update_skill_from_artifact_ptb(
         let registry_for_policies = agent_registry_arg(tx, true)?;
         let agent_for_dag = agent.clone().mutable_ptb_argument(tx)?;
         let agent_for_policies = agent.mutable_ptb_argument(tx)?;
+        let dag = tx.shared_object(dag, false)?;
 
-        update_dag(
-            tx,
-            registry_for_dag,
-            agent_for_dag,
-            skill_id,
-            artifact.dag_id,
-        )?;
+        update_dag(tx, registry_for_dag, agent_for_dag, dag, skill_id)?;
 
         update_skill_policies(
             tx,
@@ -230,17 +226,19 @@ pub(crate) fn deposit_agent_payment_vault_for_self_ptb(
 /// Build a PTB that creates an agent and registers its first skill atomically.
 pub(crate) fn bind_agent_skill_ptb(
     objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
     artifact: &TapPublishArtifact,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = create_agent(tx, registry)?;
+        let dag = tx.shared_object(dag, false)?;
 
-        register_skill_with_fixed_tools(
+        register_skill(
             tx,
             registry,
             agent,
-            artifact.dag_id,
+            dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
             artifact.requirements.payment_policy.clone(),
