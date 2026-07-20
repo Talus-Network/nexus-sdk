@@ -438,8 +438,8 @@ pub struct InspectExecutionResult {
     pub poller: JoinHandle<Result<(), NexusError>>,
 }
 
-/// Controls execution-object inspection latency and its total wall-clock
-/// budget.
+/// Controls execution-object inspection polling interval and its total
+/// wall-clock budget.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InspectExecutionOptions {
     pub timeout: Duration,
@@ -513,7 +513,7 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     }
 }
 
-fn last_reconstructed_version(version: Option<sui::types::Version>) -> String {
+fn version_or_none(version_or_none: Option<sui::types::Version>) -> String {
     version
         .map(|version| version.to_string())
         .unwrap_or_else(|| "none".to_string())
@@ -589,7 +589,7 @@ async fn fetch_execution_update_events(
     let mut cursor = latest;
     let mut reverse_updates = Vec::new();
     let expected_type = crate::move_bindings::struct_tag::<DAGExecution>(nexus_objects);
-    let last_reconstructed = last_reconstructed_version(last_delivered_version);
+    let last_reconstructed = version_or_none(last_delivered_version);
 
     loop {
         if !matches!(cursor.owner, sui::types::Owner::Shared(_)) {
@@ -1776,7 +1776,7 @@ impl WorkflowActions {
                         .map_err(|error| {
                             NexusError::Rpc(error.context(format!(
                                 "Could not inspect execution '{dag_execution_id}' latest object; last successfully reconstructed version {}",
-                                last_reconstructed_version(last_delivered_version)
+                                version_or_none(last_delivered_version)
                             )))
                         }) {
                         Ok(latest) => latest,

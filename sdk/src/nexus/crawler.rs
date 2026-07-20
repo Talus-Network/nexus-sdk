@@ -330,8 +330,7 @@ impl Crawler {
         })
     }
 
-    /// Fetch and decode the effects and events for one object-update
-    /// transaction without requesting checkpoint data.
+    /// Fetch and decode the effects and events for one transaction digest
     pub async fn get_transaction_update(
         &self,
         digest: sui::types::Digest,
@@ -355,8 +354,7 @@ impl Crawler {
             .ok_or_else(|| anyhow!("Transaction '{digest}' not found"))?;
 
         let observed_digest = transaction
-            .digest_opt()
-            .ok_or_else(|| anyhow!("Transaction '{digest}' response has no digest"))?
+            .digest_opt()?
             .parse()
             .map_err(|e| anyhow!("Transaction '{digest}' response has an invalid digest: {e}"))?;
         if observed_digest != digest {
