@@ -1,7 +1,10 @@
 use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
-    nexus_sdk::{nexus::client::NexusClient, sui},
+    nexus_sdk::{
+        nexus::{client::NexusClient, crawler::Crawler},
+        sui,
+    },
 };
 
 /// Build Sui client for the provided Sui net.
@@ -124,70 +127,25 @@ pub(crate) async fn fetch_coins_for_address_by_type(
 ) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
     let label = coin_type_label(&object_type);
     let coins_handle = loading!("Fetching {label}...");
+    let crawler = Crawler::new(client);
 
-    let request = sui::grpc::ListOwnedObjectsRequest::default()
-        .with_owner(owner)
-        .with_page_size(1000)
-        .with_object_type(object_type.clone())
-        .with_read_mask(sui::grpc::FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "balance",
-            "object_type",
-        ]));
-
-    let mut client = client.lock().await;
-
-    let response = match client
-        .state_client()
-        .list_owned_objects(request)
+    match crawler
+        .fetch_coins_for_address_by_type(owner, object_type)
         .await
-        .map(|resp| resp.into_inner())
     {
-        Ok(response) => response,
+        Ok(coins) => {
+            coins_handle.success();
+            Ok(coins)
+        }
         Err(e) => {
             coins_handle.error();
-
-            return Err(NexusCliError::Rpc(e.into()));
+            Err(NexusCliError::Rpc(e))
         }
-    };
-
-    drop(client);
-
-    coins_handle.success();
-
-    Ok(response
-        .objects()
-        .iter()
-        .filter_map(|object| parse_coin_with_type(object, &object_type))
-        .collect())
+    }
 }
 
 fn coin_type_label(object_type: &sui::types::StructTag) -> String {
     format!("coins of type '{object_type}'")
-}
-
-fn parse_coin_with_type(
-    object: &sui::grpc::Object,
-    expected_type: &sui::types::StructTag,
-) -> Option<(sui::types::ObjectReference, u64)> {
-    let actual_type = object
-        .object_type_opt()?
-        .parse::<sui::types::StructTag>()
-        .ok()?;
-    if actual_type != *expected_type {
-        return None;
-    }
-
-    Some((
-        sui::types::ObjectReference::new(
-            object.object_id_opt()?.parse().ok()?,
-            object.version_opt()?,
-            object.digest_opt()?.parse().ok()?,
-        ),
-        object.balance_opt().unwrap_or(0),
-    ))
 }
 
 fn sort_coins_for_ordinal_selection(coins: &mut [(sui::types::ObjectReference, u64)]) {
@@ -549,36 +507,15 @@ mod tests {
         )
     }
 
-    fn grpc_coin(
-        object_ref: &sui::types::ObjectReference,
-        balance: u64,
-        object_type: &sui::types::StructTag,
-    ) -> sui::grpc::Object {
-        let mut object = sui::grpc::Object::default();
-        object.set_object_id(*object_ref.object_id());
-        object.set_version(object_ref.version());
-        object.set_digest(*object_ref.digest());
-        object.set_balance(balance);
-        object.set_object_type(object_type.to_string());
-        object
-    }
-
     #[test]
-    fn typed_coin_parser_rejects_wrong_actual_type_and_labels_expected_type() {
+    fn typed_coin_label_uses_requested_type() {
         let expected_type =
             nexus_sdk::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
                 .coin_type_tag();
-        let coin = object_ref("0x11", 1);
-        let wrong_type = sui::types::StructTag::gas_coin();
 
-        assert!(parse_coin_with_type(&grpc_coin(&coin, 50, &wrong_type), &expected_type).is_none());
         assert_eq!(
             coin_type_label(&expected_type),
             format!("coins of type '{expected_type}'")
-        );
-        assert_eq!(
-            parse_coin_with_type(&grpc_coin(&coin, 50, &expected_type), &expected_type),
-            Some((coin, 50))
         );
     }
 

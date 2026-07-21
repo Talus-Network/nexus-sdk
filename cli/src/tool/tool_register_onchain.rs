@@ -630,7 +630,7 @@ fn customize_output_variant(
 mod tests {
     use {
         super::*,
-        nexus_sdk::test_utils::sui_mocks,
+        nexus_sdk::{sui::traits::ToBcs, test_utils::sui_mocks},
         serial_test::serial,
         std::sync::atomic::Ordering,
     };

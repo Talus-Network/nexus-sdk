@@ -357,6 +357,61 @@ impl Crawler {
             .collect()
     }
 
+    /// Fetch every coin owned by `owner` with the exact requested Move struct tag.
+    ///
+    /// The state service applies owner and type filters. Returned objects are validated again so
+    /// callers never receive a reference whose address owner or type differs from the request.
+    pub async fn fetch_coins_for_address_by_type(
+        &self,
+        owner: sui::types::Address,
+        object_type: sui::types::StructTag,
+    ) -> anyhow::Result<Vec<(sui::types::ObjectReference, u64)>> {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "object_type",
+        ]);
+        let mut results = Vec::new();
+        let mut page_token = None;
+
+        loop {
+            let mut request = sui::grpc::ListOwnedObjectsRequest::default()
+                .with_owner(owner)
+                .with_page_size(1000)
+                .with_object_type(object_type.clone())
+                .with_read_mask(field_mask.clone());
+
+            if let Some(token) = page_token.clone() {
+                request = request.with_page_token(token);
+            }
+
+            let mut client = self.client.lock().await;
+            let response = client
+                .state_client()
+                .list_owned_objects(request)
+                .await
+                .map(|response| response.into_inner())
+                .map_err(|e| {
+                    anyhow!("Could not fetch coins of type '{object_type}' owned by '{owner}': {e}")
+                })?;
+
+            drop(client);
+            page_token = response.next_page_token;
+            results.extend(response.objects.iter().filter_map(|object| {
+                Self::parse_owned_coin_with_type(object, owner, &object_type)
+            }));
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch owned objects of a specific type for an owner and deserialize BCS contents.
     pub async fn get_owned_objects<T>(
         &self,
@@ -1105,6 +1160,34 @@ impl Crawler {
         Ok((owner, digest, version, balance))
     }
 
+    fn parse_owned_coin_with_type(
+        object: &sui::grpc::Object,
+        expected_owner: sui::types::Address,
+        expected_type: &sui::types::StructTag,
+    ) -> Option<(sui::types::ObjectReference, u64)> {
+        let owner: sui::types::Owner = object.owner_opt()?.try_into().ok()?;
+        if owner != sui::types::Owner::Address(expected_owner) {
+            return None;
+        }
+
+        let object_type = object
+            .object_type_opt()?
+            .parse::<sui::types::StructTag>()
+            .ok()?;
+        if object_type != *expected_type {
+            return None;
+        }
+
+        Some((
+            sui::types::ObjectReference::new(
+                object.object_id_opt()?.parse().ok()?,
+                object.version_opt()?,
+                object.digest_opt()?.parse().ok()?,
+            ),
+            object.balance_opt().unwrap_or(0),
+        ))
+    }
+
     fn parse_object_contents_bcs<T>(&self, object: &sui::grpc::Object) -> anyhow::Result<T>
     where
         T: DeserializeOwned,
@@ -1443,6 +1526,135 @@ mod tests {
         contents.set_value(bcs::to_bytes(value).expect("object value serializes"));
         object.contents = Some(contents);
         object
+    }
+
+    fn coin_object(
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        balance: u64,
+        object_type: &sui::types::StructTag,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(*object_ref.object_id());
+        object.set_owner(sui::grpc::Owner::from(owner));
+        object.set_digest(*object_ref.digest());
+        object.set_version(object_ref.version());
+        object.set_balance(balance);
+        object.set_object_type(object_type.to_string());
+        object
+    }
+
+    #[tokio::test]
+    async fn fetch_coins_for_address_by_type_reads_every_page() {
+        let owner = sui::types::Address::from_static("0xa");
+        let object_type = sui::types::StructTag::gas_coin();
+        let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
+        let responses = vec![
+            (
+                vec![coin_object(
+                    first_ref.clone(),
+                    sui::types::Owner::Address(owner),
+                    70,
+                    &object_type,
+                )],
+                Some(Vec::from(&b"page-2"[..])),
+            ),
+            (
+                vec![coin_object(
+                    second_ref.clone(),
+                    sui::types::Owner::Address(owner),
+                    30,
+                    &object_type,
+                )],
+                None,
+            ),
+        ];
+        let mut responses = responses.into_iter();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(2)
+            .with(always())
+            .returning(move |_request| {
+                let (objects, next_page_token) = responses.next().expect("typed coin page");
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(objects);
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let coins = crawler
+            .fetch_coins_for_address_by_type(owner, object_type)
+            .await
+            .expect("typed coins load");
+
+        assert_eq!(coins, vec![(first_ref, 70), (second_ref, 30)]);
+    }
+
+    #[tokio::test]
+    async fn fetch_coins_for_address_by_type_excludes_wrong_owner_and_type() {
+        let owner = sui::types::Address::from_static("0xa");
+        let other_owner = sui::types::Address::from_static("0xb");
+        let object_type = sui::types::StructTag::gas_coin();
+        let valid_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
+        let wrong_owner_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x21"));
+        let wrong_type_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x22"));
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .with(always())
+            .return_once({
+                let valid_ref = valid_ref.clone();
+                let object_type = object_type.clone();
+                move |_request| {
+                    let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                    response.set_objects(vec![
+                        coin_object(
+                            valid_ref,
+                            sui::types::Owner::Address(owner),
+                            50,
+                            &object_type,
+                        ),
+                        coin_object(
+                            wrong_owner_ref,
+                            sui::types::Owner::Address(other_owner),
+                            60,
+                            &object_type,
+                        ),
+                        coin_object(
+                            wrong_type_ref,
+                            sui::types::Owner::Address(owner),
+                            70,
+                            &test_value_tag(),
+                        ),
+                    ]);
+                    Ok(tonic::Response::new(response))
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let coins = crawler
+            .fetch_coins_for_address_by_type(owner, object_type)
+            .await
+            .expect("typed coins load");
+
+        assert_eq!(coins, vec![(valid_ref, 50)]);
     }
 
     #[tokio::test]
