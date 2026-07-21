@@ -1,6 +1,7 @@
 //! Commands related to gas management in Nexus.
 
 use crate::{
+    events::NexusEventKind,
     move_bindings::registry::priority_fee_vault::PriorityFeeVault,
     nexus::{client::NexusClient, error::NexusError},
     sui,
@@ -38,12 +39,15 @@ pub struct ConfigurePriorityFeeVaultResult {
 
 pub struct SwapUsForSuiResult {
     pub tx_digest: sui::types::Digest,
+    pub us_spent: u64,
+    pub us_refunded: u64,
+    pub sui_withdrawn: u64,
 }
 
 #[derive(Debug)]
 pub struct DrainPriorityFeeVaultSuiResult {
     pub tx_digest: sui::types::Digest,
-    pub exchange_rate: u64,
+    pub exchange_rate_sui_us: u64,
     pub sui_balance_before: u64,
     pub min_sui_out: u64,
 }
@@ -105,11 +109,11 @@ impl GasActions {
     /// Configure the priority fee vault exchange rate.
     pub async fn configure_priority_fee_vault(
         &self,
-        exchange_rate: u64,
+        exchange_rate_sui_us: u64,
     ) -> Result<ConfigurePriorityFeeVaultResult, NexusError> {
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
-        let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate)
+        let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate_sui_us)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
@@ -141,8 +145,29 @@ impl GasActions {
 
         let response = self.client.submit_transaction(tx, address).await?;
 
+        let swap = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::PriorityFeeSwap(swap) => Some(swap),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "PriorityFeeSwapEvent not found in swap transaction response"
+                ))
+            })?;
+        let us_spent = swap.us_in.checked_sub(swap.us_refunded).ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "PriorityFeeSwapEvent refund exceeds its `$US` input"
+            ))
+        })?;
+
         Ok(SwapUsForSuiResult {
             tx_digest: response.digest,
+            us_spent,
+            us_refunded: swap.us_refunded,
+            sui_withdrawn: swap.sui_out,
         })
     }
 
@@ -164,7 +189,7 @@ impl GasActions {
 
         Ok(DrainPriorityFeeVaultSuiResult {
             tx_digest: result.tx_digest,
-            exchange_rate: quote.exchange_rate,
+            exchange_rate_sui_us: quote.exchange_rate_sui_us,
             sui_balance_before: quote.sui_out,
             min_sui_out,
         })
@@ -425,16 +450,109 @@ impl GasActions {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        fqn,
-        move_bindings::{
-            registry::priority_fee_vault::PriorityFeeVault,
-            sui_framework::{balance::Balance, object::UID, sui::SUI, vec_map::VecMap},
-            talus::us::US,
+    use {
+        crate::{
+            fqn,
+            move_bindings::{
+                primitives::{data::NexusData, event::EventWrapper},
+                registry::priority_fee_vault::{PriorityFeeSwapEvent, PriorityFeeVault},
+                sui_framework::{
+                    balance::Balance,
+                    object::{ID, UID},
+                    sui::SUI,
+                    vec_map::VecMap,
+                },
+                talus::us::US,
+            },
+            sui,
+            test_utils::{nexus_mocks, sui_mocks},
         },
-        sui,
-        test_utils::{nexus_mocks, sui_mocks},
+        serde::Serialize,
     };
+
+    fn priority_fee_swap_event(
+        objects: &crate::types::NexusObjects,
+        event: PriorityFeeSwapEvent,
+    ) -> sui::types::Event {
+        #[derive(Serialize)]
+        struct Wrapper<T> {
+            event: T,
+        }
+
+        let inner = crate::move_bindings::struct_tag::<PriorityFeeSwapEvent>(objects);
+        let wrapper = crate::move_bindings::struct_tag::<EventWrapper<NexusData>>(objects);
+        let wrapper = sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
+
+        sui_mocks::mock_sui_event(
+            objects.registry_pkg_id,
+            wrapper,
+            bcs::to_bytes(&Wrapper { event }).expect("serialize priority fee swap event"),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_swap_us_for_sui_returns_executed_amounts() {
+        let mut rng = rand::thread_rng();
+        let tx_digest = sui::types::Digest::generate(&mut rng);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+        let us_coin_ref = sui_mocks::mock_sui_object_ref();
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let swap_event = priority_fee_swap_event(
+            &nexus_objects,
+            PriorityFeeSwapEvent::new(
+                ID::new(*nexus_objects.priority_fee_vault.object_id()),
+                100,
+                40,
+                6,
+            ),
+        );
+
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            us_coin_ref.clone(),
+            sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+            Some(100),
+        );
+        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut tx_service_mock,
+            &mut sub_service_mock,
+            &mut ledger_service_mock,
+            tx_digest,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![swap_event],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .gas()
+            .swap_us_for_sui(*us_coin_ref.object_id(), 6)
+            .await
+            .expect("swap should decode its execution event");
+
+        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.us_spent, 60);
+        assert_eq!(result.us_refunded, 40);
+        assert_eq!(result.sui_withdrawn, 6);
+    }
 
     #[tokio::test]
     async fn test_gas_actions_enable_expiry_extension() {

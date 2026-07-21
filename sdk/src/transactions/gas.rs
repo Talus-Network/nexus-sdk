@@ -144,16 +144,16 @@ pub fn abort_expired_execution_with_tool_gas_ptb(
 /// PTB template to configure the `$US` priority fee vault exchange rate.
 pub fn configure_priority_fee_vault(
     objects: &NexusObjects,
-    exchange_rate: u64,
+    exchange_rate_sui_us: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let owner_cap = tx.owned_object(&objects.priority_fee_vault_owner_cap)?;
-        let exchange_rate = tx.arg(&exchange_rate)?;
+        let exchange_rate_sui_us = tx.arg(&exchange_rate_sui_us)?;
 
         tx.call_target(
             priority_fee_vault_binding::configure_target,
-            vec![priority_fee_vault, owner_cap, exchange_rate],
+            vec![priority_fee_vault, owner_cap, exchange_rate_sui_us],
         )?;
         Ok(())
     })

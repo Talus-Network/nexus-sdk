@@ -9,6 +9,6 @@ pub struct PriorityFeeWithdrawalQuote {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PriorityFeeSuiDrainQuote {
-    pub exchange_rate: u64,
+    pub exchange_rate_sui_us: u64,
     pub sui_out: u64,
 }

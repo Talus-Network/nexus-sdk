@@ -1,7 +1,7 @@
 use crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*};
 
 pub(crate) async fn configure_priority_fee_vault(
-    exchange_rate: u64,
+    exchange_rate_sui_us: u64,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -10,7 +10,7 @@ pub(crate) async fn configure_priority_fee_vault(
     let tx_handle = loading!("Crafting and executing transaction...");
     let response = match nexus_client
         .gas()
-        .configure_priority_fee_vault(exchange_rate)
+        .configure_priority_fee_vault(exchange_rate_sui_us)
         .await
     {
         Ok(resp) => resp,
@@ -53,7 +53,12 @@ pub(crate) async fn swap_us_for_sui(
         "Transaction digest: {digest}",
         digest = response.tx_digest.to_string().truecolor(100, 100, 100)
     );
-    json_output(&json!({ "digest": response.tx_digest }))?;
+    json_output(&json!({
+        "digest": response.tx_digest,
+        "us_spent": response.us_spent,
+        "us_refunded": response.us_refunded,
+        "sui_withdrawn": response.sui_withdrawn,
+    }))?;
     Ok(())
 }
 
@@ -83,7 +88,7 @@ pub(crate) async fn drain_priority_fee_vault_sui(
     );
     json_output(&json!({
         "digest": response.tx_digest,
-        "exchange_rate": response.exchange_rate,
+        "exchange_rate_sui_us": response.exchange_rate_sui_us,
         "sui_balance_before": response.sui_balance_before,
         "min_sui_out": response.min_sui_out,
     }))?;

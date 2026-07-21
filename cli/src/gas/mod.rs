@@ -21,11 +21,11 @@ pub(crate) enum GasCommand {
     #[command(about = "Configure the priority fee vault exchange rate")]
     ConfigurePriorityFeeVault {
         #[arg(
-            long = "exchange-rate",
+            long = "exchange-rate-sui-us",
             help = "$US units per SUI unit",
             value_name = "RATE"
         )]
-        exchange_rate: u64,
+        exchange_rate_sui_us: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -355,8 +355,12 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
             }
         },
 
-        GasCommand::ConfigurePriorityFeeVault { exchange_rate, gas } => {
-            configure_priority_fee_vault(exchange_rate, gas.sui_gas_coin, gas.sui_gas_budget).await
+        GasCommand::ConfigurePriorityFeeVault {
+            exchange_rate_sui_us,
+            gas,
+        } => {
+            configure_priority_fee_vault(exchange_rate_sui_us, gas.sui_gas_coin, gas.sui_gas_budget)
+                .await
         }
 
         GasCommand::SwapUsForSui {
@@ -388,6 +392,36 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
 #[cfg(test)]
 mod tests {
     use {super::*, clap::Parser};
+
+    #[test]
+    fn parses_explicit_sui_us_exchange_rate() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "configure-priority-fee-vault",
+            "--exchange-rate-sui-us",
+            "7",
+        ])
+        .expect("priority fee vault configuration should parse");
+
+        let crate::Command::Gas(GasCommand::ConfigurePriorityFeeVault {
+            exchange_rate_sui_us,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected priority fee vault configuration command");
+        };
+
+        assert_eq!(exchange_rate_sui_us, 7);
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "configure-priority-fee-vault",
+            "--exchange-rate",
+            "7",
+        ])
+        .is_err());
+    }
 
     #[test]
     fn parses_drain_priority_fee_vault_sui_command() {

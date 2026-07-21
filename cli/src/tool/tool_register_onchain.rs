@@ -71,7 +71,6 @@ pub(crate) async fn register_onchain_tool(
         collateral_coin,
         0,
         nexus_objects.us_token.coin_type_tag(),
-        "US collateral coin",
     )
     .await?;
 

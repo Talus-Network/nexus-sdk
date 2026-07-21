@@ -100,7 +100,6 @@ async fn register_one_tool(
         collateral_coin,
         0,
         nexus_objects.us_token.coin_type_tag(),
-        "US collateral coin",
     )
     .await?;
 
@@ -276,12 +275,6 @@ pub(crate) async fn register_off_chain_tool(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
-        return Err(NexusCliError::Any(anyhow!(
-            "The US collateral coin cannot be the same as the SUI gas coin."
-        )));
-    }
-
     let conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
     let pk = get_signing_key(&conf).await?;
