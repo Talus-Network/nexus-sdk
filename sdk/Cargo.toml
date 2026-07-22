@@ -80,6 +80,9 @@ types = [
     "sha2",
 ]
 
+# WASM-compatible types feature — DAG JSON types only (no full Sui stack).
+wasm_types = ["tool_fqn", "serde_json"]
+
 # Events feature enables the use of the `events` module.
 events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
 

@@ -22,7 +22,7 @@ pub mod move_bindings;
 /// Nexus types represent the structure of various objects that are defined
 /// on-chain. It also provides the logic for serializing and deserializing these
 /// objects.
-#[cfg(feature = "types")]
+#[cfg(any(feature = "types", feature = "wasm_types"))]
 pub mod types;
 
 #[cfg(feature = "types")]
