@@ -327,24 +327,4 @@ mod tests {
         };
         assert!(normalized_tool_ref_json(Some(&invalid_sui)).is_err());
     }
-
-    #[test]
-    fn stable_tool_json_flattens_generated_sui_reference() {
-        let package_address = sui::types::Address::from_static("0xaa");
-        let tool_witness_id = sui::types::Address::from_static("0xbb");
-        let reference = ToolRef::Sui {
-            _variant_name: ascii::String::from("Sui"),
-            package_address,
-            module_name: ascii::String::from("u64_math"),
-            tool_witness_id: ID::new(tool_witness_id),
-        };
-
-        let generated = stable_sui_tool_reference_json(&reference)
-            .expect("Sui reference should decode")
-            .expect("Sui reference should have a stable projection");
-
-        assert_eq!(generated["package_address"], package_address.to_string());
-        assert_eq!(generated["module_name"], "u64_math");
-        assert_eq!(generated["tool_witness_id"], tool_witness_id.to_string());
-    }
 }

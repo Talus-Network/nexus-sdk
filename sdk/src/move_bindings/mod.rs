@@ -331,15 +331,10 @@ pub mod workflow {
 #[cfg(test)]
 mod tests {
     use {
-        super::{
-            derive_walk_execution_event_task_id,
-            interface::graph::RuntimeVertex,
-            registry,
-            sui_move::MoveType,
-        },
+        super::{derive_walk_execution_event_task_id, interface::graph::RuntimeVertex, registry},
         crate::sui,
+        sui_move::MoveType,
     };
-
     #[test]
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;

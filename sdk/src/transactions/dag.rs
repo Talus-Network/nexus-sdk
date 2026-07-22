@@ -2124,7 +2124,7 @@ mod tests {
                 primitives::tagged_output::TaggedOutput,
                 sui_framework::{object::ID, vec_map::VecMap},
             },
-            types::DefaultDagExecutorTarget,
+            types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
         sui::types::{Argument, Command, Input},
     };
