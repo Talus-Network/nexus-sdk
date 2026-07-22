@@ -1963,7 +1963,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -5985,8 +5985,8 @@ dependencies = [
  "sui-move-codegen",
  "sui-move-ptb",
  "sui-package-management",
- "sui-rpc 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
  "sui-transaction-builder 0.3.1",
  "tempfile",
  "testcontainers-modules",
@@ -9150,7 +9150,7 @@ dependencies = [
  "pkcs8",
  "rand_core 0.6.4",
  "signature 2.2.0",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.2",
 ]
 
 [[package]]
@@ -9176,7 +9176,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "signature 2.2.0",
- "sui-sdk-types 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-sdk-types 0.3.1",
 ]
 
 [[package]]
@@ -9441,7 +9441,7 @@ dependencies = [
  "ethnum",
  "serde",
  "sui-move-derive",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
@@ -9479,7 +9479,7 @@ dependencies = [
  "bcs",
  "serde",
  "sui-move",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
@@ -9493,8 +9493,8 @@ dependencies = [
  "quote",
  "serde",
  "serde_json",
- "sui-rpc 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
  "syn 2.0.117",
  "thiserror 1.0.69",
 ]
@@ -9623,7 +9623,7 @@ source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource
 dependencies = [
  "sui-move",
  "sui-move-call",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
@@ -9758,30 +9758,6 @@ dependencies = [
 [[package]]
 name = "sui-rpc"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00a313a63f07ada0be04c03e9d6e8c1d176e5a469ee6e3b6f973dee525667311"
-dependencies = [
- "base64 0.22.1",
- "bcs",
- "bytes",
- "futures",
- "http 1.4.1",
- "http-body 1.0.1",
- "prost",
- "prost-types",
- "serde",
- "serde_json",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tap",
- "tokio",
- "tonic",
- "tonic-prost",
- "tower 0.5.3",
-]
-
-[[package]]
-name = "sui-rpc"
-version = "0.3.1"
 source = "git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065#5b41bc701525f1b94f1fe63008d4841bc6fb1065"
 dependencies = [
  "base64 0.22.1",
@@ -9795,7 +9771,32 @@ dependencies = [
  "serde",
  "serde_json",
  "sui-crypto 0.3.0 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
- "sui-sdk-types 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-sdk-types 0.3.1",
+ "tap",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tower 0.5.3",
+]
+
+[[package]]
+name = "sui-rpc"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617504d5c6b748af0494b73db80fb893840522329788c48c826d8298e7edb0aa"
+dependencies = [
+ "base64 0.22.1",
+ "bcs",
+ "bytes",
+ "futures",
+ "http 1.4.1",
+ "http-body 1.0.1",
+ "hyper 1.10.1",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "sui-sdk-types 0.3.2",
  "tap",
  "tokio",
  "tonic",
@@ -9838,8 +9839,8 @@ dependencies = [
  "sui-name-service",
  "sui-package-resolver",
  "sui-protocol-config",
- "sui-rpc 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
- "sui-sdk-types 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-rpc 0.3.1",
+ "sui-sdk-types 0.3.1",
  "sui-transaction-builder 0.0.0",
  "sui-transaction-checks",
  "sui-types",
@@ -9883,37 +9884,14 @@ dependencies = [
  "sui-json-rpc-api",
  "sui-json-rpc-types",
  "sui-keys",
- "sui-rpc 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-rpc 0.3.1",
  "sui-rpc-api",
- "sui-sdk-types 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-sdk-types 0.3.1",
  "sui-transaction-builder 0.0.0",
  "sui-types",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "sui-sdk-types"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f800c4c3539246ba94a825f6afe7faab0bc8fc4dda56c6cfa493ea2a32ecbd"
-dependencies = [
- "base64ct",
- "bcs",
- "blake2",
- "bnum",
- "bs58 0.5.1",
- "bytes",
- "bytestring",
- "itertools 0.14.0",
- "rand_core 0.6.4",
- "roaring",
- "serde",
- "serde_derive",
- "serde_json",
- "serde_with",
- "winnow 0.7.14",
 ]
 
 [[package]]
@@ -9929,6 +9907,29 @@ dependencies = [
  "bytes",
  "bytestring",
  "itertools 0.14.0",
+ "roaring",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "winnow 0.7.14",
+]
+
+[[package]]
+name = "sui-sdk-types"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a22266119e43d3da1a8bc9945c8b569a513e7682f561265d70ef8b6e198dd664"
+dependencies = [
+ "base64ct",
+ "bcs",
+ "blake2",
+ "bnum",
+ "bs58 0.5.1",
+ "bytes",
+ "bytestring",
+ "itertools 0.14.0",
+ "rand_core 0.6.4",
  "roaring",
  "serde",
  "serde_derive",
@@ -9963,8 +9964,8 @@ dependencies = [
  "bcs",
  "futures",
  "serde",
- "sui-rpc 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "sui-sdk-types 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
  "thiserror 2.0.18",
 ]
 
@@ -10047,8 +10048,8 @@ dependencies = [
  "sui-enum-compat-util",
  "sui-macros",
  "sui-protocol-config",
- "sui-rpc 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
- "sui-sdk-types 0.3.1 (git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=5b41bc701525f1b94f1fe63008d4841bc6fb1065)",
+ "sui-rpc 0.3.1",
+ "sui-sdk-types 0.3.1",
  "tap",
  "thiserror 1.0.69",
  "tonic",
@@ -10222,7 +10223,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
