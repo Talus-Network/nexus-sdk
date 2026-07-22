@@ -2757,29 +2757,35 @@ mod tests {
     ) {
         ledger_service
             .expect_get_checkpoint()
-            .returning(move |_request| {
+            .returning(move |request| {
+                let checkpoint_number = match request.into_inner().checkpoint_id {
+                    Some(sui::grpc::get_checkpoint_request::CheckpointId::SequenceNumber(
+                        number,
+                    )) => number,
+                    _ => cp,
+                };
                 let mut response = sui::grpc::GetCheckpointResponse::default();
                 let mut checkpoint = sui::grpc::Checkpoint::default();
                 let mut transactions = vec![];
-                for _ in 0..10 {
+                for index in 0..10 {
                     let mut transaction = sui::grpc::ExecutedTransaction::default();
-                    transaction.set_digest(sui::types::Digest::ZERO);
+                    transaction.set_digest(sui_mocks::grpc::mock_event_transaction_digest(
+                        checkpoint_number,
+                        index,
+                    ));
                     transactions.push(transaction);
                 }
                 checkpoint.set_transactions(transactions);
-                checkpoint.set_sequence_number(cp);
+                checkpoint.set_sequence_number(checkpoint_number);
                 response.set_checkpoint(checkpoint);
                 Ok(tonic::Response::new(response))
             });
 
         ledger_service
             .expect_batch_get_transactions()
-            .returning(move |_request| {
+            .returning(move |request| {
+                let requested_digests = request.into_inner().digests;
                 let mut response = sui::grpc::BatchGetTransactionsResponse::default();
-                let mut result = sui::grpc::GetTransactionResult::default();
-                let mut transaction = sui::grpc::ExecutedTransaction::default();
-                transaction.set_digest(sui::types::Digest::ZERO);
-                transaction.set_checkpoint(1);
                 let mut events = vec![];
 
                 #[derive(Serialize)]
@@ -2825,11 +2831,30 @@ mod tests {
                     });
                     events.push(grpc_event);
                 }
-                let mut tx_events = sui::grpc::TransactionEvents::default();
-                tx_events.set_events(events);
-                transaction.set_events(tx_events);
-                result.set_transaction(transaction);
-                response.set_transactions(vec![result]);
+                let event_digest =
+                    sui_mocks::grpc::mock_event_transaction_digest(cp, 0).to_string();
+                let transactions = requested_digests
+                    .into_iter()
+                    .map(|digest| {
+                        let mut transaction = sui::grpc::ExecutedTransaction::default();
+                        transaction.set_checkpoint(
+                            sui_mocks::grpc::mock_event_transaction_checkpoint(&digest)
+                                .unwrap_or(cp),
+                        );
+                        transaction.set_digest(digest.clone());
+
+                        let mut tx_events = sui::grpc::TransactionEvents::default();
+                        if digest == event_digest {
+                            tx_events.set_events(events.clone());
+                        }
+                        transaction.set_events(tx_events);
+
+                        let mut result = sui::grpc::GetTransactionResult::default();
+                        result.set_transaction(transaction);
+                        result
+                    })
+                    .collect();
+                response.set_transactions(transactions);
                 Ok(tonic::Response::new(response))
             });
     }
