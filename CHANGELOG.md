@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added canonical RegisteredKey Tool-input hashing, auxiliary BCS encoding, leader-signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
 - Added Tool registry queries and External verifier registration preflight that validate the public Move ABI, Tool binding, witness-first ordering, and immutable shared-object arguments.
 - Added signed-HTTP v2 request and response helpers for leader signatures over canonical input hashes and Tool signatures over exact BCS result bytes.
+- Execution inspection will use object history instead of checkpoint list.
 
 #### Changed
 

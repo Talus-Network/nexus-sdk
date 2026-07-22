@@ -387,20 +387,13 @@ fn crawler_wrapper_accessors_cover_id_and_size_helpers() {
     assert_eq!(table_vec.size(), 5);
 }
 
-/// End-to-end check for [`Crawler::get_object_creation_checkpoint`].
+/// End-to-end check for [`Crawler::get_object_update_reference`].
 ///
-/// Publishes the test contract (which creates a shared `Guy` object in its
-/// `init`), then submits three follow-up `bump_age` transactions against
-/// `Guy`. Each follow-up tx lands in a later checkpoint than the publish,
-/// so the LATEST `previous_transaction` on the shared object is guaranteed
-/// to differ from the creation tx digest. We then call
-/// `get_object_creation_checkpoint(guy_id)` and assert it returns the
-/// publish-tx's checkpoint — proving the helper walks
-/// `Owner::Shared(initial_shared_version) → version-pinned
-/// previous_transaction → checkpoint` rather than just reading the
-/// object's current `previous_transaction`.
+/// Publishes a shared `Guy`, mutates it three times, and verifies the latest
+/// update reference reports the advanced version and final producing
+/// transaction without querying checkpoint history.
 #[tokio::test]
-async fn test_object_crawler_get_object_creation_checkpoint() {
+async fn test_object_crawler_get_object_update_reference() {
     use nexus_sdk::{nexus::signer::Signer, test_utils::sui_mocks};
 
     let test_utils::containers::SuiInstance {
@@ -433,7 +426,6 @@ async fn test_object_crawler_get_object_creation_checkpoint() {
     )
     .await;
 
-    let creation_checkpoint = publish_response.checkpoint;
     let pkg_id = publish_response
         .objects
         .iter()
@@ -494,7 +486,7 @@ async fn test_object_crawler_get_object_creation_checkpoint() {
         Arc::new(sui_mocks::mock_nexus_objects()),
     );
 
-    let mut bump_checkpoints = Vec::new();
+    let mut bump_digests = Vec::new();
     for _ in 0..3 {
         let mut ptb = sui_move_ptb::PtbBuilder::new();
         let guy_arg = ptb
@@ -528,42 +520,21 @@ async fn test_object_crawler_get_object_creation_checkpoint() {
             .execute_tx(tx, signature, &mut gas_coin_ref)
             .await
             .expect("Failed to execute bump_age transaction.");
-        bump_checkpoints.push(executed.checkpoint);
+        bump_digests.push(executed.digest);
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    // The helper under test: should return the publish-tx's checkpoint, not
-    // any of the bump_age checkpoints we just produced.
-    let resolved = crawler
-        .get_object_creation_checkpoint(guy_id)
+    let latest = crawler
+        .get_object_update_reference(guy_id, None)
         .await
-        .expect("creation checkpoint resolves");
-
-    assert_eq!(
-        resolved, creation_checkpoint,
-        "expected creation checkpoint to match the publish tx's checkpoint"
-    );
-    for bump_checkpoint in &bump_checkpoints {
-        assert_ne!(
-            resolved, *bump_checkpoint,
-            "creation checkpoint must NOT match any of the post-publish bump_age tx checkpoints"
-        );
-    }
-
-    // Sanity check: the bumps actually advanced the object's version, so this
-    // test would have failed loudly if the helper accidentally returned the
-    // latest-tx checkpoint (e.g. by reading `previous_transaction` off the
-    // current object instead of the version-pinned one).
-    let post_bump_metadata = crawler
-        .get_object_metadata(guy_id)
-        .await
-        .expect("Guy metadata after bumps");
+        .expect("latest update reference resolves");
+    assert_eq!(latest.previous_transaction, *bump_digests.last().unwrap());
     assert!(
-        post_bump_metadata.version > initial_version_at_publish,
+        latest.version > initial_version_at_publish,
         "bump_age calls must have advanced Guy's version (initial {initial_version_at_publish}, \
          post-bump {})",
-        post_bump_metadata.version,
+        latest.version,
     );
 }
 

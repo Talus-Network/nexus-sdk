@@ -49,7 +49,7 @@ value. Old local mirror types are no longer the authority.
 | Endpoint config digest fields | No direct replacement in active TAP flows |
 | Shared object requirement fields in TAP artifacts | No direct replacement in active TAP flows |
 | `TapActions::schedule_skill_execution*` | `TapActions::create_agent_task` or `SchedulerActions::create_task` |
-| `WorkflowActions::inspect_execution(execution, checkpoint, ...)` | `WorkflowActions::inspect_execution(execution, ...)` |
+| `WorkflowActions::inspect_execution(execution, timeout)` | `WorkflowActions::inspect_execution(execution, InspectExecutionOptions { timeout, poll_interval })` |
 
 Use this import style for new TAP code:
 
