@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [`2.0.0-rc.5`] - 2026-07-22
+
+### `nexus-sdk`
+
+#### Changed
+
+- Updated the Sui RPC client to version 0.3.2, adding response body timeout detection for stalled streams.
+
+#### Fixed
+
+- Sui transaction batch results are validated before event pages are emitted, preventing embedded RPC errors from producing checkpoint 0.
 
 ## [`2.0.0-rc.4`] - 2026-07-09
 
