@@ -1,7 +1,7 @@
 use {
     crate::{
         sui,
-        types::{DefaultDagExecutorTarget, NexusObjects},
+        types::{DefaultDagExecutorTarget, NexusObjects, UsTokenConfig},
     },
     sui_transaction_builder as tx,
 };
@@ -57,6 +57,8 @@ pub fn mock_nexus_objects() -> NexusObjects {
         gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
         priority_fee_vault: mock_sui_object_ref(),
+        priority_fee_vault_owner_cap: mock_sui_object_ref(),
+        us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }

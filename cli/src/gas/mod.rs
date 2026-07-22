@@ -1,7 +1,9 @@
+mod priority;
 mod tickets;
 
 use {
     crate::prelude::*,
+    priority::*,
     tickets::{expiry::*, limited_invocations::*},
 };
 
@@ -15,6 +17,69 @@ pub(crate) enum GasCommand {
         about = "Manage the limited invocations gas ticket extension"
     )]
     LimitedInvocations(LimitedInvocationsCommand),
+
+    #[command(about = "Configure the priority fee vault exchange rate")]
+    ConfigurePriorityFeeVault {
+        #[arg(
+            long = "exchange-rate-sui-us",
+            help = "$US units per SUI unit",
+            value_name = "RATE"
+        )]
+        exchange_rate_sui_us: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Swap an owned `$US` coin for SUI from the priority fee vault")]
+    SwapUsForSui {
+        #[arg(
+            long = "us-coin",
+            help = "Owned Coin<US> object ID",
+            value_name = "OBJECT_ID"
+        )]
+        us_coin: sui::types::Address,
+        #[arg(
+            long = "min-sui-out",
+            help = "Minimum SUI output accepted",
+            value_name = "MIST",
+            default_value_t = 0
+        )]
+        min_sui_out: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(
+        about = "Drain all currently available SUI from the priority fee vault using an owned `$US` coin"
+    )]
+    DrainPriorityFeeVaultSui {
+        #[arg(
+            long = "us-coin",
+            help = "Owned Coin<US> object ID used to buy all currently available vault SUI",
+            value_name = "OBJECT_ID"
+        )]
+        us_coin: sui::types::Address,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Withdraw a leader's `$US` priority-fee share")]
+    WithdrawPriorityFee {
+        #[arg(
+            long = "leader-cap",
+            help = "Leader cap object ID",
+            value_name = "OBJECT_ID"
+        )]
+        leader_cap: sui::types::Address,
+        #[arg(
+            long = "share-to-withdraw",
+            help = "SUI-denominated leader share to withdraw; defaults to the leader's full vault share",
+            value_name = "SHARE"
+        )]
+        share_to_withdraw: Option<u64>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 #[derive(Subcommand)]
@@ -289,5 +354,95 @@ pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> 
                 .await
             }
         },
+
+        GasCommand::ConfigurePriorityFeeVault {
+            exchange_rate_sui_us,
+            gas,
+        } => {
+            configure_priority_fee_vault(exchange_rate_sui_us, gas.sui_gas_coin, gas.sui_gas_budget)
+                .await
+        }
+
+        GasCommand::SwapUsForSui {
+            us_coin,
+            min_sui_out,
+            gas,
+        } => swap_us_for_sui(us_coin, min_sui_out, gas.sui_gas_coin, gas.sui_gas_budget).await,
+
+        GasCommand::DrainPriorityFeeVaultSui { us_coin, gas } => {
+            drain_priority_fee_vault_sui(us_coin, gas.sui_gas_coin, gas.sui_gas_budget).await
+        }
+
+        GasCommand::WithdrawPriorityFee {
+            leader_cap,
+            share_to_withdraw,
+            gas,
+        } => {
+            withdraw_priority_fee(
+                leader_cap,
+                share_to_withdraw,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
+
+    #[test]
+    fn parses_explicit_sui_us_exchange_rate() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "configure-priority-fee-vault",
+            "--exchange-rate-sui-us",
+            "7",
+        ])
+        .expect("priority fee vault configuration should parse");
+
+        let crate::Command::Gas(GasCommand::ConfigurePriorityFeeVault {
+            exchange_rate_sui_us,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected priority fee vault configuration command");
+        };
+
+        assert_eq!(exchange_rate_sui_us, 7);
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "configure-priority-fee-vault",
+            "--exchange-rate",
+            "7",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn parses_drain_priority_fee_vault_sui_command() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "drain-priority-fee-vault-sui",
+            "--us-coin",
+            "0x2",
+            "--sui-gas-budget",
+            "12345",
+        ])
+        .expect("drain command should parse");
+
+        let crate::Command::Gas(GasCommand::DrainPriorityFeeVaultSui { us_coin, gas }) =
+            cli.command
+        else {
+            panic!("expected gas drain command");
+        };
+
+        assert_eq!(us_coin, sui::types::Address::from_static("0x2"));
+        assert_eq!(gas.sui_gas_budget, 12345);
     }
 }

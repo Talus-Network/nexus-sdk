@@ -377,7 +377,7 @@ mod direct_event_tests {
     fn parse_bcs_uses_direct_dag_created_event() {
         let dag = id(sui::types::Address::from_static("0xabc"));
         let bytes = bcs::to_bytes(&Wrapper {
-            event: DAGCreatedEvent { dag: dag.clone() },
+            event: DAGCreatedEvent { dag },
         })
         .unwrap();
 
@@ -400,7 +400,7 @@ mod direct_event_tests {
                 walk_index: 1,
                 next_vertex: RuntimeVertex::plain("vertex"),
                 evaluations: id(sui::types::Address::from_static("0xd")),
-                agent_id: agent_id.clone(),
+                agent_id,
                 skill_id: 2,
                 interface_version: version::InterfaceVersion { inner: 3 },
                 scheduled_task_id: MoveOption::from_option(None),
@@ -432,7 +432,7 @@ mod direct_event_tests {
         let leaders = vec![addr(0x45), addr(0x46)];
         let request = RequestWalkExecutionEvent {
             dag: id(addr(0xb0)),
-            execution: execution.clone(),
+            execution,
             invoker: addr(0xb2),
             walk_index: 12,
             next_vertex: RuntimeVertex::plain("scheduled_walk"),
@@ -660,7 +660,7 @@ mod direct_event_tests {
             ),
             RequestWalkExecutionEvent {
                 dag: id(addr(0xa6)),
-                execution: execution.clone(),
+                execution,
                 invoker: addr(0xa7),
                 walk_index: 8,
                 next_vertex: RuntimeVertex::plain("foreign_emitter"),

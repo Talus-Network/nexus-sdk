@@ -54,7 +54,7 @@ pub(crate) async fn register_onchain_tool(
 
     if collateral_coin.is_some() && collateral_coin == sui_gas_coin {
         return Err(NexusCliError::Any(anyhow!(
-            "The coin used for collateral cannot be the same as the gas coin."
+            "The US collateral coin cannot be the same as the SUI gas coin."
         )));
     }
 
@@ -65,7 +65,14 @@ pub(crate) async fn register_onchain_tool(
     let conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
 
-    let collateral_coin = fetch_coin(client.clone(), address, collateral_coin, 1).await?;
+    let collateral_coin = fetch_coin_by_type(
+        client.clone(),
+        address,
+        collateral_coin,
+        0,
+        nexus_objects.us_token.coin_type_tag(),
+    )
+    .await?;
 
     // Generate and customize schemas.
     let (input_schema, output_schema) =
@@ -623,7 +630,7 @@ fn customize_output_variant(
 mod tests {
     use {
         super::*,
-        nexus_sdk::test_utils::sui_mocks,
+        nexus_sdk::{sui::traits::ToBcs, test_utils::sui_mocks},
         serial_test::serial,
         std::sync::atomic::Ordering,
     };

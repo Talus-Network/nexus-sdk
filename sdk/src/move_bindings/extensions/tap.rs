@@ -90,7 +90,7 @@ impl PaymentSourceKind {
     pub fn identity(&self) -> sui::types::Address {
         match self {
             Self::UserFunded { user } => *user,
-            Self::AgentFunded { agent_id } => agent_id.clone().into(),
+            Self::AgentFunded { agent_id } => (*agent_id).into(),
         }
     }
 }

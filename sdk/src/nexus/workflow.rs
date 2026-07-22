@@ -1032,7 +1032,7 @@ pub async fn offchain_success_requires_tool_verification(
     let dag = crawler.get_object::<dag_move::DAG>(dag_object_id).await?;
     let mut vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
     let vertex_name = next_vertex.vertex();
-    let vertex = vertices.remove(&vertex_name).ok_or_else(|| {
+    let vertex = vertices.remove(vertex_name).ok_or_else(|| {
         anyhow!(
             "Vertex '{}' not found in DAG verifier config",
             vertex_name.name
@@ -2285,7 +2285,7 @@ mod tests {
             variant_ports_to_data: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
-            failure_evidence_kind: MoveOption::from_option(primary_failure.clone()),
+            failure_evidence_kind: MoveOption::from_option(primary_failure),
             primary_failure_evidence_kind: MoveOption::from_option(primary_failure),
             secondary_failure_evidence_kind: MoveOption::from_option(secondary_failure),
             current_leader_cap_id: object_id(primary_leader),

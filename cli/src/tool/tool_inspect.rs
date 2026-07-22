@@ -251,7 +251,7 @@ mod tests {
             external_verifier: None,
         };
 
-        let json = inspect_tool_result_json(&inspection).unwrap();
+        let json = inspect_tool_result_json(&inspection).expect("inspection JSON should build");
         assert_eq!(json["exists"], serde_json::Value::Bool(false));
         assert_eq!(
             json["tool_id"],

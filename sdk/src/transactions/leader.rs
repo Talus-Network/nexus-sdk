@@ -5,55 +5,33 @@ use {
         move_bindings::{
             primitives::owner_cap,
             registry::{leader as leader_binding, leader_cap},
-            sui_framework::{coin as coin_binding, sui as sui_binding},
+            sui_framework::coin as coin_binding,
+            talus::us::US,
         },
         move_boundary,
         sui,
         types::NexusObjects,
     },
     sui::types::ProgrammableTransaction,
-    sui_move::MoveType,
-    sui_move_call::{CallArg, CallSpecError, CallTarget},
 };
 
 type OverNetworkCap = owner_cap::CloneableOwnerCap<leader_cap::OverNetwork>;
-
-fn sui_type_tag(objects: &NexusObjects) -> sui::types::TypeTag {
-    crate::move_bindings::type_tag::<sui_binding::SUI>(objects)
-}
-
-fn redeem_funds_target<T>() -> Result<CallTarget, CallSpecError>
-where
-    T: MoveType,
-{
-    let mut target = CallTarget::new(
-        sui::types::Address::from_static("0x2"),
-        "coin",
-        "redeem_funds",
-    )?;
-    target.push_type_arg::<T>();
-    Ok(target)
-}
 
 /// Struct tag for the shared `CloneableOwnerCap<OverNetwork>` capability.
 pub fn over_network_cap_struct_tag(objects: &NexusObjects) -> sui::types::StructTag {
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
 }
 
-/// Register the transaction sender as a leader using sender address balance funds.
+/// Register the transaction sender as a leader using an owned Talus `$US` stake coin.
 pub fn register_for_self_ptb(
     objects: &NexusObjects,
-    stake_mist: u64,
+    stake_coin: &sui::types::ObjectReference,
+    stake_us: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_registry = tx.shared_object(&objects.leader_registry, true)?;
-        let withdrawal = tx.input(CallArg::FundsWithdrawal(sui::types::FundsWithdrawal::new(
-            stake_mist,
-            sui_type_tag(objects),
-            sui::types::WithdrawFrom::Sender,
-        )))?;
-        let pay_with = tx.call_target(redeem_funds_target::<sui_binding::SUI>, vec![withdrawal])?;
-        let amount = tx.arg(&stake_mist)?;
+        let pay_with = tx.owned_object(stake_coin)?;
+        let amount = tx.arg(&stake_us)?;
         let metadata = tx.call_target(leader_binding::empty_metadata_target, vec![])?;
         let clock = tx.clock()?;
 
@@ -61,10 +39,7 @@ pub fn register_for_self_ptb(
             leader_binding::register_target,
             vec![leader_registry, pay_with, amount, metadata, clock],
         )?;
-        tx.call_target(
-            coin_binding::destroy_zero_target::<sui_binding::SUI>,
-            vec![pay_with],
-        )?;
+        tx.call_target(coin_binding::destroy_zero_target::<US>, vec![pay_with])?;
 
         Ok(())
     })
@@ -110,8 +85,8 @@ pub fn suspend_if_token_for_self_ptb(
 mod tests {
     use {
         super::*,
-        crate::types::DefaultDagExecutorTarget,
-        sui::types::{Argument, Command, MoveCall},
+        crate::types::{DefaultDagExecutorTarget, UsTokenConfig},
+        sui::types::{Argument, Command, Input, MoveCall},
     };
 
     fn addr(value: &'static str) -> sui::types::Address {
@@ -145,6 +120,8 @@ mod tests {
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
+            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+            us_token: UsTokenConfig::new(addr("0x12")),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -158,32 +135,30 @@ mod tests {
     }
 
     #[test]
-    fn register_for_self_redeems_address_balance_funds() {
+    fn register_for_self_uses_owned_us_stake_and_generated_targets() {
         let objects = nexus_objects();
-        let ptb = register_for_self_ptb(&objects, 1).unwrap();
+        let stake_coin = object_ref("0x20", 2, 20);
+        let ptb = register_for_self_ptb(&objects, &stake_coin, 1).unwrap();
 
-        let CallArg::FundsWithdrawal(withdrawal) = &ptb.inputs[1] else {
-            panic!("expected funds withdrawal input");
+        let Input::ImmutableOrOwned(input_stake_coin) = &ptb.inputs[1] else {
+            panic!("expected owned US stake coin input");
         };
-        assert_eq!(withdrawal.amount(), Some(1));
-        assert_eq!(withdrawal.coin_type(), &sui_type_tag(&objects));
-        assert_eq!(withdrawal.source(), sui::types::WithdrawFrom::Sender);
+        assert_eq!(input_stake_coin, &stake_coin);
 
-        let redeem = move_call(&ptb.commands[0]);
-        assert_eq!(redeem.package, addr("0x2"));
-        assert_eq!(redeem.module.as_str(), "coin");
-        assert_eq!(redeem.function.as_str(), "redeem_funds");
-        assert_eq!(redeem.type_arguments, vec![sui_type_tag(&objects)]);
-        assert_eq!(redeem.arguments, vec![Argument::Input(1)]);
-
-        let register = move_call(&ptb.commands[2]);
+        let register = move_call(&ptb.commands[1]);
+        assert_eq!(register.package, objects.registry_pkg_id);
         assert_eq!(register.module.as_str(), "leader");
         assert_eq!(register.function.as_str(), "register");
-        assert_eq!(register.arguments[1], Argument::Result(0));
+        assert_eq!(register.arguments[1], Argument::Input(1));
 
-        let destroy_zero = move_call(&ptb.commands[3]);
+        let destroy_zero = move_call(&ptb.commands[2]);
+        assert_eq!(destroy_zero.package, addr("0x2"));
         assert_eq!(destroy_zero.module.as_str(), "coin");
         assert_eq!(destroy_zero.function.as_str(), "destroy_zero");
-        assert_eq!(destroy_zero.arguments, vec![Argument::Result(0)]);
+        assert_eq!(
+            destroy_zero.type_arguments,
+            vec![crate::move_bindings::type_tag::<US>(&objects)]
+        );
+        assert_eq!(destroy_zero.arguments, vec![Argument::Input(1)]);
     }
 }

@@ -83,7 +83,6 @@ where
 
     for (key, value) in key_values.into_iter() {
         let key = tx.arg(&MoveString::new(key.as_ref().as_bytes().to_vec()))?;
-
         let value = tx.arg(&MoveString::new(value.as_ref().as_bytes().to_vec()))?;
 
         tx.call_target(
@@ -852,11 +851,11 @@ fn execute_scheduled_occurrence(
     let proof = match generator {
         OccurrenceGenerator::Queue => tx.call_target(
             scheduler_binding::check_queue_occurrence_target,
-            vec![task.clone(), leader_registry.clone(), clock.clone()],
+            vec![task, leader_registry, clock],
         )?,
         OccurrenceGenerator::Periodic => tx.call_target(
             scheduler_binding::check_periodic_occurrence_target,
-            vec![task.clone(), leader_registry.clone(), clock.clone()],
+            vec![task, leader_registry, clock],
         )?,
     };
 
@@ -867,33 +866,26 @@ fn execute_scheduled_occurrence(
 
     let execution = tx.call_target(
         scheduler_binding::prepare_execution_from_scheduled_payment_target,
-        vec![
-            dag.clone(),
-            agent_registry,
-            tool_registry,
-            task.clone(),
-            leader_cap,
-            clock.clone(),
-        ],
+        vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
     )?;
 
     let gas_service = tx.shared_object(&objects.gas_service, false)?;
     tx.call_target(
         gas_binding::snapshot_dag_tool_costs_target,
-        vec![gas_service, execution.clone(), dag.clone()],
+        vec![gas_service, execution, dag],
     )?;
 
     for (address, version) in tools_gas {
         let tool_gas = tx.shared_object_by_id(*address, *version, true)?;
         tx.call_target(
             gas_binding::lock_payment_state_for_tool_target,
-            vec![tool_gas, dag.clone(), execution.clone()],
+            vec![tool_gas, dag, execution],
         )?;
     }
 
     tx.call_target(
         execution_entries_binding::start_execution_target,
-        vec![dag.clone(), execution.clone(), leader_registry, clock],
+        vec![dag, execution, leader_registry, clock],
     )?;
     tx.call_target(
         transfer_binding::public_share_object_target::<execution_binding::DAGExecution>,
@@ -1049,5 +1041,41 @@ mod tests {
         assert!(error
             .to_string()
             .contains("priority fee percentage must be in 10..=10000"));
+    }
+
+    #[test]
+    fn default_agent_task_metadata_uses_move_utf8_strings() {
+        let objects = mock_nexus_objects();
+        let ptb = create_default_agent_task_ptb(
+            &objects,
+            sui::types::Address::from_static("0x42"),
+            "default",
+            &HashMap::new(),
+            &[("demo".to_owned(), "scheduler".to_owned())],
+            OccurrenceGenerator::Queue,
+            None,
+            50_000_000,
+            50_000_000,
+        )
+        .expect("default-agent task PTB should build");
+
+        let Command::MoveCall(insert) = &ptb.commands[1] else {
+            panic!("expected metadata map insertion");
+        };
+        assert_eq!(insert.module.as_str(), "vec_map");
+        assert_eq!(insert.function.as_str(), "insert");
+
+        let key: crate::move_bindings::move_std::string::String =
+            bcs::from_bytes(pure_input(&ptb, &insert.arguments[1]))
+                .expect("metadata key should be a generated Move string");
+        assert_eq!(key.bytes, b"demo");
+
+        let value: crate::move_bindings::move_std::string::String =
+            bcs::from_bytes(pure_input(&ptb, &insert.arguments[2]))
+                .expect("metadata value should be a generated Move string");
+        assert_eq!(value.bytes, b"scheduler");
+
+        let metadata = scheduler_call(&ptb, "new_metadata");
+        assert_eq!(metadata.arguments, [Argument::Result(0)]);
     }
 }

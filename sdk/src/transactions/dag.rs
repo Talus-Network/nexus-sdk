@@ -2124,7 +2124,7 @@ mod tests {
                 primitives::tagged_output::TaggedOutput,
                 sui_framework::{object::ID, vec_map::VecMap},
             },
-            types::DefaultDagExecutorTarget,
+            types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
         sui::types::{Argument, Command, Input},
     };
@@ -2160,6 +2160,8 @@ mod tests {
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
+            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+            us_token: UsTokenConfig::new(addr("0x12")),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

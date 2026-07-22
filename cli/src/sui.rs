@@ -1,7 +1,10 @@
 use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
-    nexus_sdk::{nexus::client::NexusClient, sui},
+    nexus_sdk::{
+        nexus::{client::NexusClient, crawler::Crawler},
+        sui,
+    },
 };
 
 /// Build Sui client for the provided Sui net.
@@ -114,53 +117,43 @@ pub(crate) async fn fetch_coins_for_address(
     client: Arc<Mutex<sui::grpc::Client>>,
     owner: sui::types::Address,
 ) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
-    let coins_handle = loading!("Fetching coins...");
+    fetch_coins_for_address_by_type(client, owner, sui::types::StructTag::gas_coin()).await
+}
 
-    let request = sui::grpc::ListOwnedObjectsRequest::default()
-        .with_owner(owner)
-        .with_page_size(1000)
-        .with_object_type(sui::types::StructTag::gas_coin())
-        .with_read_mask(sui::grpc::FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "balance",
-        ]));
+pub(crate) async fn fetch_coins_for_address_by_type(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    object_type: sui::types::StructTag,
+) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
+    let label = coin_type_label(&object_type);
+    let coins_handle = loading!("Fetching {label}...");
+    let crawler = Crawler::new(client);
 
-    let mut client = client.lock().await;
-
-    let response = match client
-        .state_client()
-        .list_owned_objects(request)
+    match crawler
+        .fetch_coins_for_address_by_type(owner, object_type)
         .await
-        .map(|resp| resp.into_inner())
     {
-        Ok(response) => response,
+        Ok(coins) => {
+            coins_handle.success();
+            Ok(coins)
+        }
         Err(e) => {
             coins_handle.error();
-
-            return Err(NexusCliError::Rpc(e.into()));
+            Err(NexusCliError::Rpc(e))
         }
-    };
+    }
+}
 
-    drop(client);
+fn coin_type_label(object_type: &sui::types::StructTag) -> String {
+    format!("coins of type '{object_type}'")
+}
 
-    coins_handle.success();
-
-    Ok(response
-        .objects()
-        .iter()
-        .filter_map(|object| {
-            Some((
-                sui::types::ObjectReference::new(
-                    object.object_id_opt()?.parse().ok()?,
-                    object.version_opt()?,
-                    object.digest_opt()?.parse().ok()?,
-                ),
-                object.balance_opt().unwrap_or(0),
-            ))
-        })
-        .collect())
+fn sort_coins_for_ordinal_selection(coins: &mut [(sui::types::ObjectReference, u64)]) {
+    coins.sort_by(|(left_coin, left_balance), (right_coin, right_balance)| {
+        right_balance
+            .cmp(left_balance)
+            .then_with(|| left_coin.object_id().cmp(right_coin.object_id()))
+    });
 }
 
 /// Wrapping some conf parsing functionality used around the CLI.
@@ -279,6 +272,7 @@ pub(crate) async fn fetch_coin_with_balance_excluding(
         }
         None => {
             coins.retain(|(coin, _)| !excluded.contains(coin.object_id()));
+            sort_coins_for_ordinal_selection(&mut coins);
             if by_order >= coins.len() {
                 return Err(NexusCliError::Any(anyhow!(
                     "The wallet does not have enough coins to select coin #{by_order}"
@@ -286,6 +280,43 @@ pub(crate) async fn fetch_coin_with_balance_excluding(
             }
 
             Ok(coins.swap_remove(by_order))
+        }
+    }
+}
+
+pub(crate) async fn fetch_coin_by_type(
+    client: Arc<Mutex<sui::grpc::Client>>,
+    owner: sui::types::Address,
+    by_address: Option<sui::types::Address>,
+    by_order: usize,
+    object_type: sui::types::StructTag,
+) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
+    let label = coin_type_label(&object_type);
+    let mut coins = fetch_coins_for_address_by_type(client, owner, object_type).await?;
+
+    if coins.is_empty() {
+        return Err(NexusCliError::Any(anyhow!(
+            "The wallet does not have enough {label}"
+        )));
+    }
+
+    match by_address {
+        Some(id) => coins
+            .into_iter()
+            .find(|(coin, _)| *coin.object_id() == id)
+            .map(|(coin, _)| coin)
+            .ok_or_else(|| {
+                NexusCliError::Any(anyhow!("Object '{id}' with {label} not found in wallet"))
+            }),
+        None => {
+            sort_coins_for_ordinal_selection(&mut coins);
+            if by_order >= coins.len() {
+                return Err(NexusCliError::Any(anyhow!(
+                    "The wallet does not have enough {label} to select object #{by_order}"
+                )));
+            }
+
+            Ok(coins.swap_remove(by_order).0)
         }
     }
 }
@@ -466,6 +497,49 @@ mod tests {
         );
 
         mock.assert_async().await;
+    }
+
+    fn object_ref(id: &'static str, digest_byte: u8) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(
+            sui::types::Address::from_static(id),
+            1,
+            sui::types::Digest::from([digest_byte; 32]),
+        )
+    }
+
+    #[test]
+    fn typed_coin_label_uses_requested_type() {
+        let expected_type =
+            nexus_sdk::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
+                .coin_type_tag();
+
+        assert_eq!(
+            coin_type_label(&expected_type),
+            format!("coins of type '{expected_type}'")
+        );
+    }
+
+    #[test]
+    fn ordinal_coin_sort_uses_balance_descending_then_object_id() {
+        let smallest_balance = object_ref("0x1", 1);
+        let lower_tied_id = object_ref("0x2", 2);
+        let higher_tied_id = object_ref("0x3", 3);
+        let mut coins = vec![
+            (smallest_balance.clone(), 10),
+            (higher_tied_id.clone(), 100),
+            (lower_tied_id.clone(), 100),
+        ];
+
+        sort_coins_for_ordinal_selection(&mut coins);
+
+        assert_eq!(
+            coins,
+            vec![
+                (lower_tied_id, 100),
+                (higher_tied_id, 100),
+                (smallest_balance, 10),
+            ]
+        );
     }
 
     mod parse_ed25519_private_key_tests {

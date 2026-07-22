@@ -373,6 +373,13 @@ mod tests {
             gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
+
+            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+            us_token: crate::types::UsTokenConfig {
+                package_id: addr("0x11"),
+                protected_treasury: None,
+                metadata: None,
+            },
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

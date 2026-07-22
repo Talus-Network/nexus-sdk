@@ -213,3 +213,36 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
+
+    #[test]
+    fn create_preserves_utf8_metadata_for_sdk_move_string_encoding() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "scheduler",
+            "task",
+            "create",
+            "--dag-id",
+            "0x42",
+            "--metadata",
+            "test",
+            "--prepay-amount-mist",
+            "50000000",
+            "--occurrence-budget-mist",
+            "50000000",
+        ])
+        .expect("scheduler task create arguments should parse");
+
+        let crate::Command::Scheduler(crate::scheduler::SchedulerCommand::Task(
+            TaskCommand::Create { metadata, .. },
+        )) = cli.command
+        else {
+            panic!("expected scheduler task create command");
+        };
+
+        assert_eq!(metadata, ["test"]);
+    }
+}

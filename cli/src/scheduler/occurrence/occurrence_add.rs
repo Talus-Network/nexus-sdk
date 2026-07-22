@@ -4,6 +4,7 @@ use {
         display::json_output,
         notify_success,
         prelude::*,
+        scheduler::helpers,
         sui::get_nexus_client,
     },
     nexus_sdk::nexus::scheduler::OccurrenceRequest,
@@ -29,7 +30,7 @@ pub(crate) async fn add_occurrence_to_task(
         None,
         start_offset_ms,
         deadline_offset_ms,
-        priority_fee_percentage,
+        priority_fee_percentage.and_then(helpers::optional_priority_fee_quote),
         true,
     )
     .map_err(NexusCliError::Nexus)?;

@@ -19,15 +19,73 @@ use {
             move_std::type_name::TypeName,
             primitives::policy::Symbol as PolicySymbol,
             scheduler::scheduler as scheduler_move,
+            sui_framework::coin::Coin as MoveCoin,
+            talus::us::US,
         },
         sui,
         types::DefaultDagExecutorTarget,
     },
     serde::{Deserialize, Serialize},
-    sui_move::MoveStruct,
+    sui_move::{MoveStruct, MoveType},
 };
 #[cfg(feature = "nexus")]
 use {std::sync::Arc, tokio::sync::Mutex};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsTokenConfig {
+    pub package_id: sui::types::Address,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_treasury: Option<sui::types::Address>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<sui::types::Address>,
+}
+
+impl Default for UsTokenConfig {
+    fn default() -> Self {
+        Self::new(sui::types::Address::ZERO)
+    }
+}
+
+impl UsTokenConfig {
+    pub fn new(package_id: sui::types::Address) -> Self {
+        Self {
+            package_id,
+            protected_treasury: None,
+            metadata: None,
+        }
+    }
+
+    pub fn type_tag(&self) -> sui::types::TypeTag {
+        crate::move_bindings::talus::with_packages(
+            self.package_id,
+            self.package_id,
+            US::type_tag_static,
+        )
+    }
+
+    pub fn coin_type_tag(&self) -> sui::types::StructTag {
+        crate::move_bindings::sui_framework::with_packages(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Address::from_static("0x2"),
+            || {
+                crate::move_bindings::talus::with_packages(
+                    self.package_id,
+                    self.package_id,
+                    MoveCoin::<US>::struct_tag_static,
+                )
+            },
+        )
+    }
+
+    pub fn qualified_type(&self) -> String {
+        let tag = crate::move_bindings::talus::with_packages(
+            self.package_id,
+            self.package_id,
+            US::struct_tag_static,
+        );
+        format!("{}::{}::{}", tag.address(), tag.module(), tag.name())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
@@ -45,6 +103,10 @@ pub struct NexusObjects {
     pub gas_service: sui::types::ObjectReference,
     pub leader_registry: sui::types::ObjectReference,
     pub priority_fee_vault: sui::types::ObjectReference,
+    #[serde(default = "default_object_reference")]
+    pub priority_fee_vault_owner_cap: sui::types::ObjectReference,
+    #[serde(default)]
+    pub us_token: UsTokenConfig,
 
     /// Original (defining) package address for the workflow package.
     ///
@@ -61,6 +123,10 @@ pub struct NexusObjects {
     /// reference the original package address in their type tags.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduler_original_pkg_id: Option<sui::types::Address>,
+}
+
+fn default_object_reference() -> sui::types::ObjectReference {
+    sui::types::ObjectReference::new(sui::types::Address::ZERO, 1, sui::types::Digest::ZERO)
 }
 
 impl NexusObjects {
@@ -363,6 +429,12 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             ),
+            priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
+                sui::types::Address::generate(&mut rng),
+                1,
+                sui::types::Digest::generate(&mut rng),
+            ),
+            us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -396,6 +468,29 @@ mod tests {
             ),
             contents: vec![],
         }
+    }
+
+    #[test]
+    fn us_token_config_scopes_generated_token_and_coin_tags() {
+        let package = sui::types::Address::from_static("0x42");
+        let config = UsTokenConfig::new(package);
+
+        let sui::types::TypeTag::Struct(us_tag) = config.type_tag() else {
+            panic!("US must be a generated struct type");
+        };
+        assert_eq!(*us_tag.address(), package);
+        assert_eq!(us_tag.module().as_str(), "us");
+        assert_eq!(us_tag.name().as_str(), "US");
+
+        let coin_tag = config.coin_type_tag();
+        assert_eq!(*coin_tag.address(), sui::types::Address::from_static("0x2"));
+        assert_eq!(coin_tag.module().as_str(), "coin");
+        assert_eq!(coin_tag.name().as_str(), "Coin");
+        assert_eq!(
+            coin_tag.type_params(),
+            &[sui::types::TypeTag::Struct(us_tag)]
+        );
+        assert_eq!(config.qualified_type(), format!("{package}::us::US"));
     }
 
     #[test]

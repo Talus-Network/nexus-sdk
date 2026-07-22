@@ -406,7 +406,7 @@ mod tests {
         crate::{
             move_bindings::workflow::gas::{deescalate_target, GasService},
             sui,
-            types::DefaultDagExecutorTarget,
+            types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
         sui_move::MoveStruct,
     };
@@ -499,6 +499,8 @@ mod tests {
             gas_service: obj(6),
             leader_registry: obj(7),
             priority_fee_vault: obj(8),
+            priority_fee_vault_owner_cap: obj(9),
+            us_token: UsTokenConfig::new(addr(0x66)),
             workflow_original_pkg_id: Some(addr(0x40)),
             scheduler_original_pkg_id: Some(addr(0x50)),
         }

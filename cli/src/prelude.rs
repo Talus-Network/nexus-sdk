@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
+    nexus_sdk::{types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
