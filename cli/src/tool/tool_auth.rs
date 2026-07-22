@@ -12,7 +12,7 @@ use {
         nexus::network_auth::NetworkAuthReader,
         signed_http::{
             keys::{parse_ed25519_signing_key, Ed25519Keypair},
-            v1::wire::AllowedLeadersFileV1,
+            v2::wire::AllowedLeadersFileV1,
         },
         ToolFqn,
     },
@@ -183,6 +183,7 @@ async fn register_key(
     json_output(&json!({
         "digest": result.tx_digest,
         "tool_fqn": tool_fqn,
+        "tool_id": result.tool_id,
         "binding_object_id": result.binding_object_id,
         "tool_kid": result.tool_kid,
         "public_key_hex": hex::encode(result.public_key),

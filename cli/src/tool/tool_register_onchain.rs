@@ -149,6 +149,9 @@ pub(crate) async fn register_onchain_tool(
         .inspect_tool(&fqn)
         .await
         .map_err(NexusCliError::Nexus)?;
+    let tool_ref = super::tool_inspect::normalized_tool_ref_json(
+        inspection.tool.as_ref().map(|tool| tool.reference()),
+    )?;
 
     json_output(&json!({
         "digest": response.digest,
@@ -157,6 +160,7 @@ pub(crate) async fn register_onchain_tool(
         "tool_gas_id": inspection.tool_gas_id,
         "owner_cap_over_tool_id": over_tool_id,
         "owner_cap_over_gas_id": over_gas_id,
+        "tool_ref": tool_ref,
         "tool": inspection.tool,
     }))?;
 

@@ -451,9 +451,16 @@ impl TapActions {
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
+        let dag = self
+            .client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
         let agent =
             agent_input_from_metadata(&agent_object).map_err(NexusError::TransactionBuilding)?;
-        let tx = tap_tx::register_skill_ptb(nexus_objects, agent, artifact)
+        let tx = tap_tx::register_skill_ptb(nexus_objects, agent, &dag, artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
@@ -514,11 +521,19 @@ impl TapActions {
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
+        let dag = self
+            .client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
 
         let agent =
             agent_input_from_metadata(&agent_object).map_err(NexusError::TransactionBuilding)?;
-        let tx = tap_tx::update_skill_from_artifact_ptb(nexus_objects, agent, skill_id, artifact)
-            .map_err(NexusError::TransactionBuilding)?;
+        let tx =
+            tap_tx::update_skill_from_artifact_ptb(nexus_objects, agent, &dag, skill_id, artifact)
+                .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
         let event = response
@@ -890,8 +905,15 @@ impl TapActions {
 
         let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
+        let dag = self
+            .client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
 
-        let tx = tap_tx::bind_agent_skill_ptb(nexus_objects, &artifact)
+        let tx = tap_tx::bind_agent_skill_ptb(nexus_objects, &dag, &artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
@@ -2033,6 +2055,11 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let agent_ref = sui::types::ObjectReference::new(
             sui::types::Address::from_static("0xa"),
             1,
@@ -2057,6 +2084,12 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
@@ -2130,6 +2163,11 @@ mod tests {
             sui::types::Digest::generate(&mut rng),
         );
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -2141,9 +2179,15 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0xc")),
             None,
         );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
         let expected_register_target = generated_target(
             &nexus_objects,
-            agent_registry_binding::register_skill_with_fixed_tools_target,
+            agent_registry_binding::register_skill_target,
         );
         let expected_agent_id = *agent_ref.object_id();
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
@@ -2216,6 +2260,11 @@ mod tests {
             sui::types::Digest::generate(&mut rng),
         );
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -2225,6 +2274,12 @@ mod tests {
             &mut ledger_service_mock,
             agent_ref.clone(),
             sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
             None,
         );
         let expected_update_dag_target =

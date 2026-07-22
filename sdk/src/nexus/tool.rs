@@ -4,10 +4,22 @@
 
 use {
     crate::{
-        nexus::{client::NexusClient, error::NexusError},
+        move_bindings::{
+            interface::verifier::ToolVerifierSupport,
+            registry::verifier_registry::ExternalVerifierRecord,
+        },
+        nexus::{
+            client::NexusClient,
+            error::NexusError,
+            registry::{
+                fetch_current_tool_registration,
+                fetch_external_verifier_record,
+                preflight_external_verifier_registration,
+            },
+        },
         sui,
         transactions::tool,
-        types::Tool,
+        types::{Tool, ToolRef},
         ToolFqn,
     },
     std::time::Duration,
@@ -15,6 +27,11 @@ use {
 
 pub struct UpdateToolTimeoutResult {
     pub tx_digest: sui::types::Digest,
+}
+
+pub struct ConfigureToolVerifierResult {
+    pub tx_digest: sui::types::Digest,
+    pub tool_id: sui::types::Address,
 }
 
 /// Result of [`ToolActions::inspect_tool`]. When `exists == false`, `tool` is
@@ -28,6 +45,8 @@ pub struct ToolInspection {
     pub tool_gas_id: sui::types::Address,
     pub exists: bool,
     pub tool: Option<Tool>,
+    pub verifier_support: Option<ToolVerifierSupport>,
+    pub external_verifier: Option<ExternalVerifierRecord>,
 }
 
 pub struct ToolActions {
@@ -35,6 +54,38 @@ pub struct ToolActions {
 }
 
 impl ToolActions {
+    async fn resolve_tool_and_owner_cap(
+        &self,
+        tool_fqn: &ToolFqn,
+        owner_cap: sui::types::Address,
+    ) -> Result<
+        (
+            sui::types::Address,
+            sui::types::ObjectReference,
+            sui::types::ObjectReference,
+        ),
+        NexusError,
+    > {
+        let objects = &self.client.nexus_objects;
+        let tool_id = Tool::derive_id(*objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let tool = self
+            .client
+            .crawler()
+            .get_object_metadata(tool_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        let owner_cap = self
+            .client
+            .crawler()
+            .get_object_metadata(owner_cap)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+        Ok((tool_id, tool, owner_cap))
+    }
+
     /// Update a tool's timeout.
     pub async fn update_timeout(
         &self,
@@ -67,6 +118,77 @@ impl ToolActions {
 
         Ok(UpdateToolTimeoutResult {
             tx_digest: response.digest,
+        })
+    }
+
+    /// Configure an offchain Tool for the built-in RegisteredKey verifier.
+    pub async fn configure_registered_key_verifier(
+        &self,
+        tool_fqn: &ToolFqn,
+        owner_cap: sui::types::Address,
+    ) -> Result<ConfigureToolVerifierResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let objects = &self.client.nexus_objects;
+        let (tool_id, tool, owner_cap) =
+            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
+        let binding_id = self.client.network_auth().binding_object_id(
+            &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
+        )?;
+        let tool_key_binding = self
+            .client
+            .crawler()
+            .get_object_metadata(binding_id)
+            .await
+            .map_err(|e| {
+                NexusError::Configuration(format!(
+                    "Tool '{tool_fqn}' has no NetworkAuth key binding at '{binding_id}': {e}"
+                ))
+            })?
+            .object_ref();
+        let tx = tool::configure_registered_key_verifier_ptb(
+            objects,
+            &tool,
+            &owner_cap,
+            &tool_key_binding,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
+        Ok(ConfigureToolVerifierResult {
+            tx_digest: response.digest,
+            tool_id,
+        })
+    }
+
+    /// Preflight and register one Tool-bound External verifier.
+    pub async fn configure_external_verifier(
+        &self,
+        tool_fqn: &ToolFqn,
+        owner_cap: sui::types::Address,
+        package_id: sui::types::Address,
+        module_name: &str,
+        function_name: &str,
+        verifier_object_ids: &[sui::types::Address],
+    ) -> Result<ConfigureToolVerifierResult, NexusError> {
+        let address = self.client.signer.get_active_address();
+        let objects = &self.client.nexus_objects;
+        let (tool_id, tool, owner_cap) =
+            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
+        let registration = preflight_external_verifier_registration(
+            self.client.crawler(),
+            objects,
+            package_id,
+            module_name,
+            function_name,
+            verifier_object_ids,
+        )
+        .await
+        .map_err(|e| NexusError::Configuration(e.to_string()))?;
+        let tx = tool::register_external_verifier_ptb(objects, &tool, &owner_cap, &registration)
+            .map_err(NexusError::TransactionBuilding)?;
+        let response = self.client.submit_transaction(tx, address).await?;
+        Ok(ConfigureToolVerifierResult {
+            tx_digest: response.digest,
+            tool_id,
         })
     }
 
@@ -109,6 +231,8 @@ impl ToolActions {
                 tool_gas_id,
                 exists: false,
                 tool: None,
+                verifier_support: None,
+                external_verifier: None,
             });
         }
 
@@ -117,6 +241,39 @@ impl ToolActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
+        let (verifier_support, external_verifier) = match &tool.r#ref {
+            ToolRef::Http { .. } => {
+                let support =
+                    fetch_current_tool_registration(crawler, &nexus_objects.tool_registry, tool_id)
+                        .await
+                        .map_err(NexusError::Rpc)?
+                        .and_then(|registration| registration.verifier_support);
+                let record = fetch_external_verifier_record(
+                    crawler,
+                    &nexus_objects.verifier_registry,
+                    tool_id,
+                )
+                .await
+                .map_err(NexusError::Rpc)?;
+                (support, record)
+            }
+            ToolRef::Sui { .. } => (None, None),
+        };
+        match (&verifier_support, &external_verifier) {
+            (Some(ToolVerifierSupport::External { method_id }), Some(record))
+                if method_id == &record.method_id => {}
+            (Some(ToolVerifierSupport::External { .. }), _) => {
+                return Err(NexusError::Configuration(format!(
+                    "Tool '{fqn}' has inconsistent External verifier state"
+                )));
+            }
+            (_, Some(_)) => {
+                return Err(NexusError::Configuration(format!(
+                    "Tool '{fqn}' has an External verifier record without External support"
+                )));
+            }
+            _ => {}
+        }
 
         Ok(ToolInspection {
             fqn: fqn.clone(),
@@ -124,6 +281,8 @@ impl ToolActions {
             tool_gas_id,
             exists: true,
             tool: Some(tool),
+            verifier_support,
+            external_verifier,
         })
     }
 }
@@ -136,10 +295,13 @@ mod tests {
             fqn,
             move_bindings::{
                 move_std::{ascii, option::Option as MoveOption},
-                sui_framework,
+                registry::{
+                    tool_registry::ToolRegistry,
+                    verifier_registry::{ExternalVerifierRecord, VerifierRegistry},
+                },
+                sui_framework::{self, linked_table::LinkedTable, table::Table},
             },
             test_utils::{nexus_mocks, sui_mocks},
-            types::ToolRef,
         },
         tonic::Status,
     };
@@ -213,12 +375,51 @@ mod tests {
                 value: 0,
                 phantom_t0: std::marker::PhantomData,
             },
-            supported_verifier_methods: vec![],
             workflow_authorization_cap_first,
             lock_duration_ms: 0,
             registered_at_ms: 0,
             unregistered_at_ms: MoveOption::from(None),
         }
+    }
+
+    fn mock_empty_verifier_state(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        fixture: &InspectionFixture,
+    ) {
+        use crate::move_bindings::{
+            interface::verifier::ToolVerifierSupport,
+            sui_framework::object::ID,
+        };
+
+        let id = sui::types::Address::from_static;
+        let tool_registry = ToolRegistry::new(
+            sui_framework::object::UID::new(*fixture.nexus_objects.tool_registry.object_id()),
+            LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
+            Table::<ID, bool>::new(id("0x102"), 0),
+            LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
+            Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
+            LinkedTable::<ascii::String, ID>::new(id("0x105"), 0),
+            LinkedTable::<ascii::String, bool>::new(id("0x106"), 0),
+            0,
+            0,
+        );
+        let verifier_registry = VerifierRegistry::new(
+            sui_framework::object::UID::new(*fixture.nexus_objects.verifier_registry.object_id()),
+            sui_framework::object::UID::new(id("0x107")),
+            Table::<ID, ExternalVerifierRecord>::new(id("0x108"), 0),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            ledger_service,
+            fixture.nexus_objects.tool_registry.clone(),
+            sui::types::Owner::Shared(fixture.nexus_objects.tool_registry.version()),
+            bcs::to_bytes(&tool_registry).unwrap(),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            ledger_service,
+            fixture.nexus_objects.verifier_registry.clone(),
+            sui::types::Owner::Shared(fixture.nexus_objects.verifier_registry.version()),
+            bcs::to_bytes(&verifier_registry).unwrap(),
+        );
     }
 
     /// Expect a `get_object` call and reply with a tonic NotFound error so the
@@ -345,7 +546,6 @@ mod tests {
             sui::types::Owner::Shared(1),
             tool_bcs,
         );
-
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
@@ -462,6 +662,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             tool_bcs,
         );
+        mock_empty_verifier_state(&mut ledger_service_mock, &fixture);
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),

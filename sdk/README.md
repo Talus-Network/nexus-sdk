@@ -23,8 +23,9 @@ see the [SDK migration guide](./MIGRATION.md).
 
 This crate includes the signed HTTP protocol used for Leader node <=> Tool communication:
 
-- Ed25519 signatures over a small JSON “claims” blob shipped in `X-Nexus-Sig-*` headers
-- request/response binding, body integrity binding (SHA-256), freshness windows, and replay resistance
+- the Leader signs `SHA-256(BCS(canonical_tool_inputs))`
+- the Tool signs the Leader signature followed by `SHA-256(result_bytes)`
+- Leader identity, active key selection, and the Tool's replay/cache nonce remain transport headers rather than signed claims
 
 It is feature-gated under `signed_http` and is used by `nexus-toolkit` to authenticate `/invoke` requests and sign responses.
 

@@ -14,7 +14,7 @@ struct Input {
     prompt: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Serialize, JsonSchema)]
 enum Output {
     Ok { message: String },
     Err { reason: String },
@@ -78,7 +78,29 @@ impl NexusTool for DummyErrTool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reqwest::Client, serde_json::json};
+    use {
+        super::*,
+        nexus_sdk::move_bindings::primitives::{data::DataTypeHint, tagged_output::TaggedOutput},
+        reqwest::Client,
+        serde_json::json,
+    };
+
+    async fn assert_tagged_output(
+        response: reqwest::Response,
+        expected_tag: &[u8],
+        expected_field: &[u8],
+        expected_value: &[u8],
+    ) {
+        let body = response.bytes().await.unwrap();
+        let output: TaggedOutput = bcs::from_bytes(&body).unwrap();
+        assert_eq!(bcs::to_bytes(&output).unwrap(), body);
+        assert_eq!(output.tag, expected_tag);
+        assert_eq!(output.named_payload.contents.len(), 1);
+        let field = &output.named_payload.contents[0];
+        assert_eq!(field.key, expected_field);
+        assert_eq!(field.value.type_hint, DataTypeHint::String);
+        assert_eq!(field.value.data.inline_one_bytes(), Some(expected_value));
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_endpoints_generated_correctly() {
@@ -126,14 +148,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        let invoke_json = invoke.json::<Output>().await.unwrap();
-
-        assert_eq!(
-            invoke_json,
-            Output::Ok {
-                message: "You said: Hello, world!".to_string(),
-            }
-        );
+        assert_tagged_output(invoke, b"Ok", b"message", b"You said: Hello, world!").await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -158,7 +173,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_500_when_execution_fails() {
+    async fn test_err_variant_returns_tagged_output() {
         tokio::spawn(async move { bootstrap!(([127, 0, 0, 1], 8045), [DummyErrTool]) });
 
         // Give the webserver some time to start.
@@ -173,14 +188,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        let invoke_json = invoke.json::<Output>().await.unwrap();
-
-        assert_eq!(
-            invoke_json,
-            Output::Err {
-                reason: "Something went wrong".to_string(),
-            }
-        );
+        assert_tagged_output(invoke, b"Err", b"reason", b"Something went wrong").await;
 
         // Default health ep exists.
         let health = Client::new()
@@ -209,14 +217,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        let invoke_json = invoke.json::<Output>().await.unwrap();
-
-        assert_eq!(
-            invoke_json,
-            Output::Err {
-                reason: "Something went wrong".to_string(),
-            }
-        );
+        assert_tagged_output(invoke, b"Err", b"reason", b"Something went wrong").await;
 
         // Invoke / tool.
         let invoke = Client::new()

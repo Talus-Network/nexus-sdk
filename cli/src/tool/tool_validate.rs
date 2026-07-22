@@ -3,8 +3,45 @@ use {
     nexus_sdk::types::ToolMeta,
     reqwest::StatusCode,
     serde::Deserialize,
-    std::time::Duration,
+    std::{path::Path, time::Duration},
 };
+
+const TOOL_TLS_ROOT_PEM_ENV: &str = "NEXUS_TOOL_TLS_ROOT_PEM_PATH";
+
+pub(crate) fn build_tool_http_client() -> AnyResult<reqwest::Client, NexusCliError> {
+    let root_path = std::env::var_os(TOOL_TLS_ROOT_PEM_ENV).map(std::path::PathBuf::from);
+    build_tool_http_client_with_root(root_path.as_deref()).map_err(NexusCliError::Any)
+}
+
+fn build_tool_http_client_with_root(root_path: Option<&Path>) -> anyhow::Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder();
+    if let Some(path) = root_path {
+        let pem = std::fs::read(path).map_err(|error| {
+            anyhow!(
+                "failed to read {TOOL_TLS_ROOT_PEM_ENV}={}: {error}",
+                path.display()
+            )
+        })?;
+        let certificates = reqwest::Certificate::from_pem_bundle(&pem).map_err(|error| {
+            anyhow!(
+                "invalid PEM in {TOOL_TLS_ROOT_PEM_ENV}={}: {error}",
+                path.display()
+            )
+        })?;
+        if certificates.is_empty() {
+            anyhow::bail!(
+                "invalid PEM in {TOOL_TLS_ROOT_PEM_ENV}={}: no certificates found",
+                path.display()
+            );
+        }
+        for certificate in certificates {
+            builder = builder.add_root_certificate(certificate);
+        }
+    }
+    builder
+        .build()
+        .map_err(|error| anyhow!("failed to initialize Tool HTTPS client: {error}"))
+}
 
 #[derive(Deserialize)]
 struct ToolMetaDocument {
@@ -40,6 +77,14 @@ pub(crate) fn parse_tool_meta_json(raw: &str) -> anyhow::Result<ToolMeta> {
 pub(crate) async fn validate_off_chain_tool(
     url: reqwest::Url,
 ) -> AnyResult<ToolMeta, NexusCliError> {
+    let client = build_tool_http_client()?;
+    validate_off_chain_tool_with_client(url, &client).await
+}
+
+pub(crate) async fn validate_off_chain_tool_with_client(
+    url: reqwest::Url,
+    client: &reqwest::Client,
+) -> AnyResult<ToolMeta, NexusCliError> {
     command_title!("Validating off-chain Tool at '{url}'");
 
     // Strip the trailing slash from the URL path.
@@ -61,7 +106,7 @@ pub(crate) async fn validate_off_chain_tool(
         .join("health")
         .expect("Appending health must be valid");
 
-    match reqwest::Client::new().get(health_url).send().await {
+    match client.get(health_url).send().await {
         Ok(response) if response.status() == StatusCode::OK => (),
         Ok(_) => {
             health_handle.error();
@@ -84,7 +129,7 @@ pub(crate) async fn validate_off_chain_tool(
 
     let meta_url = base_url.join("meta").expect("Appending meta must be valid");
 
-    let response = match reqwest::Client::new().get(meta_url).send().await {
+    let response = match client.get(meta_url).send().await {
         Ok(response) => response,
         Err(error) => {
             meta_handle.error();
@@ -206,6 +251,17 @@ mod tests {
                 message: format!("You said: {}", prompt),
             }
         }
+    }
+
+    #[test]
+    fn tool_http_client_rejects_invalid_custom_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("invalid.pem");
+        std::fs::write(&path, b"not a certificate").unwrap();
+
+        let error = build_tool_http_client_with_root(Some(&path)).unwrap_err();
+        assert!(error.to_string().contains("invalid PEM"));
+        assert!(error.to_string().contains(path.to_string_lossy().as_ref()));
     }
 
     #[tokio::test]

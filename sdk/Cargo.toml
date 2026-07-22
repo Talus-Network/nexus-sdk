@@ -24,8 +24,8 @@ default = ["tool_fqn"]
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
 
-# Signed HTTP feature enables application-layer Ed25519 signatures for HTTP
-# requests/responses (headers + signed claims).
+# Signed HTTP feature enables application-layer Ed25519 signatures for canonical
+# Tool input hashes and exact result bytes carried over HTTP.
 signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dalek", "rand", "bcs"]
 
 # DAG authoring helpers: JSON parser and static validator for the typed SDK `DagSpec`.

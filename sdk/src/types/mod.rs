@@ -15,11 +15,5 @@ pub use {
     tap::*,
     tool::{Tool, ToolRef},
     tool_meta::ToolMeta,
-    workflow_models::{
-        AuthenticatedOffchainRequestEvidence,
-        AuthenticatedOffchainVerifierEvidence,
-        ExecutionTerminalRecord,
-        ExternalVerifierRuntimeCall,
-        RequestWalkContext,
-    },
+    workflow_models::{ExecutionTerminalRecord, ExternalVerifierRuntimeCall, RequestWalkContext},
 };

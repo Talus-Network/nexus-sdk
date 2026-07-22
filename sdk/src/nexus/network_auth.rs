@@ -5,7 +5,7 @@
 //! - export a tool side allowlist of permitted leaders for the signed HTTP runtime.
 //!
 //! # Background: what is registered on chain?
-//! `nexus_registry::network_auth` binds an off chain identity, leader address or tool FQN, to an
+//! `nexus_registry::network_auth` binds an off chain identity, leader address or stable Tool ID, to an
 //! Ed25519 public key used for signed HTTP.
 //!
 //! Registration requires a proof of possession signature:
@@ -18,7 +18,7 @@
 //! can export the typed allowlist data consumed by nexus toolkit.
 
 #[cfg(feature = "signed_http")]
-use crate::signed_http::v1::wire::{
+use crate::signed_http::v2::wire::{
     AllowedLeaderFileV1,
     AllowedLeaderKeyFileV1,
     AllowedLeadersFileV1,
@@ -49,9 +49,9 @@ const KEY_SCHEME_ED25519: u8 = 0;
 pub struct RegisteredToolKey {
     /// Transaction digest that performed the registration.
     pub tx_digest: sui::types::Digest,
-    /// Tool identifier (FQN string form).
-    pub tool_id: ToolFqn,
-    /// Registered key id (kid) that must be used in signed HTTP claims.
+    /// Stable on-chain Tool object ID.
+    pub tool_id: sui::types::Address,
+    /// Registered key ID carried in signed HTTP transport headers.
     pub tool_kid: u64,
     /// Registered Ed25519 public key bytes.
     pub public_key: [u8; 32],
@@ -62,7 +62,7 @@ pub struct RegisteredToolKey {
 /// An individual key entry returned by [`NetworkAuthActions::list_tool_keys`].
 #[derive(Clone, Debug)]
 pub struct ToolKeyEntry {
-    /// Key identifier (kid) used in signed HTTP claims.
+    /// Key identifier used to select this key in signed HTTP transport headers.
     pub kid: u64,
     /// Hex-encoded Ed25519 public key.
     pub public_key_hex: String,
@@ -133,7 +133,13 @@ impl NetworkAuthActions {
         let codec =
             NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
-        let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
+        let tool_id =
+            Tool::derive_id(*objects.tool_registry.object_id(), &tool_fqn).map_err(|e| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "failed to derive ToolId for FQN '{tool_fqn}': {e}"
+                ))
+            })?;
+        let identity = IdentityKey::tool(tool_id);
         let binding_object_id = codec.binding_object_id(&identity)?;
 
         let binding = self.try_get_key_binding(binding_object_id).await?;
@@ -160,13 +166,6 @@ impl NetworkAuthActions {
             })?;
 
         // Resolve derived tool object ref for PTB.
-        let tool_id =
-            Tool::derive_id(*objects.tool_registry.object_id(), &tool_fqn).map_err(|e| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "failed to derive ToolId for FQN '{tool_fqn}': {e}"
-                ))
-            })?;
-
         let tool = self
             .client
             .crawler()
@@ -205,7 +204,7 @@ impl NetworkAuthActions {
 
         Ok(RegisteredToolKey {
             tx_digest: response.digest,
-            tool_id: tool_fqn,
+            tool_id,
             tool_kid: next_key_id,
             public_key,
             binding_object_id,
@@ -224,7 +223,13 @@ impl NetworkAuthActions {
         let codec =
             NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
 
-        let identity = IdentityKey::tool_fqn(&tool_fqn.to_string());
+        let tool_id =
+            Tool::derive_id(*objects.tool_registry.object_id(), tool_fqn).map_err(|e| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "failed to derive ToolId for FQN '{tool_fqn}': {e}"
+                ))
+            })?;
+        let identity = IdentityKey::tool(tool_id);
         let binding_object_id = codec.binding_object_id(&identity)?;
 
         let binding = match self.try_get_key_binding(binding_object_id).await? {
@@ -267,7 +272,7 @@ impl NetworkAuthActions {
 
     /// Export tool side allowlist data containing the active key for each leader.
     ///
-    /// The returned file model matches [`crate::signed_http::v1::wire::AllowedLeadersFileV1`].
+    /// The returned file model matches [`crate::signed_http::v2::wire::AllowedLeadersFileV1`].
     ///
     /// `leader_cap_ids` are leader capability ID values for
     /// [`crate::move_bindings::registry::leader_cap::OverNetwork`] objects.
@@ -792,7 +797,7 @@ mod tests {
         let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
 
         let leader = IdentityKey::leader(sui::types::Address::generate(&mut rng));
-        let tool = IdentityKey::tool_fqn("xyz.demo.tool@1");
+        let tool = IdentityKey::tool(sui::types::Address::generate(&mut rng));
 
         let leader_id_first = codec.binding_object_id(&leader).unwrap();
         let leader_id_second = codec.binding_object_id(&leader).unwrap();
@@ -834,7 +839,7 @@ mod tests {
         let network_auth_object_id = sui::types::Address::generate(&mut rng);
         let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
 
-        let identity = IdentityKey::tool_fqn("xyz.demo.tool@1");
+        let identity = IdentityKey::tool(sui::types::Address::generate(&mut rng));
         let key_id = 7u64;
         let public_key = [9u8; 32];
 
@@ -1014,7 +1019,10 @@ mod tests {
 
             let network_auth = raw_network_auth_for_test(
                 network_auth_object_id,
-                vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
+                vec![
+                    identity.clone(),
+                    IdentityKey::tool(sui::types::Address::from_static("0x42")),
+                ],
             );
 
             let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
@@ -1146,7 +1154,10 @@ mod tests {
 
             let network_auth = raw_network_auth_for_test(
                 network_auth_object_id,
-                vec![identity.clone(), IdentityKey::tool_fqn("xyz.demo.tool@1")],
+                vec![
+                    identity.clone(),
+                    IdentityKey::tool(sui::types::Address::from_static("0x42")),
+                ],
             );
 
             let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
@@ -1329,9 +1340,12 @@ mod tests {
 
             let tool_fqn_str = "xyz.demo.tool@1";
             let tool_fqn: crate::ToolFqn = tool_fqn_str.parse().unwrap();
+            let tool_registry_id = sui::types::Address::generate(&mut rng);
 
             let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
-            let identity = IdentityKey::tool_fqn(tool_fqn_str);
+            let identity = IdentityKey::tool(
+                Tool::derive_id(tool_registry_id, &tool_fqn).expect("Tool ID derives"),
+            );
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
             let key_table_id = sui::types::Address::from_static("0x111");
@@ -1450,6 +1464,11 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             );
             nexus_objects.registry_pkg_id = registry_pkg_id;
+            nexus_objects.tool_registry = sui::types::ObjectReference::new(
+                tool_registry_id,
+                1,
+                sui::types::Digest::generate(&mut rng),
+            );
 
             let gas_coin = sui_mocks::mock_sui_object_ref();
             let client = NexusClient::builder()

@@ -82,9 +82,9 @@ where
     )?;
 
     for (key, value) in key_values.into_iter() {
-        let key = tx.ascii_string(key.as_ref())?;
+        let key = tx.arg(&MoveString::new(key.as_ref().as_bytes().to_vec()))?;
 
-        let value = tx.ascii_string(value.as_ref())?;
+        let value = tx.arg(&MoveString::new(value.as_ref().as_bytes().to_vec()))?;
 
         tx.call_target(
             vec_map_binding::insert_target::<MoveString, MoveString>,
@@ -93,6 +93,131 @@ where
     }
 
     tx.call_target(scheduler_binding::new_metadata_target, vec![metadata])
+}
+
+#[cfg(all(test, feature = "test_utils"))]
+mod metadata_vm_tests {
+    use {
+        super::new_metadata,
+        crate::{
+            move_boundary,
+            nexus::signer::Signer,
+            sui,
+            test_utils::{self, sui_mocks},
+        },
+        std::sync::Arc,
+        tokio::sync::Mutex,
+    };
+
+    #[tokio::test]
+    async fn non_empty_metadata_creates_scheduled_task_on_sui_vm() {
+        if let Some(reason) = test_utils::containers::docker_unavailable_reason().await {
+            eprintln!("skipping Docker-backed scheduler metadata test: {reason}");
+            return;
+        }
+
+        let test_utils::containers::SuiInstance {
+            rpc_port,
+            faucet_port,
+            container: _container,
+        } = test_utils::containers::setup_sui_instance().await;
+        let rpc_url = format!("http://127.0.0.1:{rpc_port}");
+        let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
+        let private_key = {
+            let mut rng = rand::thread_rng();
+            sui::crypto::Ed25519PrivateKey::generate(&mut rng)
+        };
+        let sender = private_key.public_key().derive_address();
+
+        test_utils::faucet::request_tokens(&faucet_url, sender)
+            .await
+            .expect("request scheduler metadata test gas");
+        let gas_coins = test_utils::gas::fetch_gas_coins(&rpc_url, sender)
+            .await
+            .expect("fetch scheduler metadata test gas");
+        let published = test_utils::contracts::publish_move_package(
+            &private_key,
+            &rpc_url,
+            "tests/move/scheduler_metadata_test",
+            gas_coins
+                .first()
+                .expect("scheduler metadata test gas coin")
+                .0
+                .clone(),
+        )
+        .await;
+        let scheduler_package = published
+            .objects
+            .iter()
+            .find_map(|object| match object.data() {
+                sui::types::ObjectData::Package(package) => Some(package.id),
+                _ => None,
+            })
+            .expect("scheduler metadata test package was published");
+
+        let mut nexus_objects = sui_mocks::mock_nexus_objects();
+        nexus_objects.scheduler_pkg_id = scheduler_package;
+        nexus_objects.scheduler_original_pkg_id = None;
+        let programmable_transaction = move_boundary::ptb(&nexus_objects, |tx| {
+            let metadata = new_metadata(tx, [("source", "workbench")])?;
+            tx.call_function(
+                scheduler_package,
+                "scheduler",
+                "create_task",
+                vec![metadata],
+            )?;
+            Ok(())
+        })
+        .expect("build scheduled task transaction with metadata");
+
+        let mut client = sui::grpc::Client::new(&rpc_url).expect("create scheduler test client");
+        let reference_gas_price = client
+            .get_reference_gas_price()
+            .await
+            .expect("fetch scheduler test reference gas price");
+        let mut gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, sender)
+            .await
+            .expect("refresh scheduler metadata test gas")
+            .first()
+            .expect("refreshed scheduler metadata test gas coin")
+            .0
+            .clone();
+        let signer = Signer::new(
+            Arc::new(Mutex::new(client.clone())),
+            private_key,
+            std::time::Duration::from_secs(30),
+            Arc::new(nexus_objects),
+        );
+        let transaction = sui::types::Transaction {
+            kind: sui::types::TransactionKind::ProgrammableTransaction(programmable_transaction),
+            sender,
+            gas_payment: sui::types::GasPayment {
+                objects: vec![gas_coin.clone()],
+                owner: sender,
+                price: reference_gas_price,
+                budget: 1_000_000_000,
+            },
+            expiration: sui::types::TransactionExpiration::None,
+        };
+        let signature = signer
+            .sign_tx(&transaction)
+            .await
+            .expect("sign scheduled task transaction");
+        let executed = signer
+            .execute_tx(transaction, signature, &mut gas_coin)
+            .await
+            .expect("non-empty Move string metadata should create a scheduled task");
+
+        assert!(
+            executed.objects.iter().any(|object| {
+                let sui::types::ObjectType::Struct(object_type) = object.object_type() else {
+                    return false;
+                };
+                *object_type.name() == sui::types::Identifier::from_static("Task")
+            }),
+            "scheduled task transaction did not create the shared Task object"
+        );
+    }
 }
 
 // == Task lifecycle ==

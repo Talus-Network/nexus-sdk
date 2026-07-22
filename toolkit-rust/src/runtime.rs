@@ -7,7 +7,13 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
-    nexus_sdk::signed_http::v1::wire::HttpRequestMeta,
+    nexus_sdk::move_bindings::{
+        primitives::{
+            data::{DataTypeHint, NexusData, TypedNexusData},
+            tagged_output::TaggedOutput,
+        },
+        sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
+    },
     reqwest::Url,
     serde_json::json,
     std::sync::Arc,
@@ -19,6 +25,34 @@ use {
         Reply,
     },
 };
+
+/// Direct TLS configuration for the Toolkit server.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolTlsConfig {
+    Disabled,
+    Enabled { cert_path: String, key_path: String },
+}
+
+/// Validate the all-or-none TLS certificate/key pair used by [`bootstrap!`].
+#[doc(hidden)]
+pub fn tool_tls_config_(
+    cert_path: Option<String>,
+    key_path: Option<String>,
+) -> anyhow::Result<ToolTlsConfig> {
+    match (cert_path, key_path) {
+        (None, None) => Ok(ToolTlsConfig::Disabled),
+        (Some(cert_path), Some(key_path)) if !cert_path.is_empty() && !key_path.is_empty() => {
+            Ok(ToolTlsConfig::Enabled {
+                cert_path,
+                key_path,
+            })
+        }
+        _ => anyhow::bail!(
+            "NEXUS_TOOL_TLS_CERT_PATH and NEXUS_TOOL_TLS_KEY_PATH must both be set to non-empty paths"
+        ),
+    }
+}
 
 /// Load toolkit configuration from environment.
 ///
@@ -76,24 +110,28 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// When enabled (`signed_http.mode = "required"`), the runtime:
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
-/// - Applies replay protection via `(tool_id, nonce)` (retries are safe; conflicting replays are rejected).
-/// - Signs the JSON response with the tool's Ed25519 signing key so the Leader can verify provenance.
-///   This includes error responses after the request has been authenticated (e.g. `403`, `422`, `500`).
+/// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
+/// - Returns exact BCS `TaggedOutput` bytes and signs the nonce-bound v2 Tool response message.
+/// - Keeps nonce replay and cached-response handling entirely offchain.
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
+/// The request body, nonce, and unsigned identity headers require authenticated HTTPS transport.
+/// Set both `NEXUS_TOOL_TLS_CERT_PATH` and `NEXUS_TOOL_TLS_KEY_PATH` to terminate TLS directly in
+/// the Toolkit server. If TLS terminates at a gateway, the gateway-to-Tool hop must provide an
+/// equivalently protected transport; signed HTTP does not make a plaintext hop safe.
 ///
 /// ## Example config
 /// ```json
 /// {
-///   "version": 1,
+///   "version": 2,
 ///   "invoke_max_body_bytes": 10485760,
 ///   "signed_http": {
 ///     "mode": "required",
 ///     "allowed_leaders_path": "./allowed_leaders.json",
 ///     "tools": {
 ///       "xyz.dummy.tool@1": {
-///         "tool_kid": 0,
-///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000"
+///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
+///         "replay_cache_ttl_ms": 300000
 ///       }
 ///     }
 ///   }
@@ -226,8 +264,25 @@ macro_rules! bootstrap {
             .map(move || $crate::warp::reply::json(&paths));
 
         let routes = routes.or(default_health_route).or(default_tools_route);
-        // Serve the routes.
-        $crate::warp::serve(routes).run($addr).await
+        // Serve the routes, terminating TLS directly when a certificate/key pair is configured.
+        let tls_config = $crate::runtime::tool_tls_config_(
+            ::std::env::var("NEXUS_TOOL_TLS_CERT_PATH").ok(),
+            ::std::env::var("NEXUS_TOOL_TLS_KEY_PATH").ok(),
+        )
+        .expect("Invalid Nexus Tool TLS configuration");
+        match tls_config {
+            $crate::runtime::ToolTlsConfig::Disabled => {
+                $crate::warp::serve(routes).run($addr).await
+            }
+            $crate::runtime::ToolTlsConfig::Enabled { cert_path, key_path } => {
+                $crate::warp::serve(routes)
+                    .tls()
+                    .cert_path(cert_path)
+                    .key_path(key_path)
+                    .run($addr)
+                    .await
+            }
+        }
     }};
     // Default address.
     ([$($tool:ty),+ $(,)?]) => {{
@@ -243,6 +298,34 @@ macro_rules! bootstrap {
         let addr = bootstrap!(@get_addr);
         bootstrap!(addr, [$tool])
     }};
+}
+
+#[cfg(test)]
+mod tls_tests {
+    use super::*;
+
+    #[test]
+    fn toolkit_tls_paths_are_all_or_none() {
+        assert_eq!(
+            tool_tls_config_(None, None).unwrap(),
+            ToolTlsConfig::Disabled
+        );
+        assert_eq!(
+            tool_tls_config_(Some("cert.pem".into()), Some("key.pem".into())).unwrap(),
+            ToolTlsConfig::Enabled {
+                cert_path: "cert.pem".into(),
+                key_path: "key.pem".into(),
+            }
+        );
+        for (cert, key) in [
+            (Some("cert.pem".into()), None),
+            (None, Some("key.pem".into())),
+            (Some(String::new()), Some("key.pem".into())),
+            (Some("cert.pem".into()), Some(String::new())),
+        ] {
+            assert!(tool_tls_config_(cert, key).is_err());
+        }
+    }
 }
 
 /// This function generates the necessary routes for a given [NexusTool] using an already-loaded
@@ -288,15 +371,13 @@ pub fn routes_for_with_config_<T: NexusTool>(
     let invoke_max_body_bytes = toolkit_cfg.invoke_max_body_bytes();
 
     let tool_id = T::fqn().to_string();
-    let invoke_auth =
-        InvokeAuth::new_sync(config, tool_id).expect("Failed to load signed HTTP configuration");
+    let invoke_auth = InvokeAuth::new_sync(config, tool_id, T::timeout())
+        .expect("Failed to load signed HTTP configuration");
 
     // Invoke path is tool base URL path and `/invoke`.
     let invoke_route = warp::post()
         .and(base_path)
         .and(warp::path("invoke"))
-        .and(warp::path::full())
-        .and(warp::query::raw().or(warp::any().map(String::new)).unify())
         .and(warp::header::headers_cloned())
         .and(warp::body::content_length_limit(invoke_max_body_bytes))
         .and(warp::body::bytes())
@@ -404,26 +485,24 @@ async fn meta_handler<T: NexusTool>(
 }
 
 /// Result of the tool invocation pipeline before being turned into an HTTP response.
-///
-/// This intermediate form exists so:
-/// - the response body can be signed as raw bytes (signed HTTP), and
-/// - unsigned mode can still reuse the exact same serialization path.
 struct InvokePipelineResponse {
     status: StatusCode,
     body: Vec<u8>,
+    is_result: bool,
 }
 
 impl InvokePipelineResponse {
     fn json(status: StatusCode, value: serde_json::Value) -> Self {
         let (status, body) = json_bytes_or_fallback(status, value);
-        Self { status, body }
+        Self {
+            status,
+            body,
+            is_result: false,
+        }
     }
 }
 
-/// Tool invocation pipeline that returns raw JSON bytes and an HTTP status code.
-///
-/// Keeping this as a distinct step makes signed response behavior easy to reason about: the
-/// signature covers *exactly* these bytes.
+/// Tool invocation pipeline returning canonical BCS result bytes or a local JSON error.
 struct InvokePipeline;
 
 impl InvokePipeline {
@@ -461,10 +540,11 @@ impl InvokePipeline {
 
         let output = tool.invoke(input).await;
 
-        match serde_json::to_vec(&crate::WithSerdeErrorPath(output)) {
+        match encode_tagged_output(output) {
             Ok(body) => InvokePipelineResponse {
                 status: StatusCode::OK,
                 body,
+                is_result: true,
             },
             Err(e) => InvokePipelineResponse::json(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -477,30 +557,94 @@ impl InvokePipeline {
     }
 }
 
+fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8>> {
+    let value = serde_json::to_value(crate::WithSerdeErrorPath(output))?;
+    let serde_json::Value::Object(variants) = value else {
+        anyhow::bail!("tool output must serialize as an externally tagged enum")
+    };
+    if variants.len() != 1 {
+        anyhow::bail!("tool output must contain exactly one variant")
+    }
+    let (tag, payload) = variants.into_iter().next().expect("length checked");
+    let serde_json::Value::Object(payload) = payload else {
+        anyhow::bail!("tool output variant payload must be an object")
+    };
+    let mut named_payload = payload
+        .into_iter()
+        .map(|(name, value)| {
+            Ok(VecMapEntry {
+                key: name.into_bytes(),
+                value: typed_nexus_data(value)?,
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    named_payload.sort_by(|left, right| left.key.cmp(&right.key));
+    Ok(bcs::to_bytes(&TaggedOutput {
+        tag: tag.into_bytes(),
+        named_payload: VecMap {
+            contents: named_payload,
+        },
+    })?)
+}
+
+fn typed_nexus_data(value: serde_json::Value) -> anyhow::Result<TypedNexusData> {
+    if let serde_json::Value::Array(values) = value {
+        let encoded = values
+            .iter()
+            .map(encoded_value)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let type_hint = encoded
+            .first()
+            .map(|(hint, _)| *hint)
+            .filter(|hint| encoded.iter().all(|(candidate, _)| candidate == hint))
+            .unwrap_or(DataTypeHint::Raw);
+        let many = if type_hint == DataTypeHint::Raw {
+            values
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            encoded.into_iter().map(|(_, bytes)| bytes).collect()
+        };
+        return Ok(TypedNexusData {
+            type_hint,
+            data: NexusData::inline_many(many),
+        });
+    }
+
+    let (type_hint, bytes) = encoded_value(&value)?;
+    Ok(TypedNexusData {
+        type_hint,
+        data: NexusData::inline_one(bytes),
+    })
+}
+
+fn encoded_value(value: &serde_json::Value) -> anyhow::Result<(DataTypeHint, Vec<u8>)> {
+    let encoded = match value {
+        serde_json::Value::String(value) => (DataTypeHint::String, value.as_bytes().to_vec()),
+        serde_json::Value::Number(_) => (DataTypeHint::Number, serde_json::to_vec(value)?),
+        serde_json::Value::Bool(_) => (DataTypeHint::Bool, serde_json::to_vec(value)?),
+        _ => (DataTypeHint::Raw, serde_json::to_vec(value)?),
+    };
+    Ok(encoded)
+}
+
 async fn invoke_handler<T: NexusTool>(
-    full_path: FullPath,
-    raw_query: String,
     headers: HeaderMap,
     body: bytes::Bytes,
     auth: InvokeAuth,
 ) -> Result<warp::reply::Response, Rejection> {
     let body_bytes = body.to_vec();
 
-    let http = HttpRequestMeta {
-        method: "POST",
-        path: full_path.as_str(),
-        query: &raw_query,
-    };
-
     let auth_runtime = auth.current().await;
     Ok(handle_invoke(
         &auth_runtime,
-        http,
+        auth.replay(),
         headers,
         body_bytes,
         |auth_ctx, body_bytes| async move {
             let pipeline = InvokePipeline::run::<T>(&body_bytes, auth_ctx).await;
-            (pipeline.status, pipeline.body)
+            (pipeline.status, pipeline.body, pipeline.is_result)
         },
     )
     .await)
@@ -510,35 +654,11 @@ async fn invoke_handler<T: NexusTool>(
 mod tests {
     use {
         super::*,
-        nexus_sdk::{
-            fqn,
-            signed_http::v1::wire::{
-                decode_signature_headers_v1,
-                encode_signature_headers_v1,
-                now_ms,
-                sha256,
-                sha256_hex,
-                sign_invoke_request_v1,
-                verify_invoke_response_v1,
-                InvokeRequestClaimsV1,
-                VerifyOptions,
-                HEADER_SIG,
-                HEADER_SIG_INPUT,
-                HEADER_SIG_VERSION,
-                SIG_VERSION_V1,
-            },
-            ToolFqn,
-        },
+        nexus_sdk::{fqn, ToolFqn},
         schemars::JsonSchema,
         serde::{Deserialize, Serialize},
-        std::{
-            fs,
-            sync::atomic::{AtomicUsize, Ordering},
-        },
+        serde_json::json,
     };
-
-    static AUTHORIZE_CALLS: AtomicUsize = AtomicUsize::new(0);
-    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[derive(Deserialize, JsonSchema)]
     struct Input {
@@ -547,31 +667,34 @@ mod tests {
 
     #[derive(Serialize, JsonSchema)]
     enum Output {
-        Ok { message: String },
+        Ok {
+            message: String,
+            count: u64,
+            flags: Vec<bool>,
+            metadata: serde_json::Value,
+        },
     }
 
-    struct DenyTool;
+    struct TestTool;
 
-    impl NexusTool for DenyTool {
+    impl NexusTool for TestTool {
         type Input = Input;
         type Output = Output;
 
         fn fqn() -> ToolFqn {
-            fqn!("xyz.taluslabs.deny@1")
+            fqn!("xyz.taluslabs.test@1")
         }
 
         async fn new() -> Self {
             Self
         }
 
-        async fn authorize(&self, _ctx: crate::AuthContext) -> anyhow::Result<()> {
-            AUTHORIZE_CALLS.fetch_add(1, Ordering::SeqCst);
-            anyhow::bail!("leader not allowed")
-        }
-
         async fn invoke(&self, input: Self::Input) -> Self::Output {
             Output::Ok {
                 message: input.message,
+                count: 2,
+                flags: vec![true, false],
+                metadata: json!({"source": "test"}),
             }
         }
 
@@ -580,271 +703,111 @@ mod tests {
         }
     }
 
-    fn make_config_json(
-        tool_id: &str,
-        tool_sk_hex: &str,
-        leader_id: &str,
-        leader_pk_hex: &str,
-    ) -> String {
-        format!(
-            r#"{{
-  "version": 1,
-  "invoke_max_body_bytes": 1048576,
-  "signed_http": {{
-    "mode": "required",
-    "allowed_leaders": {{
-      "version": 1,
-      "leaders": [{{"leader_id":"{leader_id}","keys":[{{"kid":0,"public_key":"{leader_pk_hex}"}}]}}]
-    }},
-    "tools": {{
-      "{tool_id}": {{
-        "tool_kid": 0,
-        "tool_signing_key": "{tool_sk_hex}"
-      }}
-    }}
-  }}
-}}"#
-        )
-    }
-
-    fn build_signed_request(
-        leader_id: &str,
-        leader_sk: &ed25519_dalek::SigningKey,
-        tool_id: &str,
-        nonce: &str,
-        body: &[u8],
-    ) -> (EncodedRequest, [u8; 32]) {
-        let iat_ms = now_ms();
-        let exp_ms = iat_ms + 60_000;
-
-        let claims = InvokeRequestClaimsV1 {
-            leader_id: leader_id.to_string(),
-            leader_kid: 0,
-            tool_id: tool_id.to_string(),
-            iat_ms,
-            exp_ms,
-            nonce: nonce.to_string(),
-            method: "POST".to_string(),
-            path: "/invoke".to_string(),
-            query: "".to_string(),
-            body_sha256: sha256_hex(body),
-        };
-
-        let (sig_input, sig) = sign_invoke_request_v1(&claims, leader_sk).unwrap();
-        let req_hash = sha256(&sig_input);
-        let headers = encode_signature_headers_v1(&sig_input, &sig);
-
-        (
-            EncodedRequest {
-                sig_input_b64: headers.sig_input_b64,
-                sig_b64: headers.sig_b64,
-                body: body.to_vec(),
-            },
-            req_hash,
-        )
-    }
-
-    struct EncodedRequest {
-        sig_input_b64: String,
-        sig_b64: String,
-        body: Vec<u8>,
-    }
-
-    fn verify_signed_response(
-        resp: &warp::http::Response<bytes::Bytes>,
-        tool_id: &str,
-        req_hash: [u8; 32],
-        tool_pk: [u8; 32],
-    ) {
-        let sig_v = resp
-            .headers()
-            .get(HEADER_SIG_VERSION)
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert_eq!(sig_v, SIG_VERSION_V1);
-
-        let sig_input_b64 = resp
-            .headers()
-            .get(HEADER_SIG_INPUT)
-            .unwrap()
-            .to_str()
-            .unwrap();
-        let sig_b64 = resp.headers().get(HEADER_SIG).unwrap().to_str().unwrap();
-
-        let decoded =
-            decode_signature_headers_v1(Some(sig_v), Some(sig_input_b64), Some(sig_b64)).unwrap();
-
-        let verified = verify_invoke_response_v1(
-            decoded,
-            resp.body(),
-            tool_id,
-            req_hash,
-            tool_pk,
-            &VerifyOptions::default(),
-        )
+    #[test]
+    fn tool_output_encodes_as_canonical_generated_tagged_output() {
+        let bytes = encode_tagged_output(Output::Ok {
+            message: "hello".to_string(),
+            count: 2,
+            flags: vec![true, false],
+            metadata: json!({"source": "test"}),
+        })
         .unwrap();
+        let output: TaggedOutput = bcs::from_bytes(&bytes).unwrap();
 
-        assert_eq!(verified.claims.status, resp.status().as_u16());
+        assert_eq!(bcs::to_bytes(&output).unwrap(), bytes);
+        assert_eq!(output.tag, b"Ok");
+        assert_eq!(output.named_payload.contents.len(), 4);
+        assert_eq!(
+            output
+                .named_payload
+                .contents
+                .iter()
+                .map(|entry| entry.key.as_slice())
+                .collect::<Vec<_>>(),
+            vec![
+                b"count".as_slice(),
+                b"flags".as_slice(),
+                b"message".as_slice(),
+                b"metadata".as_slice(),
+            ]
+        );
+
+        let payload = |name: &[u8]| {
+            &output
+                .named_payload
+                .contents
+                .iter()
+                .find(|entry| entry.key == name)
+                .expect("named payload entry")
+                .value
+        };
+        let message = payload(b"message");
+        assert_eq!(message.type_hint, DataTypeHint::String);
+        assert_eq!(message.data.inline_one_bytes(), Some(b"hello".as_slice()));
+
+        let flags = payload(b"flags");
+        assert_eq!(flags.type_hint, DataTypeHint::Bool);
+        assert_eq!(flags.data.many, vec![b"true".to_vec(), b"false".to_vec()]);
+
+        let metadata = payload(b"metadata");
+        assert_eq!(metadata.type_hint, DataTypeHint::Raw);
+        assert_eq!(metadata.data.one, br#"{"source":"test"}"#);
     }
 
-    #[allow(clippy::await_holding_lock)]
+    #[test]
+    fn tagged_output_encoding_rejects_non_enum_shapes() {
+        assert!(encode_tagged_output(json!("plain value"))
+            .unwrap_err()
+            .to_string()
+            .contains("externally tagged enum"));
+        assert!(encode_tagged_output(json!({"Ok": {}, "Err": {}}))
+            .unwrap_err()
+            .to_string()
+            .contains("exactly one variant"));
+        assert!(encode_tagged_output(json!({"Ok": 1}))
+            .unwrap_err()
+            .to_string()
+            .contains("payload must be an object"));
+    }
+
+    #[test]
+    fn array_payloads_use_typed_encoding_only_when_all_elements_match() {
+        let homogeneous = typed_nexus_data(json!(["a", "b"])).unwrap();
+        assert_eq!(homogeneous.type_hint, DataTypeHint::String);
+        assert_eq!(homogeneous.data.many, vec![b"a".to_vec(), b"b".to_vec()]);
+
+        let mixed = typed_nexus_data(json!([1, true])).unwrap();
+        assert_eq!(mixed.type_hint, DataTypeHint::Raw);
+        assert_eq!(mixed.data.many, vec![b"1".to_vec(), b"true".to_vec()]);
+
+        let empty = typed_nexus_data(json!([])).unwrap();
+        assert_eq!(empty.type_hint, DataTypeHint::Raw);
+        assert!(empty.data.many.is_empty());
+    }
+
     #[tokio::test]
-    async fn signed_error_responses_are_signed_and_cached() {
-        let _guard = TEST_LOCK.lock().unwrap();
-        AUTHORIZE_CALLS.store(0, Ordering::SeqCst);
-
-        let leader_id = "0x1111";
-        let leader_sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
-        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
-
-        let tool_id = DenyTool::fqn().to_string();
-        let tool_sk = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
-        let tool_pk = tool_sk.verifying_key().to_bytes();
-        let tool_sk_hex = hex::encode(tool_sk.to_bytes());
-
-        // Write config to temp file and load
-        let file_name = format!("test_config_signed_error_{}.json", std::process::id());
-        let path = std::env::temp_dir().join(&file_name);
-        let cfg_json = make_config_json(&tool_id, &tool_sk_hex, leader_id, &leader_pk_hex);
-        fs::write(&path, &cfg_json).unwrap();
-
-        let toolkit_cfg = Arc::new(ToolkitRuntimeConfig::from_path(&path).unwrap());
-        let routes = routes_for_with_config_::<DenyTool>(toolkit_cfg);
-
-        let body = br#"{"message":"hi"}"#;
-        let (req, req_hash) = build_signed_request(leader_id, &leader_sk, &tool_id, "abc", body);
-
-        let resp1 = warp::test::request()
-            .method("POST")
-            .path("/invoke")
-            .header("content-length", req.body.len().to_string())
-            .header(HEADER_SIG_VERSION, SIG_VERSION_V1)
-            .header(HEADER_SIG_INPUT, req.sig_input_b64.clone())
-            .header(HEADER_SIG, req.sig_b64.clone())
-            .body(req.body.clone())
-            .reply(&routes)
-            .await;
-
-        assert_eq!(resp1.status(), StatusCode::FORBIDDEN);
-        verify_signed_response(&resp1, &tool_id, req_hash, tool_pk);
-        assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
-
-        // Exact retry returns a cached result and does not re-run authorization or tool code.
-        let resp2 = warp::test::request()
-            .method("POST")
-            .path("/invoke")
-            .header("content-length", req.body.len().to_string())
-            .header(HEADER_SIG_VERSION, SIG_VERSION_V1)
-            .header(HEADER_SIG_INPUT, req.sig_input_b64.clone())
-            .header(HEADER_SIG, req.sig_b64.clone())
-            .body(req.body.clone())
-            .reply(&routes)
-            .await;
-
-        assert_eq!(resp2.status(), StatusCode::FORBIDDEN);
-        verify_signed_response(&resp2, &tool_id, req_hash, tool_pk);
-        assert_eq!(resp2.body(), resp1.body());
-        assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
-
-        // Cleanup
-        let _ = fs::remove_file(&path);
+    async fn invoke_pipeline_returns_exact_tagged_output_bytes() {
+        let response = InvokePipeline::run::<TestTool>(br#"{"message":"hello"}"#, None).await;
+        assert_eq!(response.status, StatusCode::OK);
+        assert!(response.is_result);
+        let output: TaggedOutput = bcs::from_bytes(&response.body).unwrap();
+        assert_eq!(bcs::to_bytes(&output).unwrap(), response.body);
     }
 
-    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
-    async fn conflicting_replay_is_signed_and_does_not_overwrite_cache() {
-        let _guard = TEST_LOCK.lock().unwrap();
-        AUTHORIZE_CALLS.store(0, Ordering::SeqCst);
-
-        let leader_id = "0x1111";
-        let leader_sk = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
-        let leader_pk_hex = hex::encode(leader_sk.verifying_key().to_bytes());
-
-        let tool_id = DenyTool::fqn().to_string();
-        let tool_sk = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
-        let tool_pk = tool_sk.verifying_key().to_bytes();
-        let tool_sk_hex = hex::encode(tool_sk.to_bytes());
-
-        // Write config to temp file and load
-        let file_name = format!("test_config_replay_{}.json", std::process::id());
-        let path = std::env::temp_dir().join(&file_name);
-        let cfg_json = make_config_json(&tool_id, &tool_sk_hex, leader_id, &leader_pk_hex);
-        fs::write(&path, &cfg_json).unwrap();
-
-        let toolkit_cfg = Arc::new(ToolkitRuntimeConfig::from_path(&path).unwrap());
-        let routes = routes_for_with_config_::<DenyTool>(toolkit_cfg);
-
-        let body1 = br#"{"message":"hi"}"#;
-        let (req1, req_hash1) = build_signed_request(leader_id, &leader_sk, &tool_id, "abc", body1);
-
-        let resp1 = warp::test::request()
-            .method("POST")
-            .path("/invoke")
-            .header("content-length", req1.body.len().to_string())
-            .header(HEADER_SIG_VERSION, SIG_VERSION_V1)
-            .header(HEADER_SIG_INPUT, req1.sig_input_b64.clone())
-            .header(HEADER_SIG, req1.sig_b64.clone())
-            .body(req1.body.clone())
-            .reply(&routes)
-            .await;
-
-        assert_eq!(resp1.status(), StatusCode::FORBIDDEN);
-        verify_signed_response(&resp1, &tool_id, req_hash1, tool_pk);
-        assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
-
-        // Conflicting request: same nonce, different payload/signature => signed replay rejection.
-        let body2 = br#"{"message":"different"}"#;
-        let (req2, req_hash2) = build_signed_request(leader_id, &leader_sk, &tool_id, "abc", body2);
-
-        let resp2 = warp::test::request()
-            .method("POST")
-            .path("/invoke")
-            .header("content-length", req2.body.len().to_string())
-            .header(HEADER_SIG_VERSION, SIG_VERSION_V1)
-            .header(HEADER_SIG_INPUT, req2.sig_input_b64.clone())
-            .header(HEADER_SIG, req2.sig_b64.clone())
-            .body(req2.body.clone())
-            .reply(&routes)
-            .await;
-
-        assert_eq!(resp2.status(), StatusCode::UNAUTHORIZED);
-        verify_signed_response(&resp2, &tool_id, req_hash2, tool_pk);
-        assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
-
-        // The cached response for the original request is still served for exact retries.
-        let resp3 = warp::test::request()
-            .method("POST")
-            .path("/invoke")
-            .header("content-length", req1.body.len().to_string())
-            .header(HEADER_SIG_VERSION, SIG_VERSION_V1)
-            .header(HEADER_SIG_INPUT, req1.sig_input_b64.clone())
-            .header(HEADER_SIG, req1.sig_b64.clone())
-            .body(req1.body.clone())
-            .reply(&routes)
-            .await;
-
-        assert_eq!(resp3.status(), StatusCode::FORBIDDEN);
-        verify_signed_response(&resp3, &tool_id, req_hash1, tool_pk);
-        assert_eq!(resp3.body(), resp1.body());
-        assert_eq!(AUTHORIZE_CALLS.load(Ordering::SeqCst), 1);
-
-        // Cleanup
-        let _ = fs::remove_file(&path);
+    async fn invalid_input_remains_local_json_error() {
+        let response = InvokePipeline::run::<TestTool>(b"{}", None).await;
+        assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(!response.is_result);
+        assert!(serde_json::from_slice::<serde_json::Value>(&response.body).is_ok());
     }
 
-    /// Verifies that an empty path produces `http://localhost/`.
-    /// Guards against the default `NexusTool::path()` returning `""` being
-    /// mishandled (e.g., producing `http://localhost` without trailing slash).
     #[test]
     fn meta_placeholder_url_empty_path() {
         let url = super::meta_placeholder_url_("");
         assert_eq!(url.as_str(), "http://localhost/");
     }
 
-    /// Verifies that a path without a leading slash gets one inserted.
-    /// Guards against `format!("http://localhost{path}")` producing a URL
-    /// whose authority is `localhostpath` instead of `localhost`.
     #[test]
     fn meta_placeholder_url_no_leading_slash() {
         let url = super::meta_placeholder_url_("path");
@@ -852,21 +815,10 @@ mod tests {
         assert_eq!(url.path(), "/path");
     }
 
-    /// Verifies that a path with a leading slash is used as-is.
-    /// Guards against double-slash (`//path`) when the slash is already present.
     #[test]
     fn meta_placeholder_url_with_leading_slash() {
         let url = super::meta_placeholder_url_("/foo/");
         assert_eq!(url.host_str(), Some("localhost"));
         assert_eq!(url.path(), "/foo/");
-    }
-
-    /// Verifies that a path with a leading slash and no trailing slash works.
-    /// Guards against off-by-one in the slash normalization logic.
-    #[test]
-    fn meta_placeholder_url_leading_slash_no_trailing() {
-        let url = super::meta_placeholder_url_("/foo");
-        assert_eq!(url.host_str(), Some("localhost"));
-        assert_eq!(url.path(), "/foo");
     }
 }
