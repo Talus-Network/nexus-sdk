@@ -296,42 +296,42 @@ optional = true
 # === Move binding ===
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 [dependencies.sui-move]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 features = ["derive"]
 optional = true
 
 [dependencies.sui-move-call]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 [dependencies.sui-move-ptb]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 # === Sui deps ===
 [dependencies.sui-rpc]
-version = "0.3.1"
+version = "0.3.2"
 optional = true
 
 [dependencies.sui-sdk-types]
-version = "0.3.1"
+version = "0.3.2"
 features = ["rand", "serde"]
 optional = true
 
 [dependencies.sui-crypto]
-version = "0.3.0"
+version = "0.3.1"
 features = ["ed25519", "pem"]
 optional = true
 
 [dependencies.sui-transaction-builder]
-version = "0.3.1"
+version = "0.3.2"
 optional = true
 
 [dependencies.sui_move_build]
@@ -386,7 +386,7 @@ toml.workspace = true
 
 [build-dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 
 [dependencies.blake3]
 version = "1.3"

@@ -271,7 +271,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -282,7 +282,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1477,7 +1477,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1486,7 +1486,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1974,7 +1974,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -2514,7 +2514,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3637,7 +3637,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "tokio",
  "tower-service",
  "tracing",
@@ -3989,7 +3989,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5915,16 +5915,16 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "subtle",
- "sui-crypto",
+ "sui-crypto 0.3.1",
  "sui-move",
  "sui-move-build",
  "sui-move-call",
  "sui-move-codegen",
  "sui-move-ptb",
  "sui-package-management",
- "sui-rpc",
- "sui-sdk-types",
- "sui-transaction-builder 0.3.1",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
+ "sui-transaction-builder 0.3.2",
  "tempfile",
  "testcontainers-modules",
  "thiserror 2.0.18",
@@ -6056,7 +6056,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7050,7 +7050,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -7165,7 +7165,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.2",
  "rustls 0.23.40",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -7203,7 +7203,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.4",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -7803,7 +7803,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8585,7 +8585,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8645,7 +8645,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9047,15 +9047,30 @@ dependencies = [
  "itertools 0.14.0",
  "k256 0.13.4",
  "p256",
- "pem-rfc7468",
- "pkcs8",
  "rand_core 0.6.4",
  "serde",
  "serde_derive",
  "serde_json",
  "sha2 0.10.9",
  "signature 2.2.0",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.1",
+]
+
+[[package]]
+name = "sui-crypto"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7b8f54c4405002c9ece67cb848479f80837185a55a59d8c0a105240f737d0da"
+dependencies = [
+ "base64ct",
+ "ed25519-dalek",
+ "k256 0.13.4",
+ "p256",
+ "pem-rfc7468",
+ "pkcs8",
+ "rand_core 0.6.4",
+ "signature 2.2.0",
+ "sui-sdk-types 0.3.2",
 ]
 
 [[package]]
@@ -9317,13 +9332,13 @@ dependencies = [
 [[package]]
 name = "sui-move"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
 dependencies = [
  "bcs",
  "ethnum",
  "serde",
  "sui-move-derive",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
@@ -9356,27 +9371,27 @@ dependencies = [
 [[package]]
 name = "sui-move-call"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
 dependencies = [
  "bcs",
  "serde",
  "sui-move",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "sui-move-codegen"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
 dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
- "sui-rpc",
- "sui-sdk-types",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
  "syn 2.0.117",
  "thiserror 1.0.69",
 ]
@@ -9384,7 +9399,7 @@ dependencies = [
 [[package]]
 name = "sui-move-derive"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9501,11 +9516,11 @@ dependencies = [
 [[package]]
 name = "sui-move-ptb"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=feat%2Fsource_names#7c72479b0b79a4f4a0c7a8b6dd1f91a74662e69e"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
 dependencies = [
  "sui-move",
  "sui-move-call",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.2",
  "thiserror 1.0.69",
 ]
 
@@ -9653,8 +9668,33 @@ dependencies = [
  "prost-types",
  "serde",
  "serde_json",
- "sui-crypto",
- "sui-sdk-types",
+ "sui-crypto 0.3.0",
+ "sui-sdk-types 0.3.1",
+ "tap",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tower 0.5.3",
+]
+
+[[package]]
+name = "sui-rpc"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617504d5c6b748af0494b73db80fb893840522329788c48c826d8298e7edb0aa"
+dependencies = [
+ "base64 0.22.1",
+ "bcs",
+ "bytes",
+ "futures",
+ "http 1.4.1",
+ "http-body 1.0.1",
+ "hyper 1.10.1",
+ "prost",
+ "prost-types",
+ "serde",
+ "serde_json",
+ "sui-sdk-types 0.3.2",
  "tap",
  "tokio",
  "tonic",
@@ -9689,7 +9729,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sui-config",
- "sui-crypto",
+ "sui-crypto 0.3.0",
  "sui-display",
  "sui-http",
  "sui-inverted-index",
@@ -9697,9 +9737,9 @@ dependencies = [
  "sui-name-service",
  "sui-package-resolver",
  "sui-protocol-config",
- "sui-rpc",
+ "sui-rpc 0.3.1",
  "sui-rpc-cursor",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.1",
  "sui-transaction-builder 0.0.0",
  "sui-transaction-checks",
  "sui-types",
@@ -9746,14 +9786,14 @@ dependencies = [
  "serde_with",
  "shared-crypto",
  "sui-config",
- "sui-crypto",
+ "sui-crypto 0.3.0",
  "sui-json",
  "sui-json-rpc-api",
  "sui-json-rpc-types",
  "sui-keys",
- "sui-rpc",
+ "sui-rpc 0.3.1",
  "sui-rpc-api",
- "sui-sdk-types",
+ "sui-sdk-types 0.3.1",
  "sui-transaction-builder 0.0.0",
  "sui-types",
  "thiserror 1.0.69",
@@ -9765,6 +9805,28 @@ dependencies = [
 name = "sui-sdk-types"
 version = "0.3.1"
 source = "git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=d8643443b523fb14873c3ea566a7b7f8146b34e8#d8643443b523fb14873c3ea566a7b7f8146b34e8"
+dependencies = [
+ "base64ct",
+ "bcs",
+ "blake2",
+ "bnum",
+ "bs58 0.5.1",
+ "bytes",
+ "bytestring",
+ "itertools 0.14.0",
+ "roaring",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_with",
+ "winnow 0.7.14",
+]
+
+[[package]]
+name = "sui-sdk-types"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a22266119e43d3da1a8bc9945c8b569a513e7682f561265d70ef8b6e198dd664"
 dependencies = [
  "base64ct",
  "bcs",
@@ -9801,15 +9863,16 @@ dependencies = [
 
 [[package]]
 name = "sui-transaction-builder"
-version = "0.3.1"
-source = "git+https://github.com/MystenLabs/sui-rust-sdk.git?rev=d8643443b523fb14873c3ea566a7b7f8146b34e8#d8643443b523fb14873c3ea566a7b7f8146b34e8"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39697547ef9a6c03725dca449c33c3b47619b0a76ca5df827e4501944ebdaebb"
 dependencies = [
  "async-trait",
  "bcs",
  "futures",
  "serde",
- "sui-rpc",
- "sui-sdk-types",
+ "sui-rpc 0.3.2",
+ "sui-sdk-types 0.3.2",
  "thiserror 2.0.18",
 ]
 
@@ -9892,8 +9955,8 @@ dependencies = [
  "sui-enum-compat-util",
  "sui-macros",
  "sui-protocol-config",
- "sui-rpc",
- "sui-sdk-types",
+ "sui-rpc 0.3.1",
+ "sui-sdk-types 0.3.1",
  "tap",
  "thiserror 1.0.69",
  "tonic",
@@ -10070,7 +10133,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10100,7 +10163,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11304,7 +11367,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
