@@ -162,6 +162,11 @@ pub mod grpc {
                 &self,
                 request: Request<GetEpochRequest>,
             ) -> Result<Response<GetEpochResponse>, Status>;
+
+            async fn list_events(
+                &self,
+                request: Request<ListEventsRequest>,
+            ) -> Result<Response<BoxListEventsStream>, Status>;
         }
     }
 
@@ -225,6 +230,14 @@ pub mod grpc {
         >,
     >;
 
+    pub type BoxEventStream = std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<SubscribeEventsResponse, Status>> + Send + 'static>,
+    >;
+
+    pub type BoxListEventsStream = std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<ListEventsResponse, Status>> + Send + 'static>,
+    >;
+
     #[tonic::async_trait]
 
     pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
@@ -233,6 +246,11 @@ pub mod grpc {
 
             request: Request<SubscribeCheckpointsRequest>,
         ) -> Result<Response<BoxCheckpointStream>, Status>;
+
+        async fn subscribe_events(
+            &self,
+            request: Request<SubscribeEventsRequest>,
+        ) -> Result<Response<BoxEventStream>, Status>;
     }
 
     pub struct SubscriptionServiceAdapter<W: SubscriptionServiceWrapper> {
@@ -253,6 +271,13 @@ pub mod grpc {
         ) -> Result<Response<BoxCheckpointStream>, Status> {
             self.inner.subscribe_checkpoints(request).await
         }
+
+        async fn subscribe_events(
+            &self,
+            request: Request<SubscribeEventsRequest>,
+        ) -> Result<Response<BoxEventStream>, Status> {
+            self.inner.subscribe_events(request).await
+        }
     }
 
     mock! {
@@ -264,6 +289,11 @@ pub mod grpc {
                 &self,
                 request: tonic::Request<SubscribeCheckpointsRequest>,
             ) -> Result<tonic::Response<BoxCheckpointStream>, tonic::Status>;
+
+            async fn subscribe_events(
+                &self,
+                request: tonic::Request<SubscribeEventsRequest>,
+            ) -> Result<tonic::Response<BoxEventStream>, tonic::Status>;
         }
     }
 

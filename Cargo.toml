@@ -83,6 +83,12 @@ zeroize = "1.7"
 nexus-toolkit = { path = "toolkit-rust" }
 nexus-sdk = { path = "sdk" }
 
+[patch.crates-io]
+sui-crypto = { git = "https://github.com/MystenLabs/sui-rust-sdk.git", rev = "d8643443b523fb14873c3ea566a7b7f8146b34e8" }
+sui-rpc = { git = "https://github.com/MystenLabs/sui-rust-sdk.git", rev = "d8643443b523fb14873c3ea566a7b7f8146b34e8" }
+sui-sdk-types = { git = "https://github.com/MystenLabs/sui-rust-sdk.git", rev = "d8643443b523fb14873c3ea566a7b7f8146b34e8" }
+sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk.git", rev = "d8643443b523fb14873c3ea566a7b7f8146b34e8" }
+
 [profile.release]
 # debug = 1 means line tables only, which is minimum needed for good stack traces
 debug = 1
