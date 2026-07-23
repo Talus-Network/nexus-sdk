@@ -61,23 +61,31 @@ feature-depth = 1
 # More documentation for the advisories section can be found here:
 # https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
 [advisories]
-# The path where the advisory databases are cloned/fetched into
-#db-path = "$CARGO_HOME/advisory-dbs"
-# The url(s) of the advisory databases to use
-#db-urls = ["https://github.com/rustsec/advisory-db"]
-# A list of advisory IDs to ignore. Note that ignored advisories will still
-# output a note when they are encountered.
+# Vulnerabilities and unsound advisories fail unless an exact advisory has a
+# temporary exception.
+# Transitive maintenance notices remain visible but do not block this check.
+unmaintained = "workspace"
+unsound = "all"
+yanked = "warn"
+unused-ignored-advisory = "deny"
+
+# Each exception records its owner, affected scope, review date, and removal
+# path. Cargo Audit does not consume this list because discovery must report
+# every active finding.
 ignore = [
-    #"RUSTSEC-0000-0000",
-    #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
-    #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
-    #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
+    { id = "RUSTSEC-2023-0071", reason = "owner=Talus Engineering; scope=rsa enters through fastcrypto in the Sui graph and no safe release exists; review=2026-08-23; remediation=update the Sui dependency boundary when fastcrypto adopts a fixed rsa release" },
+    { id = "RUSTSEC-2025-0111", reason = "owner=Talus Engineering; scope=tokio-tar enters through testcontainers in the optional test_utils graph; review=2026-08-23; remediation=update or replace the testcontainers dependency boundary" },
+    { id = "RUSTSEC-2026-0002", reason = "owner=Talus Engineering; scope=lru 0.10 and 0.13 enter through the Sui package resolver, Sui types, and Move VM graph; review=2026-08-23; remediation=update the Sui dependency boundary to releases that use lru 0.16.3 or newer" },
+    { id = "RUSTSEC-2026-0049", reason = "owner=Talus Engineering; scope=rustls-webpki 0.102 enters through Warp TLS in nexus-toolkit; review=2026-08-23; remediation=replace Warp 0.3 or move it to a Rustls release that uses rustls-webpki 0.103" },
+    { id = "RUSTSEC-2026-0097", reason = "owner=Talus Engineering; scope=rand 0.7 enters through fail in the Sui Move VM graph; review=2026-08-23; remediation=update the Sui Move VM boundary so fail no longer resolves an affected rand release" },
+    { id = "RUSTSEC-2026-0098", reason = "owner=Talus Engineering; scope=rustls-webpki 0.102 enters through Warp TLS in nexus-toolkit; review=2026-08-23; remediation=replace Warp 0.3 or move it to a Rustls release that uses rustls-webpki 0.103" },
+    { id = "RUSTSEC-2026-0099", reason = "owner=Talus Engineering; scope=rustls-webpki 0.102 enters through Warp TLS in nexus-toolkit; review=2026-08-23; remediation=replace Warp 0.3 or move it to a Rustls release that uses rustls-webpki 0.103" },
+    { id = "RUSTSEC-2026-0104", reason = "owner=Talus Engineering; scope=rustls-webpki 0.102 enters through Warp TLS in nexus-toolkit; review=2026-08-23; remediation=replace Warp 0.3 or move it to a Rustls release that uses rustls-webpki 0.103" },
+    { id = "RUSTSEC-2026-0118", reason = "owner=Talus Engineering; scope=hickory-proto 0.25 enters through Reqwest and the optional test utilities graph; review=2026-08-23; remediation=update the controlling Reqwest and testcontainers releases to versions that allow Hickory 0.26" },
+    { id = "RUSTSEC-2026-0119", reason = "owner=Talus Engineering; scope=hickory-proto 0.25 enters through Reqwest and the optional test utilities graph; review=2026-08-23; remediation=update the controlling Reqwest and testcontainers releases to versions that allow Hickory 0.26" },
+    { id = "RUSTSEC-2026-0194", reason = "owner=Talus Engineering; scope=quick-xml 0.39 enters through object_store in the optional Sui Move publishing graph; review=2026-08-23; remediation=update the Sui and object_store boundary to a release that allows quick-xml 0.41" },
+    { id = "RUSTSEC-2026-0195", reason = "owner=Talus Engineering; scope=quick-xml 0.39 enters through object_store in the optional Sui Move publishing graph; review=2026-08-23; remediation=update the Sui and object_store boundary to a release that allows quick-xml 0.41" },
 ]
-# If this is true, then cargo deny will use the git executable to fetch advisory database.
-# If this is false, then it uses a built-in git library.
-# Setting this to true can be helpful if you have special authentication requirements that cargo-deny does not support.
-# See Git Authentication for more information about setting up git authentication.
-#git-fetch-with-cli = true
 
 # This section is considered when running `cargo deny check licenses`
 # More documentation for the licenses section can be found here:
