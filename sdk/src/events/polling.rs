@@ -179,6 +179,60 @@ struct PendingTransactionDigest {
     checkpoint: u64,
 }
 
+fn validate_transaction_batch(
+    response: sui::grpc::BatchGetTransactionsResponse,
+    expected: &[PendingTransactionDigest],
+) -> anyhow::Result<Vec<sui::grpc::ExecutedTransaction>> {
+    anyhow::ensure!(
+        response.transactions.len() == expected.len(),
+        "batch response contained {} results for {} requested transactions",
+        response.transactions.len(),
+        expected.len()
+    );
+
+    response
+        .transactions
+        .into_iter()
+        .zip(expected)
+        .map(|(result, expected)| {
+            let transaction = match result.transaction_opt() {
+                Some(transaction) => transaction.clone(),
+                None => {
+                    if let Some(error) = result.error_opt() {
+                        anyhow::bail!(
+                            "transaction {} failed in batch response: code={}, message={}",
+                            expected.digest,
+                            error.code,
+                            error.message
+                        );
+                    }
+
+                    anyhow::bail!(
+                        "transaction {} had neither a transaction nor an error in batch response",
+                        expected.digest
+                    );
+                }
+            };
+
+            anyhow::ensure!(
+                transaction.digest_opt() == Some(expected.digest.as_str()),
+                "batch response digest mismatch: requested {}, received {:?}",
+                expected.digest,
+                transaction.digest_opt()
+            );
+            anyhow::ensure!(
+                transaction.checkpoint_opt() == Some(expected.checkpoint),
+                "batch response checkpoint mismatch for {}: expected {}, received {:?}",
+                expected.digest,
+                expected.checkpoint,
+                transaction.checkpoint_opt()
+            );
+
+            Ok(transaction)
+        })
+        .collect()
+}
+
 const DEFAULT_TRANSACTIONS_MAX_DECODING_MESSAGE_SIZE: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
@@ -308,9 +362,8 @@ impl EventPoller {
                         // when the RPC is down.
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
-                    is_reconnection = true;
-
                     tracing::info!("[EventPoller] Starting checkpoint stream from checkpoint {from_checkpoint:?} (is_reconnection={is_reconnection})");
+                    is_reconnection = true;
 
                     // Create a fresh client on each reconnection attempt so
                     // DNS is re-resolved and stale connections are discarded.
@@ -702,7 +755,6 @@ impl EventPoller {
                 Ok(response) => {
                     TX_BATCH_FETCH_DURATION.observe(fetch_start.elapsed().as_secs_f64());
                     last_fetched_at = Instant::now();
-                    consecutive_failures = 0;
 
                     response.into_inner()
                 }
@@ -770,17 +822,51 @@ impl EventPoller {
                 }
             };
 
+            let transactions = match validate_transaction_batch(response, &digests) {
+                Ok(transactions) => {
+                    consecutive_failures = 0;
+                    transactions
+                }
+                Err(error) => {
+                    if send_page
+                        .send(Err(PollerError::Rpc(error.context(format!(
+                            "Invalid batch response for {} requested transactions",
+                            digests.len()
+                        )))))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+
+                    consecutive_failures = consecutive_failures
+                        .saturating_add(1)
+                        .min(self.transactions_batch_max_retries.max(1));
+                    retry_batches.push_front(digests);
+
+                    if let Ok(new_client) = sui::grpc::Client::new(&self.rpc_url)
+                        .map(|client| self.transaction_client(client))
+                    {
+                        client = new_client;
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(
+                        500 * 2u64.pow(consecutive_failures.min(10) as u32),
+                    ))
+                    .await;
+                    continue;
+                }
+            };
+
             tracing::debug!(
                 "[EventPoller] Fetched batch of {} transactions at checkpoint {:?} (flush_reason={flush_reason})",
-                response.transactions.len(),
-                response
-                    .transactions
+                transactions.len(),
+                transactions
                     .first()
-                    .and_then(|t| t.transaction().checkpoint_opt())
+                    .and_then(|t| t.checkpoint_opt())
             );
 
-            for transaction in response.transactions {
-                let transaction = transaction.transaction();
+            for transaction in transactions {
                 let checkpoint = transaction.checkpoint();
 
                 let Ok(events) = sui::types::TransactionEvents::try_from(transaction.events())
@@ -874,6 +960,119 @@ mod tests {
 
         response.set_transactions(transactions);
         response
+    }
+
+    fn empty_transaction_response_at(
+        digest: &str,
+        checkpoint: u64,
+    ) -> sui::grpc::BatchGetTransactionsResponse {
+        let mut transaction = sui::grpc::ExecutedTransaction::default();
+        transaction.set_digest(digest);
+        transaction.set_checkpoint(checkpoint);
+        transaction.set_events(sui::grpc::TransactionEvents::default());
+
+        let mut result = sui::grpc::GetTransactionResult::default();
+        result.set_transaction(transaction);
+
+        let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+        response.set_transactions(vec![result]);
+        response
+    }
+
+    #[test]
+    fn transaction_batch_validation_rejects_partial_and_mismatched_responses() {
+        let expected = vec![PendingTransactionDigest {
+            digest: "tx1".to_string(),
+            checkpoint: 42,
+        }];
+
+        assert!(validate_transaction_batch(
+            sui::grpc::BatchGetTransactionsResponse::default(),
+            &expected
+        )
+        .is_err());
+        assert!(
+            validate_transaction_batch(empty_transaction_response_at("tx1", 41), &expected)
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn transaction_result_error_is_retried_without_emitting_checkpoint_zero() {
+        let nexus_objects = Arc::new(sui_mocks::mock_nexus_objects());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+
+        ledger_service_mock
+            .expect_batch_get_transactions()
+            .returning({
+                let attempts = Arc::clone(&attempts);
+                move |request| {
+                    let digest = request.into_inner().digests[0].clone();
+                    if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        let mut result = sui::grpc::GetTransactionResult::default();
+                        result.error_mut().set_code(tonic::Code::NotFound as i32);
+                        result
+                            .error_mut()
+                            .set_message("checkpoint data is not indexed");
+
+                        let mut response = sui::grpc::BatchGetTransactionsResponse::default();
+                        response.set_transactions(vec![result]);
+                        Ok(tonic::Response::new(response))
+                    } else {
+                        Ok(tonic::Response::new(empty_transaction_response_at(
+                            &digest, 42,
+                        )))
+                    }
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+
+        let cancellation_token = CancellationToken::new();
+        let poller = EventPoller::new(&rpc_url, nexus_objects)
+            .with_transactions_max_batch_size(1)
+            .with_transactions_batch_max_wait(Duration::from_millis(10))
+            .with_cancellation_token(cancellation_token.clone());
+
+        let (send_digest, next_digest) = mpsc::channel(2);
+        let (send_page, mut next_page) = mpsc::channel(2);
+        send_digest
+            .send(PendingTransactionDigest {
+                digest: "tx1".to_string(),
+                checkpoint: 42,
+            })
+            .await
+            .unwrap();
+
+        let handle = tokio::spawn(async move {
+            poller
+                .fetch_transactions_and_notify(next_digest, send_page)
+                .await
+        });
+
+        let first = timeout(Duration::from_secs(3), next_page.recv())
+            .await
+            .expect("timed out waiting for embedded result error")
+            .expect("page channel closed");
+        assert!(
+            first.is_err(),
+            "embedded RPC error became a successful page"
+        );
+
+        let page = timeout(Duration::from_secs(3), next_page.recv())
+            .await
+            .expect("timed out waiting for retried transaction")
+            .expect("page channel closed")
+            .expect("retry should succeed");
+        assert_eq!(page.checkpoint, 42);
+
+        cancellation_token.cancel();
+        handle.await.unwrap().unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
