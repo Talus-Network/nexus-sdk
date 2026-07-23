@@ -49,8 +49,15 @@ impl NexusEventQuery {
         Self { objects }
     }
 
-    #[cfg(feature = "nexus")]
-    pub(crate) fn decode_sui_event(
+    /// Decodes one Sui transaction event using this query.
+    ///
+    /// Returns [`None`] when the wrapper contains an unsupported event type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusEventDecodeError`] when supported event contents cannot
+    /// be decoded.
+    pub fn decode_sui_event(
         &self,
         index: u64,
         digest: sui::types::Digest,
