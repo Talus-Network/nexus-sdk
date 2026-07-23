@@ -25,7 +25,7 @@ use crate::{
 };
 use {
     crate::{
-        events::{is_event_wrapper, FromSuiGrpcEvent, NexusEvent, NexusEventKind},
+        events::{NexusEvent, NexusEventKind, NexusEventQuery},
         move_bindings::{
             interface::{
                 dag as dag_move,
@@ -59,7 +59,7 @@ use {
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
@@ -579,7 +579,7 @@ async fn fetch_transaction_update_with_visibility_retry(
 
 async fn fetch_execution_update_events(
     crawler: &Crawler,
-    nexus_objects: &NexusObjects,
+    nexus_objects: &Arc<NexusObjects>,
     dag_execution_id: sui::types::Address,
     latest: ObjectUpdateReference,
     last_delivered_version: Option<sui::types::Version>,
@@ -589,6 +589,7 @@ async fn fetch_execution_update_events(
     let mut cursor = latest;
     let mut reverse_updates = Vec::new();
     let expected_type = crate::move_bindings::struct_tag::<DAGExecution>(nexus_objects);
+    let event_query = NexusEventQuery::new(Arc::clone(nexus_objects));
     let last_reconstructed = version_or_none(last_delivered_version);
 
     loop {
@@ -672,14 +673,17 @@ async fn fetch_execution_update_events(
             .events
             .iter()
             .enumerate()
-            .filter(|(_, event)| is_event_wrapper(&event.type_, nexus_objects))
-            .map(|(index, event)| {
-                NexusEvent::from_sui_grpc_event(index as u64, update.digest, event, nexus_objects)
-                    .map_err(|error| {
-                        NexusError::Parsing(error.context(format!(
-                            "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
-                            update.digest
-                        )))
+            .filter_map(|(index, event)| {
+                event_query
+                    .decode_sui_event(index as u64, update.digest, event)
+                    .transpose()
+                    .map(|result| {
+                        result.map_err(|error| {
+                            NexusError::Parsing(anyhow::Error::new(error).context(format!(
+                                "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
+                                update.digest
+                            )))
+                        })
                     })
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -1525,14 +1529,15 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                let payment_gas_config = self.client.gas_config();
-                payment_gas_config
-                    .release_gas_coin(sui::types::ObjectReference::new(
-                        updated_payment_coin.object_id(),
-                        updated_payment_coin.version(),
-                        updated_payment_coin.digest(),
-                    ))
-                    .await;
+                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                    payment_gas_pool
+                        .release_gas_coin(sui::types::ObjectReference::new(
+                            updated_payment_coin.object_id(),
+                            updated_payment_coin.version(),
+                            updated_payment_coin.digest(),
+                        ))
+                        .await;
+                }
             }
         }
 
@@ -1696,14 +1701,15 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                self.client
-                    .gas
-                    .release_gas_coin(sui::types::ObjectReference::new(
-                        updated_payment_coin.object_id(),
-                        updated_payment_coin.version(),
-                        updated_payment_coin.digest(),
-                    ))
-                    .await;
+                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                    payment_gas_pool
+                        .release_gas_coin(sui::types::ObjectReference::new(
+                            updated_payment_coin.object_id(),
+                            updated_payment_coin.version(),
+                            updated_payment_coin.digest(),
+                        ))
+                        .await;
+                }
             }
         }
 
@@ -2742,7 +2748,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         Crawler::new(Arc::new(Mutex::new(client)))
     }
 
@@ -5523,7 +5529,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
         let candidates = fetch_tool_gas_refs_for_abort_candidates(
             &crawler,

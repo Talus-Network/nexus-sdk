@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added an atomic PTB builder for registering multiple off chain tools and their initial network authorization keys from one address balance withdrawal.
 - Move binding regeneration now accepts an optional matching Move source root for restoring
   function parameter names. Network package metadata remains authoritative, and regeneration
   without source keeps deterministic `argN` names.
@@ -22,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Replaced the Nexus specific event poller with typed Sui event queries and a
+  generic ingestor that shares filters and read masks across replay and live
+  subscriptions.
+- Tool registration PTBs now withdraw and refund address balance collateral in
+  the configured `$US` type.
+- Leader registration PTBs now preserve any `$US` balance above the chosen
+  stake instead of requiring the input coin to reach zero.
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR,
   limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID

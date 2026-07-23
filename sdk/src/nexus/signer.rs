@@ -2,7 +2,7 @@
 //! on Sui in Nexus context.
 use {
     crate::{
-        events::{FromSuiGrpcEvent, NexusEvent},
+        events::{NexusEvent, NexusEventQuery},
         nexus::{crawler::Crawler, error::NexusError},
         sui::{self, traits::*},
         types::NexusObjects,
@@ -61,12 +61,46 @@ impl Signer {
             .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))
     }
 
-    /// Execute a transaction block and return the response.
+    /// Executes a coin based transaction and refreshes its owned gas coin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when execution fails or the updated gas coin
+    /// cannot be fetched.
     pub async fn execute_tx(
         &self,
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
         gas_coin: &mut sui::types::ObjectReference,
+    ) -> Result<ExecutedTransaction, NexusError> {
+        let executed = self.execute_tx_without_gas_coin(tx, signature).await?;
+
+        // Fetch the gas coin reference produced by execution.
+        let crawler = Crawler::new(Arc::clone(&self.client));
+        let gas_coin_ref = crawler
+            .get_object_metadata(*gas_coin.object_id())
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        *gas_coin = gas_coin_ref;
+
+        Ok(executed)
+    }
+
+    /// Executes a transaction without refreshing an owned gas coin.
+    ///
+    /// This is the address balance based execution boundary and is also useful
+    /// when callers do not own the gas object lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when execution fails or the response cannot be
+    /// decoded.
+    pub async fn execute_tx_without_gas_coin(
+        &self,
+        tx: sui::types::Transaction,
+        signature: sui::types::UserSignature,
     ) -> Result<ExecutedTransaction, NexusError> {
         let (response, digest, checkpoint) = self
             .execute_tx_and_wait_for_checkpoint(tx, signature)
@@ -94,9 +128,18 @@ impl Signer {
             )));
         };
 
-        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
-            NexusEvent::from_sui_grpc_event(index as u64, digest, event, &self.nexus_objects).ok()
-        });
+        let event_query = NexusEventQuery::new(Arc::clone(&self.nexus_objects));
+        let nexus_events = events
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                event_query
+                    .decode_sui_event(index as u64, digest, event)
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| NexusError::Parsing(error.into()))?;
 
         // Deserialize objects.
         let Ok(objects) = response
@@ -111,20 +154,9 @@ impl Signer {
             )));
         };
 
-        // Re-fetch the gas coin's new reference.
-        let crawler = Crawler::new(self.client.clone());
-
-        let gas_coin_ref = crawler
-            .get_object_metadata(*gas_coin.object_id())
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-
-        *gas_coin = gas_coin_ref;
-
         Ok(ExecutedTransaction {
             effects: *effects,
-            events: nexus_events.collect(),
+            events: nexus_events,
             objects,
             digest,
             checkpoint,
@@ -138,7 +170,9 @@ impl Signer {
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
     ) -> Result<(sui::grpc::ExecutedTransaction, sui::types::Digest, u64), NexusError> {
-        let mut client = self.client.lock().await;
+        // Clone the gRPC client before starting the request so checkpoint waits
+        // do not serialize independent submissions.
+        let mut client = self.client.lock().await.clone();
 
         let checkpoints_request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
             sui::grpc::FieldMask::from_paths(["transactions.digest", "sequence_number"]),

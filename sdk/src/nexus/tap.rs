@@ -1871,7 +1871,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
 
         let response = fetch_skill_revision(
@@ -1913,7 +1913,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
 
         let response = fetch_agent_registry(&crawler, registry.id)

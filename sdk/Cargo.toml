@@ -40,6 +40,7 @@ sui_types = [
     "sui-sdk-types",
     "sui-crypto",
     "sui-transaction-builder",
+    "tokio",
 ]
 
 # Move package publishing support for deployment tooling. Runtime/full users
@@ -82,7 +83,15 @@ types = [
 ]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
+events = [
+    "types",
+    "futures",
+    "tokio-util",
+    "prometheus",
+    "lazy_static",
+    "tonic",
+    "thiserror",
+]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
@@ -295,65 +304,65 @@ optional = true
 # === Move binding ===
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 [dependencies.sui-move]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 features = ["derive"]
 optional = true
 
 [dependencies.sui-move-call]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 [dependencies.sui-move-ptb]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 optional = true
 
 # === Sui deps ===
 [dependencies.sui-rpc]
-version = "0.3.1"
+version = "0.3.2"
 optional = true
 
 [dependencies.sui-sdk-types]
-version = "0.3.1"
+version = "0.3.2"
 features = ["rand", "serde"]
 optional = true
 
 [dependencies.sui-crypto]
-version = "0.3.0"
+version = "0.3.1"
 features = ["ed25519", "pem"]
 optional = true
 
 [dependencies.sui-transaction-builder]
-version = "0.3.1"
+version = "0.3.2"
 optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.73.2"
+tag = "testnet-v1.76.0"
 package = "sui-move-build"
 optional = true
 
 [dependencies.sui_package_management]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.73.2"
+tag = "testnet-v1.76.0"
 package = "sui-package-management"
 optional = true
 
 [dependencies.move_package]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.73.2"
+tag = "testnet-v1.76.0"
 package = "move-package"
 optional = true
 
 [dependencies.move_package_alt]
 git = "https://github.com/MystenLabs/sui"
-tag = "mainnet-v1.73.2"
+tag = "testnet-v1.76.0"
 package = "move-package-alt"
 optional = true
 
@@ -385,7 +394,7 @@ toml.workspace = true
 
 [build-dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "feat/source_names"
+branch = "chore/update_sdk_version"
 
 [dependencies.blake3]
 version = "1.3"

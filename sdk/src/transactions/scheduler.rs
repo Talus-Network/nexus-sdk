@@ -264,9 +264,7 @@ pub(crate) fn create_default_agent_task_ptb(
         let execution =
             new_execution_policy(tx, dag_id, priority_fee_percentage, entry_group, input_data)?;
         let registry = tx.shared_object(&objects.agent_registry, true)?;
-        let prepay_amount_mist = tx.arg(&prepay_amount_mist)?;
-        let gas = tx.gas();
-        let prepayment_coin = tx.split_coins(gas, vec![prepay_amount_mist])?;
+        let prepayment_coin = tx.withdraw_sui_coin(prepay_amount_mist)?;
         let task = new_default_agent_task(
             tx,
             metadata,

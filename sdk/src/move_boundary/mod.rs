@@ -138,6 +138,69 @@ impl<'a> NexusPtbBuilder<'a> {
         )
     }
 
+    /// Withdraws the requested asset from the sender address balance and
+    /// redeems it as a coin of the same type.
+    ///
+    /// Callers must use this same type when returning any remaining balance.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
+    /// be built.
+    pub fn withdraw_coin_from_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        amount: u64,
+    ) -> Result<Argument, BuildError> {
+        self.tx.funds_withdrawal_coin(coin_type, amount)
+    }
+
+    /// Withdraws SUI from the sender address balance and redeems it as a coin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
+    /// be built.
+    pub fn withdraw_sui_coin(&mut self, amount: u64) -> Result<Argument, BuildError> {
+        let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
+        self.withdraw_coin_from_address_balance(sui_type, amount)
+    }
+
+    /// Consumes a coin and credits its value to the recipient address balance
+    /// using the same asset type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipient input or transfer call cannot be
+    /// built.
+    pub fn send_coin_to_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        let recipient = self.tx.arg(&recipient)?;
+        let mut target = CallTarget::new(sui::types::Address::TWO, "coin", "send_funds")?;
+        target.type_arguments = vec![coin_type];
+        self.call_raw_target(target, vec![coin, recipient])?;
+        Ok(())
+    }
+
+    /// Consumes a SUI coin and credits its value to an address balance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipient input or transfer call cannot be
+    /// built.
+    pub fn send_sui_to_address_balance(
+        &mut self,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
+        self.send_coin_to_address_balance(sui_type, coin, recipient)
+    }
+
     fn call_target_with_ascii(
         &mut self,
         value: impl AsRef<str>,
@@ -409,6 +472,7 @@ mod tests {
             types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
         sui_move::MoveStruct,
+        sui_move_call::CallArg,
     };
 
     fn addr(byte: u8) -> sui::types::Address {
@@ -548,5 +612,54 @@ mod tests {
                 .expect("mode constructor emits one Move call");
             assert_eq!(call.function.as_str(), expected_function);
         }
+    }
+
+    #[test]
+    fn withdraw_sui_coin_uses_sender_address_balance() {
+        let objects = objects();
+
+        let ptb = ptb(&objects, |tx| {
+            tx.withdraw_sui_coin(42)?;
+            Ok(())
+        })
+        .unwrap();
+
+        let CallArg::FundsWithdrawal(withdrawal) = &ptb.inputs[0] else {
+            panic!("expected funds withdrawal input");
+        };
+        assert_eq!(withdrawal.amount(), Some(42));
+        assert_eq!(withdrawal.source(), sui::types::WithdrawFrom::Sender);
+        assert_eq!(
+            withdrawal.coin_type(),
+            &crate::move_bindings::type_tag::<crate::move_bindings::sui_framework::sui::SUI>(
+                &objects
+            )
+        );
+        let sui::types::Command::MoveCall(redeem) = &ptb.commands[0] else {
+            panic!("expected redeem funds call");
+        };
+        assert_eq!(redeem.package, sui::types::Address::from_static("0x2"));
+        assert_eq!(redeem.module.as_str(), "coin");
+        assert_eq!(redeem.function.as_str(), "redeem_funds");
+    }
+
+    #[test]
+    fn send_sui_to_address_balance_consumes_the_coin() {
+        let objects = objects();
+        let recipient = addr(9);
+
+        let ptb = ptb(&objects, |tx| {
+            let coin = tx.withdraw_sui_coin(42)?;
+            tx.send_sui_to_address_balance(coin, recipient)?;
+            Ok(())
+        })
+        .unwrap();
+
+        let sui::types::Command::MoveCall(send) = &ptb.commands[1] else {
+            panic!("expected send_funds call");
+        };
+        assert_eq!(send.package, sui::types::Address::TWO);
+        assert_eq!(send.module.as_str(), "coin");
+        assert_eq!(send.function.as_str(), "send_funds");
     }
 }

@@ -32,8 +32,8 @@ use {
             error::NexusError,
         },
         sui,
-        transactions,
-        types::Tool,
+        transactions::{self, tool::OffChainToolRegistration},
+        types::{Tool, ToolMeta},
         ToolFqn,
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
@@ -148,9 +148,7 @@ impl NetworkAuthActions {
             Some(b) => (Some(b.object_ref()), b.data.next_key_id),
         };
 
-        let public_key = tool_signing_key.verifying_key().to_bytes();
-        let pop_msg = codec.pop_message_v1(&identity, next_key_id, public_key)?;
-        let pop_sig = sign_bytes(&tool_signing_key, &pop_msg);
+        let (public_key, pop_sig) = tool_key_material(&identity, next_key_id, &tool_signing_key)?;
 
         // Resolve owner cap object ref for PTB.
         let owner_cap_ref = self
@@ -531,7 +529,7 @@ impl NetworkAuthReader {
         registry_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Result<Self, NexusError> {
-        let client = sui::grpc::Client::new(rpc_url).map_err(|e| NexusError::Rpc(e.into()))?;
+        let client = sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?;
         let crawler = Crawler::new(Arc::new(Mutex::new(client)));
         Ok(Self::new(crawler, registry_pkg_id, network_auth_object_id))
     }
@@ -732,7 +730,7 @@ async fn try_get_active_ed25519_key(
     }))
 }
 
-/// Internal helper that knows how to compute binding ids and PoP bytes.
+/// Internal helper that knows how to compute binding IDs.
 struct NetworkAuthCodec {
     registry_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
@@ -757,22 +755,60 @@ impl NetworkAuthCodec {
         )
         .map_err(NexusError::Parsing)
     }
+}
 
-    fn pop_message_v1(
-        &self,
-        identity: &IdentityKey,
-        key_id: u64,
-        public_key: [u8; 32],
-    ) -> Result<Vec<u8>, NexusError> {
-        let mut out = Vec::new();
-        out.extend_from_slice(POP_DOMAIN_V1);
-        out.extend_from_slice(&identity_bcs(identity)?);
-        out.extend_from_slice(&bcs::to_bytes(&key_id).map_err(|e| {
-            NexusError::Parsing(anyhow::anyhow!("failed to BCS-encode key_id: {e}"))
-        })?);
-        out.extend_from_slice(&public_key);
-        Ok(out)
-    }
+/// Creates an [`OffChainToolRegistration`] whose initial key uses key id zero.
+///
+/// # Errors
+///
+/// Returns [`NexusError::Parsing`] if the stable Tool ID cannot be derived or
+/// the proof cannot be encoded.
+pub fn initial_tool_registration(
+    tool_registry_id: sui::types::Address,
+    meta: ToolMeta,
+    signing_key: &SigningKey,
+    invocation_cost_mist: u64,
+) -> Result<OffChainToolRegistration, NexusError> {
+    let tool_id = Tool::derive_id(tool_registry_id, &meta.fqn).map_err(|error| {
+        NexusError::Parsing(anyhow::anyhow!(
+            "failed to derive Tool ID for FQN '{}': {error}",
+            meta.fqn
+        ))
+    })?;
+    let identity = IdentityKey::tool(tool_id);
+    let (public_key, pop_signature) = tool_key_material(&identity, 0, signing_key)?;
+
+    Ok(OffChainToolRegistration {
+        meta,
+        public_key,
+        pop_signature,
+        invocation_cost_mist,
+    })
+}
+
+fn tool_key_material(
+    identity: &IdentityKey,
+    key_id: u64,
+    signing_key: &SigningKey,
+) -> Result<([u8; 32], [u8; 64]), NexusError> {
+    let public_key = signing_key.verifying_key().to_bytes();
+    let message = pop_message_v1(identity, key_id, public_key)?;
+    Ok((public_key, sign_bytes(signing_key, &message)))
+}
+
+fn pop_message_v1(
+    identity: &IdentityKey,
+    key_id: u64,
+    public_key: [u8; 32],
+) -> Result<Vec<u8>, NexusError> {
+    let mut out = Vec::new();
+    out.extend_from_slice(POP_DOMAIN_V1);
+    out.extend_from_slice(&identity_bcs(identity)?);
+    out.extend_from_slice(&bcs::to_bytes(&key_id).map_err(|error| {
+        NexusError::Parsing(anyhow::anyhow!("failed to BCS encode key_id: {error}"))
+    })?);
+    out.extend_from_slice(&public_key);
+    Ok(out)
 }
 
 fn identity_bcs(identity: &IdentityKey) -> Result<Vec<u8>, NexusError> {
@@ -835,15 +871,11 @@ mod tests {
     #[test]
     fn pop_message_v1_matches_expected_layout() {
         let mut rng = rand::thread_rng();
-        let registry_pkg_id = sui::types::Address::generate(&mut rng);
-        let network_auth_object_id = sui::types::Address::generate(&mut rng);
-        let codec = NetworkAuthCodec::new(registry_pkg_id, network_auth_object_id);
-
         let identity = IdentityKey::tool(sui::types::Address::generate(&mut rng));
         let key_id = 7u64;
         let public_key = [9u8; 32];
 
-        let msg = codec.pop_message_v1(&identity, key_id, public_key).unwrap();
+        let msg = pop_message_v1(&identity, key_id, public_key).unwrap();
 
         let mut expected = Vec::new();
         expected.extend_from_slice(POP_DOMAIN_V1);
@@ -852,6 +884,39 @@ mod tests {
         expected.extend_from_slice(&public_key);
 
         assert_eq!(msg, expected);
+    }
+
+    #[test]
+    fn initial_tool_registration_signs_key_zero_for_tool_identity() {
+        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
+        let tool_registry_id = sui::types::Address::from_static("0x42");
+        let meta = ToolMeta {
+            fqn: "xyz.taluslabs.atomic@1".parse().unwrap(),
+            url: "https://example.com/atomic".to_string(),
+            description: "atomic".to_string(),
+            timeout: std::time::Duration::from_secs(1),
+            input_schema: b"{}".to_vec(),
+            output_schema: b"{}".to_vec(),
+        };
+
+        let registration =
+            initial_tool_registration(tool_registry_id, meta.clone(), &signing_key, 9).unwrap();
+
+        assert_eq!(registration.meta, meta);
+        assert_eq!(registration.invocation_cost_mist, 9);
+        assert_eq!(
+            registration.public_key,
+            signing_key.verifying_key().to_bytes()
+        );
+
+        let tool_id = Tool::derive_id(tool_registry_id, &registration.meta.fqn).unwrap();
+        let identity = IdentityKey::tool(tool_id);
+        let message = pop_message_v1(&identity, 0, registration.public_key).unwrap();
+        let signature = Signature::from_bytes(&registration.pop_signature);
+        signing_key
+            .verifying_key()
+            .verify_strict(&message, &signature)
+            .unwrap();
     }
 
     #[test]

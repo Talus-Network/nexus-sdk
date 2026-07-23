@@ -13,7 +13,8 @@ use {
         types::{NexusObjects, ToolMeta},
         ToolFqn,
     },
-    std::time::Duration,
+    anyhow::{bail, Context as _},
+    std::{collections::HashSet, time::Duration},
     sui::types::{Argument, ProgrammableTransaction},
 };
 
@@ -32,84 +33,312 @@ pub struct ExternalVerifierRegistrationInput {
     pub verifier_objects: Vec<ExternalVerifierObjectInput>,
 }
 
-fn finish_registration(
+#[derive(Clone, Copy)]
+enum ToolCollateral<'a> {
+    Coin(&'a sui::types::ObjectReference),
+    AddressBalance(u64),
+}
+
+/// Registration data for an off chain [`ToolMeta`] and its initial network
+/// authorization key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OffChainToolRegistration {
+    /// Metadata written to the tool registry.
+    pub meta: ToolMeta,
+    /// Initial Ed25519 public key bytes.
+    pub public_key: [u8; 32],
+    /// Proof that the initial key belongs to the tool identity.
+    pub pop_signature: [u8; 64],
+    /// Cost charged for one invocation in MIST.
+    pub invocation_cost_mist: u64,
+}
+
+impl ToolCollateral<'_> {
+    fn ptb_argument(self, tx: &mut move_boundary::NexusPtbBuilder<'_>) -> anyhow::Result<Argument> {
+        match self {
+            Self::Coin(coin) => Ok(tx.owned_object(coin)?),
+            Self::AddressBalance(amount) => {
+                let us_type = tx.objects().us_token.type_tag();
+                Ok(tx.withdraw_coin_from_address_balance(us_type, amount)?)
+            }
+        }
+    }
+
+    fn return_remainder(
+        self,
+        tx: &mut move_boundary::NexusPtbBuilder<'_>,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        if matches!(self, Self::AddressBalance(_)) {
+            let us_type = tx.objects().us_token.type_tag();
+            tx.send_coin_to_address_balance(us_type, coin, recipient)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RegisteredToolArguments {
+    tool: Argument,
+    owner_cap_over_tool: Argument,
+    owner_cap_over_gas: Argument,
+}
+
+fn timeout_millis(timeout: Duration) -> anyhow::Result<u64> {
+    u64::try_from(timeout.as_millis()).context("tool timeout milliseconds do not fit in u64")
+}
+
+fn configure_registration(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     register_result: Argument,
-    address: sui::types::Address,
-    invocation_cost: u64,
-) -> anyhow::Result<()> {
+    invocation_cost_mist: u64,
+) -> anyhow::Result<RegisteredToolArguments> {
     let objects = tx.objects();
     let tool = tx.nested_result(register_result, 0)?;
     let owner_cap_over_tool = tx.nested_result(register_result, 1)?;
-
     let owner_cap_over_gas = tx.call_target(
         gas_binding::deescalate_target,
         vec![tool, owner_cap_over_tool],
     )?;
-
     let gas_service = tx.shared_object(&objects.gas_service, true)?;
-    let single_invocation_cost_mist = tx.arg(&invocation_cost)?;
+    let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
     tx.call_target(
         gas_binding::create_tool_gas_and_share_target,
-        vec![
-            gas_service,
-            tool,
-            owner_cap_over_gas,
-            single_invocation_cost_mist,
-        ],
+        vec![gas_service, tool, owner_cap_over_gas, invocation_cost_mist],
     )?;
 
-    tx.call_target(
-        transfer_binding::public_share_object_target::<tool_registry_binding::Tool>,
-        vec![tool],
-    )?;
+    Ok(RegisteredToolArguments {
+        tool,
+        owner_cap_over_tool,
+        owner_cap_over_gas,
+    })
+}
 
-    let recipient = tx.arg(&address)?;
-    tx.transfer_objects(vec![owner_cap_over_tool, owner_cap_over_gas], recipient)?;
+fn finish_registrations(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    registrations: &[RegisteredToolArguments],
+    owner: sui::types::Address,
+) -> anyhow::Result<()> {
+    for registration in registrations {
+        tx.call_target(
+            transfer_binding::public_share_object_target::<tool_registry_binding::Tool>,
+            vec![registration.tool],
+        )?;
+    }
 
+    let capabilities = registrations
+        .iter()
+        .flat_map(|registration| {
+            [
+                registration.owner_cap_over_tool,
+                registration.owner_cap_over_gas,
+            ]
+        })
+        .collect();
+    let owner = tx.arg(&owner)?;
+    tx.transfer_objects(capabilities, owner)?;
     Ok(())
 }
 
-/// PTB template for registering a new Nexus Tool.
+fn register_off_chain_tool(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tool_registry: Argument,
+    meta: &ToolMeta,
+    pay_with: Argument,
+    clock: Argument,
+) -> anyhow::Result<Argument> {
+    let fqn = tx.ascii_string(meta.fqn.to_string())?;
+    let url = tx.arg(&meta.url.as_bytes().to_vec())?;
+    let description = tx.arg(&meta.description.as_bytes().to_vec())?;
+    let input_schema = tx.arg(&meta.input_schema)?;
+    let output_schema = tx.arg(&meta.output_schema)?;
+    let timeout_ms = timeout_millis(meta.timeout)?;
+    let timeout_ms = tx.arg(&timeout_ms)?;
+
+    tx.call_target(
+        tool_registry_binding::register_off_chain_tool_target,
+        vec![
+            tool_registry,
+            fqn,
+            url,
+            description,
+            input_schema,
+            output_schema,
+            timeout_ms,
+            pay_with,
+            clock,
+        ],
+    )
+}
+
+/// Builds a [`ProgrammableTransaction`] that registers an off chain tool using
+/// an owned coin as collateral.
+///
+/// # Errors
+///
+/// Returns an error if the timeout does not fit in `u64` milliseconds or the
+/// transaction cannot be built.
 pub fn register_off_chain_for_self_ptb(
     objects: &NexusObjects,
     meta: &ToolMeta,
     address: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
-    invocation_cost: u64,
+    invocation_cost_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    register_off_chain_for_self_with_collateral_ptb(
+        objects,
+        meta,
+        address,
+        ToolCollateral::Coin(collateral_coin),
+        invocation_cost_mist,
+    )
+}
+
+/// Builds a [`ProgrammableTransaction`] that registers an off chain tool using
+/// `$US` collateral from the sender address balance.
+///
+/// This is the address balance counterpart to
+/// [`register_off_chain_for_self_ptb`].
+///
+/// # Errors
+///
+/// Returns an error if the timeout does not fit in `u64` milliseconds or the
+/// transaction cannot be built.
+pub fn register_off_chain_for_self_with_address_balance_ptb(
+    objects: &NexusObjects,
+    meta: &ToolMeta,
+    address: sui::types::Address,
+    collateral_us: u64,
+    invocation_cost_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    register_off_chain_for_self_with_collateral_ptb(
+        objects,
+        meta,
+        address,
+        ToolCollateral::AddressBalance(collateral_us),
+        invocation_cost_mist,
+    )
+}
+
+fn register_off_chain_for_self_with_collateral_ptb(
+    objects: &NexusObjects,
+    meta: &ToolMeta,
+    address: sui::types::Address,
+    collateral: ToolCollateral<'_>,
+    invocation_cost_mist: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
-        let fqn = tx.ascii_string(meta.fqn.to_string())?;
-        let url = tx.arg(&meta.url.to_string().into_bytes())?;
-        let description = tx.arg(&meta.description.as_bytes().to_vec())?;
-        let input_schema = tx.arg(&meta.input_schema)?;
-        let output_schema = tx.arg(&meta.output_schema)?;
-        let timeout_ms = tx.arg(&(meta.timeout.as_millis() as u64))?;
-        let pay_with = tx.owned_object(collateral_coin)?;
+        let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
-
-        let register_result = tx.call_target(
-            tool_registry_binding::register_off_chain_tool_target,
-            vec![
-                tool_registry,
-                fqn,
-                url,
-                description,
-                input_schema,
-                output_schema,
-                timeout_ms,
-                pay_with,
-                clock,
-            ],
-        )?;
-
-        finish_registration(tx, register_result, address, invocation_cost)
+        let register_result = register_off_chain_tool(tx, tool_registry, meta, pay_with, clock)?;
+        let registration = configure_registration(tx, register_result, invocation_cost_mist)?;
+        finish_registrations(tx, &[registration], address)?;
+        collateral.return_remainder(tx, pay_with, address)
     })
 }
 
-/// PTB template for registering a new onchain Nexus Tool with optional
-/// workflow vertex authorization cap-first metadata.
+fn batch_collateral_us(
+    registrations: &[OffChainToolRegistration],
+    collateral_per_tool_us: u64,
+) -> anyhow::Result<u64> {
+    if registrations.is_empty() {
+        bail!("off chain tool registration batch must not be empty");
+    }
+
+    let mut fqns = HashSet::with_capacity(registrations.len());
+    for (index, registration) in registrations.iter().enumerate() {
+        if !fqns.insert(&registration.meta.fqn) {
+            bail!(
+                "registration index {index} repeats tool FQN '{}'",
+                registration.meta.fqn
+            );
+        }
+    }
+
+    let tool_count = u64::try_from(registrations.len())
+        .context("tool registration count does not fit in u64")?;
+    collateral_per_tool_us
+        .checked_mul(tool_count)
+        .context("aggregate tool collateral overflows u64")
+}
+
+fn compose_off_chain_registration(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tool_registry: Argument,
+    pay_with: Argument,
+    clock: Argument,
+    registration: &OffChainToolRegistration,
+) -> anyhow::Result<RegisteredToolArguments> {
+    let register_result =
+        register_off_chain_tool(tx, tool_registry, &registration.meta, pay_with, clock)?;
+    let registered =
+        configure_registration(tx, register_result, registration.invocation_cost_mist)?;
+    super::network_auth::create_tool_binding_and_register_key(
+        tx,
+        registered.tool,
+        registered.owner_cap_over_tool,
+        registration.public_key,
+        registration.pop_signature,
+        None,
+    )?;
+    Ok(registered)
+}
+
+/// Builds one [`ProgrammableTransaction`] that atomically registers off chain
+/// [`OffChainToolRegistration`] values and their initial network authorization
+/// keys.
+///
+/// The transaction uses one `$US` withdrawal from the owner address balance.
+///
+/// # Errors
+///
+/// Returns an error if the batch is empty, contains duplicate [`ToolFqn`]
+/// values, requires more collateral than fits in `u64`, contains an invalid
+/// timeout, or the transaction cannot be built.
+pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
+    objects: &NexusObjects,
+    registrations: &[OffChainToolRegistration],
+    owner: sui::types::Address,
+    collateral_per_tool_us: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    let collateral_us = batch_collateral_us(registrations, collateral_per_tool_us)?;
+    let collateral = ToolCollateral::AddressBalance(collateral_us);
+
+    move_boundary::ptb(objects, |tx| {
+        let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
+        let pay_with = collateral.ptb_argument(tx)?;
+        let clock = tx.clock()?;
+        let mut registered_tools = Vec::with_capacity(registrations.len());
+
+        for (index, registration) in registrations.iter().enumerate() {
+            let registered =
+                compose_off_chain_registration(tx, tool_registry, pay_with, clock, registration)
+                    .with_context(|| {
+                        format!(
+                            "build registration index {index} for '{}'",
+                            registration.meta.fqn
+                        )
+                    })?;
+            registered_tools.push(registered);
+        }
+
+        finish_registrations(tx, &registered_tools, owner)?;
+        collateral.return_remainder(tx, pay_with, owner)
+    })
+}
+
+/// Builds a [`ProgrammableTransaction`] that registers an on chain Nexus tool
+/// using an owned coin as collateral.
+///
+/// `workflow_authorization_cap_first` selects whether workflow vertex
+/// authorization capability metadata is expected first.
+///
+/// # Errors
+///
+/// Returns an error if the timeout does not fit in `u64` milliseconds or the
+/// transaction cannot be built.
 #[allow(clippy::too_many_arguments)]
 pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
     objects: &NexusObjects,
@@ -125,6 +354,78 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
     address: sui::types::Address,
     workflow_authorization_cap_first: bool,
 ) -> anyhow::Result<ProgrammableTransaction> {
+    register_on_chain_for_self_with_collateral_ptb(
+        objects,
+        package_address,
+        module_name,
+        fqn,
+        description,
+        input_schema,
+        output_schema,
+        timeout,
+        tool_witness_id,
+        ToolCollateral::Coin(collateral_coin),
+        address,
+        workflow_authorization_cap_first,
+    )
+}
+
+/// Builds a [`ProgrammableTransaction`] that registers an on chain tool using
+/// `$US` collateral from the sender address balance.
+///
+/// This is the address balance counterpart to
+/// [`register_on_chain_for_self_with_workflow_authorization_cap_ptb`].
+///
+/// # Errors
+///
+/// Returns an error if the timeout does not fit in `u64` milliseconds or the
+/// transaction cannot be built.
+#[allow(clippy::too_many_arguments)]
+pub fn register_on_chain_for_self_with_address_balance_ptb(
+    objects: &NexusObjects,
+    package_address: sui::types::Address,
+    module_name: &str,
+    fqn: &ToolFqn,
+    description: &str,
+    input_schema: &str,
+    output_schema: &str,
+    timeout: Duration,
+    tool_witness_id: sui::types::Address,
+    collateral_us: u64,
+    address: sui::types::Address,
+    workflow_authorization_cap_first: bool,
+) -> anyhow::Result<ProgrammableTransaction> {
+    register_on_chain_for_self_with_collateral_ptb(
+        objects,
+        package_address,
+        module_name,
+        fqn,
+        description,
+        input_schema,
+        output_schema,
+        timeout,
+        tool_witness_id,
+        ToolCollateral::AddressBalance(collateral_us),
+        address,
+        workflow_authorization_cap_first,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn register_on_chain_for_self_with_collateral_ptb(
+    objects: &NexusObjects,
+    package_address: sui::types::Address,
+    module_name: &str,
+    fqn: &ToolFqn,
+    description: &str,
+    input_schema: &str,
+    output_schema: &str,
+    timeout: Duration,
+    tool_witness_id: sui::types::Address,
+    collateral: ToolCollateral<'_>,
+    address: sui::types::Address,
+    workflow_authorization_cap_first: bool,
+) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
         let package_addr = tx.arg(&package_address)?;
@@ -133,9 +434,10 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
         let description = tx.arg(&description.as_bytes().to_vec())?;
         let input_schema = tx.arg(&input_schema.as_bytes().to_vec())?;
         let output_schema = tx.arg(&output_schema.as_bytes().to_vec())?;
-        let timeout_ms = tx.arg(&(timeout.as_millis() as u64))?;
+        let timeout_ms = timeout_millis(timeout)?;
+        let timeout_ms = tx.arg(&timeout_ms)?;
         let tool_witness_id = tx.object_id(tool_witness_id)?;
-        let pay_with = tx.owned_object(collateral_coin)?;
+        let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
 
         let target = if workflow_authorization_cap_first {
@@ -160,7 +462,9 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
             ],
         )?;
 
-        finish_registration(tx, register_result, address, 0)
+        let registration = configure_registration(tx, register_result, 0)?;
+        finish_registrations(tx, &[registration], address)?;
+        collateral.return_remainder(tx, pay_with, address)
     })
 }
 
@@ -328,7 +632,8 @@ pub fn update_tool_timeout_ptb(
         let tool = tx.shared_object(tool, false)?;
         let registry = tx.shared_object(&objects.tool_registry, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let timeout_ms = tx.arg(&(new_timeout.as_millis() as u64))?;
+        let timeout_ms = timeout_millis(new_timeout)?;
+        let timeout_ms = tx.arg(&timeout_ms)?;
 
         tx.call_target(
             tool_registry_binding::update_tool_timeout_target,
@@ -340,7 +645,12 @@ pub fn update_tool_timeout_ptb(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::DefaultDagExecutorTarget, sui::types::Command};
+    use {
+        super::*,
+        crate::{test_utils::sui_mocks, types::DefaultDagExecutorTarget},
+        sui::types::{Command, WithdrawFrom},
+        sui_move_call::CallArg,
+    };
 
     fn addr(value: &'static str) -> sui::types::Address {
         sui::types::Address::from_static(value)
@@ -390,6 +700,79 @@ mod tests {
             .iter()
             .filter_map(|command| match command {
                 Command::MoveCall(call) => Some(call),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn assert_us_address_balance_withdrawal(
+        objects: &NexusObjects,
+        ptb: &ProgrammableTransaction,
+        expected_amount: u64,
+    ) {
+        let withdrawal = ptb
+            .inputs
+            .iter()
+            .find_map(|input| match input {
+                CallArg::FundsWithdrawal(withdrawal) => Some(withdrawal),
+                _ => None,
+            })
+            .expect("registration must withdraw its collateral");
+
+        assert_eq!(withdrawal.source(), WithdrawFrom::Sender);
+        assert_eq!(withdrawal.amount(), Some(expected_amount));
+        let us_type = objects.us_token.type_tag();
+        assert_eq!(withdrawal.coin_type(), &us_type);
+
+        for function in ["redeem_funds", "send_funds"] {
+            let call = ptb
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    Command::MoveCall(call)
+                        if call.package == sui::types::Address::TWO
+                            && call.module.as_str() == "coin"
+                            && call.function.as_str() == function =>
+                    {
+                        Some(call)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("expected coin::{function} call"));
+            assert_eq!(call.type_arguments, vec![us_type.clone()]);
+        }
+    }
+
+    fn batch_registration(name: &str, key_byte: u8) -> OffChainToolRegistration {
+        OffChainToolRegistration {
+            meta: ToolMeta {
+                fqn: format!("xyz.taluslabs.{name}@1").parse().unwrap(),
+                url: format!("https://example.com/{name}"),
+                description: name.to_string(),
+                timeout: Duration::from_secs(1),
+                input_schema: b"{}".to_vec(),
+                output_schema: b"{}".to_vec(),
+            },
+            public_key: [key_byte; 32],
+            pop_signature: [key_byte; 64],
+            invocation_cost_mist: u64::from(key_byte),
+        }
+    }
+
+    fn move_call_indices(
+        ptb: &ProgrammableTransaction,
+        module: &str,
+        function: &str,
+    ) -> Vec<usize> {
+        ptb.commands
+            .iter()
+            .enumerate()
+            .filter_map(|(index, command)| match command {
+                Command::MoveCall(call)
+                    if call.module.as_str() == module && call.function.as_str() == function =>
+                {
+                    Some(index)
+                }
                 _ => None,
             })
             .collect()
@@ -549,5 +932,266 @@ mod tests {
                 .to_string()
                 .contains("must be unique")
         );
+    }
+
+    #[test]
+    fn single_off_chain_registration_retains_its_lifecycle_commands() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner = sui_mocks::mock_sui_address();
+        let registration = batch_registration("single", 6);
+        let ptb = register_off_chain_for_self_with_address_balance_ptb(
+            &objects,
+            &registration.meta,
+            owner,
+            7,
+            registration.invocation_cost_mist,
+        )
+        .unwrap();
+
+        for (module, function) in [
+            ("tool_registry", "register_off_chain_tool"),
+            ("gas", "deescalate"),
+            ("gas", "create_tool_gas_and_share"),
+            ("transfer", "public_share_object"),
+        ] {
+            assert_eq!(move_call_indices(&ptb, module, function).len(), 1);
+        }
+        let transfer = ptb
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::TransferObjects(transfer) => Some(transfer),
+                _ => None,
+            })
+            .expect("single registration must transfer both capabilities");
+        assert_eq!(transfer.objects.len(), 2);
+        assert_us_address_balance_withdrawal(&objects, &ptb, 7);
+    }
+
+    #[test]
+    fn atomic_batch_rejects_an_empty_catalog() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner = sui_mocks::mock_sui_address();
+
+        let error =
+            register_off_chain_batch_for_self_with_address_balance_ptb(&objects, &[], owner, 1)
+                .unwrap_err();
+        assert!(error.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn atomic_batch_rejects_duplicate_tool_names() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner = sui_mocks::mock_sui_address();
+
+        let duplicate = batch_registration("duplicate", 1);
+        let error = register_off_chain_batch_for_self_with_address_balance_ptb(
+            &objects,
+            &[duplicate.clone(), duplicate],
+            owner,
+            1,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("index 1"));
+        assert!(error.to_string().contains("xyz.taluslabs.duplicate@1"));
+    }
+
+    #[test]
+    fn atomic_batch_rejects_collateral_overflow() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner = sui_mocks::mock_sui_address();
+
+        let error = register_off_chain_batch_for_self_with_address_balance_ptb(
+            &objects,
+            &[
+                batch_registration("overflow_a", 2),
+                batch_registration("overflow_b", 3),
+            ],
+            owner,
+            u64::MAX,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("collateral"));
+    }
+
+    #[test]
+    fn atomic_batch_uses_one_withdrawal_and_finishes_after_every_registration() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let owner = sui_mocks::mock_sui_address();
+        let registrations = [
+            batch_registration("atomic_a", 4),
+            batch_registration("atomic_b", 5),
+        ];
+
+        let first = register_off_chain_batch_for_self_with_address_balance_ptb(
+            &objects,
+            &registrations,
+            owner,
+            7,
+        )
+        .unwrap();
+        let second = register_off_chain_batch_for_self_with_address_balance_ptb(
+            &objects,
+            &registrations,
+            owner,
+            7,
+        )
+        .unwrap();
+
+        assert_eq!(first, second);
+        assert_us_address_balance_withdrawal(&objects, &first, 14);
+        assert_eq!(
+            first
+                .inputs
+                .iter()
+                .filter(|input| matches!(input, CallArg::FundsWithdrawal(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            move_call_indices(&first, "tool_registry", "register_off_chain_tool").len(),
+            2
+        );
+        let key_calls = move_call_indices(&first, "network_auth", "register_key");
+        assert_eq!(key_calls.len(), 2);
+        let last_key_call = *key_calls.last().expect("batch must register every key");
+
+        let tool_type = crate::move_bindings::type_tag::<tool_registry_binding::Tool>(&objects);
+        let tool_share_calls = first
+            .commands
+            .iter()
+            .enumerate()
+            .filter_map(|(index, command)| match command {
+                Command::MoveCall(call)
+                    if call.module.as_str() == "transfer"
+                        && call.function.as_str() == "public_share_object"
+                        && call.type_arguments.as_slice() == std::slice::from_ref(&tool_type) =>
+                {
+                    Some(index)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(tool_share_calls.len(), 2);
+        assert!(tool_share_calls.iter().all(|index| *index > last_key_call));
+        let last_tool_share_call = *tool_share_calls
+            .last()
+            .expect("batch must share every tool");
+
+        let transfer = first
+            .commands
+            .iter()
+            .enumerate()
+            .find_map(|(index, command)| match command {
+                Command::TransferObjects(transfer) => Some((index, transfer)),
+                _ => None,
+            })
+            .expect("batch must transfer capabilities");
+        assert_eq!(transfer.1.objects.len(), 4);
+        assert!(transfer.0 > last_tool_share_call);
+
+        for object_id in [
+            *objects.tool_registry.object_id(),
+            *objects.gas_service.object_id(),
+            *objects.network_auth.object_id(),
+            move_boundary::CLOCK_OBJECT_ID,
+        ] {
+            assert_eq!(
+                first
+                    .inputs
+                    .iter()
+                    .filter(|input| {
+                        matches!(input, CallArg::Shared(shared) if shared.object_id() == object_id)
+                    })
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn off_chain_registration_can_source_collateral_from_address_balance() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let address = sui_mocks::mock_sui_address();
+        let meta = ToolMeta {
+            fqn: "xyz.taluslabs.example@1".parse().unwrap(),
+            url: "https://example.com".into(),
+            description: "example".into(),
+            timeout: Duration::from_secs(1),
+            input_schema: b"{}".to_vec(),
+            output_schema: b"{}".to_vec(),
+        };
+
+        let ptb =
+            register_off_chain_for_self_with_address_balance_ptb(&objects, &meta, address, 42, 7)
+                .unwrap();
+
+        assert_us_address_balance_withdrawal(&objects, &ptb, 42);
+    }
+
+    #[test]
+    fn on_chain_registration_can_source_collateral_from_address_balance() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let address = sui_mocks::mock_sui_address();
+        let package = sui_mocks::mock_sui_address();
+        let witness = sui_mocks::mock_sui_address();
+        let fqn = "xyz.taluslabs.example@1".parse().unwrap();
+
+        let ptb = register_on_chain_for_self_with_address_balance_ptb(
+            &objects,
+            package,
+            "example",
+            &fqn,
+            "example",
+            "{}",
+            "{}",
+            Duration::from_secs(1),
+            witness,
+            42,
+            address,
+            false,
+        )
+        .unwrap();
+
+        assert_us_address_balance_withdrawal(&objects, &ptb, 42);
+    }
+
+    #[test]
+    fn on_chain_registration_rejects_timeout_that_does_not_fit_in_milliseconds() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let address = sui_mocks::mock_sui_address();
+        let package = sui_mocks::mock_sui_address();
+        let witness = sui_mocks::mock_sui_address();
+        let fqn = "xyz.taluslabs.example@1".parse().unwrap();
+
+        let error = register_on_chain_for_self_with_address_balance_ptb(
+            &objects,
+            package,
+            "example",
+            &fqn,
+            "example",
+            "{}",
+            "{}",
+            Duration::MAX,
+            witness,
+            42,
+            address,
+            false,
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("timeout milliseconds"));
+    }
+
+    #[test]
+    fn timeout_update_rejects_timeout_that_does_not_fit_in_milliseconds() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool = sui_mocks::mock_sui_object_ref();
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+
+        let error =
+            update_tool_timeout_ptb(&objects, &tool, &owner_cap, Duration::MAX).unwrap_err();
+
+        assert!(error.to_string().contains("timeout milliseconds"));
     }
 }

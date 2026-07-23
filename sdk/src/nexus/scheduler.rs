@@ -1368,7 +1368,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
+        let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(Arc::new(Mutex::new(client)));
 
         let config =

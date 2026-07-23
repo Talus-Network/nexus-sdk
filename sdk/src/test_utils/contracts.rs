@@ -96,7 +96,7 @@ pub async fn publish_move_package_with_overrides(
 
     copy_dir_recursive(&source_install_dir, &install_dir);
 
-    let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
+    let mut client = sui::grpc::client(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
     let signer = Signer::new(
         Arc::new(Mutex::new(client.clone())),
