@@ -8,52 +8,36 @@ use {
         prelude::*,
         sui::*,
     },
-    nexus_sdk::move_bindings::scheduler::scheduler::Task,
     serde_json::json,
 };
 
-/// Inspect a scheduled task and display metadata plus raw JSON output.
+/// Reads a Task and reports its execution and scheduling state.
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
-    command_title!("Inspecting scheduled task '{task_id}'", task_id = task_id);
+    command_title!("Inspecting scheduled Task '{task_id}'");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-    let crawler = nexus_client.crawler();
-
-    let objects_handle = loading!("Fetching task object...");
-
-    // Fetch the task object from chain.
-    let task = crawler
-        .get_object::<Task>(task_id)
+    let objects = loading!("Fetching Task object...");
+    let task = nexus_client
+        .scheduler()
+        .fetch_task(task_id)
         .await
-        .map_err(|e| NexusCliError::Any(anyhow!(e)))?;
-
-    objects_handle.success();
+        .map_err(NexusCliError::Nexus)?;
+    objects.success();
 
     let task_ref = task.object_ref();
     let task_data = task.data;
-
     notify_success!(
-        "Task owner: {owner}",
-        owner = task_data.owner.to_string().truecolor(100, 100, 100)
+        "Task controller: {controller:?}",
+        controller = task_data.controller
     );
-
-    let metadata = &task_data.metadata.values.contents;
-    item!("Metadata entries: {count}", count = metadata.len());
-    for entry in metadata.iter().take(10) {
-        let key = std::str::from_utf8(&entry.key.bytes).unwrap_or("<invalid utf8>");
-        let value = std::str::from_utf8(&entry.value.bytes).unwrap_or("<invalid utf8>");
-        item!(
-            "  {key}: {value}",
-            key = key.truecolor(100, 100, 100),
-            value = value
-        );
-    }
-    if metadata.len() > 10 {
-        item!(
-            "  ... ({remain} more entries)",
-            remain = metadata.len() - 10
-        );
-    }
+    item!(
+        "Pending occurrences: {count}",
+        count = task_data.schedule.pending.len()
+    );
+    item!(
+        "In flight occurrences: {count}",
+        count = task_data.in_flight.size
+    );
 
     json_output(&json!({
         "task_ref": {
@@ -62,7 +46,5 @@ pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), 
             "digest": task_ref.digest(),
         },
         "task": task_data,
-    }))?;
-
-    Ok(())
+    }))
 }

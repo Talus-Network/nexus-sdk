@@ -28,7 +28,7 @@ impl std::fmt::Display for TaskStateRequest {
     }
 }
 
-/// Toggle scheduled task state between paused, resumed, or canceled.
+/// Applies a scheduling state transition to a Task.
 pub(crate) async fn set_task_state(
     task_id: sui::types::Address,
     gas: GasArgs,
@@ -58,13 +58,61 @@ pub(crate) async fn set_task_state(
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "scheduled_task_id": task_id,
+        "task_id": task_id,
         "state": match request {
             TaskStateRequest::Pause => "paused",
             TaskStateRequest::Resume => "resumed",
             TaskStateRequest::Cancel => "canceled",
         },
+        "advertised": result.advertised,
     }))?;
 
     Ok(())
+}
+
+/// Adds funds to the reserve owned by a Task.
+pub(crate) async fn refill_task(
+    task_id: sui::types::Address,
+    amount_mist: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Refilling scheduled Task '{task_id}'");
+
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let result = nexus_client
+        .scheduler()
+        .refill(task_id, amount_mist)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    notify_success!("Task reserve refilled");
+    json_output(&json!({
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "task_id": task_id,
+        "amount_mist": amount_mist,
+        "advertised": result.advertised,
+    }))
+}
+
+/// Closes a Task and releases its remaining resources.
+pub(crate) async fn close_task(
+    task_id: sui::types::Address,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Closing scheduled Task '{task_id}'");
+
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let result = nexus_client
+        .scheduler()
+        .close(task_id)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    notify_success!("Task closed");
+    json_output(&json!({
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "task_id": task_id,
+    }))
 }

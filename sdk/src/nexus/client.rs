@@ -23,12 +23,6 @@ use {
         time::Duration,
     },
 };
-#[cfg(feature = "walrus")]
-use {
-    crate::{move_bindings::interface::dag as dag_move, nexus::workflow::fetch_dag_vertices_bcs},
-    std::collections::HashSet,
-};
-
 /// Gas source configured for a [`NexusClient`].
 ///
 /// A client uses exactly one coin based or address balance based source.
@@ -53,6 +47,7 @@ impl Gas {
     }
 
     /// Returns the shared pool when coin based gas is configured.
+    #[cfg(test)]
     pub(crate) fn coin_pool(&self) -> Option<&CoinGasPool> {
         match &self.source {
             GasSource::Coin(pool) => Some(pool),
@@ -306,21 +301,25 @@ impl NexusClient {
         }
     }
 
-    /// Return a [`NetworkAuthActions`] instance for tool network-auth operations.
+    /// Returns a
+    /// [`NetworkAuthActions`](crate::nexus::network_auth::NetworkAuthActions)
+    /// instance for tool network authorization operations.
     pub fn network_auth(&self) -> crate::nexus::network_auth::NetworkAuthActions {
         crate::nexus::network_auth::NetworkAuthActions {
             client: self.clone(),
         }
     }
 
-    /// Return a [`ToolActions`] instance for tool-related operations.
+    /// Returns a [`ToolActions`](crate::nexus::tool::ToolActions) instance for
+    /// tool operations.
     pub fn tool(&self) -> crate::nexus::tool::ToolActions {
         crate::nexus::tool::ToolActions {
             client: self.clone(),
         }
     }
 
-    /// Return a [`TapActions`] instance for standard TAP operations.
+    /// Returns a [`TapActions`](crate::nexus::tap::TapActions) instance for
+    /// standard TAP operations.
     pub fn tap(&self) -> crate::nexus::tap::TapActions {
         crate::nexus::tap::TapActions {
             client: self.clone(),
@@ -408,44 +407,6 @@ impl NexusClient {
                 self.signer.execute_tx_without_gas_coin(tx, signature).await
             }
         }
-    }
-
-    // == Helpers reused by multiple actions ==
-
-    /// Fetch all [`ToolGas`] derived objects that are relevant to the provided
-    /// DAG object ID.
-    #[cfg(feature = "walrus")]
-    pub(crate) async fn fetch_tool_gas_for_dag(
-        &self,
-        dag: &dag_move::DAG,
-    ) -> anyhow::Result<HashSet<(sui::types::Address, sui::types::Version)>, NexusError> {
-        let crawler = self.crawler();
-        let gas_service_object_id = *self.nexus_objects.gas_service.object_id();
-
-        let vertices = fetch_dag_vertices_bcs(crawler, dag)
-            .await
-            .map_err(NexusError::Rpc)?
-            .into_iter()
-            .map(|(vertex, tool)| tool.kind.tool_fqn().map(|fqn| (vertex, fqn)))
-            .collect::<anyhow::Result<Vec<_>>>()
-            .map_err(NexusError::Parsing)?;
-
-        // Derive `ToolGas` IDs and fetch them in bulk.
-        let tool_gas_ids = vertices
-            .iter()
-            .map(|(_, fqn)| crate::move_bindings::derive_tool_gas_id(gas_service_object_id, fqn))
-            .collect::<anyhow::Result<Vec<_>>>()
-            .map_err(NexusError::Parsing)?;
-
-        let tool_gas = crawler
-            .get_objects_metadata(&tool_gas_ids)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        Ok(tool_gas
-            .into_iter()
-            .map(|resp| (resp.object_id, resp.get_initial_version()))
-            .collect())
     }
 
     /// Derive and fetch a [`Tool`] object based on the provided tool FQN.

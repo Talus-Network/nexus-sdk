@@ -4,6 +4,7 @@
 use crate::move_bindings::{
     primitives::event as event_move,
     registry::agent_registry as agent_registry_move,
+    scheduler::task as scheduler_task_move,
     workflow::execution as execution_move,
 };
 use {
@@ -16,9 +17,6 @@ use {
                 payment as payment_move,
                 version as version_move,
             },
-            move_std::type_name::TypeName,
-            primitives::policy::Symbol as PolicySymbol,
-            scheduler::scheduler as scheduler_move,
             sui_framework::coin::Coin as MoveCoin,
             talus::us::US,
         },
@@ -311,62 +309,6 @@ impl NexusObjects {
         false
     }
 
-    /// Fully-qualified Move type name for the queue generator witness.
-    pub fn scheduler_queue_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol::<scheduler_move::QueueGeneratorWitness>()
-    }
-
-    /// Fully-qualified Move type name for the periodic generator witness.
-    pub fn scheduler_periodic_generator_symbol(&self) -> PolicySymbol {
-        self.sched_generator_symbol::<scheduler_move::PeriodicGeneratorWitness>()
-    }
-
-    /// Returns true when the provided policy symbol references the queue generator witness.
-    pub fn scheduler_matches_queue_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches::<scheduler_move::QueueGeneratorWitness>(symbol)
-    }
-
-    /// Returns true when the provided policy symbol references the periodic generator witness.
-    pub fn scheduler_matches_periodic_generator(&self, symbol: &PolicySymbol) -> bool {
-        self.generator_matches::<scheduler_move::PeriodicGeneratorWitness>(symbol)
-    }
-
-    fn sched_generator_symbol<T>(&self) -> PolicySymbol
-    where
-        T: MoveStruct,
-    {
-        PolicySymbol::witness(TypeName::new(&self.move_struct_type_name::<T>()))
-    }
-
-    fn generator_matches<T>(&self, symbol: &PolicySymbol) -> bool
-    where
-        T: MoveStruct,
-    {
-        let original = self.move_struct_type_name::<T>();
-        if symbol.matches_qualified_name(&original) {
-            return true;
-        }
-        if self.scheduler_original_pkg_id.is_some() {
-            let current = self.move_struct_type_name_with_package::<T>(self.scheduler_pkg_id);
-            return symbol.matches_qualified_name(&current);
-        }
-        false
-    }
-
-    fn move_struct_type_name<T>(&self) -> String
-    where
-        T: MoveStruct,
-    {
-        crate::move_bindings::struct_type_name::<T>(self)
-    }
-
-    fn move_struct_type_name_with_package<T>(&self, package: sui::types::Address) -> String
-    where
-        T: MoveStruct,
-    {
-        crate::move_bindings::struct_type_name_with_package::<T>(self, package)
-    }
-
     fn interface_module_matches<T>(&self, module: &sui::types::Identifier) -> bool
     where
         T: MoveStruct,
@@ -574,24 +516,11 @@ mod tests {
     #[test]
     fn matches_scheduler_events() {
         let objects = sample_objects();
-        let task_tag = crate::move_bindings::struct_tag::<scheduler_move::Task>(&objects);
+        let task_tag = crate::move_bindings::struct_tag::<scheduler_task_move::Task>(&objects);
 
         let scheduler_event = wrap_event(&objects, task_tag);
 
         assert!(objects.is_event_from_nexus(&scheduler_event));
-    }
-
-    #[test]
-    fn generator_helpers_match_symbols() {
-        let objects = sample_objects();
-
-        let queue = objects.scheduler_queue_generator_symbol();
-        assert!(objects.scheduler_matches_queue_generator(&queue));
-        assert!(!objects.scheduler_matches_periodic_generator(&queue));
-
-        let periodic = objects.scheduler_periodic_generator_symbol();
-        assert!(objects.scheduler_matches_periodic_generator(&periodic));
-        assert!(!objects.scheduler_matches_queue_generator(&periodic));
     }
 
     fn sample_objects_with_upgrade() -> NexusObjects {
@@ -702,35 +631,6 @@ mod tests {
             ),
         );
         assert!(objects.is_event_from_nexus(&event));
-    }
-
-    #[test]
-    fn generator_helpers_match_after_upgrade() {
-        let objects = sample_objects_with_scheduler_upgrade();
-
-        // Symbols generated with the original package address should match.
-        let queue = objects.scheduler_queue_generator_symbol();
-        assert!(objects.scheduler_matches_queue_generator(&queue));
-        assert!(!objects.scheduler_matches_periodic_generator(&queue));
-
-        let periodic = objects.scheduler_periodic_generator_symbol();
-        assert!(objects.scheduler_matches_periodic_generator(&periodic));
-
-        // Symbols using the current (upgraded) package should also match.
-        let current_queue = PolicySymbol::witness(TypeName::new(
-            &objects.move_struct_type_name_with_package::<scheduler_move::QueueGeneratorWitness>(
-                objects.scheduler_pkg_id,
-            ),
-        ));
-        assert!(objects.scheduler_matches_queue_generator(&current_queue));
-
-        let current_periodic = PolicySymbol::witness(TypeName::new(
-            &objects
-                .move_struct_type_name_with_package::<scheduler_move::PeriodicGeneratorWitness>(
-                    objects.scheduler_pkg_id,
-                ),
-        ));
-        assert!(objects.scheduler_matches_periodic_generator(&current_periodic));
     }
 
     #[test]

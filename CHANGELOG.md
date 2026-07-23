@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added one composable Task creation model covering default execution, Agent
+  skill execution, address funding, Agent vault funding, manual occurrences,
+  recurrence, and failure behavior.
 - Added an atomic PTB builder for registering multiple off chain tools and their initial network authorization keys from one address balance withdrawal.
 - Move binding regeneration now accepts an optional matching Move source root for restoring
   function parameter names. Network package metadata remains authoritative, and regeneration
@@ -23,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Workflow and scheduler models now expose Task and occurrence provenance for
+  every `DAGExecution`, and all execution requests are submitted through the
+  scheduler.
+- Scheduler transaction builders create the Task, attach its keyed
+  authorization and payment reserve children, add initial scheduling state,
+  and share it in one PTB.
 - Replaced the Nexus specific event poller with typed Sui event queries and a
   generic ingestor that shares filters and read masks across replay and live
   subscriptions.
@@ -40,6 +49,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Removed
 
+- Removed direct DAG and TAP execution helpers, the separate scheduled TAP
+  facade, scheduler metadata, and the queue and periodic command surfaces.
 - Removed signed-HTTP v1 engine, wire, claim, and transcript APIs in favor of the minimal v2 input-hash and response-signature protocol.
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
@@ -55,7 +66,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- `scheduler task create` is now the single execution entry. A caller schedules
+  for the current Clock timestamp when work should be eligible now.
+- Task creation accepts its initial manual occurrence and optional recurrence,
+  so no follow up scheduling transaction is required.
 - Tool registration, inspection, validation, and unregistration now expose and maintain the simplified Tool verifier configuration and nested onchain Tool reference shape.
+
+#### Removed
+
+- Removed `dag execute`, `tap execute`, `tap schedule-task`, scheduler metadata,
+  and separate periodic commands.
 
 ### `nexus-toolkit`
 

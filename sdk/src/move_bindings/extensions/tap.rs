@@ -14,7 +14,6 @@ use {
                     AgentVaultFieldKey,
                     FixedTool,
                     SkillDagBinding,
-                    SkillRecurrenceKind,
                     SkillRequirement,
                     SkillSchedulePolicy,
                 },
@@ -53,6 +52,7 @@ impl fmt::Display for InterfaceVersion {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillPaymentPolicy {
     fn default() -> Self {
         Self::UserFunded
@@ -112,18 +112,16 @@ impl SkillDagBinding {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillSchedulePolicy {
     fn default() -> Self {
-        Self {
-            recurrence: SkillRecurrenceKind::Once,
-            allow_recursive: false,
-        }
+        Self::Once
     }
 }
 
 impl FixedTool {
     pub fn tool_registry_address(&self) -> sui::types::Address {
-        self.tool_registry_id.clone().into()
+        self.tool_registry_id.into()
     }
 
     pub fn tool_fqn_string(&self) -> String {
@@ -131,6 +129,7 @@ impl FixedTool {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillRequirement {
     fn default() -> Self {
         Self {
@@ -175,6 +174,7 @@ impl DefaultDagExecutor {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for DefaultDagExecutorFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }
@@ -201,12 +201,14 @@ impl AgentPaymentVault {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for DagExecutionPaymentFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for AgentVaultFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }

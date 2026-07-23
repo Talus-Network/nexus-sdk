@@ -3,7 +3,8 @@ use {
     std::{convert::Infallible, error::Error},
 };
 
-/// Defines the Sui request and output conversion for an [`EventIngestor`].
+/// Defines the Sui request and output conversion for an
+/// [`EventIngestor`](crate::sui::events::EventIngestor).
 pub trait EventQuery: Send + Sync + 'static {
     /// Event type emitted by the query.
     type Output: Send + 'static;

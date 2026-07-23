@@ -1,1079 +1,1007 @@
 use {
     crate::{
         move_bindings::{
+            interface::{
+                agent::{self as agent_binding, AgentExecutionConfig, ExecutionSelection},
+                authorization::{self as authorization_binding, AgentVertexAuthorizationTemplate},
+                graph::{InputPort, Vertex},
+            },
             move_std::option::Option as MoveOption,
-            primitives::{data::NexusData, policy as policy_binding},
+            primitives::data::NexusData,
             scheduler::scheduler as scheduler_binding,
             sui_framework::{
-                table_vec as table_vec_binding,
-                transfer as transfer_binding,
-                vec_map as vec_map_binding,
+                object::ID as MoveObjectId,
+                vec_map::{self as vec_map_binding, VecMap},
             },
-            workflow::{
-                execution as execution_binding,
-                execution_entries as execution_entries_binding,
-                gas as gas_binding,
-            },
+            workflow::{execution_entries as execution_entries_binding, gas as gas_binding},
         },
         move_boundary,
         sui,
-        transactions::{self, agent_input::AgentInput},
-        types::{effective_priority_fee_percentage, AgentId, NexusObjects, SkillId},
+        transactions::agent_input::AgentInput,
+        types::{effective_priority_fee_percentage, NexusObjects},
     },
-    std::collections::{HashMap, HashSet},
+    std::collections::HashSet,
     sui::types::ProgrammableTransaction,
 };
 
-/// Generator variants supported by the scheduler when executing occurrences.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OccurrenceGenerator {
-    Queue,
-    Periodic,
+/// Funding and controller authority for a new scheduled [`Task`].
+///
+/// [`Task`]: crate::move_bindings::scheduler::task::Task
+#[derive(Clone, Debug)]
+pub enum TaskFunding {
+    /// Funds a Task from the sender address balance.
+    ///
+    /// `agent` is required for an agent skill and absent for the default
+    /// executor.
+    User {
+        agent: Option<AgentInput>,
+        prepay_amount_mist: u64,
+        refund_recipient: sui::types::Address,
+    },
+    /// Funds and controls a Task through an [`Agent`] payment vault.
+    ///
+    /// [`Agent`]: crate::move_bindings::interface::agent::Agent
+    Agent {
+        agent: AgentInput,
+        prepay_amount_mist: u64,
+    },
 }
 
-/// Arguments required to configure periodic scheduling in the PTB.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PeriodicScheduleInputs {
-    pub first_start_ms: u64,
-    pub period_ms: u64,
-    pub deadline_offset_ms: Option<u64>,
-    pub max_iterations: Option<u64>,
-    pub priority_fee_percentage: Option<u64>,
+/// Failure behavior applied after terminal occurrence settlement.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TaskFailureMode {
+    /// Continue advertising eligible work after failure.
+    #[default]
+    Continue,
+    /// Pause the Task after failure.
+    Pause,
 }
 
-fn move_priority_fee_percentage(
-    priority_fee_percentage: Option<u64>,
-) -> anyhow::Result<MoveOption<u64>> {
-    effective_priority_fee_percentage(priority_fee_percentage)?;
-    Ok(MoveOption::from_option(priority_fee_percentage))
+/// One manually scheduled occurrence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceSpec {
+    pub start_time_ms: u64,
+    pub deadline_ms: Option<u64>,
+    pub priority_fee_percentage: u64,
 }
 
-// Shared helper for turning a scheduled task object ref into a mutable shared argument.
+impl OccurrenceSpec {
+    /// Validates time ordering and the priority fee range.
+    pub fn validate(self) -> anyhow::Result<Self> {
+        if self
+            .deadline_ms
+            .is_some_and(|deadline| deadline < self.start_time_ms)
+        {
+            anyhow::bail!("occurrence deadline must not precede its start");
+        }
+        effective_priority_fee_percentage(Some(self.priority_fee_percentage))?;
+        Ok(self)
+    }
+}
+
+/// One lazy recurrence whose first candidate uses [`Self::first`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RecurrenceSpec {
+    pub first: OccurrenceSpec,
+    pub interval_ms: u64,
+    pub occurrences: Option<u64>,
+}
+
+impl RecurrenceSpec {
+    /// Validates recurrence bounds that are independent from skill policy.
+    pub fn validate(self) -> anyhow::Result<Self> {
+        self.first.validate()?;
+        if self.interval_ms == 0 {
+            anyhow::bail!("recurrence interval must be greater than zero");
+        }
+        if self.occurrences == Some(0) {
+            anyhow::bail!("recurrence occurrences must be greater than zero when present");
+        }
+        Ok(self)
+    }
+}
+
+/// Complete input for one composable Task creation transaction.
+#[derive(Clone, Debug)]
+pub struct CreateTaskParams {
+    pub execution: AgentExecutionConfig,
+    pub funding: TaskFunding,
+    pub occurrence_budget_mist: u64,
+    pub failure_mode: TaskFailureMode,
+    pub occurrences: Vec<OccurrenceSpec>,
+    pub recurrence: Option<RecurrenceSpec>,
+}
+
+/// Authority used to mutate an existing [`Task`].
+///
+/// [`Task`]: crate::move_bindings::scheduler::task::Task
+#[derive(Clone, Debug)]
+pub enum TaskAuthority {
+    Address,
+    Agent(AgentInput),
+}
+
 fn shared_task_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     task: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::Argument> {
-    shared_mutable_object_arg(tx, task)
+    Ok(tx.shared_object(task, true)?)
 }
 
-fn shared_mutable_object_arg(
+fn execution_config_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    object: &sui::types::ObjectReference,
+    execution: &AgentExecutionConfig,
 ) -> anyhow::Result<sui::types::Argument> {
-    Ok(tx.shared_object(object, true)?)
-}
+    let network = tx.object_id(execution.network.bytes)?;
+    let entry_group = tx.graph_entry_group(execution.entry_group.as_str())?;
+    let inputs = execution_inputs_arg(tx, &execution.inputs)?;
 
-// == Metadata ==
-
-/// PTB template to build task metadata from key/value pairs.
-pub(crate) fn new_metadata<K, V>(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    key_values: impl IntoIterator<Item = (K, V)>,
-) -> anyhow::Result<sui::types::Argument>
-where
-    K: AsRef<str>,
-    V: AsRef<str>,
-{
-    type MoveString = crate::move_bindings::move_std::string::String;
-
-    let metadata = tx.call_target(
-        vec_map_binding::empty_target::<MoveString, MoveString>,
-        vec![],
-    )?;
-
-    for (key, value) in key_values.into_iter() {
-        let key = tx.arg(&MoveString::new(key.as_ref().as_bytes().to_vec()))?;
-        let value = tx.arg(&MoveString::new(value.as_ref().as_bytes().to_vec()))?;
-
-        tx.call_target(
-            vec_map_binding::insert_target::<MoveString, MoveString>,
-            vec![metadata, key, value],
-        )?;
-    }
-
-    tx.call_target(scheduler_binding::new_metadata_target, vec![metadata])
-}
-
-#[cfg(all(test, feature = "test_utils"))]
-mod metadata_vm_tests {
-    use {
-        super::new_metadata,
-        crate::{
-            move_boundary,
-            nexus::signer::Signer,
-            sui,
-            test_utils::{self, sui_mocks},
-        },
-        std::sync::Arc,
-        tokio::sync::Mutex,
-    };
-
-    #[tokio::test]
-    async fn non_empty_metadata_creates_scheduled_task_on_sui_vm() {
-        if let Some(reason) = test_utils::containers::docker_unavailable_reason().await {
-            eprintln!("skipping Docker-backed scheduler metadata test: {reason}");
-            return;
+    match &execution.selection {
+        ExecutionSelection::DefaultAgent { dag_id } => {
+            if !execution.authorization_templates.is_empty() {
+                anyhow::bail!("default execution cannot include authorization templates");
+            }
+            let dag_id = tx.object_id(dag_id.bytes)?;
+            tx.call_target(
+                agent_binding::new_default_agent_execution_config_target,
+                vec![dag_id, network, entry_group, inputs],
+            )
         }
-
-        let test_utils::containers::SuiInstance {
-            rpc_port,
-            faucet_port,
-            container: _container,
-        } = test_utils::containers::setup_sui_instance().await;
-        let rpc_url = format!("http://127.0.0.1:{rpc_port}");
-        let faucet_url = format!("http://127.0.0.1:{faucet_port}/gas");
-        let private_key = {
-            let mut rng = rand::thread_rng();
-            sui::crypto::Ed25519PrivateKey::generate(&mut rng)
-        };
-        let sender = private_key.public_key().derive_address();
-
-        test_utils::faucet::request_tokens(&faucet_url, sender)
-            .await
-            .expect("request scheduler metadata test gas");
-        let gas_coins = test_utils::gas::fetch_gas_coins(&rpc_url, sender)
-            .await
-            .expect("fetch scheduler metadata test gas");
-        let published = test_utils::contracts::publish_move_package(
-            &private_key,
-            &rpc_url,
-            "tests/move/scheduler_metadata_test",
-            gas_coins
-                .first()
-                .expect("scheduler metadata test gas coin")
-                .0
-                .clone(),
-        )
-        .await;
-        let scheduler_package = published
-            .objects
-            .iter()
-            .find_map(|object| match object.data() {
-                sui::types::ObjectData::Package(package) => Some(package.id),
-                _ => None,
-            })
-            .expect("scheduler metadata test package was published");
-
-        let mut nexus_objects = sui_mocks::mock_nexus_objects();
-        nexus_objects.scheduler_pkg_id = scheduler_package;
-        nexus_objects.scheduler_original_pkg_id = None;
-        let programmable_transaction = move_boundary::ptb(&nexus_objects, |tx| {
-            let metadata = new_metadata(tx, [("source", "workbench")])?;
-            tx.call_function(
-                scheduler_package,
-                "scheduler",
-                "create_task",
-                vec![metadata],
-            )?;
-            Ok(())
-        })
-        .expect("build scheduled task transaction with metadata");
-
-        let mut client = sui::grpc::Client::new(&rpc_url).expect("create scheduler test client");
-        let reference_gas_price = client
-            .get_reference_gas_price()
-            .await
-            .expect("fetch scheduler test reference gas price");
-        let mut gas_coin = test_utils::gas::fetch_gas_coins(&rpc_url, sender)
-            .await
-            .expect("refresh scheduler metadata test gas")
-            .first()
-            .expect("refreshed scheduler metadata test gas coin")
-            .0
-            .clone();
-        let signer = Signer::new(
-            Arc::new(Mutex::new(client.clone())),
-            private_key,
-            std::time::Duration::from_secs(30),
-            Arc::new(nexus_objects),
-        );
-        let transaction = sui::types::Transaction {
-            kind: sui::types::TransactionKind::ProgrammableTransaction(programmable_transaction),
-            sender,
-            gas_payment: sui::types::GasPayment {
-                objects: vec![gas_coin.clone()],
-                owner: sender,
-                price: reference_gas_price,
-                budget: 1_000_000_000,
-            },
-            expiration: sui::types::TransactionExpiration::None,
-        };
-        let signature = signer
-            .sign_tx(&transaction)
-            .await
-            .expect("sign scheduled task transaction");
-        let executed = signer
-            .execute_tx(transaction, signature, &mut gas_coin)
-            .await
-            .expect("non-empty Move string metadata should create a scheduled task");
-
-        assert!(
-            executed.objects.iter().any(|object| {
-                let sui::types::ObjectType::Struct(object_type) = object.object_type() else {
-                    return false;
-                };
-                *object_type.name() == sui::types::Identifier::from_static("Task")
-            }),
-            "scheduled task transaction did not create the shared Task object"
-        );
+        ExecutionSelection::AgentSkill {
+            agent_id,
+            skill_id,
+            selected_dag,
+        } => {
+            let agent_id = tx.object_id(agent_id.bytes)?;
+            let skill_id = tx.arg(skill_id)?;
+            let selected_dag =
+                optional_object_id_arg(tx, selected_dag.as_option().map(|dag_id| dag_id.bytes))?;
+            let authorization_templates =
+                authorization_templates_arg(tx, &execution.authorization_templates)?;
+            tx.call_target(
+                agent_binding::new_agent_execution_config_target,
+                vec![
+                    agent_id,
+                    network,
+                    entry_group,
+                    inputs,
+                    skill_id,
+                    selected_dag,
+                    authorization_templates,
+                ],
+            )
+        }
     }
 }
 
-// == Task lifecycle ==
+type ExecutionInputs = VecMap<Vertex, VecMap<InputPort, NexusData>>;
+type VertexInputs = VecMap<InputPort, NexusData>;
 
-/// PTB template to create a funded scheduled task for the registry-owned default agent.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn new_default_agent_task(
+fn execution_inputs_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    metadata: sui::types::Argument,
-    constraints: sui::types::Argument,
-    execution: sui::types::Argument,
-    registry: sui::types::Argument,
-    prepayment_coin: sui::types::Argument,
-    occurrence_budget_mist: u64,
+    inputs: &ExecutionInputs,
 ) -> anyhow::Result<sui::types::Argument> {
-    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
-    tx.call_target(
-        scheduler_binding::new_default_agent_task_target,
-        vec![
-            metadata,
-            constraints,
-            execution,
-            registry,
-            prepayment_coin,
-            occurrence_budget_mist,
-        ],
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn create_default_agent_task_ptb(
-    objects: &NexusObjects,
-    dag_id: sui::types::Address,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    metadata: &[(String, String)],
-    generator: OccurrenceGenerator,
-    priority_fee_percentage: Option<u64>,
-    prepay_amount_mist: u64,
-    occurrence_budget_mist: u64,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let metadata = new_metadata(tx, metadata.iter().cloned())?;
-        let constraints = new_constraints_policy(tx, generator)?;
-        let execution =
-            new_execution_policy(tx, dag_id, priority_fee_percentage, entry_group, input_data)?;
-        let registry = tx.shared_object(&objects.agent_registry, true)?;
-        let prepayment_coin = tx.withdraw_sui_coin(prepay_amount_mist)?;
-        let task = new_default_agent_task(
-            tx,
-            metadata,
-            constraints,
-            execution,
-            registry,
-            prepayment_coin,
-            occurrence_budget_mist,
-        )?;
-
-        tx.call_target(
-            transfer_binding::public_share_object_target::<scheduler_binding::Task>,
-            vec![task],
-        )?;
-        Ok(())
-    })
-}
-
-/// PTB template to update an existing task metadata bag.
-pub(crate) fn update_metadata(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    task: &sui::types::ObjectReference,
-    metadata: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    let task = shared_task_arg(tx, task)?;
-
-    tx.call_target(
-        scheduler_binding::update_metadata_target,
-        vec![task, metadata],
-    )
-}
-
-/// Build a PTB that updates metadata entries associated with a task.
-pub(crate) fn update_metadata_ptb<K, V>(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    metadata: impl IntoIterator<Item = (K, V)>,
-) -> anyhow::Result<ProgrammableTransaction>
-where
-    K: AsRef<str>,
-    V: AsRef<str>,
-{
-    move_boundary::ptb(objects, |tx| {
-        let metadata = new_metadata(tx, metadata)?;
-        update_metadata(tx, task, metadata)?;
-        Ok(())
-    })
-}
-
-/// PTB template to construct and register the default constraints policy.
-pub(crate) fn new_constraints_policy(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    generator: OccurrenceGenerator,
-) -> anyhow::Result<sui::types::Argument> {
-    let constraint_symbol = match generator {
-        OccurrenceGenerator::Queue => tx.call_target(
-            policy_binding::witness_symbol_target::<scheduler_binding::QueueGeneratorWitness>,
-            vec![],
-        )?,
-        OccurrenceGenerator::Periodic => tx.call_target(
-            policy_binding::witness_symbol_target::<scheduler_binding::PeriodicGeneratorWitness>,
-            vec![],
-        )?,
-    };
-
-    let constraint_sequence = tx.call_target(
-        table_vec_binding::empty_target::<crate::move_bindings::primitives::policy::Symbol>,
+    let execution_inputs = tx.call_target(
+        vec_map_binding::empty_target::<Vertex, VertexInputs>,
         vec![],
     )?;
 
-    tx.call_target(
-        table_vec_binding::push_back_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![constraint_sequence, constraint_symbol],
-    )?;
-
-    let constraints = tx.call_target(
-        scheduler_binding::new_constraints_policy_target,
-        vec![constraint_sequence],
-    )?;
-
-    tx.call_target(
-        table_vec_binding::drop_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![constraint_sequence],
-    )?;
-
-    match generator {
-        OccurrenceGenerator::Queue => {
-            let queue_state = new_queue_generator_state(tx)?;
-            register_queue_generator(tx, constraints, queue_state)?;
-        }
-        OccurrenceGenerator::Periodic => {
-            let periodic_state = new_periodic_generator_state(tx)?;
-            register_periodic_generator(tx, constraints, periodic_state)?;
-        }
-    };
-
-    Ok(constraints)
-}
-
-/// PTB template to construct a queue generator state.
-fn new_queue_generator_state(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(scheduler_binding::new_queue_generator_state_target, vec![])
-}
-
-/// PTB template to register the queue generator state.
-fn register_queue_generator(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    constraints: sui::types::Argument,
-    queue_state: sui::types::Argument,
-) -> anyhow::Result<()> {
-    tx.call_target(
-        scheduler_binding::register_queue_generator_target,
-        vec![constraints, queue_state],
-    )?;
-
-    Ok(())
-}
-
-/// PTB template to construct a periodic generator state.
-fn new_periodic_generator_state(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(
-        scheduler_binding::new_periodic_generator_state_target,
-        vec![],
-    )
-}
-
-/// PTB template to register the periodic generator state.
-fn register_periodic_generator(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    constraints: sui::types::Argument,
-    periodic_state: sui::types::Argument,
-) -> anyhow::Result<()> {
-    tx.call_target(
-        scheduler_binding::register_periodic_generator_target,
-        vec![constraints, periodic_state],
-    )?;
-
-    Ok(())
-}
-
-/// PTB template to construct and register the default execution policy.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn new_execution_policy(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    dag_id: sui::types::Address,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let execution_symbol = tx.call_target(
-        policy_binding::witness_symbol_target::<
-            execution_entries_binding::AdvanceForDefaultAgentExecution,
-        >,
-        vec![],
-    )?;
-
-    let execution_sequence = tx.call_target(
-        table_vec_binding::empty_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![],
-    )?;
-
-    tx.call_target(
-        table_vec_binding::push_back_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![execution_sequence, execution_symbol],
-    )?;
-
-    let execution = tx.call_target(
-        scheduler_binding::new_execution_policy_target,
-        vec![execution_sequence],
-    )?;
-
-    tx.call_target(
-        table_vec_binding::drop_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![execution_sequence],
-    )?;
-
-    let dag_id_arg = tx.object_id(dag_id)?;
-    let network_id_arg = tx.object_id(objects.network_id)?;
-    let priority_fee_percentage =
-        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
-
-    let entry_group = tx.graph_entry_group(entry_group)?;
-
-    let with_vertex_inputs = build_inputs_vec_map(tx, input_data)?;
-
-    let config = transactions::tap::default_agent_execution_config_arg(
-        tx,
-        dag_id_arg,
-        network_id_arg,
-        entry_group,
-        with_vertex_inputs,
-        priority_fee_percentage,
-    )?;
-
-    register_begin_default_agent_execution(tx, execution, config)?;
-
-    Ok(execution)
-}
-
-/// PTB template to construct and register a registered TAP agent execution policy.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn new_agent_execution_policy(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_id: AgentId,
-    skill_id: SkillId,
-    selected_dag: Option<sui::types::Address>,
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let execution_symbol =
-        tx.call_target(
-            policy_binding::witness_symbol_target::<
-                execution_entries_binding::AdvanceForAgentExecution,
-            >,
-            vec![],
-        )?;
-
-    let execution_sequence = tx.call_target(
-        table_vec_binding::empty_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![],
-    )?;
-
-    tx.call_target(
-        table_vec_binding::push_back_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![execution_sequence, execution_symbol],
-    )?;
-
-    let execution = tx.call_target(
-        scheduler_binding::new_execution_policy_target,
-        vec![execution_sequence],
-    )?;
-
-    tx.call_target(
-        table_vec_binding::drop_target::<crate::move_bindings::primitives::policy::Symbol>,
-        vec![execution_sequence],
-    )?;
-
-    let agent_id_arg = tx.object_id(agent_id)?;
-    let network_id_arg = tx.object_id(objects.network_id)?;
-    let priority_fee_percentage =
-        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
-    let entry_group = tx.graph_entry_group(entry_group)?;
-
-    let with_vertex_inputs = build_inputs_vec_map(tx, input_data)?;
-
-    let config = transactions::tap::agent_execution_config_arg(
-        tx,
-        agent_id_arg,
-        network_id_arg,
-        entry_group,
-        with_vertex_inputs,
-        priority_fee_percentage,
-        skill_id,
-        selected_dag,
-        &[],
-    )?;
-
-    register_begin_agent_execution(tx, execution, config)?;
-
-    Ok(execution)
-}
-
-pub(crate) fn build_inputs_vec_map(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-) -> anyhow::Result<sui::types::Argument> {
-    type InputPort = crate::move_bindings::interface::graph::InputPort;
-    type Vertex = crate::move_bindings::interface::graph::Vertex;
-    type VertexInputMap =
-        crate::move_bindings::sui_framework::vec_map::VecMap<InputPort, NexusData>;
-
-    let with_vertex_inputs = tx.call_target(
-        vec_map_binding::empty_target::<Vertex, VertexInputMap>,
-        vec![],
-    )?;
-
-    for (vertex_name, data) in input_data {
-        // `vertex: Vertex`
-        let vertex = tx.graph_vertex(vertex_name)?;
-
-        // `with_vertex_input: VecMap<InputPort, NexusData>`
-        let with_vertex_input = tx.call_target(
+    for vertex_inputs in &inputs.contents {
+        let vertex = tx.graph_vertex(vertex_inputs.key.as_str())?;
+        let inputs_for_vertex = tx.call_target(
             vec_map_binding::empty_target::<InputPort, NexusData>,
             vec![],
         )?;
 
-        for (port_name, value) in data {
-            // `port: InputPort`
-            let port = tx.graph_input_port(port_name.as_str())?;
-
-            // `value: NexusData`
-            let value = tx.nexus_data(value)?;
-
-            // `with_vertex_input.insert(port, value)`
+        for input in &vertex_inputs.value.contents {
+            let input_port = tx.graph_input_port(input.key.as_str())?;
+            let value = tx.nexus_data(&input.value)?;
             tx.call_target(
                 vec_map_binding::insert_target::<InputPort, NexusData>,
-                vec![with_vertex_input, port, value],
+                vec![inputs_for_vertex, input_port, value],
             )?;
         }
 
-        // `with_vertex_inputs.insert(vertex, with_vertex_input)`
         tx.call_target(
-            vec_map_binding::insert_target::<Vertex, VertexInputMap>,
-            vec![with_vertex_inputs, vertex, with_vertex_input],
+            vec_map_binding::insert_target::<Vertex, VertexInputs>,
+            vec![execution_inputs, vertex, inputs_for_vertex],
         )?;
     }
 
-    Ok(with_vertex_inputs)
+    Ok(execution_inputs)
 }
 
-/// Build a PTB that pauses a task.
-pub(crate) fn pause_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent_registry = tx.shared_object(&objects.agent_registry, false)?;
-        tx.call_target(scheduler_binding::pause_target, vec![task, agent_registry])?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that resumes a task.
-pub(crate) fn resume_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent_registry = tx.shared_object(&objects.agent_registry, false)?;
-        tx.call_target(scheduler_binding::resume_target, vec![task, agent_registry])?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that cancels a task.
-pub(crate) fn cancel_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent_registry = tx.shared_object(&objects.agent_registry, true)?;
-        tx.call_target(scheduler_binding::cancel_target, vec![task, agent_registry])?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that pauses an explicit agent task.
-pub(crate) fn pause_agent_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    agent: AgentInput,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent = agent.immutable_ptb_argument(tx)?;
-        tx.call_target(
-            scheduler_binding::pause_with_agent_target,
-            vec![task, agent],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that resumes an explicit agent task.
-pub(crate) fn resume_agent_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    agent: AgentInput,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent = agent.immutable_ptb_argument(tx)?;
-        tx.call_target(
-            scheduler_binding::resume_with_agent_target,
-            vec![task, agent],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that cancels an explicit agent task.
-pub(crate) fn cancel_agent_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    agent: AgentInput,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent = agent.immutable_ptb_argument(tx)?;
-        let agent_registry = tx.shared_object(&objects.agent_registry, true)?;
-        tx.call_target(
-            scheduler_binding::cancel_with_agent_target,
-            vec![task, agent, agent_registry],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that enqueues an occurrence with an absolute start time.
-pub(crate) fn add_occurrence_absolute_for_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    start_time_ms: u64,
-    deadline_offset_ms: Option<u64>,
-    priority_fee_percentage: Option<u64>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let start_time_ms = tx.arg(&start_time_ms)?;
-        let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_percentage =
-            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let clock = tx.clock()?;
-        tx.call_target(
-            scheduler_binding::add_occurrence_absolute_for_task_target,
-            vec![
-                task,
-                start_time_ms,
-                deadline_offset_ms,
-                priority_fee_percentage,
-                leader_registry,
-                clock,
-            ],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that enqueues an occurrence with a relative start offset.
-pub(crate) fn add_occurrence_relative_for_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    start_offset_ms: u64,
-    deadline_offset_ms: Option<u64>,
-    priority_fee_percentage: Option<u64>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let start_offset_ms = tx.arg(&start_offset_ms)?;
-        let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_percentage =
-            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let clock = tx.clock()?;
-        tx.call_target(
-            scheduler_binding::add_occurrence_relative_for_task_target,
-            vec![
-                task,
-                start_offset_ms,
-                deadline_offset_ms,
-                priority_fee_percentage,
-                leader_registry,
-                clock,
-            ],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that enqueues a relative occurrence for an explicit agent task.
-pub(crate) fn add_occurrence_relative_for_agent_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    agent: AgentInput,
-    start_offset_ms: u64,
-    deadline_offset_ms: Option<u64>,
-    priority_fee_percentage: Option<u64>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let agent = agent.immutable_ptb_argument(tx)?;
-        let start_offset_ms = tx.arg(&start_offset_ms)?;
-        let deadline_offset_ms = tx.arg(&MoveOption::from_option(deadline_offset_ms))?;
-        let priority_fee_percentage =
-            tx.arg(&move_priority_fee_percentage(priority_fee_percentage)?)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let clock = tx.clock()?;
-        tx.call_target(
-            scheduler_binding::add_occurrence_relative_for_agent_task_target,
-            vec![
-                task,
-                agent,
-                start_offset_ms,
-                deadline_offset_ms,
-                priority_fee_percentage,
-                leader_registry,
-                clock,
-            ],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that configures or updates periodic scheduling for a task.
-pub(crate) fn configure_periodic_for_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    schedule: PeriodicScheduleInputs,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        let first_start_ms = tx.arg(&schedule.first_start_ms)?;
-        let period_ms = tx.arg(&schedule.period_ms)?;
-        let deadline_offset_ms = tx.arg(&MoveOption::from_option(schedule.deadline_offset_ms))?;
-        let max_iterations = tx.arg(&MoveOption::from_option(schedule.max_iterations))?;
-        let priority_fee_percentage = tx.arg(&move_priority_fee_percentage(
-            schedule.priority_fee_percentage,
-        )?)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let clock = tx.clock()?;
-        tx.call_target(
-            scheduler_binding::new_or_modify_periodic_for_task_target,
-            vec![
-                task,
-                first_start_ms,
-                period_ms,
-                deadline_offset_ms,
-                max_iterations,
-                priority_fee_percentage,
-                leader_registry,
-                clock,
-            ],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that disables periodic scheduling for a task.
-pub(crate) fn disable_periodic_for_task_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let task = shared_task_arg(tx, task)?;
-        tx.call_target(
-            scheduler_binding::disable_periodic_for_task_target,
-            vec![task],
-        )?;
-        Ok(())
-    })
-}
-
-/// Build a PTB that consumes the active scheduled occurrence and starts its DAG execution.
-pub fn execute_scheduled_occurrence_for_self_ptb(
-    objects: &NexusObjects,
-    task: &sui::types::ObjectReference,
-    dag: &sui::types::ObjectReference,
-    leader_cap: &sui::types::ObjectReference,
-    generator: OccurrenceGenerator,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        execute_scheduled_occurrence(tx, task, dag, leader_cap, generator, tools_gas)
-    })
-}
-
-/// PTB template to consume the active scheduled occurrence and start its DAG execution.
-fn execute_scheduled_occurrence(
+fn optional_object_id_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    task: &sui::types::ObjectReference,
-    dag: &sui::types::ObjectReference,
-    leader_cap: &sui::types::ObjectReference,
-    generator: OccurrenceGenerator,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    value: Option<sui::types::Address>,
+) -> anyhow::Result<sui::types::Argument> {
+    let value = value.map(|value| tx.object_id(value)).transpose()?;
+    Ok(tx.option::<MoveObjectId>(value)?)
+}
+
+fn authorization_template_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    template: &AgentVertexAuthorizationTemplate,
+) -> anyhow::Result<sui::types::Argument> {
+    let skill_id = tx.arg(&template.skill_id)?;
+    let vertex = tx.ascii_string(template.vertex.as_str())?;
+    let recipient_id = tx.object_id(template.recipient_id.bytes)?;
+    tx.call_target(
+        authorization_binding::agent_vertex_authorization_template_target,
+        vec![skill_id, vertex, recipient_id],
+    )
+}
+
+fn authorization_templates_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    templates: &[AgentVertexAuthorizationTemplate],
+) -> anyhow::Result<sui::types::Argument> {
+    let templates = templates
+        .iter()
+        .map(|template| authorization_template_arg(tx, template))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    Ok(tx.move_vector::<AgentVertexAuthorizationTemplate>(templates)?)
+}
+
+fn failure_mode_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    failure_mode: TaskFailureMode,
+) -> anyhow::Result<sui::types::Argument> {
+    tx.call_target(
+        match failure_mode {
+            TaskFailureMode::Continue => scheduler_binding::continue_on_failure_target,
+            TaskFailureMode::Pause => scheduler_binding::pause_on_failure_target,
+        },
+        vec![],
+    )
+}
+
+fn occurrence_args(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    occurrence: OccurrenceSpec,
+) -> anyhow::Result<(
+    sui::types::Argument,
+    sui::types::Argument,
+    sui::types::Argument,
+)> {
+    let occurrence = occurrence.validate()?;
+    Ok((
+        tx.arg(&occurrence.start_time_ms)?,
+        tx.arg(&MoveOption::from_option(occurrence.deadline_ms))?,
+        tx.arg(&occurrence.priority_fee_percentage)?,
+    ))
+}
+
+fn append_schedule(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    task: sui::types::Argument,
+    authority: &TaskAuthority,
+    occurrence: OccurrenceSpec,
 ) -> anyhow::Result<()> {
-    let objects = tx.objects().clone();
-    let task = shared_task_arg(tx, task)?;
-    let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+    let (start_time_ms, deadline_ms, priority_fee_percentage) = occurrence_args(tx, occurrence)?;
+    let leader_registry_ref = tx.objects().leader_registry.clone();
+    let leader_registry = tx.shared_object(&leader_registry_ref, false)?;
     let clock = tx.clock()?;
 
-    let proof = match generator {
-        OccurrenceGenerator::Queue => tx.call_target(
-            scheduler_binding::check_queue_occurrence_target,
-            vec![task, leader_registry, clock],
-        )?,
-        OccurrenceGenerator::Periodic => tx.call_target(
-            scheduler_binding::check_periodic_occurrence_target,
-            vec![task, leader_registry, clock],
-        )?,
-    };
-
-    let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-    let agent_registry = tx.shared_object(&objects.agent_registry, false)?;
-    let dag = tx.shared_object(dag, false)?;
-    let leader_cap = tx.shared_object(leader_cap, false)?;
-
-    let execution = tx.call_target(
-        scheduler_binding::prepare_execution_from_scheduled_payment_target,
-        vec![dag, agent_registry, tool_registry, task, leader_cap, clock],
-    )?;
-
-    let gas_service = tx.shared_object(&objects.gas_service, false)?;
-    tx.call_target(
-        gas_binding::snapshot_dag_tool_costs_target,
-        vec![gas_service, execution, dag],
-    )?;
-
-    for (address, version) in tools_gas {
-        let tool_gas = tx.shared_object_by_id(*address, *version, true)?;
-        tx.call_target(
-            gas_binding::lock_payment_state_for_tool_target,
-            vec![tool_gas, dag, execution],
-        )?;
+    match authority {
+        TaskAuthority::Address => {
+            tx.call_target(
+                scheduler_binding::schedule_target,
+                vec![
+                    task,
+                    start_time_ms,
+                    deadline_ms,
+                    priority_fee_percentage,
+                    leader_registry,
+                    clock,
+                ],
+            )?;
+        }
+        TaskAuthority::Agent(agent) => {
+            let agent = agent.clone().immutable_ptb_argument(tx)?;
+            tx.call_target(
+                scheduler_binding::schedule_as_agent_target,
+                vec![
+                    task,
+                    agent,
+                    start_time_ms,
+                    deadline_ms,
+                    priority_fee_percentage,
+                    leader_registry,
+                    clock,
+                ],
+            )?;
+        }
     }
-
-    tx.call_target(
-        execution_entries_binding::start_execution_target,
-        vec![dag, execution, leader_registry, clock],
-    )?;
-    tx.call_target(
-        transfer_binding::public_share_object_target::<execution_binding::DAGExecution>,
-        vec![execution],
-    )?;
-    tx.call_target(scheduler_binding::finish_target, vec![task, proof])?;
-
     Ok(())
 }
 
-/// PTB template to settle a completed scheduled execution payment if one is ready.
-pub(crate) fn settle_finished_scheduled_execution_payment_if_ready(
+fn append_set_recurrence(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    task: sui::types::Argument,
+    authority: &TaskAuthority,
+    recurrence: RecurrenceSpec,
+) -> anyhow::Result<()> {
+    let recurrence = recurrence.validate()?;
+    let (start_time_ms, deadline_ms, priority_fee_percentage) =
+        occurrence_args(tx, recurrence.first)?;
+    let interval_ms = tx.arg(&recurrence.interval_ms)?;
+    let occurrences = tx.arg(&MoveOption::from_option(recurrence.occurrences))?;
+    let leader_registry_ref = tx.objects().leader_registry.clone();
+    let leader_registry = tx.shared_object(&leader_registry_ref, false)?;
+    let clock = tx.clock()?;
+
+    match authority {
+        TaskAuthority::Address => {
+            tx.call_target(
+                scheduler_binding::set_recurrence_target,
+                vec![
+                    task,
+                    start_time_ms,
+                    deadline_ms,
+                    interval_ms,
+                    occurrences,
+                    priority_fee_percentage,
+                    leader_registry,
+                    clock,
+                ],
+            )?;
+        }
+        TaskAuthority::Agent(agent) => {
+            let agent = agent.clone().immutable_ptb_argument(tx)?;
+            tx.call_target(
+                scheduler_binding::set_recurrence_as_agent_target,
+                vec![
+                    task,
+                    agent,
+                    start_time_ms,
+                    deadline_ms,
+                    interval_ms,
+                    occurrences,
+                    priority_fee_percentage,
+                    leader_registry,
+                    clock,
+                ],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Appends Task creation, scheduling, recurrence, and sharing to one PTB.
+pub fn append_create_task(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    params: &CreateTaskParams,
+) -> anyhow::Result<sui::types::Argument> {
+    if params.occurrence_budget_mist == 0 {
+        anyhow::bail!("occurrence budget must be greater than zero");
+    }
+    params
+        .occurrences
+        .iter()
+        .copied()
+        .try_for_each(|occurrence| occurrence.validate().map(|_| ()))?;
+    if let Some(recurrence) = params.recurrence {
+        recurrence.validate()?;
+    }
+
+    let selection = &params.execution.selection;
+    let registry_ref = tx.objects().agent_registry.clone();
+    let registry = tx.shared_object(&registry_ref, true)?;
+    let config = execution_config_arg(tx, &params.execution)?;
+    let occurrence_budget_mist = tx.arg(&params.occurrence_budget_mist)?;
+    let failure_mode = failure_mode_arg(tx, params.failure_mode)?;
+
+    let (task, authority) = match (&params.funding, selection) {
+        (
+            TaskFunding::User {
+                agent: None,
+                prepay_amount_mist,
+                refund_recipient,
+            },
+            ExecutionSelection::DefaultAgent { .. },
+        ) => {
+            let prepayment = tx.withdraw_sui_coin(*prepay_amount_mist)?;
+            let refund_recipient = tx.arg(refund_recipient)?;
+            (
+                tx.call_target(
+                    scheduler_binding::new_default_task_target,
+                    vec![
+                        registry,
+                        config,
+                        prepayment,
+                        refund_recipient,
+                        occurrence_budget_mist,
+                        failure_mode,
+                    ],
+                )?,
+                TaskAuthority::Address,
+            )
+        }
+        (
+            TaskFunding::User {
+                agent: Some(agent),
+                prepay_amount_mist,
+                refund_recipient,
+            },
+            ExecutionSelection::AgentSkill { agent_id, .. },
+        ) => {
+            if agent.object_id() != agent_id.bytes {
+                anyhow::bail!("funding agent does not match execution selection");
+            }
+            let agent_arg = agent.clone().immutable_ptb_argument(tx)?;
+            let prepayment = tx.withdraw_sui_coin(*prepay_amount_mist)?;
+            let refund_recipient = tx.arg(refund_recipient)?;
+            (
+                tx.call_target(
+                    scheduler_binding::new_user_task_target,
+                    vec![
+                        registry,
+                        agent_arg,
+                        config,
+                        prepayment,
+                        refund_recipient,
+                        occurrence_budget_mist,
+                        failure_mode,
+                    ],
+                )?,
+                TaskAuthority::Address,
+            )
+        }
+        (
+            TaskFunding::Agent {
+                agent,
+                prepay_amount_mist,
+            },
+            ExecutionSelection::AgentSkill { agent_id, .. },
+        ) => {
+            if agent.object_id() != agent_id.bytes {
+                anyhow::bail!("funding agent does not match execution selection");
+            }
+            let agent_arg = agent.clone().mutable_ptb_argument(tx)?;
+            let prepay_amount_mist = tx.arg(prepay_amount_mist)?;
+            (
+                tx.call_target(
+                    scheduler_binding::new_agent_task_target,
+                    vec![
+                        registry,
+                        agent_arg,
+                        config,
+                        prepay_amount_mist,
+                        occurrence_budget_mist,
+                        failure_mode,
+                    ],
+                )?,
+                TaskAuthority::Agent(agent.clone()),
+            )
+        }
+        (TaskFunding::User { agent: None, .. }, ExecutionSelection::AgentSkill { .. }) => {
+            anyhow::bail!("an agent skill Task requires its Agent object")
+        }
+        (TaskFunding::User { agent: Some(_), .. }, ExecutionSelection::DefaultAgent { .. }) => {
+            anyhow::bail!("a default executor Task must not include an Agent object")
+        }
+        (TaskFunding::Agent { .. }, ExecutionSelection::DefaultAgent { .. }) => {
+            anyhow::bail!("a default executor Task cannot use Agent vault funding")
+        }
+    };
+
+    params
+        .occurrences
+        .iter()
+        .copied()
+        .try_for_each(|occurrence| append_schedule(tx, task, &authority, occurrence))?;
+    if let Some(recurrence) = params.recurrence {
+        append_set_recurrence(tx, task, &authority, recurrence)?;
+    }
+    tx.call_target(scheduler_binding::share_target, vec![task])?;
+    Ok(task)
+}
+
+/// Builds one PTB for a complete [`Task`] composition.
+///
+/// [`Task`]: crate::move_bindings::scheduler::task::Task
+pub fn create_task_ptb(
+    objects: &NexusObjects,
+    params: &CreateTaskParams,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        append_create_task(tx, params)?;
+        Ok(())
+    })
+}
+
+/// Builds a PTB that adds one manual occurrence.
+pub fn schedule_task_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    authority: TaskAuthority,
+    occurrence: OccurrenceSpec,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        append_schedule(tx, task, &authority, occurrence)
+    })
+}
+
+/// Builds a PTB that sets the Task recurrence.
+pub fn set_recurrence_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    authority: TaskAuthority,
+    recurrence: RecurrenceSpec,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        append_set_recurrence(tx, task, &authority, recurrence)
+    })
+}
+
+/// Builds a PTB that clears the Task recurrence.
+pub fn clear_recurrence_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    authority: TaskAuthority,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        match authority {
+            TaskAuthority::Address => {
+                tx.call_target(
+                    scheduler_binding::clear_recurrence_target,
+                    vec![task, leader_registry, clock],
+                )?;
+            }
+            TaskAuthority::Agent(agent) => {
+                let agent = agent.immutable_ptb_argument(tx)?;
+                tx.call_target(
+                    scheduler_binding::clear_recurrence_as_agent_target,
+                    vec![task, agent, leader_registry, clock],
+                )?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Builds a PTB that pauses, resumes, or cancels a Task.
+pub fn set_task_state_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    authority: TaskAuthority,
+    action: TaskStateAction,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let leader_registry = matches!(action, TaskStateAction::Resume)
+            .then(|| tx.shared_object(&objects.leader_registry, false))
+            .transpose()?;
+        let clock = matches!(action, TaskStateAction::Resume)
+            .then(|| tx.clock())
+            .transpose()?;
+
+        match (authority, action) {
+            (TaskAuthority::Address, TaskStateAction::Pause) => {
+                tx.call_target(scheduler_binding::pause_target, vec![task])?;
+            }
+            (TaskAuthority::Address, TaskStateAction::Resume) => {
+                tx.call_target(
+                    scheduler_binding::resume_target,
+                    vec![task, leader_registry.unwrap(), clock.unwrap()],
+                )?;
+            }
+            (TaskAuthority::Address, TaskStateAction::Cancel) => {
+                tx.call_target(scheduler_binding::cancel_target, vec![task])?;
+            }
+            (TaskAuthority::Agent(agent), TaskStateAction::Pause) => {
+                let agent = agent.immutable_ptb_argument(tx)?;
+                tx.call_target(scheduler_binding::pause_as_agent_target, vec![task, agent])?;
+            }
+            (TaskAuthority::Agent(agent), TaskStateAction::Resume) => {
+                let agent = agent.immutable_ptb_argument(tx)?;
+                tx.call_target(
+                    scheduler_binding::resume_as_agent_target,
+                    vec![task, agent, leader_registry.unwrap(), clock.unwrap()],
+                )?;
+            }
+            (TaskAuthority::Agent(agent), TaskStateAction::Cancel) => {
+                let agent = agent.immutable_ptb_argument(tx)?;
+                tx.call_target(scheduler_binding::cancel_as_agent_target, vec![task, agent])?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// State transition requested for a Task.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskStateAction {
+    Pause,
+    Resume,
+    Cancel,
+}
+
+/// Builds a PTB that refills an address controlled Task.
+pub fn refill_task_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    amount_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let funds = tx.withdraw_sui_coin(amount_mist)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        tx.call_target(
+            scheduler_binding::refill_target,
+            vec![task, funds, leader_registry, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a PTB that refills an Agent controlled Task from its vault.
+pub fn refill_task_from_agent_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    agent: AgentInput,
+    amount_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let agent = agent.mutable_ptb_argument(tx)?;
+        let amount_mist = tx.arg(&amount_mist)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        tx.call_target(
+            scheduler_binding::refill_from_agent_target,
+            vec![task, agent, amount_mist, leader_registry, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a PTB that expires one stale advertised occurrence.
+pub fn expire_occurrence_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    occurrence_id: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let occurrence_id = tx.arg(&occurrence_id)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        tx.call_target(
+            scheduler_binding::expire_target,
+            vec![task, occurrence_id, leader_registry, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a PTB that dispatches a scheduled occurrence as a [`DAGExecution`].
+///
+/// The occurrence identity is validated by `dispatch_next` before gas
+/// preparation and controlled sharing.
+///
+/// [`DAGExecution`]: crate::move_bindings::workflow::execution::DAGExecution
+pub fn dispatch_occurrence_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let dag = tx.shared_object(dag, false)?;
+        let agent_registry = tx.shared_object(&objects.agent_registry, false)?;
+        let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
+        let leader_cap = tx.shared_object(leader_cap, false)?;
+        let occurrence_id = tx.arg(&occurrence_id)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        let execution = tx.call_target(
+            scheduler_binding::dispatch_next_target,
+            vec![
+                task,
+                dag,
+                agent_registry,
+                tool_registry,
+                leader_cap,
+                occurrence_id,
+                leader_registry,
+                clock,
+            ],
+        )?;
+
+        let gas_service = tx.shared_object(&objects.gas_service, false)?;
+        tx.call_target(
+            gas_binding::snapshot_dag_tool_costs_target,
+            vec![gas_service, execution, dag],
+        )?;
+        for (address, version) in tools_gas {
+            let tool_gas = tx.shared_object_by_id(*address, *version, true)?;
+            tx.call_target(
+                gas_binding::lock_payment_state_for_tool_target,
+                vec![tool_gas, dag, execution],
+            )?;
+        }
+        tx.call_target(
+            execution_entries_binding::start_and_share_target,
+            vec![dag, execution, leader_registry, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a PTB that settles one finished occurrence.
+pub fn settle_occurrence_ptb(
+    objects: &NexusObjects,
     task: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
-) -> anyhow::Result<sui::types::Argument> {
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let clock = tx.clock()?;
+        append_settle_occurrence(tx, task, execution, leader_registry, clock)
+    })
+}
+
+pub(crate) fn append_settle_occurrence(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    task: &sui::types::ObjectReference,
+    execution: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    clock: sui::types::Argument,
+) -> anyhow::Result<()> {
     let task = shared_task_arg(tx, task)?;
-    let execution = shared_mutable_object_arg(tx, execution)?;
     tx.call_target(
-        scheduler_binding::settle_finished_scheduled_execution_payment_if_ready_target,
-        vec![task, execution],
-    )
+        scheduler_binding::settle_target,
+        vec![task, execution, leader_registry, clock],
+    )?;
+    Ok(())
 }
 
-/// PTB template to register default agent DAG execution config on the execution policy.
-fn register_begin_default_agent_execution(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    policy: sui::types::Argument,
-    config: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(
-        scheduler_binding::register_begin_default_agent_execution_target,
-        vec![policy, config],
-    )
-}
-
-/// PTB template to register registered agent DAG execution config on the execution policy.
-fn register_begin_agent_execution(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    policy: sui::types::Argument,
-    config: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(
-        scheduler_binding::register_begin_agent_execution_target,
-        vec![policy, config],
-    )
+/// Builds a PTB that closes a Task and refunds its remaining reserve.
+pub fn close_task_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    authority: TaskAuthority,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let task = shared_task_arg(tx, task)?;
+        let registry = tx.shared_object(&objects.agent_registry, true)?;
+        match authority {
+            TaskAuthority::Address => {
+                tx.call_target(scheduler_binding::close_target, vec![task, registry])?;
+            }
+            TaskAuthority::Agent(agent) => {
+                let agent = agent.mutable_ptb_argument(tx)?;
+                tx.call_target(
+                    scheduler_binding::close_as_agent_target,
+                    vec![task, registry, agent],
+                )?;
+            }
+        }
+        Ok(())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::test_utils::sui_mocks::{mock_nexus_objects, mock_sui_object_ref},
-        sui::types::{Argument, Command, Input, MoveCall},
+        crate::{
+            move_bindings::{
+                interface::{
+                    agent::ExecutionSelection,
+                    authorization::AgentVertexAuthorizationTemplate,
+                    graph::{EntryGroup, InputPort, Vertex},
+                },
+                primitives::data::NexusData,
+                sui_framework::{
+                    object::ID,
+                    vec_map::{Entry as VecMapEntry, VecMap},
+                },
+            },
+            test_utils::sui_mocks::{mock_nexus_objects, mock_sui_object_ref},
+        },
+        sui::types::{Command, MoveCall},
     };
 
-    fn scheduler_call<'a>(ptb: &'a ProgrammableTransaction, function: &str) -> &'a MoveCall {
+    fn execution(sender: sui::types::Address) -> AgentExecutionConfig {
+        AgentExecutionConfig::new(
+            ExecutionSelection::DefaultAgent {
+                dag_id: ID::new(sui::types::Address::from_static("0x42")),
+            },
+            ID::new(sui::types::Address::from_static("0x43")),
+            EntryGroup::new("default"),
+            VecMap::new(vec![]),
+            sender,
+            vec![],
+        )
+    }
+
+    fn agent_skill_execution(sender: sui::types::Address) -> AgentExecutionConfig {
+        let inputs = VecMap::new(vec![VecMapEntry::new(
+            Vertex::new("vertex"),
+            VecMap::new(vec![VecMapEntry::new(
+                InputPort::new("input"),
+                NexusData::new(b"inline".to_vec(), b"value".to_vec(), vec![]),
+            )]),
+        )]);
+        AgentExecutionConfig::new(
+            ExecutionSelection::AgentSkill {
+                agent_id: ID::new(sui::types::Address::from_static("0x45")),
+                skill_id: 7,
+                selected_dag: MoveOption::from_option(Some(ID::new(
+                    sui::types::Address::from_static("0x46"),
+                ))),
+            },
+            ID::new(sui::types::Address::from_static("0x43")),
+            EntryGroup::new("default"),
+            inputs,
+            sender,
+            vec![AgentVertexAuthorizationTemplate::new(
+                7,
+                "vertex",
+                ID::new(sui::types::Address::from_static("0x47")),
+            )],
+        )
+    }
+
+    fn move_calls(ptb: &ProgrammableTransaction) -> Vec<&MoveCall> {
         ptb.commands
             .iter()
-            .find_map(|command| {
-                let Command::MoveCall(call) = command else {
-                    return None;
-                };
-                (call.module.as_str() == "scheduler" && call.function.as_str() == function)
-                    .then_some(call)
+            .filter_map(|command| match command {
+                Command::MoveCall(call) => Some(call),
+                _ => None,
             })
-            .unwrap_or_else(|| panic!("missing scheduler::{function} call"))
-    }
-
-    fn pure_input<'a>(ptb: &'a ProgrammableTransaction, argument: &Argument) -> &'a [u8] {
-        let Argument::Input(index) = argument else {
-            panic!("expected input argument, got {argument:?}");
-        };
-        let Some(Input::Pure(bytes)) = ptb.inputs.get(*index as usize) else {
-            panic!("expected pure input at index {index}");
-        };
-        bytes
-    }
-
-    fn assert_priority_option(
-        ptb: &ProgrammableTransaction,
-        argument: &Argument,
-        expected: Option<u64>,
-    ) {
-        let expected = bcs::to_bytes(&MoveOption::from_option(expected))
-            .expect("Move priority option should serialize");
-        assert_eq!(pure_input(ptb, argument), expected);
+            .collect()
     }
 
     #[test]
-    fn queue_occurrence_encodes_explicit_priority_as_move_option() {
+    fn creation_scheduling_recurrence_and_share_use_one_ptb() {
         let objects = mock_nexus_objects();
-        let ptb = add_occurrence_absolute_for_task_for_self_ptb(
-            &objects,
-            &mock_sui_object_ref(),
-            1_000,
-            Some(5_000),
-            Some(77),
-        )
-        .expect("queue occurrence PTB should build");
-
-        let call = scheduler_call(&ptb, "add_occurrence_absolute_for_task");
-        assert_priority_option(&ptb, &call.arguments[3], Some(77));
-    }
-
-    #[test]
-    fn queue_occurrence_encodes_omitted_priority_as_move_none() {
-        let objects = mock_nexus_objects();
-        let ptb = add_occurrence_absolute_for_task_for_self_ptb(
-            &objects,
-            &mock_sui_object_ref(),
-            1_000,
-            None,
-            None,
-        )
-        .expect("queue occurrence PTB should build");
-
-        let call = scheduler_call(&ptb, "add_occurrence_absolute_for_task");
-        assert_priority_option(&ptb, &call.arguments[3], None);
-    }
-
-    #[test]
-    fn periodic_schedule_encodes_explicit_priority_as_move_option() {
-        let objects = mock_nexus_objects();
-        let ptb = configure_periodic_for_task_for_self_ptb(
-            &objects,
-            &mock_sui_object_ref(),
-            PeriodicScheduleInputs {
-                first_start_ms: 1_000,
-                period_ms: 500,
-                deadline_offset_ms: None,
-                max_iterations: Some(2),
-                priority_fee_percentage: Some(88),
+        let sender = sui::types::Address::from_static("0x44");
+        let params = CreateTaskParams {
+            execution: execution(sender),
+            funding: TaskFunding::User {
+                agent: None,
+                prepay_amount_mist: 10_000,
+                refund_recipient: sender,
             },
-        )
-        .expect("periodic schedule PTB should build");
+            occurrence_budget_mist: 1_000,
+            failure_mode: TaskFailureMode::Continue,
+            occurrences: vec![OccurrenceSpec {
+                start_time_ms: 100,
+                deadline_ms: None,
+                priority_fee_percentage: 20,
+            }],
+            recurrence: Some(RecurrenceSpec {
+                first: OccurrenceSpec {
+                    start_time_ms: 200,
+                    deadline_ms: Some(300),
+                    priority_fee_percentage: 30,
+                },
+                interval_ms: 100,
+                occurrences: Some(2),
+            }),
+        };
 
-        let call = scheduler_call(&ptb, "new_or_modify_periodic_for_task");
-        assert_priority_option(&ptb, &call.arguments[5], Some(88));
+        let ptb = create_task_ptb(&objects, &params).expect("Task PTB builds");
+        let functions = move_calls(&ptb)
+            .into_iter()
+            .map(|call| (call.module.as_str(), call.function.as_str()))
+            .collect::<Vec<_>>();
+
+        assert!(functions.contains(&("agent", "new_default_agent_execution_config")));
+        assert!(functions.contains(&("scheduler", "new_default_task")));
+        assert!(functions.contains(&("scheduler", "schedule")));
+        assert!(functions.contains(&("scheduler", "set_recurrence")));
+        assert_eq!(functions.last(), Some(&("scheduler", "share")));
     }
 
     #[test]
-    fn scheduler_occurrence_rejects_invalid_explicit_priority() {
-        let error = add_occurrence_absolute_for_task_for_self_ptb(
+    fn agent_skill_execution_config_is_composed_from_move_values() {
+        let objects = mock_nexus_objects();
+        let execution = agent_skill_execution(sui::types::Address::from_static("0x44"));
+        let ptb = move_boundary::ptb(&objects, |tx| {
+            execution_config_arg(tx, &execution)?;
+            Ok(())
+        })
+        .expect("agent skill execution config builds");
+        let functions = move_calls(&ptb)
+            .into_iter()
+            .map(|call| (call.module.as_str(), call.function.as_str()))
+            .collect::<Vec<_>>();
+
+        assert!(functions.contains(&("graph", "entry_group_from_string")));
+        assert!(functions.contains(&("graph", "vertex_from_string")));
+        assert!(functions.contains(&("graph", "input_port_from_string")));
+        assert!(functions.contains(&("data", "inline_one")));
+        assert!(functions.contains(&("authorization", "agent_vertex_authorization_template")));
+        assert!(functions.contains(&("agent", "new_agent_execution_config")));
+    }
+
+    #[test]
+    fn now_and_future_occurrences_use_the_same_schedule_call() {
+        let objects = mock_nexus_objects();
+        for start_time_ms in [0, 10_000] {
+            let ptb = schedule_task_ptb(
+                &objects,
+                &mock_sui_object_ref(),
+                TaskAuthority::Address,
+                OccurrenceSpec {
+                    start_time_ms,
+                    deadline_ms: None,
+                    priority_fee_percentage: 20,
+                },
+            )
+            .expect("schedule PTB builds");
+            assert!(move_calls(&ptb).iter().any(|call| {
+                call.module.as_str() == "scheduler" && call.function.as_str() == "schedule"
+            }));
+        }
+    }
+
+    #[test]
+    fn refill_rechecks_and_advertises_dispatchable_work() {
+        let ptb = refill_task_ptb(&mock_nexus_objects(), &mock_sui_object_ref(), 1_000)
+            .expect("refill PTB builds");
+        let refill = move_calls(&ptb)
+            .into_iter()
+            .find(|call| call.function.as_str() == "refill")
+            .expect("refill call");
+
+        assert_eq!(refill.arguments.len(), 4);
+    }
+
+    #[test]
+    fn settlement_rechecks_and_advertises_dispatchable_work() {
+        let ptb = settle_occurrence_ptb(
             &mock_nexus_objects(),
             &mock_sui_object_ref(),
-            1_000,
-            None,
-            Some(crate::types::MIN_PRIORITY_FEE_PERCENTAGE - 1),
+            &mock_sui_object_ref(),
         )
-        .expect_err("invalid explicit priority must fail before PTB submission");
+        .expect("settlement PTB builds");
+        let settle = move_calls(&ptb)
+            .into_iter()
+            .find(|call| call.function.as_str() == "settle")
+            .expect("settle call");
 
-        assert!(error
-            .to_string()
-            .contains("priority fee percentage must be in 10..=10000"));
+        assert_eq!(settle.arguments.len(), 4);
     }
 
     #[test]
-    fn default_agent_task_metadata_uses_move_utf8_strings() {
-        let objects = mock_nexus_objects();
-        let ptb = create_default_agent_task_ptb(
-            &objects,
-            sui::types::Address::from_static("0x42"),
-            "default",
-            &HashMap::new(),
-            &[("demo".to_owned(), "scheduler".to_owned())],
-            OccurrenceGenerator::Queue,
-            None,
-            50_000_000,
-            50_000_000,
+    fn dispatch_uses_scheduler_then_controlled_workflow_share() {
+        let ptb = dispatch_occurrence_ptb(
+            &mock_nexus_objects(),
+            &mock_sui_object_ref(),
+            &mock_sui_object_ref(),
+            &mock_sui_object_ref(),
+            7,
+            &HashSet::new(),
         )
-        .expect("default-agent task PTB should build");
-
-        let Command::MoveCall(insert) = &ptb.commands[1] else {
-            panic!("expected metadata map insertion");
-        };
-        assert_eq!(insert.module.as_str(), "vec_map");
-        assert_eq!(insert.function.as_str(), "insert");
-
-        let key: crate::move_bindings::move_std::string::String =
-            bcs::from_bytes(pure_input(&ptb, &insert.arguments[1]))
-                .expect("metadata key should be a generated Move string");
-        assert_eq!(key.bytes, b"demo");
-
-        let value: crate::move_bindings::move_std::string::String =
-            bcs::from_bytes(pure_input(&ptb, &insert.arguments[2]))
-                .expect("metadata value should be a generated Move string");
-        assert_eq!(value.bytes, b"scheduler");
-
-        let metadata = scheduler_call(&ptb, "new_metadata");
-        assert_eq!(metadata.arguments, [Argument::Result(0)]);
+        .expect("dispatch PTB builds");
+        let calls = move_calls(&ptb);
+        let dispatch = calls
+            .iter()
+            .position(|call| call.function.as_str() == "dispatch_next")
+            .expect("dispatch call");
+        let start = calls
+            .iter()
+            .position(|call| call.function.as_str() == "start_and_share")
+            .expect("controlled share call");
+        assert!(dispatch < start);
+        assert!(!calls
+            .iter()
+            .any(|call| call.function.as_str().contains("begin_")));
     }
 }

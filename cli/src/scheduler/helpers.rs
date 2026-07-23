@@ -1,26 +1,46 @@
-use crate::prelude::*;
+use {
+    crate::prelude::*,
+    nexus_sdk::{nexus::scheduler::OccurrenceSpec, types::effective_priority_fee_percentage},
+};
 
-/// Parse metadata pairs provided as `key=value` strings.
-pub(crate) fn parse_metadata(pairs: &[String]) -> AnyResult<Vec<(String, String)>, NexusCliError> {
-    let mut result = Vec::with_capacity(pairs.len());
-    for pair in pairs {
-        let Some((key, value)) = pair.split_once('=') else {
+/// Resolves one occurrence against the current chain time.
+pub(crate) fn occurrence_spec(
+    clock_ms: u64,
+    start_ms: Option<u64>,
+    start_offset_ms: Option<u64>,
+    deadline_offset_ms: Option<u64>,
+    priority_fee_percentage: Option<u64>,
+) -> AnyResult<OccurrenceSpec, NexusCliError> {
+    let start_time_ms = match (start_ms, start_offset_ms) {
+        (Some(start_time_ms), None) => start_time_ms,
+        (None, Some(offset_ms)) => clock_ms
+            .checked_add(offset_ms)
+            .ok_or_else(|| NexusCliError::Any(anyhow!("occurrence start time overflows u64")))?,
+        (None, None) => clock_ms,
+        (Some(_), Some(_)) => {
             return Err(NexusCliError::Any(anyhow!(
-                "Invalid metadata entry '{pair}'. Expected format key=value"
-            )));
-        };
-        if key.trim().is_empty() {
-            return Err(NexusCliError::Any(anyhow!(
-                "Metadata key in '{pair}' cannot be empty"
+                "absolute start and start offset are mutually exclusive"
             )));
         }
-        result.push((key.trim().to_owned(), value.trim().to_owned()));
-    }
-    Ok(result)
-}
+    };
+    let deadline_ms = deadline_offset_ms
+        .map(|offset_ms| {
+            start_time_ms
+                .checked_add(offset_ms)
+                .ok_or_else(|| anyhow!("occurrence deadline overflows u64"))
+        })
+        .transpose()
+        .map_err(NexusCliError::Any)?;
+    let priority_fee_percentage =
+        effective_priority_fee_percentage(priority_fee_percentage).map_err(NexusCliError::Any)?;
 
-pub(crate) fn optional_priority_fee_quote(priority_fee_quote: u64) -> Option<u64> {
-    (priority_fee_quote != 0).then_some(priority_fee_quote)
+    OccurrenceSpec {
+        start_time_ms,
+        deadline_ms,
+        priority_fee_percentage,
+    }
+    .validate()
+    .map_err(NexusCliError::Any)
 }
 
 #[cfg(test)]
@@ -28,23 +48,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_metadata_splits_pairs() {
-        let result = parse_metadata(&["a=b".to_string(), "c=d".to_string()]).unwrap();
-        assert_eq!(
-            result,
-            vec![("a".into(), "b".into()), ("c".into(), "d".into())]
-        );
+    fn omitted_start_uses_chain_time() {
+        let occurrence =
+            occurrence_spec(1_000, None, None, Some(50), None).expect("occurrence is valid");
+
+        assert_eq!(occurrence.start_time_ms, 1_000);
+        assert_eq!(occurrence.deadline_ms, Some(1_050));
     }
 
     #[test]
-    fn parse_metadata_rejects_missing_equals() {
-        let err = parse_metadata(&["invalid".to_string()]).unwrap_err();
-        assert!(err.to_string().contains("Invalid metadata entry"));
+    fn offset_is_relative_to_chain_time() {
+        let occurrence =
+            occurrence_spec(1_000, None, Some(250), None, Some(25)).expect("occurrence is valid");
+
+        assert_eq!(occurrence.start_time_ms, 1_250);
+        assert_eq!(occurrence.priority_fee_percentage, 25);
     }
 
     #[test]
-    fn zero_priority_quote_is_treated_as_omitted() {
-        assert_eq!(optional_priority_fee_quote(0), None);
-        assert_eq!(optional_priority_fee_quote(10), Some(10));
+    fn overflowing_deadline_is_rejected() {
+        let error = occurrence_spec(u64::MAX, None, None, Some(1), None)
+            .expect_err("deadline overflow must fail");
+
+        assert!(error.to_string().contains("deadline overflows"));
     }
 }

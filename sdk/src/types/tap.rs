@@ -634,11 +634,7 @@ mod tests {
         crate::move_bindings::{
             interface::{
                 agent::{Agent, SkillSchedulePolicy},
-                payment::{
-                    ExecutionPaymentFinalState,
-                    ScheduledOccurrenceFinalState,
-                    VertexExecutionPaymentSettlementKind,
-                },
+                payment::{ExecutionPaymentFinalState, VertexExecutionPaymentSettlementKind},
             },
             registry::agent_registry::AgentRegistry,
             sui_framework::table::Table as MoveTable,
@@ -884,15 +880,6 @@ mod tests {
             bcs::from_bytes::<ExecutionPaymentFinalState>(&bcs::to_bytes(&payment_state).unwrap())
                 .unwrap(),
             payment_state
-        );
-
-        let occurrence_state = ScheduledOccurrenceFinalState::InFlight;
-        assert_eq!(
-            bcs::from_bytes::<ScheduledOccurrenceFinalState>(
-                &bcs::to_bytes(&occurrence_state).unwrap()
-            )
-            .unwrap(),
-            occurrence_state
         );
     }
 

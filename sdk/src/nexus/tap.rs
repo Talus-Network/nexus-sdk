@@ -9,24 +9,10 @@ use {
         events::NexusEventKind,
         move_bindings::{
             interface::{
-                agent::{
-                    Agent,
-                    AgentPaymentVault,
-                    AgentVaultFieldKey,
-                    ExecutionPaymentHistoryFieldKey,
-                    ExecutionPaymentReceiptFieldKey,
-                    SkillRequirement,
-                },
-                authorization::AgentVertexAuthorizationTemplate,
-                payment::{
-                    ExecutionPayment,
-                    ExecutionPaymentFinalState,
-                    ExecutionPaymentHistoryList,
-                    ExecutionPaymentReceipt,
-                },
+                agent::{Agent, AgentPaymentVault, AgentVaultFieldKey, SkillRequirement},
+                payment::{ExecutionPayment, ExecutionPaymentFinalState},
                 version::InterfaceVersion,
             },
-            primitives::data::NexusData,
             registry::agent_registry::{
                 AgentRecord,
                 AgentRegistry,
@@ -42,12 +28,7 @@ use {
             signer::ExecutedTransaction,
         },
         sui,
-        transactions::{
-            agent_input::AgentInput,
-            dag as dag_tx,
-            scheduler as scheduler_tx,
-            tap as tap_tx,
-        },
+        transactions::{agent_input::AgentInput, dag as dag_tx, tap as tap_tx},
         types::{
             resolve_active_tap_skill_execution_target,
             resolve_active_tap_skill_revision,
@@ -65,10 +46,7 @@ use {
             TapPublishArtifact,
         },
     },
-    std::{
-        collections::HashMap,
-        time::{Duration, Instant},
-    },
+    std::time::{Duration, Instant},
 };
 #[cfg(feature = "move_publish")]
 use {std::path::PathBuf, sui_move_build::CompiledPackage};
@@ -129,60 +107,6 @@ pub struct GetSkillRequirementResult {
     pub skill_id: SkillId,
     pub active_skill_revision_key: SkillRevisionLookupKey,
     pub requirements: SkillRequirement,
-}
-
-/// Parameters required to create an explicit-agent scheduled task.
-pub struct CreateAgentTaskParams {
-    pub entry_group: String,
-    pub input_data: HashMap<String, HashMap<String, NexusData>>,
-    pub metadata: Vec<(String, String)>,
-    pub execution_priority_fee_percentage: Option<u64>,
-    pub initial_schedule: Option<crate::nexus::scheduler::OccurrenceRequest>,
-    pub generator: crate::nexus::scheduler::GeneratorKind,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub payment: AgentTaskPayment,
-}
-
-/// Actions supported when mutating an explicit-agent scheduled task.
-#[derive(Clone, Copy, Debug)]
-pub enum AgentTaskStateAction {
-    Pause,
-    Resume,
-    Cancel,
-}
-
-pub struct SetAgentTaskStateResult {
-    pub tx_digest: sui::types::Digest,
-    pub tx_checkpoint: u64,
-    pub task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub state: AgentTaskStateAction,
-}
-
-#[derive(Clone, Debug)]
-pub enum AgentTaskPayment {
-    UserFunded {
-        prepay_amount_mist: u64,
-        refund_recipient: Option<sui::types::Address>,
-        occurrence_budget_mist: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-    AgentVault {
-        prepay_amount_mist: u64,
-        occurrence_budget_mist: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TapPaymentHistory {
-    pub wallet_receipts: Vec<ExecutionPaymentReceipt>,
-    pub vault_receipts: Vec<ExecutionPaymentReceipt>,
-    pub unresolved_execution_ids: Vec<sui::types::Address>,
-    pub resolved_execution_ids: Vec<sui::types::Address>,
 }
 
 /// Options for publishing a TAP Move package through [`TapActions`].
@@ -251,30 +175,6 @@ pub struct DepositAgentVaultResult {
     pub tx_checkpoint: u64,
     pub agent_id: AgentId,
     pub amount: u64,
-}
-
-/// Parameters for [`TapActions::accomplish_execution_payment`].
-#[derive(Clone, Debug)]
-pub struct AccomplishExecutionPaymentParams {
-    /// The shared `DAGExecution` object whose TAP payment should be settled.
-    pub execution_id: sui::types::Address,
-    /// When set, the SDK fetches the agent object and routes through
-    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment_from_agent_vault`
-    /// — settling the payment out of the agent's vault rather than from the
-    /// invoker-funded payment object. When `None`, the default
-    /// `accomplish_tap_execution_payment` PTB is built.
-    pub agent_id: Option<sui::types::Address>,
-}
-
-/// Result returned by [`TapActions::accomplish_execution_payment`].
-#[derive(Clone, Debug)]
-pub struct AccomplishExecutionPaymentResult {
-    pub tx_digest: sui::types::Digest,
-    pub tx_checkpoint: u64,
-    pub execution_id: sui::types::Address,
-    /// Echoes the resolved `agent_id` when the from-vault PTB was used.
-    /// `None` for the default invoker-funded path.
-    pub agent_id: Option<sui::types::Address>,
 }
 
 /// Parameters for [`TapActions::refill_execution_payment`].
@@ -592,56 +492,6 @@ impl TapActions {
         })
     }
 
-    /// Wraps the on-chain `nexus_workflow::execution_settlement::accomplish_tap_execution_payment`
-    /// PTB so the holder of the `DAGExecution` can settle its TAP payment
-    /// directly — useful when the off-chain leader has not (yet) emitted the
-    /// settlement transaction itself but the execution has reached a state
-    /// that satisfies `assert_execution_can_accomplish_payment`. Returns
-    /// the transaction digest, checkpoint, and the resolved execution id.
-    ///
-    /// When `params.agent_id` is supplied, the SDK additionally fetches the
-    /// shared agent object and routes through
-    /// `accomplish_tap_execution_payment_from_agent_vault` — settling the
-    /// payment out of the agent's payment vault rather than from the
-    /// invoker-funded payment object.
-    pub async fn accomplish_execution_payment(
-        &self,
-        params: AccomplishExecutionPaymentParams,
-    ) -> Result<AccomplishExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let crawler = self.client.crawler();
-
-        let execution_ref = crawler
-            .get_object_metadata(params.execution_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-
-        let agent = if let Some(agent_id) = params.agent_id {
-            let agent_ref = crawler
-                .get_object_metadata(agent_id)
-                .await
-                .map_err(NexusError::Rpc)?;
-            Some(agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?)
-        } else {
-            None
-        };
-        let tx = dag_tx::accomplish_tap_execution_payment_for_self_ptb(
-            &self.client.nexus_objects,
-            &execution_ref,
-            agent,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        Ok(AccomplishExecutionPaymentResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            execution_id: params.execution_id,
-            agent_id: params.agent_id,
-        })
-    }
-
     /// Refill a live TAP execution payment by splitting MIST from the caller's
     /// transaction gas coin.
     pub async fn refill_execution_payment(
@@ -708,191 +558,6 @@ impl TapActions {
             execution_id: params.execution_id,
             agent_id: Some(params.agent_id),
             amount: params.amount,
-        })
-    }
-
-    /// Create a scheduled task for an explicit standard agent skill.
-    pub async fn create_agent_task(
-        &self,
-        params: CreateAgentTaskParams,
-    ) -> Result<crate::nexus::scheduler::CreateTaskResult, NexusError> {
-        let CreateAgentTaskParams {
-            entry_group,
-            input_data,
-            metadata,
-            execution_priority_fee_percentage,
-            initial_schedule: initial_schedule_request,
-            generator,
-            agent_id,
-            skill_id,
-            payment,
-        } = params;
-
-        if initial_schedule_request.is_some()
-            && generator != crate::nexus::scheduler::GeneratorKind::Queue
-        {
-            return Err(NexusError::Configuration(
-                "Initial queue schedule can only be used with the queue generator".into(),
-            ));
-        }
-
-        let address = self.client.signer.get_active_address();
-        let objects = &self.client.nexus_objects;
-
-        let agent_ref = self
-            .client
-            .crawler()
-            .get_object_metadata(agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let agent =
-            agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
-
-        let (prepay_amount_mist, occurrence_budget_mist) = match &payment {
-            AgentTaskPayment::UserFunded {
-                prepay_amount_mist,
-                occurrence_budget_mist,
-                ..
-            } => (*prepay_amount_mist, *occurrence_budget_mist),
-            AgentTaskPayment::AgentVault {
-                prepay_amount_mist,
-                occurrence_budget_mist,
-                ..
-            } => (*prepay_amount_mist, *occurrence_budget_mist),
-        };
-        let payment_input = match &payment {
-            AgentTaskPayment::UserFunded {
-                prepay_amount_mist,
-                refund_recipient,
-                occurrence_budget_mist,
-                selected_dag,
-                authorization_templates,
-            } => tap_tx::AgentTaskPaymentPtbInput::UserFunded {
-                prepay_amount_mist: *prepay_amount_mist,
-                refund_recipient: *refund_recipient,
-                occurrence_budget_mist: *occurrence_budget_mist,
-                selected_dag: *selected_dag,
-                authorization_templates: authorization_templates.clone(),
-            },
-            AgentTaskPayment::AgentVault {
-                prepay_amount_mist,
-                occurrence_budget_mist,
-                selected_dag,
-                authorization_templates,
-            } => tap_tx::AgentTaskPaymentPtbInput::AgentVault {
-                prepay_amount_mist: *prepay_amount_mist,
-                occurrence_budget_mist: *occurrence_budget_mist,
-                selected_dag: *selected_dag,
-                authorization_templates: authorization_templates.clone(),
-            },
-        };
-
-        let tx = tap_tx::create_agent_task_ptb(
-            objects,
-            address,
-            &metadata,
-            generator.into(),
-            execution_priority_fee_percentage,
-            entry_group.as_str(),
-            &input_data,
-            agent_id,
-            agent,
-            skill_id,
-            &payment_input,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        let task_id = crate::nexus::scheduler::extract_task_id(&response)?;
-
-        let mut initial_schedule_result = None;
-        if let Some(schedule) = initial_schedule_request {
-            if schedule.start_ms.is_some() {
-                return Err(NexusError::Configuration(
-                    "agent-owned TAP scheduled tasks support relative initial occurrences; use --schedule-start-offset-ms"
-                        .into(),
-                ));
-            }
-            let task_object = self.client.scheduler().fetch_task(task_id).await?;
-            let fresh_agent_ref = self
-                .client
-                .crawler()
-                .get_object_metadata(agent_id)
-                .await
-                .map_err(NexusError::Rpc)?;
-            let agent_input = agent_input_from_metadata(&fresh_agent_ref)
-                .map_err(NexusError::TransactionBuilding)?;
-            let schedule_tx = scheduler_tx::add_occurrence_relative_for_agent_task_for_self_ptb(
-                objects,
-                &task_object.object_ref(),
-                agent_input,
-                schedule.start_offset_ms.expect("validated start offset"),
-                schedule.deadline_offset_ms,
-                schedule.priority_fee_percentage,
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-            let schedule_response = self.client.submit_transaction(schedule_tx, address).await?;
-            initial_schedule_result = Some(crate::nexus::scheduler::ScheduleExecutionResult {
-                tx_digest: schedule_response.digest,
-                event: crate::nexus::scheduler::extract_occurrence_event(&schedule_response),
-            });
-        }
-
-        Ok(crate::nexus::scheduler::CreateTaskResult {
-            tx_digest: response.digest,
-            task_id,
-            initial_schedule: initial_schedule_result,
-            tap_payment: Some(crate::nexus::scheduler::CreateTaskTapPaymentResult {
-                agent_id,
-                skill_id,
-                prepay_amount_mist,
-                occurrence_budget_mist,
-            }),
-        })
-    }
-
-    /// Set the scheduler state for an explicit-agent scheduled task.
-    pub async fn set_agent_task_state(
-        &self,
-        task_id: sui::types::Address,
-        agent_id: AgentId,
-        action: AgentTaskStateAction,
-    ) -> Result<SetAgentTaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
-        let task_ref = crawler
-            .get_object_metadata(task_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-        let agent_ref = crawler
-            .get_object_metadata(agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let agent =
-            agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
-
-        let tx = match action {
-            AgentTaskStateAction::Pause => {
-                scheduler_tx::pause_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-            AgentTaskStateAction::Resume => {
-                scheduler_tx::resume_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-            AgentTaskStateAction::Cancel => {
-                scheduler_tx::cancel_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-        }
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        Ok(SetAgentTaskStateResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            task_id,
-            agent_id,
-            state: action,
         })
     }
 
@@ -1305,104 +970,6 @@ pub async fn fetch_execution_payment_for_execution(
     }
 }
 
-/// Fetch wallet-owned standard TAP execution payment receipts.
-pub async fn fetch_wallet_execution_payment_receipts(
-    crawler: &Crawler,
-    objects: &NexusObjects,
-    owner: sui::types::Address,
-) -> anyhow::Result<Vec<Response<ExecutionPaymentReceipt>>> {
-    crawler
-        .get_owned_objects(
-            owner,
-            crate::move_bindings::struct_tag::<ExecutionPaymentReceipt>(objects),
-        )
-        .await
-}
-
-/// Fetch one vault-owned payment receipt stored under a Talus agent.
-pub async fn fetch_agent_vault_execution_payment_receipt(
-    crawler: &Crawler,
-    agent_id: AgentId,
-    execution_id: sui::types::Address,
-) -> anyhow::Result<Response<ExecutionPaymentReceipt>> {
-    crawler
-        .get_dynamic_object_field::<ExecutionPaymentReceiptFieldKey, ExecutionPaymentReceipt>(
-            agent_id,
-            ExecutionPaymentReceiptFieldKey { execution_id },
-        )
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "execution payment receipt for execution '{execution_id}' not found under agent '{agent_id}': {e}"
-            )
-        })
-}
-
-/// Fetch vault-owned execution IDs from an agent's unresolved/resolved history lists.
-pub async fn fetch_agent_execution_payment_history_ids(
-    crawler: &Crawler,
-    agent_id: AgentId,
-) -> anyhow::Result<(Vec<sui::types::Address>, Vec<sui::types::Address>)> {
-    let mut fields = crawler
-        .get_dynamic_object_fields::<ExecutionPaymentHistoryFieldKey, ExecutionPaymentHistoryList>(
-            agent_id,
-        )
-        .await?;
-    let mut unresolved = Vec::new();
-    let mut resolved = Vec::new();
-
-    if let Some(list) = fields.remove(&ExecutionPaymentHistoryFieldKey { resolved: false }) {
-        unresolved = list.data.execution_ids;
-    }
-    if let Some(list) = fields.remove(&ExecutionPaymentHistoryFieldKey { resolved: true }) {
-        resolved = list.data.execution_ids;
-    }
-
-    Ok((unresolved, resolved))
-}
-
-/// Fetch wallet receipts and, when an agent is supplied, vault receipt history.
-pub async fn fetch_execution_payment_history(
-    crawler: &Crawler,
-    objects: &NexusObjects,
-    owner: sui::types::Address,
-    agent_id: Option<AgentId>,
-) -> anyhow::Result<TapPaymentHistory> {
-    let wallet_receipts = fetch_wallet_execution_payment_receipts(crawler, objects, owner)
-        .await?
-        .into_iter()
-        .map(|response| response.data)
-        .collect::<Vec<_>>();
-    let mut history = TapPaymentHistory {
-        wallet_receipts,
-        ..Default::default()
-    };
-
-    let Some(agent_id) = agent_id else {
-        return Ok(history);
-    };
-
-    let (unresolved_execution_ids, resolved_execution_ids) =
-        fetch_agent_execution_payment_history_ids(crawler, agent_id).await?;
-    let mut vault_receipts = Vec::new();
-    for execution_id in unresolved_execution_ids
-        .iter()
-        .chain(resolved_execution_ids.iter())
-        .copied()
-    {
-        vault_receipts.push(
-            fetch_agent_vault_execution_payment_receipt(crawler, agent_id, execution_id)
-                .await?
-                .data,
-        );
-    }
-
-    history.vault_receipts = vault_receipts;
-    history.unresolved_execution_ids = unresolved_execution_ids;
-    history.resolved_execution_ids = resolved_execution_ids;
-    Ok(history)
-}
-
 /// Fetch a standard Talus agent payment vault object by object ID.
 pub async fn fetch_agent_payment_vault(
     crawler: &Crawler,
@@ -1465,7 +1032,7 @@ mod tests {
                     payment::{ExecutionPaymentFinalState, PaymentSourceKind, SkillPaymentPolicy},
                     version::InterfaceVersion,
                 },
-                primitives::event as event_binding,
+                primitives::{data::NexusData, event as event_binding},
                 registry::agent_registry::{
                     self as agent_registry_binding,
                     AgentRecord,
@@ -1474,9 +1041,7 @@ mod tests {
                     DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
-                scheduler::scheduler::Task as SchedulerTask,
                 sui_framework::{table::Table as MoveTable, transfer as transfer_binding},
-                workflow::execution_settlement as execution_settlement_binding,
             },
             test_utils::{nexus_mocks, sui_mocks},
             types::{
@@ -1513,7 +1078,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let target = generated_target(
             &objects,
-            transfer_binding::public_share_object_target::<SchedulerTask>,
+            transfer_binding::public_share_object_target::<Agent>,
         );
         assert!(!transaction.commands.iter().any(|command| matches!(
             command,
@@ -2434,201 +1999,6 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.amount, 1500);
-        assert_eq!(result.tx_digest, digest);
-    }
-
-    /// `accomplish_execution_payment` wraps the on-chain
-    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment` PTB. The
-    /// happy path fetches the shared `DAGExecution` object's metadata,
-    /// builds a single move-call PTB targeting the workflow package, and
-    /// returns the supplied `execution_id` verbatim in the result so
-    /// callers can correlate the digest with the resolved payment.
-    #[tokio::test]
-    async fn tap_actions_accomplish_execution_payment_calls_workflow_dag_entrypoint() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xee"),
-            9,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            None,
-        );
-        let expected_settlement_target = generated_target(
-            &nexus_objects,
-            execution_settlement_binding::accomplish_tap_execution_payment_target,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().expect("submitted transaction");
-                let transaction = sui::types::Transaction::try_from(transaction)
-                    .expect("submitted transaction decodes");
-                let sui::types::TransactionKind::ProgrammableTransaction(
-                    sui::types::ProgrammableTransaction { commands, .. },
-                ) = &transaction.kind
-                else {
-                    panic!("expected programmable transaction");
-                };
-                // Exactly one move call: dag::accomplish_tap_execution_payment
-                // on the workflow package.
-                let move_calls: Vec<_> = commands
-                    .iter()
-                    .filter_map(|command| match command {
-                        sui::types::Command::MoveCall(call) => Some(call),
-                        _ => None,
-                    })
-                    .collect();
-                assert_eq!(move_calls.len(), 1, "expected exactly one move call");
-                let call = move_calls[0];
-                assert!(call_matches_generated(call, &expected_settlement_target));
-                // The only argument is the shared DAGExecution input.
-                assert_eq!(call.arguments.len(), 1);
-                assert!(matches!(call.arguments[0], sui::types::Argument::Input(_)));
-            },
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .accomplish_execution_payment(AccomplishExecutionPaymentParams {
-                execution_id: *execution_ref.object_id(),
-                agent_id: None,
-            })
-            .await
-            .expect("accomplish execution payment succeeds");
-
-        assert_eq!(result.execution_id, *execution_ref.object_id());
-        assert!(result.agent_id.is_none());
-        assert_eq!(result.tx_digest, digest);
-    }
-
-    /// When `params.agent_id` is supplied, the SDK fetches the agent
-    /// object's metadata *in addition to* the execution, and the PTB calls
-    /// the `_from_agent_vault` entrypoint with both shared inputs in order
-    /// (agent first, execution second — matches the Move signature).
-    #[tokio::test]
-    async fn tap_actions_accomplish_execution_payment_routes_through_vault_when_agent_supplied() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xee"),
-            9,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let agent_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xa"),
-            5,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        // Execution metadata fetched first (top of `accomplish_execution_payment`).
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            None,
-        );
-        // Agent metadata fetched only on the from-vault branch.
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            agent_ref.clone(),
-            sui::types::Owner::Shared(agent_ref.version()),
-            None,
-        );
-
-        let expected_settlement_target = generated_target(
-            &nexus_objects,
-            execution_settlement_binding::accomplish_tap_execution_payment_from_agent_vault_target,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().expect("submitted transaction");
-                let transaction = sui::types::Transaction::try_from(transaction)
-                    .expect("submitted transaction decodes");
-                let sui::types::TransactionKind::ProgrammableTransaction(
-                    sui::types::ProgrammableTransaction { commands, .. },
-                ) = &transaction.kind
-                else {
-                    panic!("expected programmable transaction");
-                };
-                let move_calls: Vec<_> = commands
-                    .iter()
-                    .filter_map(|command| match command {
-                        sui::types::Command::MoveCall(call) => Some(call),
-                        _ => None,
-                    })
-                    .collect();
-                assert_eq!(move_calls.len(), 1, "expected exactly one move call");
-                let call = move_calls[0];
-                assert!(call_matches_generated(call, &expected_settlement_target));
-                // (agent, execution) in that order — matches the Move
-                // signature `(&mut Agent, &mut DAGExecution)`. Both are
-                // shared-object inputs.
-                assert_eq!(call.arguments.len(), 2);
-                assert!(matches!(call.arguments[0], sui::types::Argument::Input(_)));
-                assert!(matches!(call.arguments[1], sui::types::Argument::Input(_)));
-            },
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .accomplish_execution_payment(AccomplishExecutionPaymentParams {
-                execution_id: *execution_ref.object_id(),
-                agent_id: Some(*agent_ref.object_id()),
-            })
-            .await
-            .expect("accomplish from-vault execution payment succeeds");
-
-        assert_eq!(result.execution_id, *execution_ref.object_id());
-        assert_eq!(result.agent_id, Some(*agent_ref.object_id()));
         assert_eq!(result.tx_digest, digest);
     }
 

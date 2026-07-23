@@ -359,7 +359,6 @@
           "module": "execution",
           "name": "DAGExecution",
           "abilities": [
-            "Store",
             "Key"
           ],
           "type_parameters": [],
@@ -457,45 +456,23 @@
                   }
                 },
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 9,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
+                      "type_arguments": []
                     }
                   }
                 },
                 {
-                  "name": "scheduled_occurrence_index",
+                  "name": "occurrence_id",
                   "position": 10,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        "U64"
-                      ]
-                    }
-                  }
+                  "ty": "U64"
                 },
                 {
                   "name": "last_request_for_execution_emitted_at_digest",
@@ -1499,7 +1476,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -1573,7 +1550,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -1678,7 +1655,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -2139,7 +2116,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -2233,7 +2210,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -2373,7 +2350,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -3807,764 +3784,7 @@
           ]
         },
         {
-          "name": "construct_agent_execution_with_resolved_skill",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "network",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "entry_group",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "EntryGroup"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "inputs",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "vec_map",
-                    "name": "VecMap"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "graph",
-                          "name": "Vertex"
-                        },
-                        "type_arguments": []
-                      }
-                    },
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "vec_map",
-                          "name": "VecMap"
-                        },
-                        "type_arguments": [
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa2",
-                                "module": "graph",
-                                "name": "InputPort"
-                              },
-                              "type_arguments": []
-                            }
-                          },
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa1",
-                                "module": "data",
-                                "name": "NexusData"
-                              },
-                              "type_arguments": []
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "invoker",
-              "ty": "Address"
-            },
-            {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
-              "name": "agent_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
-            },
-            {
-              "name": "authorization_templates",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "authorization",
-                      "name": "AgentVertexAuthorizationTemplate"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment_coin",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "construct_agent_vault_execution_with_resolved_skill",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "network",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "entry_group",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "EntryGroup"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "inputs",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "vec_map",
-                    "name": "VecMap"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "graph",
-                          "name": "Vertex"
-                        },
-                        "type_arguments": []
-                      }
-                    },
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "vec_map",
-                          "name": "VecMap"
-                        },
-                        "type_arguments": [
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa2",
-                                "module": "graph",
-                                "name": "InputPort"
-                              },
-                              "type_arguments": []
-                            }
-                          },
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa1",
-                                "module": "data",
-                                "name": "NexusData"
-                              },
-                              "type_arguments": []
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "invoker",
-              "ty": "Address"
-            },
-            {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
-              "name": "agent_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
-            },
-            {
-              "name": "authorization_templates",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "authorization",
-                      "name": "AgentVertexAuthorizationTemplate"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "construct_default_agent_execution_with_payment",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "network",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "entry_group",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "EntryGroup"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "inputs",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "vec_map",
-                    "name": "VecMap"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "graph",
-                          "name": "Vertex"
-                        },
-                        "type_arguments": []
-                      }
-                    },
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "vec_map",
-                          "name": "VecMap"
-                        },
-                        "type_arguments": [
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa2",
-                                "module": "graph",
-                                "name": "InputPort"
-                              },
-                              "type_arguments": []
-                            }
-                          },
-                          {
-                            "Datatype": {
-                              "type_name": {
-                                "address": "0xa1",
-                                "module": "data",
-                                "name": "NexusData"
-                              },
-                              "type_arguments": []
-                            }
-                          }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "invoker",
-              "ty": "Address"
-            },
-            {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
-              "name": "payment_coin",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "construct_scheduled_agent_execution",
+          "name": "construct_task_execution",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -4615,7 +3835,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -4624,7 +3844,7 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -4637,7 +3857,7 @@
               }
             },
             {
-              "name": "occurrence_index",
+              "name": "occurrence_id",
               "ty": "U64"
             },
             {
@@ -5987,7 +5207,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -6758,93 +5978,6 @@
           ]
         },
         {
-          "name": "execution_scheduled_task_id",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "execution_scheduled_task_id_optional",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "execution_skill_id",
           "visibility": "Friend",
           "is_entry": false,
@@ -7167,7 +6300,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -7554,10 +6687,10 @@
               }
             },
             {
-              "name": "ctx",
+              "name": "_ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -7824,6 +6957,249 @@
           "return_types": []
         },
         {
+          "name": "new_execution",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "bind_execution_id_input",
+              "ty": "Bool"
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "network",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "entry_group",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "EntryGroup"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "inputs",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa2",
+                          "module": "graph",
+                          "name": "Vertex"
+                        },
+                        "type_arguments": []
+                      }
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "vec_map",
+                          "name": "VecMap"
+                        },
+                        "type_arguments": [
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "graph",
+                                "name": "InputPort"
+                              },
+                              "type_arguments": []
+                            }
+                          },
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa1",
+                                "module": "data",
+                                "name": "NexusData"
+                              },
+                              "type_arguments": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "invoker",
+              "ty": "Address"
+            },
+            {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            },
+            {
+              "name": "agent_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "skill_id",
+              "ty": "U64"
+            },
+            {
+              "name": "interface_version",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "version",
+                    "name": "InterfaceVersion"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa4",
+                  "module": "execution",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "new_workflow_worksheet",
           "visibility": "Friend",
           "is_entry": false,
@@ -7885,6 +7261,35 @@
                 ]
               }
             }
+          ]
+        },
+        {
+          "name": "occurrence_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -9510,7 +8915,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -9944,7 +9349,7 @@
           ]
         },
         {
-          "name": "settle_finished_invoker_payment_if_ready",
+          "name": "share",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -9952,36 +9357,13 @@
             {
               "name": "execution",
               "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa4",
+                    "module": "execution",
+                    "name": "DAGExecution"
+                  },
+                  "type_arguments": []
                 }
               }
             }
@@ -10261,7 +9643,7 @@
               "name": "ctx",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -10271,102 +9653,6 @@
                       },
                       "type_arguments": []
                     }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "store_active_walk_vertex_authorizations_for_agent",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "dag",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "authorization_templates",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "authorization",
-                      "name": "AgentVertexAuthorizationTemplate"
-                    },
-                    "type_arguments": []
                   }
                 }
               }
@@ -10637,6 +9923,44 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "task_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
         },
         {
           "name": "update_err_eval_record",
@@ -11424,103 +10748,16 @@
     },
     "execution_entries": {
       "name": "execution_entries",
-      "datatypes": [
-        {
-          "type_name": {
-            "address": "0xa4",
-            "module": "execution_entries",
-            "name": "AdvanceForAgentExecution"
-          },
-          "module": "execution_entries",
-          "name": "AdvanceForAgentExecution",
-          "abilities": [
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa4",
-            "module": "execution_entries",
-            "name": "AdvanceForDefaultAgentExecution"
-          },
-          "module": "execution_entries",
-          "name": "AdvanceForDefaultAgentExecution",
-          "abilities": [
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        }
-      ],
+      "datatypes": [],
       "functions": [
         {
-          "name": "advance_for_agent_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution_entries",
-                  "name": "AdvanceForAgentExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "advance_for_default_agent_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution_entries",
-                  "name": "AdvanceForDefaultAgentExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert_config_matches_leader_cap",
-          "visibility": "Public",
+          "name": "copy_authorization_grants",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "authorization",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -11528,171 +10765,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa2",
-                        "module": "agent",
-                        "name": "AgentExecutionConfig"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa3",
-                              "module": "leader_cap",
-                              "name": "OverNetwork"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "begin_agent_funded_agent_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "AgentExecutionConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
+                        "module": "authorization",
+                        "name": "AgentSkillAuthorization"
                       },
                       "type_arguments": []
                     }
@@ -11703,106 +10777,20 @@
           ],
           "return_types": [
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "begin_default_dag_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
+              "Vector": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "AgentExecutionConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "payment_coin",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
+                    "address": "0xa1",
+                    "module": "authorization",
+                    "name": "Grant"
                   },
                   "type_arguments": [
                     {
                       "Datatype": {
                         "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
+                          "address": "0xa2",
+                          "module": "authorization",
+                          "name": "AgentVertexAuthorization"
                         },
                         "type_arguments": []
                       }
@@ -11810,232 +10798,11 @@
                   ]
                 }
               }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
             }
           ]
         },
         {
-          "name": "begin_user_funded_agent_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "AgentExecutionConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "payment_coin",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "payment_max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "copy_scheduled_vertex_authorization_grants",
+          "name": "copy_task_vertex_authorization_grants",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -12160,7 +10927,7 @@
           ]
         },
         {
-          "name": "prepare_agent_execution_from_scheduled_components_config",
+          "name": "new_task_execution",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -12202,7 +10969,7 @@
               }
             },
             {
-              "name": "scheduled_authorization",
+              "name": "authorization",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -12220,33 +10987,7 @@
               }
             },
             {
-              "name": "vertex_authorization_grants",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa1",
-                      "module": "authorization",
-                      "name": "Grant"
-                    },
-                    "type_arguments": [
-                      {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0xa2",
-                            "module": "authorization",
-                            "name": "AgentVertexAuthorization"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
-            },
-            {
-              "name": "scheduled_payment",
+              "name": "payment_reserve",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -12255,7 +10996,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -12264,7 +11005,25 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "spec",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -12277,7 +11036,11 @@
               }
             },
             {
-              "name": "occurrence_index",
+              "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
               "ty": "U64"
             },
             {
@@ -12295,19 +11058,6 @@
                       "type_arguments": []
                     }
                   }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "AgentExecutionConfig"
-                  },
-                  "type_arguments": []
                 }
               }
             },
@@ -12391,7 +11141,7 @@
           ]
         },
         {
-          "name": "prepare_default_agent_scheduled_execution_from_config",
+          "name": "start_and_share",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -12415,7 +11165,20 @@
               }
             },
             {
-              "name": "registry",
+              "name": "execution",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa4",
+                    "module": "execution",
+                    "name": "DAGExecution"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -12423,149 +11186,10 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scheduled_authorization",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "authorization",
-                        "name": "AgentSkillAuthorization"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "vertex_authorization_grants",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa1",
-                      "module": "authorization",
-                      "name": "Grant"
-                    },
-                    "type_arguments": [
-                      {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0xa2",
-                            "module": "authorization",
-                            "name": "AgentVertexAuthorization"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    ]
-                  }
-                }
-              }
-            },
-            {
-              "name": "scheduled_payment",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scheduled_task_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "occurrence_index",
-              "ty": "U64"
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "config",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "AgentExecutionConfig"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa3",
-                              "module": "leader_cap",
-                              "name": "OverNetwork"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
                     }
                   }
                 }
@@ -12608,18 +11232,7 @@
               }
             }
           ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa4",
-                  "module": "execution",
-                  "name": "DAGExecution"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
+          "return_types": []
         },
         {
           "name": "start_execution",
@@ -12721,7 +11334,7 @@
           "return_types": []
         },
         {
-          "name": "validate_scheduled_authorization_and_reserve",
+          "name": "validate_task_authorization",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -12763,24 +11376,6 @@
               }
             },
             {
-              "name": "scheduled_payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
               "name": "agent_id",
               "ty": {
                 "Datatype": {
@@ -12796,10 +11391,6 @@
             {
               "name": "skill_id",
               "ty": "U64"
-            },
-            {
-              "name": "require_user_funded_reserve",
-              "ty": "Bool"
             }
           ],
           "return_types": []
@@ -13464,45 +12055,23 @@
                   }
                 },
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 9,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
+                      "type_arguments": []
                     }
                   }
                 },
                 {
-                  "name": "scheduled_occurrence_index",
+                  "name": "occurrence_id",
                   "position": 10,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        "U64"
-                      ]
-                    }
-                  }
+                  "ty": "U64"
                 }
               ]
             }
@@ -15478,43 +14047,21 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "object",
-                          "name": "ID"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
+                  "type_arguments": []
                 }
               }
             },
             {
-              "name": "scheduled_occurrence_index",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
-                  },
-                  "type_arguments": [
-                    "U64"
-                  ]
-                }
-              }
+              "name": "occurrence_id",
+              "ty": "U64"
             }
           ],
           "return_types": [
@@ -15954,7 +14501,38 @@
     },
     "execution_settlement": {
       "name": "execution_settlement",
-      "datatypes": [],
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa4",
+            "module": "execution_settlement",
+            "name": "ExecutionOutcome"
+          },
+          "module": "execution_settlement",
+          "name": "ExecutionOutcome",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "Succeeded",
+                  "position": 0,
+                  "fields": []
+                },
+                {
+                  "name": "Failed",
+                  "position": 1,
+                  "fields": []
+                }
+              ]
+            }
+          }
+        }
+      ],
       "functions": [
         {
           "name": "abort_expired_execution",
@@ -16027,96 +14605,6 @@
                         "address": "0x2",
                         "module": "tx_context",
                         "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "accomplish_tap_execution_payment",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "accomplish_tap_execution_payment_from_agent_vault",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
                       },
                       "type_arguments": []
                     }
@@ -16356,6 +14844,30 @@
           "return_types": []
         },
         {
+          "name": "outcome_is_succeeded",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "outcome",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa4",
+                    "module": "execution_settlement",
+                    "name": "ExecutionOutcome"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
           "name": "record_committed_tool_result_gas_charge_by_leader",
           "visibility": "Public",
           "is_entry": false,
@@ -16543,108 +15055,6 @@
             {
               "name": "amount",
               "ty": "U64"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "refund_tap_execution_payment",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "refund_reason",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "refund_tap_execution_payment_from_agent_vault",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "refund_reason",
-              "ty": {
-                "Vector": "U8"
-              }
             }
           ],
           "return_types": []
@@ -17110,53 +15520,6 @@
           "return_types": []
         },
         {
-          "name": "settle_finished_scheduled_execution_payment_from_reserve",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "settle_onchain_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
@@ -17333,6 +15696,73 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "settle_task_execution",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "reserve",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution_settlement",
+                        "name": "ExecutionOutcome"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
         }
       ]
     },

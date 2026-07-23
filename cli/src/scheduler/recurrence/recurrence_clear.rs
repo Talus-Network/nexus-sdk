@@ -9,13 +9,13 @@ use {
     serde_json::json,
 };
 
-/// Disable the periodic schedule for a scheduled task.
-pub(crate) async fn disable_periodic_task(
+/// Clears future recurring work from a Task.
+pub(crate) async fn clear_recurrence(
     task_id: sui::types::Address,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!(
-        "Disabling periodic schedule for task '{task_id}'",
+        "Clearing recurrence for Task '{task_id}'",
         task_id = task_id
     );
 
@@ -23,16 +23,16 @@ pub(crate) async fn disable_periodic_task(
 
     let result = nexus_client
         .scheduler()
-        .disable_periodic(task_id)
+        .clear_recurrence(task_id)
         .await
         .map_err(NexusCliError::Nexus)?;
 
-    notify_success!("Periodic schedule disabled");
+    notify_success!("Task recurrence cleared");
 
     json_output(&json!({
         "digest": result.tx_digest,
-        "scheduled_task_id": task_id,
-    }))?;
-
-    Ok(())
+        "tx_checkpoint": result.tx_checkpoint,
+        "task_id": task_id,
+        "advertised": result.advertised,
+    }))
 }
