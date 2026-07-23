@@ -5,8 +5,6 @@ use {
         move_bindings::{
             primitives::owner_cap,
             registry::{leader as leader_binding, leader_cap},
-            sui_framework::coin as coin_binding,
-            talus::us::US,
         },
         move_boundary,
         sui,
@@ -22,7 +20,9 @@ pub fn over_network_cap_struct_tag(objects: &NexusObjects) -> sui::types::Struct
     crate::move_bindings::struct_tag::<OverNetworkCap>(objects)
 }
 
-/// Register the transaction sender as a leader using an owned Talus `$US` stake coin.
+/// Register the transaction sender as a leader using part of an owned Talus `$US` coin.
+///
+/// The coin remains owned by the sender with any balance above `stake_us`.
 pub fn register_for_self_ptb(
     objects: &NexusObjects,
     stake_coin: &sui::types::ObjectReference,
@@ -39,7 +39,6 @@ pub fn register_for_self_ptb(
             leader_binding::register_target,
             vec![leader_registry, pay_with, amount, metadata, clock],
         )?;
-        tx.call_target(coin_binding::destroy_zero_target::<US>, vec![pay_with])?;
 
         Ok(())
     })
@@ -135,10 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn register_for_self_uses_owned_us_stake_and_generated_targets() {
+    fn register_for_self_preserves_the_stake_coin_after_registration() {
         let objects = nexus_objects();
         let stake_coin = object_ref("0x20", 2, 20);
-        let ptb = register_for_self_ptb(&objects, &stake_coin, 1).unwrap();
+        let ptb = register_for_self_ptb(&objects, &stake_coin, 3).unwrap();
 
         let Input::ImmutableOrOwned(input_stake_coin) = &ptb.inputs[1] else {
             panic!("expected owned US stake coin input");
@@ -150,15 +149,10 @@ mod tests {
         assert_eq!(register.module.as_str(), "leader");
         assert_eq!(register.function.as_str(), "register");
         assert_eq!(register.arguments[1], Argument::Input(1));
-
-        let destroy_zero = move_call(&ptb.commands[2]);
-        assert_eq!(destroy_zero.package, addr("0x2"));
-        assert_eq!(destroy_zero.module.as_str(), "coin");
-        assert_eq!(destroy_zero.function.as_str(), "destroy_zero");
         assert_eq!(
-            destroy_zero.type_arguments,
-            vec![crate::move_bindings::type_tag::<US>(&objects)]
+            ptb.commands.len(),
+            2,
+            "the registration coin must remain owned so any unused balance is preserved"
         );
-        assert_eq!(destroy_zero.arguments, vec![Argument::Input(1)]);
     }
 }

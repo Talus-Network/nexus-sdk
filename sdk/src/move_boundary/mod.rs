@@ -138,7 +138,24 @@ impl<'a> NexusPtbBuilder<'a> {
         )
     }
 
-    /// Withdraws SUI from the sender's address balance and redeems it as a coin.
+    /// Withdraws the requested asset from the sender address balance and
+    /// redeems it as a coin of the same type.
+    ///
+    /// Callers must use this same type when returning any remaining balance.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
+    /// be built.
+    pub fn withdraw_coin_from_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        amount: u64,
+    ) -> Result<Argument, BuildError> {
+        self.tx.funds_withdrawal_coin(coin_type, amount)
+    }
+
+    /// Withdraws SUI from the sender address balance and redeems it as a coin.
     ///
     /// # Errors
     ///
@@ -146,7 +163,27 @@ impl<'a> NexusPtbBuilder<'a> {
     /// be built.
     pub fn withdraw_sui_coin(&mut self, amount: u64) -> Result<Argument, BuildError> {
         let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
-        self.tx.funds_withdrawal_coin(sui_type, amount)
+        self.withdraw_coin_from_address_balance(sui_type, amount)
+    }
+
+    /// Consumes a coin and credits its value to the recipient address balance
+    /// using the same asset type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipient input or transfer call cannot be
+    /// built.
+    pub fn send_coin_to_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        let recipient = self.tx.arg(&recipient)?;
+        let mut target = CallTarget::new(sui::types::Address::TWO, "coin", "send_funds")?;
+        target.type_arguments = vec![coin_type];
+        self.call_raw_target(target, vec![coin, recipient])?;
+        Ok(())
     }
 
     /// Consumes a SUI coin and credits its value to an address balance.
@@ -160,11 +197,8 @@ impl<'a> NexusPtbBuilder<'a> {
         coin: Argument,
         recipient: sui::types::Address,
     ) -> anyhow::Result<()> {
-        let recipient = self.tx.arg(&recipient)?;
-        let mut target = CallTarget::new(sui::types::Address::TWO, "coin", "send_funds")?;
-        target.push_type_arg::<sui_framework::sui::SUI>();
-        self.call_raw_target(target, vec![coin, recipient])?;
-        Ok(())
+        let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
+        self.send_coin_to_address_balance(sui_type, coin, recipient)
     }
 
     fn call_target_with_ascii(

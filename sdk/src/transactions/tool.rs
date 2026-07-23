@@ -57,7 +57,10 @@ impl ToolCollateral<'_> {
     fn ptb_argument(self, tx: &mut move_boundary::NexusPtbBuilder<'_>) -> anyhow::Result<Argument> {
         match self {
             Self::Coin(coin) => Ok(tx.owned_object(coin)?),
-            Self::AddressBalance(amount) => Ok(tx.withdraw_sui_coin(amount)?),
+            Self::AddressBalance(amount) => {
+                let us_type = tx.objects().us_token.type_tag();
+                Ok(tx.withdraw_coin_from_address_balance(us_type, amount)?)
+            }
         }
     }
 
@@ -68,7 +71,8 @@ impl ToolCollateral<'_> {
         recipient: sui::types::Address,
     ) -> anyhow::Result<()> {
         if matches!(self, Self::AddressBalance(_)) {
-            tx.send_sui_to_address_balance(coin, recipient)?;
+            let us_type = tx.objects().us_token.type_tag();
+            tx.send_coin_to_address_balance(us_type, coin, recipient)?;
         }
         Ok(())
     }
@@ -192,7 +196,7 @@ pub fn register_off_chain_for_self_ptb(
 }
 
 /// Builds a [`ProgrammableTransaction`] that registers an off chain tool using
-/// collateral from the sender's address balance.
+/// `$US` collateral from the sender address balance.
 ///
 /// This is the address balance counterpart to
 /// [`register_off_chain_for_self_ptb`].
@@ -205,14 +209,14 @@ pub fn register_off_chain_for_self_with_address_balance_ptb(
     objects: &NexusObjects,
     meta: &ToolMeta,
     address: sui::types::Address,
-    collateral_mist: u64,
+    collateral_us: u64,
     invocation_cost_mist: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     register_off_chain_for_self_with_collateral_ptb(
         objects,
         meta,
         address,
-        ToolCollateral::AddressBalance(collateral_mist),
+        ToolCollateral::AddressBalance(collateral_us),
         invocation_cost_mist,
     )
 }
@@ -235,9 +239,9 @@ fn register_off_chain_for_self_with_collateral_ptb(
     })
 }
 
-fn batch_collateral_mist(
+fn batch_collateral_us(
     registrations: &[OffChainToolRegistration],
-    collateral_per_tool_mist: u64,
+    collateral_per_tool_us: u64,
 ) -> anyhow::Result<u64> {
     if registrations.is_empty() {
         bail!("off chain tool registration batch must not be empty");
@@ -255,7 +259,7 @@ fn batch_collateral_mist(
 
     let tool_count = u64::try_from(registrations.len())
         .context("tool registration count does not fit in u64")?;
-    collateral_per_tool_mist
+    collateral_per_tool_us
         .checked_mul(tool_count)
         .context("aggregate tool collateral overflows u64")
 }
@@ -286,7 +290,7 @@ fn compose_off_chain_registration(
 /// [`OffChainToolRegistration`] values and their initial network authorization
 /// keys.
 ///
-/// The transaction uses one withdrawal from the owner's address balance.
+/// The transaction uses one `$US` withdrawal from the owner address balance.
 ///
 /// # Errors
 ///
@@ -297,13 +301,14 @@ pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
     objects: &NexusObjects,
     registrations: &[OffChainToolRegistration],
     owner: sui::types::Address,
-    collateral_per_tool_mist: u64,
+    collateral_per_tool_us: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
-    let collateral_mist = batch_collateral_mist(registrations, collateral_per_tool_mist)?;
+    let collateral_us = batch_collateral_us(registrations, collateral_per_tool_us)?;
+    let collateral = ToolCollateral::AddressBalance(collateral_us);
 
     move_boundary::ptb(objects, |tx| {
         let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
-        let pay_with = tx.withdraw_sui_coin(collateral_mist)?;
+        let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
         let mut registered_tools = Vec::with_capacity(registrations.len());
 
@@ -320,8 +325,7 @@ pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
         }
 
         finish_registrations(tx, &registered_tools, owner)?;
-        tx.send_sui_to_address_balance(pay_with, owner)?;
-        Ok(())
+        collateral.return_remainder(tx, pay_with, owner)
     })
 }
 
@@ -367,7 +371,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
 }
 
 /// Builds a [`ProgrammableTransaction`] that registers an on chain tool using
-/// collateral from the sender's address balance.
+/// `$US` collateral from the sender address balance.
 ///
 /// This is the address balance counterpart to
 /// [`register_on_chain_for_self_with_workflow_authorization_cap_ptb`].
@@ -387,7 +391,7 @@ pub fn register_on_chain_for_self_with_address_balance_ptb(
     output_schema: &str,
     timeout: Duration,
     tool_witness_id: sui::types::Address,
-    collateral_mist: u64,
+    collateral_us: u64,
     address: sui::types::Address,
     workflow_authorization_cap_first: bool,
 ) -> anyhow::Result<ProgrammableTransaction> {
@@ -401,7 +405,7 @@ pub fn register_on_chain_for_self_with_address_balance_ptb(
         output_schema,
         timeout,
         tool_witness_id,
-        ToolCollateral::AddressBalance(collateral_mist),
+        ToolCollateral::AddressBalance(collateral_us),
         address,
         workflow_authorization_cap_first,
     )
@@ -643,11 +647,7 @@ pub fn update_tool_timeout_ptb(
 mod tests {
     use {
         super::*,
-        crate::{
-            move_bindings::sui_framework::sui::SUI,
-            test_utils::sui_mocks,
-            types::DefaultDagExecutorTarget,
-        },
+        crate::{test_utils::sui_mocks, types::DefaultDagExecutorTarget},
         sui::types::{Command, WithdrawFrom},
         sui_move_call::CallArg,
     };
@@ -705,7 +705,7 @@ mod tests {
             .collect()
     }
 
-    fn assert_sui_address_balance_withdrawal(
+    fn assert_us_address_balance_withdrawal(
         objects: &NexusObjects,
         ptb: &ProgrammableTransaction,
         expected_amount: u64,
@@ -721,28 +721,26 @@ mod tests {
 
         assert_eq!(withdrawal.source(), WithdrawFrom::Sender);
         assert_eq!(withdrawal.amount(), Some(expected_amount));
-        assert_eq!(
-            withdrawal.coin_type(),
-            &crate::move_bindings::type_tag::<SUI>(objects)
-        );
-        assert!(ptb.commands.iter().any(|command| {
-            matches!(
-                command,
-                Command::MoveCall(call)
-                    if call.package == sui::types::Address::from_static("0x2")
-                        && call.module.as_str() == "coin"
-                        && call.function.as_str() == "redeem_funds"
-            )
-        }));
-        assert!(ptb.commands.iter().any(|command| {
-            matches!(
-                command,
-                Command::MoveCall(call)
-                    if call.package == sui::types::Address::TWO
-                        && call.module.as_str() == "coin"
-                        && call.function.as_str() == "send_funds"
-            )
-        }));
+        let us_type = objects.us_token.type_tag();
+        assert_eq!(withdrawal.coin_type(), &us_type);
+
+        for function in ["redeem_funds", "send_funds"] {
+            let call = ptb
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    Command::MoveCall(call)
+                        if call.package == sui::types::Address::TWO
+                            && call.module.as_str() == "coin"
+                            && call.function.as_str() == function =>
+                    {
+                        Some(call)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("expected coin::{function} call"));
+            assert_eq!(call.type_arguments, vec![us_type.clone()]);
+        }
     }
 
     fn batch_registration(name: &str, key_byte: u8) -> OffChainToolRegistration {
@@ -967,7 +965,7 @@ mod tests {
             })
             .expect("single registration must transfer both capabilities");
         assert_eq!(transfer.objects.len(), 2);
-        assert_sui_address_balance_withdrawal(&objects, &ptb, 7);
+        assert_us_address_balance_withdrawal(&objects, &ptb, 7);
     }
 
     #[test]
@@ -1041,7 +1039,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(first, second);
-        assert_sui_address_balance_withdrawal(&objects, &first, 14);
+        assert_us_address_balance_withdrawal(&objects, &first, 14);
         assert_eq!(
             first
                 .inputs
@@ -1128,7 +1126,7 @@ mod tests {
             register_off_chain_for_self_with_address_balance_ptb(&objects, &meta, address, 42, 7)
                 .unwrap();
 
-        assert_sui_address_balance_withdrawal(&objects, &ptb, 42);
+        assert_us_address_balance_withdrawal(&objects, &ptb, 42);
     }
 
     #[test]
@@ -1155,7 +1153,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_sui_address_balance_withdrawal(&objects, &ptb, 42);
+        assert_us_address_balance_withdrawal(&objects, &ptb, 42);
     }
 
     #[test]
