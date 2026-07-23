@@ -3,25 +3,15 @@ use {
         move_bindings::{
             interface::{
                 agent as agent_binding,
-                agent::{FixedTool, SkillRecurrenceKind, SkillSchedulePolicy},
-                authorization::{self as authorization_binding, AgentVertexAuthorizationTemplate},
+                agent::{FixedTool, SkillSchedulePolicy},
                 payment::{self as payment_binding, SkillPaymentPolicy},
             },
-            primitives::data::NexusData,
             registry::agent_registry as agent_registry_binding,
-            scheduler::scheduler as scheduler_binding,
-            sui_framework::{object::ID as MoveObjectId, transfer as transfer_binding},
         },
         move_boundary,
         sui,
-        transactions::{agent_input::AgentInput, scheduler::OccurrenceGenerator},
-        types::{
-            effective_priority_fee_percentage,
-            AgentId,
-            NexusObjects,
-            SkillId,
-            TapPublishArtifact,
-        },
+        transactions::agent_input::AgentInput,
+        types::{NexusObjects, SkillId, TapPublishArtifact},
     },
     sui::types::ProgrammableTransaction,
 };
@@ -248,246 +238,28 @@ pub(crate) fn bind_agent_skill_ptb(
     })
 }
 
-#[derive(Clone, Debug)]
-pub(crate) enum AgentTaskPaymentPtbInput {
-    UserFunded {
-        prepay_amount_mist: u64,
-        refund_recipient: Option<sui::types::Address>,
-        occurrence_budget_mist: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-    AgentVault {
-        prepay_amount_mist: u64,
-        occurrence_budget_mist: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn create_agent_task_ptb(
-    objects: &NexusObjects,
-    sender: sui::types::Address,
-    metadata: &[(String, String)],
-    generator: OccurrenceGenerator,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
-    agent_id: AgentId,
-    agent: AgentInput,
-    skill_id: SkillId,
-    payment: &AgentTaskPaymentPtbInput,
-) -> anyhow::Result<ProgrammableTransaction> {
-    let execution_selected_dag = match payment {
-        AgentTaskPaymentPtbInput::UserFunded { selected_dag, .. }
-        | AgentTaskPaymentPtbInput::AgentVault { selected_dag, .. } => *selected_dag,
-    };
-
-    move_boundary::ptb(objects, |tx| {
-        let metadata = crate::transactions::scheduler::new_metadata(tx, metadata.iter().cloned())?;
-        let constraints = crate::transactions::scheduler::new_constraints_policy(tx, generator)?;
-        let execution = crate::transactions::scheduler::new_agent_execution_policy(
-            tx,
-            priority_fee_percentage,
-            entry_group,
-            input_data,
-            agent_id,
-            skill_id,
-            execution_selected_dag,
-        )?;
-        let registry = tx.shared_object(&objects.agent_registry, true)?;
-
-        let task = match payment {
-            AgentTaskPaymentPtbInput::UserFunded {
-                prepay_amount_mist,
-                refund_recipient,
-                occurrence_budget_mist,
-                selected_dag,
-                authorization_templates,
-            } => {
-                let agent = agent.clone().immutable_ptb_argument(tx)?;
-                let prepayment_coin = tx.withdraw_sui_coin(*prepay_amount_mist)?;
-                new_invoker_funded_agent_task(
-                    tx,
-                    metadata,
-                    constraints,
-                    execution,
-                    registry,
-                    agent,
-                    agent_id,
-                    priority_fee_percentage,
-                    entry_group,
-                    input_data,
-                    skill_id,
-                    *selected_dag,
-                    prepayment_coin,
-                    refund_recipient.unwrap_or(sender),
-                    *occurrence_budget_mist,
-                    authorization_templates.clone(),
-                )?
-            }
-            AgentTaskPaymentPtbInput::AgentVault {
-                prepay_amount_mist,
-                occurrence_budget_mist,
-                selected_dag,
-                authorization_templates,
-            } => {
-                let agent = agent.clone().mutable_ptb_argument(tx)?;
-                new_agent_funded_task(
-                    tx,
-                    metadata,
-                    constraints,
-                    execution,
-                    registry,
-                    agent,
-                    agent_id,
-                    priority_fee_percentage,
-                    entry_group,
-                    input_data,
-                    skill_id,
-                    *selected_dag,
-                    *prepay_amount_mist,
-                    *occurrence_budget_mist,
-                    authorization_templates.clone(),
-                )?
-            }
-        };
-
-        tx.call_target(
-            transfer_binding::public_share_object_target::<scheduler_binding::Task>,
-            vec![task],
-        )?;
-        Ok(())
-    })
-}
-
-/// PTB template to create a sender-owned invoker-funded scheduled task for an explicit agent.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn new_invoker_funded_agent_task(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    metadata: sui::types::Argument,
-    constraints: sui::types::Argument,
-    execution: sui::types::Argument,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    agent_id: AgentId,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
-    skill_id: SkillId,
-    selected_dag: Option<sui::types::Address>,
-    prepayment_coin: sui::types::Argument,
-    refund_recipient: sui::types::Address,
-    occurrence_budget_mist: u64,
-    authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-) -> anyhow::Result<sui::types::Argument> {
-    let agent_config = scheduled_agent_execution_config_arg(
-        tx,
-        agent_id,
-        priority_fee_percentage,
-        entry_group,
-        input_data,
-        skill_id,
-        selected_dag,
-        &authorization_templates,
-    )?;
-    let refund_recipient = tx.arg(&refund_recipient)?;
-    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
-    tx.call_target(
-        scheduler_binding::new_invoker_funded_agent_task_target,
-        vec![
-            metadata,
-            constraints,
-            execution,
-            registry,
-            agent,
-            agent_config,
-            prepayment_coin,
-            refund_recipient,
-            occurrence_budget_mist,
-        ],
-    )
-}
-
-/// PTB template to create an agent-owned scheduled task with agent-vault reserve components.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn new_agent_funded_task(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    metadata: sui::types::Argument,
-    constraints: sui::types::Argument,
-    execution: sui::types::Argument,
-    registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    agent_id: AgentId,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
-    skill_id: SkillId,
-    selected_dag: Option<sui::types::Address>,
-    prepay_amount_mist: u64,
-    occurrence_budget_mist: u64,
-    authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-) -> anyhow::Result<sui::types::Argument> {
-    let agent_config = scheduled_agent_execution_config_arg(
-        tx,
-        agent_id,
-        priority_fee_percentage,
-        entry_group,
-        input_data,
-        skill_id,
-        selected_dag,
-        &authorization_templates,
-    )?;
-    let prepay_amount_mist = tx.arg(&prepay_amount_mist)?;
-    let occurrence_budget_mist = tx.arg(&occurrence_budget_mist)?;
-    tx.call_target(
-        scheduler_binding::new_agent_funded_task_target,
-        vec![
-            metadata,
-            constraints,
-            execution,
-            registry,
-            agent,
-            agent_config,
-            prepay_amount_mist,
-            occurrence_budget_mist,
-        ],
-    )
-}
-
 fn schedule_policy_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let recurrence = match &schedule_policy.recurrence {
-        SkillRecurrenceKind::Once => {
-            tx.call_target(agent_binding::recurrence_once_target, vec![])?
-        }
-        SkillRecurrenceKind::Recursive {
+    match schedule_policy {
+        SkillSchedulePolicy::Once => tx.call_target(agent_binding::schedule_once_target, vec![]),
+        SkillSchedulePolicy::Recurring {
             min_interval_ms,
             max_occurrences,
         } => {
             let min_interval_ms = tx.arg(min_interval_ms)?;
-            let max_occurrences = option_u64_arg(tx, objects, max_occurrences.as_option())?;
+            let max_occurrences = option_u64_arg(tx, max_occurrences.as_option())?;
             tx.call_target(
-                agent_binding::recurrence_recursive_target,
+                agent_binding::schedule_recurring_target,
                 vec![min_interval_ms, max_occurrences],
-            )?
+            )
         }
-    };
-    let allow_recursive = tx.arg(&schedule_policy.allow_recursive)?;
-
-    tx.call_target(
-        agent_binding::schedule_policy_target,
-        vec![recurrence, allow_recursive],
-    )
+    }
 }
 
 fn option_u64_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    _objects: &NexusObjects,
     value: Option<&u64>,
 ) -> anyhow::Result<sui::types::Argument> {
     match value {
@@ -517,103 +289,6 @@ fn payment_policy_arg(
     })
 }
 
-fn option_id_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    _objects: &NexusObjects,
-    value: Option<sui::types::Address>,
-) -> anyhow::Result<sui::types::Argument> {
-    match value {
-        Some(value) => {
-            let value = tx.object_id(value)?;
-            Ok(tx.option::<MoveObjectId>(Some(value))?)
-        }
-        None => Ok(tx.option::<MoveObjectId>(None)?),
-    }
-}
-
-pub(crate) fn default_agent_execution_config_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    dag_id: sui::types::Argument,
-    network: sui::types::Argument,
-    entry_group: sui::types::Argument,
-    inputs: sui::types::Argument,
-    priority_fee_percentage: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(
-        agent_binding::new_default_agent_execution_config_target,
-        vec![
-            dag_id,
-            network,
-            entry_group,
-            inputs,
-            priority_fee_percentage,
-        ],
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn agent_execution_config_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    agent_id: sui::types::Argument,
-    network: sui::types::Argument,
-    entry_group: sui::types::Argument,
-    inputs: sui::types::Argument,
-    priority_fee_percentage: sui::types::Argument,
-    skill_id: SkillId,
-    selected_dag: Option<sui::types::Address>,
-    authorization_templates: &[AgentVertexAuthorizationTemplate],
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let skill_id = tx.arg(&skill_id)?;
-    let selected_dag = option_id_arg(tx, objects, selected_dag)?;
-    let authorization_templates =
-        scheduled_vertex_authorization_templates_arg(tx, authorization_templates)?;
-    tx.call_target(
-        agent_binding::new_agent_execution_config_target,
-        vec![
-            agent_id,
-            network,
-            entry_group,
-            inputs,
-            priority_fee_percentage,
-            skill_id,
-            selected_dag,
-            authorization_templates,
-        ],
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn scheduled_agent_execution_config_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    agent_id: AgentId,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &std::collections::HashMap<String, std::collections::HashMap<String, NexusData>>,
-    skill_id: SkillId,
-    selected_dag: Option<sui::types::Address>,
-    authorization_templates: &[AgentVertexAuthorizationTemplate],
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let agent_id = tx.object_id(agent_id)?;
-    let network = tx.object_id(objects.network_id)?;
-    let entry_group = tx.graph_entry_group(entry_group)?;
-    let inputs = crate::transactions::scheduler::build_inputs_vec_map(tx, input_data)?;
-    let priority_fee_percentage =
-        tx.arg(&effective_priority_fee_percentage(priority_fee_percentage)?)?;
-    agent_execution_config_arg(
-        tx,
-        agent_id,
-        network,
-        entry_group,
-        inputs,
-        priority_fee_percentage,
-        skill_id,
-        selected_dag,
-        authorization_templates,
-    )
-}
-
 fn fixed_tool_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     fixed_tool: &FixedTool,
@@ -636,28 +311,4 @@ fn fixed_tools_arg(
         .map(|fixed_tool| fixed_tool_arg(tx, fixed_tool))
         .collect::<anyhow::Result<Vec<_>>>()?;
     Ok(tx.move_vector::<FixedTool>(fixed_tools)?)
-}
-
-fn scheduled_vertex_authorization_template_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    template: &AgentVertexAuthorizationTemplate,
-) -> anyhow::Result<sui::types::Argument> {
-    let skill_id = tx.arg(&template.skill_id)?;
-    let vertex = tx.ascii_string(&template.vertex)?;
-    let recipient_id = tx.object_id(template.recipient_id.into())?;
-    tx.call_target(
-        authorization_binding::agent_vertex_authorization_template_target,
-        vec![skill_id, vertex, recipient_id],
-    )
-}
-
-fn scheduled_vertex_authorization_templates_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    authorization_templates: &[AgentVertexAuthorizationTemplate],
-) -> anyhow::Result<sui::types::Argument> {
-    let authorization_templates = authorization_templates
-        .iter()
-        .map(|template| scheduled_vertex_authorization_template_arg(tx, template))
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    Ok(tx.move_vector::<AgentVertexAuthorizationTemplate>(authorization_templates)?)
 }

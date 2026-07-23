@@ -18,6 +18,7 @@ pub(crate) enum ArtifactPaymentMode {
     AgentFunded,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_skill_artifact(
     skill_name: String,
     dag_id: sui::types::Address,
@@ -27,7 +28,6 @@ pub(crate) async fn create_skill_artifact(
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
-    allow_recursive: bool,
     fixed_tool: Vec<String>,
     out: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
@@ -44,7 +44,6 @@ pub(crate) async fn create_skill_artifact(
         recurrence_kind,
         min_interval_ms,
         max_occurrences,
-        allow_recursive,
         fixed_tool,
     )?;
     let artifact_json =
@@ -72,7 +71,6 @@ fn build_artifact(
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
-    allow_recursive: bool,
     fixed_tool: Vec<String>,
 ) -> AnyResult<TapPublishArtifact, NexusCliError> {
     if skill_name.trim().is_empty() {
@@ -80,12 +78,8 @@ fn build_artifact(
     }
 
     let payment_policy = payment_policy_from_cli(payment_mode, agent_funded_max_budget_mist)?;
-    let schedule_policy = schedule_policy_from_cli(
-        &recurrence_kind,
-        min_interval_ms,
-        max_occurrences,
-        allow_recursive,
-    )?;
+    let schedule_policy =
+        schedule_policy_from_cli(&recurrence_kind, min_interval_ms, max_occurrences)?;
     let fixed_tools = fixed_tool
         .into_iter()
         .map(parse_fixed_tool)
@@ -196,7 +190,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             vec![format!(
                 "{}=xyz.taluslabs.sum@1",
                 sui::types::Address::from_static("0xf")
@@ -230,7 +223,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             Vec::new(),
         )
         .expect_err("user funded cannot carry agent budget");
@@ -251,7 +243,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             Vec::new(),
         )
         .expect_err("agent funded requires budget");

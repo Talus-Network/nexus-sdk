@@ -230,13 +230,8 @@
                   "ty": "Address"
                 },
                 {
-                  "name": "priority_fee_percentage",
-                  "position": 5,
-                  "ty": "U64"
-                },
-                {
                   "name": "authorization_templates",
-                  "position": 6,
+                  "position": 5,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -362,58 +357,6 @@
           "type_name": {
             "address": "0xa2",
             "module": "agent",
-            "name": "ExecutionPaymentHistoryFieldKey"
-          },
-          "module": "agent",
-          "name": "ExecutionPaymentHistoryFieldKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "resolved",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "agent",
-            "name": "ExecutionPaymentReceiptFieldKey"
-          },
-          "module": "agent",
-          "name": "ExecutionPaymentReceiptFieldKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "execution_id",
-                  "position": 0,
-                  "ty": "Address"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "agent",
             "name": "ExecutionSelection"
           },
           "module": "agent",
@@ -505,6 +448,163 @@
           "type_name": {
             "address": "0xa2",
             "module": "agent",
+            "name": "ExecutionSpec"
+          },
+          "module": "agent",
+          "name": "ExecutionSpec",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dag_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "agent_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "skill_id",
+                  "position": 2,
+                  "ty": "U64"
+                },
+                {
+                  "name": "interface_version",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "version",
+                        "name": "InterfaceVersion"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "network",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "entry_group",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "graph",
+                        "name": "EntryGroup"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "inputs",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "graph",
+                              "name": "Vertex"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "vec_map",
+                              "name": "VecMap"
+                            },
+                            "type_arguments": [
+                              {
+                                "Datatype": {
+                                  "type_name": {
+                                    "address": "0xa2",
+                                    "module": "graph",
+                                    "name": "InputPort"
+                                  },
+                                  "type_arguments": []
+                                }
+                              },
+                              {
+                                "Datatype": {
+                                  "type_name": {
+                                    "address": "0xa1",
+                                    "module": "data",
+                                    "name": "NexusData"
+                                  },
+                                  "type_arguments": []
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "invoker",
+                  "position": 7,
+                  "ty": "Address"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa2",
+            "module": "agent",
             "name": "FixedTool"
           },
           "module": "agent",
@@ -554,32 +654,6 @@
           "type_name": {
             "address": "0xa2",
             "module": "agent",
-            "name": "ScheduledPaymentReserveReceiptFieldKey"
-          },
-          "module": "agent",
-          "name": "ScheduledPaymentReserveReceiptFieldKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "scheduled_task_id",
-                  "position": 0,
-                  "ty": "Address"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "agent",
             "name": "SkillDagBinding"
           },
           "module": "agent",
@@ -608,59 +682,6 @@
                   "name": "RuntimeSelected",
                   "position": 1,
                   "fields": []
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "agent",
-            "name": "SkillRecurrenceKind"
-          },
-          "module": "agent",
-          "name": "SkillRecurrenceKind",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "Once",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "Recursive",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "min_interval_ms",
-                      "position": 0,
-                      "ty": "U64"
-                    },
-                    {
-                      "name": "max_occurrences",
-                      "position": 1,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x1",
-                            "module": "option",
-                            "name": "Option"
-                          },
-                          "type_arguments": [
-                            "U64"
-                          ]
-                        }
-                      }
-                    }
-                  ]
                 }
               ]
             }
@@ -753,26 +774,39 @@
           ],
           "type_parameters": [],
           "kind": {
-            "Struct": {
-              "fields": [
+            "Enum": {
+              "variants": [
                 {
-                  "name": "recurrence",
+                  "name": "Once",
                   "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "SkillRecurrenceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
+                  "fields": []
                 },
                 {
-                  "name": "allow_recursive",
+                  "name": "Recurring",
                   "position": 1,
-                  "ty": "Bool"
+                  "fields": [
+                    {
+                      "name": "min_interval_ms",
+                      "position": 0,
+                      "ty": "U64"
+                    },
+                    {
+                      "name": "max_occurrences",
+                      "position": 1,
+                      "ty": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x1",
+                            "module": "option",
+                            "name": "Option"
+                          },
+                          "type_arguments": [
+                            "U64"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -780,86 +814,6 @@
         }
       ],
       "functions": [
-        {
-          "name": "accomplish_execution_payment_from_vault",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "add_payment_history_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "resolved",
-              "ty": "Bool"
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": []
-        },
         {
           "name": "agent_execution_config_agent_id",
           "visibility": "Public",
@@ -963,6 +917,35 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "agent_execution_config_is_default",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "AgentExecutionConfig"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         },
         {
@@ -1514,101 +1497,7 @@
           ]
         },
         {
-          "name": "borrow_payment_history_list",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "resolved",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "payment",
-                      "name": "ExecutionPaymentHistoryList"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "borrow_vault_payment_receipt_mut",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "payment",
-                      "name": "ExecutionPaymentReceipt"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "cancel_scheduled_reserve_to_vault",
+          "name": "cancel_task_reserve_to_vault",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -1641,7 +1530,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -1937,7 +1826,6 @@
               }
             },
             "Address",
-            "U64",
             {
               "Datatype": {
                 "type_name": {
@@ -1960,116 +1848,6 @@
                 }
               }
             }
-          ]
-        },
-        {
-          "name": "destroy_execution_payment_receipt",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentReceipt"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "execution_payment_history_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "resolved",
-              "ty": "Bool"
-            },
-            {
-              "name": "index",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "execution_payment_history_len",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "resolved",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         },
         {
@@ -2272,6 +2050,482 @@
           ]
         },
         {
+          "name": "execution_spec",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "agent_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "skill_id",
+              "ty": "U64"
+            },
+            {
+              "name": "interface_version",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "version",
+                    "name": "InterfaceVersion"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "network",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "entry_group",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "graph",
+                    "name": "EntryGroup"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "inputs",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa2",
+                          "module": "graph",
+                          "name": "Vertex"
+                        },
+                        "type_arguments": []
+                      }
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "vec_map",
+                          "name": "VecMap"
+                        },
+                        "type_arguments": [
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "graph",
+                                "name": "InputPort"
+                              },
+                              "type_arguments": []
+                            }
+                          },
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa1",
+                                "module": "data",
+                                "name": "NexusData"
+                              },
+                              "type_arguments": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "invoker",
+              "ty": "Address"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "agent",
+                  "name": "ExecutionSpec"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_agent_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_dag_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_entry_group",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "graph",
+                  "name": "EntryGroup"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_inputs",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "graph",
+                        "name": "Vertex"
+                      },
+                      "type_arguments": []
+                    }
+                  },
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "graph",
+                              "name": "InputPort"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "data",
+                              "name": "NexusData"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_interface_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "version",
+                  "name": "InterfaceVersion"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_invoker",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Address"
+          ]
+        },
+        {
+          "name": "execution_spec_network",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "execution_spec_skill_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "fixed_tool",
           "visibility": "Public",
           "is_entry": false,
@@ -2384,39 +2638,6 @@
           ]
         },
         {
-          "name": "has_scheduled_payment_reserve_receipt",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scheduled_task_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "new_agent_execution_config",
           "visibility": "Public",
           "is_entry": false,
@@ -2517,10 +2738,6 @@
               }
             },
             {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
               "name": "skill_id",
               "ty": "U64"
             },
@@ -2596,226 +2813,6 @@
           ]
         },
         {
-          "name": "new_agent_skill_payment_for_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "interface_revision",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "version",
-                    "name": "InterfaceVersion"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "payment_policy",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "SkillPaymentPolicy"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "coin",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "coin",
-                    "name": "Coin"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPayment"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_agent_skill_payment_from_vault_for_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "interface_revision",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "version",
-                    "name": "InterfaceVersion"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "payment_policy",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "SkillPaymentPolicy"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "max_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPayment"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "new_agent_vertex_authorization_grants",
           "visibility": "Private",
           "is_entry": false,
@@ -2870,13 +2867,13 @@
               }
             },
             {
-              "name": "trigger",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa2",
-                    "module": "authorization",
-                    "name": "AuthorizationTrigger"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -3025,10 +3022,6 @@
               }
             },
             {
-              "name": "priority_fee_percentage",
-              "ty": "U64"
-            },
-            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -3061,116 +3054,7 @@
           ]
         },
         {
-          "name": "new_execution_vertex_authorization_grants",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
-            },
-            {
-              "name": "interface_version",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "version",
-                    "name": "InterfaceVersion"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "grant_templates",
-              "ty": {
-                "Vector": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa2",
-                      "module": "authorization",
-                      "name": "AgentVertexAuthorizationTemplate"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "authorization",
-                    "name": "Grant"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "authorization",
-                          "name": "AgentVertexAuthorization"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_scheduled_skill_components_address_funded_with_grants",
+          "name": "new_task_components_address_funded_with_grants",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3220,7 +3104,7 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3331,7 +3215,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "payment",
-                  "name": "ScheduledPaymentReserve"
+                  "name": "TaskPaymentReserve"
                 },
                 "type_arguments": []
               }
@@ -3339,7 +3223,7 @@
           ]
         },
         {
-          "name": "new_scheduled_skill_components_from_agent_vault_with_grants",
+          "name": "new_task_components_from_agent_vault_with_grants",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3389,7 +3273,7 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -3476,7 +3360,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "payment",
-                  "name": "ScheduledPaymentReserve"
+                  "name": "TaskPaymentReserve"
                 },
                 "type_arguments": []
               }
@@ -3484,7 +3368,7 @@
           ]
         },
         {
-          "name": "new_scheduled_task_vertex_authorization_grants",
+          "name": "new_task_vertex_authorization_grants",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3593,123 +3477,6 @@
           ]
         },
         {
-          "name": "recurrence_max_occurrences",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "recurrence",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "SkillRecurrenceKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  "U64"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "recurrence_min_interval_ms",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "recurrence",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "SkillRecurrenceKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "recurrence_once",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "agent",
-                  "name": "SkillRecurrenceKind"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "recurrence_recursive",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "min_interval_ms",
-              "ty": "U64"
-            },
-            {
-              "name": "max_occurrences",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
-                  },
-                  "type_arguments": [
-                    "U64"
-                  ]
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "agent",
-                  "name": "SkillRecurrenceKind"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "refill_execution_payment_from_agent_vault_balance",
           "visibility": "Public",
           "is_entry": false,
@@ -3761,7 +3528,7 @@
           ]
         },
         {
-          "name": "refund_execution_payment_from_vault",
+          "name": "refill_task_reserve_from_vault",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3785,7 +3552,7 @@
               }
             },
             {
-              "name": "payment",
+              "name": "reserve",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -3794,7 +3561,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ExecutionPayment"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -3803,45 +3570,8 @@
               }
             },
             {
-              "name": "refund_reason",
-              "ty": {
-                "Vector": "U8"
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "remove_payment_history_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "resolved",
-              "ty": "Bool"
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
+              "name": "amount",
+              "ty": "U64"
             }
           ],
           "return_types": []
@@ -3974,77 +3704,11 @@
           ]
         },
         {
-          "name": "resolve_vault_payment_receipt",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
-            },
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "schedule_policy",
+          "name": "schedule_once",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
-          "parameters": [
-            {
-              "name": "recurrence",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "agent",
-                    "name": "SkillRecurrenceKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "allow_recursive",
-              "ty": "Bool"
-            }
-          ],
+          "parameters": [],
           "return_types": [
             {
               "Datatype": {
@@ -4059,7 +3723,7 @@
           ]
         },
         {
-          "name": "schedule_policy_allow_recursive",
+          "name": "schedule_policy_allows_recurrence",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4083,7 +3747,7 @@
           ]
         },
         {
-          "name": "schedule_policy_recurrence",
+          "name": "schedule_policy_max_occurrences",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4106,9 +3770,74 @@
             {
               "Datatype": {
                 "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  "U64"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "schedule_policy_min_interval_ms",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "policy",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "SkillSchedulePolicy"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "schedule_recurring",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "min_interval_ms",
+              "ty": "U64"
+            },
+            {
+              "name": "max_occurrences",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "option",
+                    "name": "Option"
+                  },
+                  "type_arguments": [
+                    "U64"
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
                   "address": "0xa2",
                   "module": "agent",
-                  "name": "SkillRecurrenceKind"
+                  "name": "SkillSchedulePolicy"
                 },
                 "type_arguments": []
               }
@@ -4181,131 +3910,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "store_payment_history_lists",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "store_scheduled_payment_reserve_receipt",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "receipt",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ScheduledPaymentReserveReceipt"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "store_vault_payment_receipt",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "agent",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "agent",
-                        "name": "Agent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "receipt",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentReceipt"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
         },
         {
           "name": "withdraw_agent_payment_vault",
@@ -4542,14 +4146,14 @@
                   }
                 },
                 {
-                  "name": "trigger",
+                  "name": "task_id",
                   "position": 4,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa2",
-                        "module": "authorization",
-                        "name": "AuthorizationTrigger"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
                       "type_arguments": []
                     }
@@ -4638,27 +4242,16 @@
                   }
                 },
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 5,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
                       },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
+                      "type_arguments": []
                     }
                   }
                 }
@@ -4715,67 +4308,6 @@
                       "type_arguments": []
                     }
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "authorization",
-            "name": "AuthorizationTrigger"
-          },
-          "module": "authorization",
-          "name": "AuthorizationTrigger",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "Execution",
-                  "position": 0,
-                  "fields": [
-                    {
-                      "name": "execution_id",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "ScheduledTask",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "task_id",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
                 }
               ]
             }
@@ -5023,6 +4555,44 @@
           ]
         },
         {
+          "name": "agent_vertex_authorization_task_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "authorization",
+                        "name": "AgentVertexAuthorization"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "agent_vertex_authorization_template",
           "visibility": "Public",
           "is_entry": false,
@@ -5178,44 +4748,6 @@
           ]
         },
         {
-          "name": "agent_vertex_authorization_trigger",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "authorization",
-                        "name": "AgentVertexAuthorization"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "authorization",
-                  "name": "AuthorizationTrigger"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "agent_vertex_authorization_vertex",
           "visibility": "Public",
           "is_entry": false,
@@ -5311,160 +4843,6 @@
           ],
           "return_types": [
             "Bool"
-          ]
-        },
-        {
-          "name": "authorization_trigger_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "execution_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "authorization",
-                  "name": "AuthorizationTrigger"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "authorization_trigger_execution_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "trigger",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "authorization",
-                    "name": "AuthorizationTrigger"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "authorization_trigger_scheduled_task",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "task_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "authorization",
-                  "name": "AuthorizationTrigger"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "authorization_trigger_scheduled_task_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "trigger",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "authorization",
-                    "name": "AuthorizationTrigger"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
           ]
         },
         {
@@ -5629,6 +5007,28 @@
           ]
         },
         {
+          "name": "destroy_agent_skill_authorization",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "authorization",
+                    "name": "AgentSkillAuthorization"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "encode_agent_vertex_authorization_context",
           "visibility": "Public",
           "is_entry": false,
@@ -5691,26 +5091,15 @@
               }
             },
             {
-              "name": "scheduled_task_id",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0x1",
-                    "module": "option",
-                    "name": "Option"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "object",
-                          "name": "ID"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
+                  "type_arguments": []
                 }
               }
             }
@@ -5883,13 +5272,13 @@
               }
             },
             {
-              "name": "trigger",
+              "name": "task_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa2",
-                    "module": "authorization",
-                    "name": "AuthorizationTrigger"
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
                   },
                   "type_arguments": []
                 }
@@ -6004,68 +5393,6 @@
                         "name": "ID"
                       },
                       "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "parse_bcs_option_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "bytes",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            },
-            {
-              "name": "offset",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": "U64"
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "option",
-                        "name": "Option"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0x2",
-                              "module": "object",
-                              "name": "ID"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
                     }
                   }
                 ]
@@ -13797,270 +13124,6 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ExecutionPaymentHistoryList"
-          },
-          "module": "payment",
-          "name": "ExecutionPaymentHistoryList",
-          "abilities": [
-            "Store",
-            "Key"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "id",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "execution_ids",
-                  "position": 1,
-                  "ty": {
-                    "Vector": "Address"
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ExecutionPaymentReceipt"
-          },
-          "module": "payment",
-          "name": "ExecutionPaymentReceipt",
-          "abilities": [
-            "Store",
-            "Key"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "id",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "execution_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "payment_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "agent_id",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "skill_id",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "source_kind",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "PaymentSourceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "max_budget_mist",
-                  "position": 6,
-                  "ty": "U64"
-                },
-                {
-                  "name": "resolved",
-                  "position": 7,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ExecutionPaymentReceiptCreatedEvent"
-          },
-          "module": "payment",
-          "name": "ExecutionPaymentReceiptCreatedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "receipt_id",
-                  "position": 0,
-                  "ty": "Address"
-                },
-                {
-                  "name": "execution_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "payment_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "agent_id",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "skill_id",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "source_kind",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "PaymentSourceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "stored_under_agent",
-                  "position": 6,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ExecutionPaymentReceiptResolvedEvent"
-          },
-          "module": "payment",
-          "name": "ExecutionPaymentReceiptResolvedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "receipt_id",
-                  "position": 0,
-                  "ty": "Address"
-                },
-                {
-                  "name": "execution_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "payment_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "agent_id",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "final_state",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentFinalState"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
             "name": "ExecutionPaymentToolCostSnapshottedEvent"
           },
           "module": "payment",
@@ -14525,10 +13588,10 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledOccurrenceFinalState"
+            "name": "SkillPaymentPolicy"
           },
           "module": "payment",
-          "name": "ScheduledOccurrenceFinalState",
+          "name": "SkillPaymentPolicy",
           "abilities": [
             "Copy",
             "Drop",
@@ -14539,19 +13602,20 @@
             "Enum": {
               "variants": [
                 {
-                  "name": "InFlight",
+                  "name": "UserFunded",
                   "position": 0,
                   "fields": []
                 },
                 {
-                  "name": "Accomplished",
+                  "name": "AgentFunded",
                   "position": 1,
-                  "fields": []
-                },
-                {
-                  "name": "Refunded",
-                  "position": 2,
-                  "fields": []
+                  "fields": [
+                    {
+                      "name": "max_budget_mist",
+                      "position": 0,
+                      "ty": "U64"
+                    }
+                  ]
                 }
               ]
             }
@@ -14561,10 +13625,10 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledOccurrencePaymentCreatedEvent"
+            "name": "TaskExecutionPaymentCreated"
           },
           "module": "payment",
-          "name": "ScheduledOccurrencePaymentCreatedEvent",
+          "name": "TaskExecutionPaymentCreated",
           "abilities": [
             "Copy",
             "Drop"
@@ -14574,9 +13638,18 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 0,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
                   "name": "reserve_id",
@@ -14584,7 +13657,7 @@
                   "ty": "Address"
                 },
                 {
-                  "name": "occurrence_index",
+                  "name": "occurrence_id",
                   "position": 2,
                   "ty": "U64"
                 },
@@ -14663,10 +13736,10 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledOccurrencePaymentFinalizedEvent"
+            "name": "TaskExecutionPaymentFinalized"
           },
           "module": "payment",
-          "name": "ScheduledOccurrencePaymentFinalizedEvent",
+          "name": "TaskExecutionPaymentFinalized",
           "abilities": [
             "Copy",
             "Drop"
@@ -14676,9 +13749,18 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 0,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
                   "name": "reserve_id",
@@ -14686,7 +13768,7 @@
                   "ty": "Address"
                 },
                 {
-                  "name": "occurrence_index",
+                  "name": "occurrence_id",
                   "position": 2,
                   "ty": "U64"
                 },
@@ -14741,7 +13823,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledOccurrenceFinalState"
+                        "name": "ExecutionPaymentFinalState"
                       },
                       "type_arguments": []
                     }
@@ -14760,79 +13842,10 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledOccurrenceRecord"
+            "name": "TaskPaymentReserve"
           },
           "module": "payment",
-          "name": "ScheduledOccurrenceRecord",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "occurrence_index",
-                  "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "execution_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "payment_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "interface_revision",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "version",
-                        "name": "InterfaceVersion"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "budget",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "final_state",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceFinalState"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ScheduledPaymentReserve"
-          },
-          "module": "payment",
-          "name": "ScheduledPaymentReserve",
+          "name": "TaskPaymentReserve",
           "abilities": [
             "Store",
             "Key"
@@ -14856,9 +13869,18 @@
                   }
                 },
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 1,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
                   "name": "agent_id",
@@ -14894,7 +13916,7 @@
                   }
                 },
                 {
-                  "name": "agent_skill_authorization_id",
+                  "name": "authorization_id",
                   "position": 5,
                   "ty": {
                     "Datatype": {
@@ -14908,7 +13930,7 @@
                   }
                 },
                 {
-                  "name": "payment_source",
+                  "name": "source",
                   "position": 6,
                   "ty": {
                     "Datatype": {
@@ -14964,38 +13986,6 @@
                       "type_arguments": []
                     }
                   }
-                },
-                {
-                  "name": "in_flight",
-                  "position": 10,
-                  "ty": {
-                    "Vector": {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "payment",
-                          "name": "ScheduledOccurrenceRecord"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  }
-                },
-                {
-                  "name": "payment_receipts",
-                  "position": 11,
-                  "ty": {
-                    "Vector": {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0xa2",
-                          "module": "payment",
-                          "name": "ExecutionPaymentReceipt"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  }
                 }
               ]
             }
@@ -15005,45 +13995,21 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledPaymentReserveReceipt"
+            "name": "TaskPaymentReserveCanceled"
           },
           "module": "payment",
-          "name": "ScheduledPaymentReserveReceipt",
+          "name": "TaskPaymentReserveCanceled",
           "abilities": [
-            "Store",
-            "Key"
+            "Copy",
+            "Drop"
           ],
           "type_parameters": [],
           "kind": {
             "Struct": {
               "fields": [
                 {
-                  "name": "id",
+                  "name": "task_id",
                   "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "scheduled_task_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "reserve_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "agent_id",
-                  "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -15054,181 +14020,6 @@
                       "type_arguments": []
                     }
                   }
-                },
-                {
-                  "name": "skill_id",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "interface_version",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "version",
-                        "name": "InterfaceVersion"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "source_kind",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "PaymentSourceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "prepaid_amount_mist",
-                  "position": 7,
-                  "ty": "U64"
-                },
-                {
-                  "name": "occurrence_budget_mist",
-                  "position": 8,
-                  "ty": "U64"
-                },
-                {
-                  "name": "resolved",
-                  "position": 9,
-                  "ty": "Bool"
-                },
-                {
-                  "name": "canceled",
-                  "position": 10,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ScheduledPaymentReserveReceiptCreatedEvent"
-          },
-          "module": "payment",
-          "name": "ScheduledPaymentReserveReceiptCreatedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "receipt_id",
-                  "position": 0,
-                  "ty": "Address"
-                },
-                {
-                  "name": "scheduled_task_id",
-                  "position": 1,
-                  "ty": "Address"
-                },
-                {
-                  "name": "reserve_id",
-                  "position": 2,
-                  "ty": "Address"
-                },
-                {
-                  "name": "agent_id",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "skill_id",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "interface_version",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "version",
-                        "name": "InterfaceVersion"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "source_kind",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "PaymentSourceKind"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "prepaid_amount_mist",
-                  "position": 7,
-                  "ty": "U64"
-                },
-                {
-                  "name": "occurrence_budget_mist",
-                  "position": 8,
-                  "ty": "U64"
-                },
-                {
-                  "name": "stored_under_agent",
-                  "position": 9,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "ScheduledSkillPaymentCanceledEvent"
-          },
-          "module": "payment",
-          "name": "ScheduledSkillPaymentCanceledEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "scheduled_task_id",
-                  "position": 0,
-                  "ty": "Address"
                 },
                 {
                   "name": "reserve_id",
@@ -15300,10 +14091,10 @@
           "type_name": {
             "address": "0xa2",
             "module": "payment",
-            "name": "ScheduledSkillPaymentRefilledEvent"
+            "name": "TaskPaymentReserveRefilled"
           },
           "module": "payment",
-          "name": "ScheduledSkillPaymentRefilledEvent",
+          "name": "TaskPaymentReserveRefilled",
           "abilities": [
             "Copy",
             "Drop"
@@ -15313,9 +14104,18 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "scheduled_task_id",
+                  "name": "task_id",
                   "position": 0,
-                  "ty": "Address"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
                   "name": "reserve_id",
@@ -15383,43 +14183,6 @@
                   "name": "remaining_funds",
                   "position": 8,
                   "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa2",
-            "module": "payment",
-            "name": "SkillPaymentPolicy"
-          },
-          "module": "payment",
-          "name": "SkillPaymentPolicy",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "UserFunded",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "AgentFunded",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "max_budget_mist",
-                      "position": 0,
-                      "ty": "U64"
-                    }
-                  ]
                 }
               ]
             }
@@ -15571,7 +14334,7 @@
           "return_types": []
         },
         {
-          "name": "accomplish_scheduled_payment_reserve_occurrence",
+          "name": "accomplish_task_execution_payment",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -15586,7 +14349,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -15611,11 +14374,13 @@
                   }
                 }
               }
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
             }
           ],
-          "return_types": [
-            "U64"
-          ]
+          "return_types": []
         },
         {
           "name": "agent_vault_payment_authorization",
@@ -15807,7 +14572,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -15837,7 +14602,7 @@
           "return_types": []
         },
         {
-          "name": "assert_scheduled_payment_matches_reserve",
+          "name": "assert_task_payment_matches_reserve",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -15852,7 +14617,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -15935,7 +14700,7 @@
           ]
         },
         {
-          "name": "cancel_scheduled_payment_reserve_address_funded",
+          "name": "cancel_task_payment_reserve_address_funded",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -15950,7 +14715,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -15980,7 +14745,7 @@
           "return_types": []
         },
         {
-          "name": "cancel_scheduled_payment_reserve_from_agent_vault",
+          "name": "cancel_task_payment_reserve_from_agent_vault",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -15995,7 +14760,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -16088,56 +14853,6 @@
             {
               "name": "value",
               "ty": "U128"
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "complete_scheduled_payment_reserve_occurrence",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
-            },
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ScheduledOccurrenceFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
             }
           ],
           "return_types": [
@@ -16322,19 +15037,19 @@
           ]
         },
         {
-          "name": "destroy_execution_payment_receipt_unchecked_for_testing",
+          "name": "destroy_empty_task_payment_reserve",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "receipt",
+              "name": "reserve",
               "ty": {
                 "Datatype": {
                   "type_name": {
                     "address": "0xa2",
                     "module": "payment",
-                    "name": "ExecutionPaymentReceipt"
+                    "name": "TaskPaymentReserve"
                   },
                   "type_arguments": []
                 }
@@ -16371,69 +15086,7 @@
           "return_types": []
         },
         {
-          "name": "emit_receipt_created",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "stored_under_agent",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "emit_scheduled_payment_reserve_receipt_created",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "stored_under_agent",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "emit_scheduled_skill_payment_canceled",
+          "name": "emit_task_execution_payment_finalized",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -16448,7 +15101,59 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "execution_id",
+              "ty": "Address"
+            },
+            {
+              "name": "payment_id",
+              "ty": "Address"
+            },
+            {
+              "name": "final_state",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "ExecutionPaymentFinalState"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "emit_task_payment_reserve_canceled",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "reserve",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -16464,7 +15169,7 @@
           "return_types": []
         },
         {
-          "name": "emit_scheduled_skill_payment_refilled",
+          "name": "emit_task_payment_reserve_refilled",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -16479,7 +15184,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -16493,193 +15198,6 @@
             }
           ],
           "return_types": []
-        },
-        {
-          "name": "execution_payment_final_state_for_scheduled_occurrence",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ScheduledOccurrenceFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPaymentFinalState"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "execution_payment_receipt_agent_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "execution_payment_receipt_execution_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "execution_payment_receipt_payment_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "execution_payment_receipt_resolved",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "execution_payment_receipt_skill_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
         },
         {
           "name": "find_execution_payment_vertex_lock",
@@ -16726,54 +15244,6 @@
                   }
                 }
               }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  "U64"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "find_scheduled_occurrence_index",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
             }
           ],
           "return_types": [
@@ -17082,10 +15552,6 @@
               }
             },
             {
-              "name": "receipt_stored_under_agent",
-              "ty": "Bool"
-            },
-            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -17111,16 +15577,6 @@
                   "address": "0xa2",
                   "module": "payment",
                   "name": "ExecutionPayment"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPaymentReceipt"
                 },
                 "type_arguments": []
               }
@@ -17226,10 +15682,6 @@
               }
             },
             {
-              "name": "receipt_stored_under_agent",
-              "ty": "Bool"
-            },
-            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -17255,110 +15707,6 @@
                   "address": "0xa2",
                   "module": "payment",
                   "name": "ExecutionPayment"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPaymentReceipt"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_execution_payment_history_list",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPaymentHistoryList"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_execution_payment_receipt_from_payment",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ExecutionPaymentReceipt"
                 },
                 "type_arguments": []
               }
@@ -17496,7 +15844,7 @@
           ]
         },
         {
-          "name": "new_scheduled_occurrence_payment_for_execution",
+          "name": "new_task_execution_payment",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -17511,7 +15859,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -17542,7 +15890,7 @@
               "ty": "Address"
             },
             {
-              "name": "occurrence_index",
+              "name": "occurrence_id",
               "ty": "U64"
             },
             {
@@ -17582,14 +15930,23 @@
           ]
         },
         {
-          "name": "new_scheduled_payment_reserve_from_balance",
+          "name": "new_task_payment_reserve_from_balance",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "scheduled_task_id",
-              "ty": "Address"
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "agent_id",
@@ -17694,10 +16051,6 @@
               }
             },
             {
-              "name": "receipt_stored_under_agent",
-              "ty": "Bool"
-            },
-            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -17722,17 +16075,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "payment",
-                  "name": "ScheduledPaymentReserve"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledPaymentReserveReceipt"
+                  "name": "TaskPaymentReserve"
                 },
                 "type_arguments": []
               }
@@ -17740,14 +16083,23 @@
           ]
         },
         {
-          "name": "new_scheduled_payment_reserve_from_balance_unchecked",
+          "name": "new_task_payment_reserve_from_balance_unchecked",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "scheduled_task_id",
-              "ty": "Address"
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "agent_id",
@@ -17780,7 +16132,7 @@
               }
             },
             {
-              "name": "agent_skill_authorization_id",
+              "name": "authorization_id",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -17793,7 +16145,7 @@
               }
             },
             {
-              "name": "payment_source",
+              "name": "source",
               "ty": {
                 "Datatype": {
                   "type_name": {
@@ -17871,7 +16223,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "payment",
-                  "name": "ScheduledPaymentReserve"
+                  "name": "TaskPaymentReserve"
                 },
                 "type_arguments": []
               }
@@ -17879,14 +16231,23 @@
           ]
         },
         {
-          "name": "new_scheduled_payment_reserve_from_coin",
+          "name": "new_task_payment_reserve_from_coin",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "scheduled_task_id",
-              "ty": "Address"
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
             },
             {
               "name": "agent_id",
@@ -17991,10 +16352,6 @@
               }
             },
             {
-              "name": "receipt_stored_under_agent",
-              "ty": "Bool"
-            },
-            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -18019,81 +16376,7 @@
                 "type_name": {
                   "address": "0xa2",
                   "module": "payment",
-                  "name": "ScheduledPaymentReserve"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledPaymentReserveReceipt"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "new_scheduled_payment_reserve_receipt_from_reserve",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "prepaid_amount_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "occurrence_budget_mist",
-              "ty": "U64"
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledPaymentReserveReceipt"
+                  "name": "TaskPaymentReserve"
                 },
                 "type_arguments": []
               }
@@ -18468,163 +16751,6 @@
           "return_types": [
             "U64"
           ]
-        },
-        {
-          "name": "payment_history_list_add",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "list",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentHistoryList"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "payment_history_list_contains",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "list",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentHistoryList"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "payment_history_list_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "list",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentHistoryList"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "index",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "payment_history_list_len",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "list",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentHistoryList"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "payment_history_list_remove",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "list",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentHistoryList"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            }
-          ],
-          "return_types": []
         },
         {
           "name": "payment_interface_revision",
@@ -19619,7 +17745,7 @@
           ]
         },
         {
-          "name": "refill_scheduled_payment_reserve_address_funded",
+          "name": "refill_task_payment_reserve_address_funded",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -19634,7 +17760,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -19670,7 +17796,7 @@
           "return_types": []
         },
         {
-          "name": "refill_scheduled_payment_reserve_from_balance",
+          "name": "refill_task_payment_reserve_from_balance",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -19685,7 +17811,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -19890,7 +18016,7 @@
           ]
         },
         {
-          "name": "refund_scheduled_payment_reserve_occurrence",
+          "name": "refund_task_execution_payment",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -19905,7 +18031,7 @@
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskPaymentReserve"
                       },
                       "type_arguments": []
                     }
@@ -19932,15 +18058,17 @@
               }
             },
             {
+              "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
               "name": "refund_reason",
               "ty": {
                 "Vector": "U8"
               }
             }
           ],
-          "return_types": [
-            "U64"
-          ]
+          "return_types": []
         },
         {
           "name": "remove_execution_payment_vertex_lock",
@@ -20001,1268 +18129,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "resolve_receipt",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPaymentReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
-            },
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "resolve_scheduled_payment_reserve_receipt",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "canceled",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "resolve_scheduled_payment_reserve_receipt_if_present",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "reserve",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
-            },
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "scheduled_occurrence_final_state_accomplished",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceFinalState"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_final_state_in_flight",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceFinalState"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_final_state_refunded",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceFinalState"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_payment_created_event_fields",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "event",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrencePaymentCreatedEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address",
-            "Address",
-            "U64",
-            "Address",
-            "Address",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "version",
-                  "name": "InterfaceVersion"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "PaymentSourceKind"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64",
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_payment_finalized_event_fields",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "event",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrencePaymentFinalizedEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address",
-            "Address",
-            "U64",
-            "Address",
-            "Address",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "version",
-                  "name": "InterfaceVersion"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceFinalState"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "occurrence_index",
-              "ty": "U64"
-            },
-            {
-              "name": "execution_id",
-              "ty": "Address"
-            },
-            {
-              "name": "payment_id",
-              "ty": "Address"
-            },
-            {
-              "name": "interface_revision",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "version",
-                    "name": "InterfaceVersion"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "budget",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceRecord"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_budget_mist",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_execution_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_final_state",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceFinalState"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_interface_revision",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "version",
-                  "name": "InterfaceVersion"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_occurrence_index",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_occurrence_record_payment_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_agent_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_authorization_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_in_flight_len",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_interface_version",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "version",
-                  "name": "InterfaceVersion"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_occurrence_budget_mist",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_payment_policy",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "SkillPaymentPolicy"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_payment_receipt_len",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_agent_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_canceled",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_reserve_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_resolved",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_scheduled_task_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_receipt_skill_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "receipt",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserveReceipt"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_record",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "index",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "ScheduledOccurrenceRecord"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_remaining_funds",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_scheduled_task_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_skill_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "scheduled_payment_reserve_source_kind",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledPaymentReserve"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "PaymentSourceKind"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scheduled_skill_payment_canceled_event_fields",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "event",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledSkillPaymentCanceledEvent"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Address",
-            "Address",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64",
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "version",
-                  "name": "InterfaceVersion"
-                },
-                "type_arguments": []
-              }
-            },
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa2",
-                  "module": "payment",
-                  "name": "PaymentSourceKind"
-                },
-                "type_arguments": []
-              }
-            },
-            "U64",
-            "U64"
-          ]
-        },
-        {
-          "name": "set_scheduled_occurrence_final_state",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "record",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ScheduledOccurrenceRecord"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "final_state",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ScheduledOccurrenceFinalState"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
         },
         {
           "name": "settle_nonzero_balance",
@@ -21564,142 +18430,325 @@
           "return_types": []
         },
         {
-          "name": "store_scheduled_payment_reserve_receipt",
-          "visibility": "Private",
+          "name": "task_execution_payment_created_fields",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "reserve",
+              "name": "event",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa2",
                         "module": "payment",
-                        "name": "ScheduledPaymentReserve"
+                        "name": "TaskExecutionPaymentCreated"
                       },
                       "type_arguments": []
                     }
                   }
                 }
               }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "Address",
+            "U64",
+            "Address",
+            "Address",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "U64",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "version",
+                  "name": "InterfaceVersion"
+                },
+                "type_arguments": []
+              }
             },
             {
-              "name": "receipt",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "ExecutionPaymentReceipt"
-                  },
-                  "type_arguments": []
-                }
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "payment",
+                  "name": "PaymentSourceKind"
+                },
+                "type_arguments": []
               }
-            }
-          ],
-          "return_types": []
-        }
-      ]
-    },
-    "scheduled_request": {
-      "name": "scheduled_request",
-      "datatypes": [
+            },
+            "U64",
+            "U64"
+          ]
+        },
         {
-          "type_name": {
-            "address": "0xa2",
-            "module": "scheduled_request",
-            "name": "RequestScheduledExecution"
-          },
-          "module": "scheduled_request",
-          "name": "RequestScheduledExecution",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [
-            {
-              "constraints": [
-                "Copy",
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "request",
-                  "position": 0,
-                  "ty": {
-                    "TypeParameter": 0
-                  }
-                },
-                {
-                  "name": "priority",
-                  "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "request_ms",
-                  "position": 2,
-                  "ty": "U64"
-                },
-                {
-                  "name": "start_ms",
-                  "position": 3,
-                  "ty": "U64"
-                },
-                {
-                  "name": "deadline_ms",
-                  "position": 4,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        }
-      ],
-      "functions": [
-        {
-          "name": "new",
+          "name": "task_execution_payment_finalized_fields",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [
-            {
-              "constraints": [
-                "Copy",
-                "Drop"
-              ],
-              "is_phantom": false
-            }
-          ],
+          "type_parameters": [],
           "parameters": [
             {
-              "name": "request",
+              "name": "event",
               "ty": {
-                "TypeParameter": 0
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskExecutionPaymentFinalized"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "Address",
+            "U64",
+            "Address",
+            "Address",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "U64",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "version",
+                  "name": "InterfaceVersion"
+                },
+                "type_arguments": []
               }
             },
             {
-              "name": "priority",
-              "ty": "U64"
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "payment",
+                  "name": "ExecutionPaymentFinalState"
+                },
+                "type_arguments": []
+              }
+            },
+            "U64"
+          ]
+        },
+        {
+          "name": "task_payment_reserve_agent_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_payment_reserve_authorization_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_payment_reserve_canceled_fields",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "event",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserveCanceled"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "Address",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            },
+            "U64",
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "version",
+                  "name": "InterfaceVersion"
+                },
+                "type_arguments": []
+              }
             },
             {
-              "name": "request_ms",
-              "ty": "U64"
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "payment",
+                  "name": "PaymentSourceKind"
+                },
+                "type_arguments": []
+              }
             },
+            "U64",
+            "U64"
+          ]
+        },
+        {
+          "name": "task_payment_reserve_interface_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
             {
-              "name": "start_ms",
-              "ty": "U64"
-            },
-            {
-              "name": "deadline_ms",
-              "ty": "U64"
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": [
@@ -21707,14 +18756,211 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa2",
-                  "module": "scheduled_request",
-                  "name": "RequestScheduledExecution"
+                  "module": "version",
+                  "name": "InterfaceVersion"
                 },
-                "type_arguments": [
-                  {
-                    "TypeParameter": 0
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_payment_reserve_occurrence_budget_mist",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
                   }
-                ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "task_payment_reserve_payment_policy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "payment",
+                  "name": "SkillPaymentPolicy"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_payment_reserve_remaining_funds",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "task_payment_reserve_skill_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "task_payment_reserve_source_kind",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "payment",
+                  "name": "PaymentSourceKind"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_payment_reserve_task_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
               }
             }
           ]

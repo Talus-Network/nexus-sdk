@@ -132,28 +132,6 @@ macro_rules! events {
                 leaders: Vec<sui::types::Address>,
             }
 
-            if name == "RequestWalkExecutionEvent" {
-                type ScheduledWalkRequest =
-                    crate::move_bindings::interface::scheduled_request::RequestScheduledExecution<
-                        crate::move_bindings::workflow::execution_events::RequestWalkExecutionEvent,
-                    >;
-
-                if let Ok(distributed) = bcs::from_bytes::<DistributedWrapper<ScheduledWalkRequest>>(bytes) {
-                    let metadata = DistributedEventMetadata {
-                        deadline: chrono::Duration::milliseconds(distributed.deadline_ms as i64),
-                        requested_at: chrono::DateTime::<chrono::Utc>::from_timestamp_millis(distributed.requested_at_ms as i64)
-                            .ok_or_else(|| anyhow::anyhow!("Invalid timestamp"))?,
-                        task_id: distributed.task_id,
-                        leaders: distributed.leaders,
-                    };
-
-                    return Ok((
-                        NexusEventKind::RequestWalkExecution(distributed.event.request),
-                        Some(metadata),
-                    ));
-                }
-            }
-
             match name {
                 $(
                     $name => {
@@ -190,8 +168,15 @@ macro_rules! events {
 // Enumeration with all available events coming from the on-chain part of
 // Nexus. Also includes BCS parsing implementations.
 events! {
-    crate::move_bindings::interface::scheduled_request::RequestScheduledExecution<crate::move_bindings::scheduler::scheduler::OccurrenceScheduledEvent> => RequestScheduledOccurrence, "RequestScheduledOccurrenceEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
+    crate::move_bindings::scheduler::scheduler::OccurrenceAdvertised => OccurrenceAdvertised, "OccurrenceAdvertised",
+    crate::move_bindings::scheduler::scheduler::OccurrenceDispatched => OccurrenceDispatched, "OccurrenceDispatched",
+    crate::move_bindings::scheduler::scheduler::OccurrenceMissed => OccurrenceMissed, "OccurrenceMissed",
+    crate::move_bindings::scheduler::scheduler::OccurrenceSettled => OccurrenceSettled, "OccurrenceSettled",
+    crate::move_bindings::scheduler::scheduler::TaskCanceled => TaskCanceled, "TaskCanceled",
+    crate::move_bindings::scheduler::scheduler::TaskClosed => TaskClosed, "TaskClosed",
+    crate::move_bindings::scheduler::scheduler::TaskCreated => TaskCreated, "TaskCreated",
+    crate::move_bindings::scheduler::scheduler::TaskPaused => TaskPaused, "TaskPaused",
+    crate::move_bindings::scheduler::scheduler::TaskResumed => TaskResumed, "TaskResumed",
     crate::move_bindings::workflow::execution_events::RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
     crate::move_bindings::interface::agent::AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
     crate::move_bindings::registry::agent_registry::SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
@@ -204,20 +189,13 @@ events! {
     crate::move_bindings::interface::payment::ExecutionPaymentToolCostSnapshottedEvent => ExecutionPaymentToolCostSnapshotted, "ExecutionPaymentToolCostSnapshottedEvent",
     crate::move_bindings::interface::payment::ExecutionPaymentVertexLockedEvent => ExecutionPaymentVertexLocked, "ExecutionPaymentVertexLockedEvent",
     crate::move_bindings::interface::payment::ExecutionPaymentVertexSettledEvent => ExecutionPaymentVertexSettled, "ExecutionPaymentVertexSettledEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentReceiptCreatedEvent => ExecutionPaymentReceiptCreated, "ExecutionPaymentReceiptCreatedEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentReceiptResolvedEvent => ExecutionPaymentReceiptResolved, "ExecutionPaymentReceiptResolvedEvent",
-    crate::move_bindings::interface::payment::ScheduledPaymentReserveReceiptCreatedEvent => ScheduledPaymentReserveReceiptCreated, "ScheduledPaymentReserveReceiptCreatedEvent",
     crate::move_bindings::interface::payment::GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
     crate::move_bindings::interface::payment::ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
     crate::move_bindings::interface::payment::ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
-    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionCreatedEvent => ScheduledSkillExecutionCreated, "ScheduledSkillExecutionCreatedEvent",
-    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionPausedEvent => ScheduledSkillExecutionPaused, "ScheduledSkillExecutionPausedEvent",
-    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionResumedEvent => ScheduledSkillExecutionResumed, "ScheduledSkillExecutionResumedEvent",
-    crate::move_bindings::scheduler::scheduler::ScheduledSkillExecutionCanceledEvent => ScheduledSkillExecutionCanceled, "ScheduledSkillExecutionCanceledEvent",
-    crate::move_bindings::interface::payment::ScheduledSkillPaymentRefilledEvent => ScheduledSkillPaymentRefilled, "ScheduledSkillPaymentRefilledEvent",
-    crate::move_bindings::interface::payment::ScheduledOccurrencePaymentCreatedEvent => ScheduledOccurrencePaymentCreated, "ScheduledOccurrencePaymentCreatedEvent",
-    crate::move_bindings::interface::payment::ScheduledSkillPaymentCanceledEvent => ScheduledSkillPaymentCanceled, "ScheduledSkillPaymentCanceledEvent",
-    crate::move_bindings::interface::payment::ScheduledOccurrencePaymentFinalizedEvent => ScheduledOccurrencePaymentFinalized, "ScheduledOccurrencePaymentFinalizedEvent",
+    crate::move_bindings::interface::payment::TaskExecutionPaymentCreated => TaskExecutionPaymentCreated, "TaskExecutionPaymentCreated",
+    crate::move_bindings::interface::payment::TaskExecutionPaymentFinalized => TaskExecutionPaymentFinalized, "TaskExecutionPaymentFinalized",
+    crate::move_bindings::interface::payment::TaskPaymentReserveCanceled => TaskPaymentReserveCanceled, "TaskPaymentReserveCanceled",
+    crate::move_bindings::interface::payment::TaskPaymentReserveRefilled => TaskPaymentReserveRefilled, "TaskPaymentReserveRefilled",
     crate::move_bindings::registry::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
     crate::move_bindings::registry::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     crate::move_bindings::registry::priority_fee_vault::PriorityFeeSwapEvent => PriorityFeeSwap, "PriorityFeeSwapEvent",
@@ -234,9 +212,6 @@ events! {
     crate::move_bindings::workflow::execution_events::ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
     crate::move_bindings::workflow::execution_events::ExecutionPaymentRefilledEvent => ExecutionPaymentRefilled, "ExecutionPaymentRefilledEvent",
     crate::move_bindings::workflow::execution_events::ExecutionPaymentInsufficientSettlementEvent => ExecutionPaymentInsufficientSettlement, "ExecutionPaymentInsufficientSettlementEvent",
-    crate::move_bindings::scheduler::scheduler::MissedOccurrenceEvent => MissedOccurrence, "MissedOccurrenceEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceConsumedEvent => OccurrenceConsumed, "OccurrenceConsumedEvent",
-    crate::move_bindings::scheduler::scheduler::PeriodicScheduleConfiguredEvent => PeriodicScheduleConfigured, "PeriodicScheduleConfiguredEvent",
     crate::move_bindings::registry::priority_fee_vault::PriorityFeeDepositEvent => PriorityFeeDeposit, "PriorityFeeDepositEvent",
     crate::move_bindings::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     crate::move_bindings::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",

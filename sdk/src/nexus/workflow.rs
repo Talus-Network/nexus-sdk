@@ -1,28 +1,13 @@
 //! Commands related to workflow management in Nexus.
 //!
 //! - [`WorkflowActions::publish`] to publish a [`DagSpec`] instance to Nexus.
-//! - [`WorkflowActions::execute`] to execute a published DAG.
 //! - [`WorkflowActions::inspect_execution`] to monitor the execution of a DAG.
+//!
+//! Executions begin through
+//! [`SchedulerActions::create_task`](crate::nexus::scheduler::SchedulerActions::create_task).
 
 #[cfg(feature = "walrus")]
-use crate::{
-    move_bindings::interface::{agent::SkillDagBinding, graph::InputPort},
-    types::{
-        payment_source_from_address,
-        quote_priority_payment_budget,
-        resolve_active_tap_skill_execution_target,
-        resolve_default_tap_dag_executor,
-        validate_execution_payment_options,
-        AgentId,
-        AgentRegistrySnapshot,
-        DefaultDagExecutorRecord,
-        PriorityPaymentBudgetInput,
-        SkillId,
-        SkillRevisionLookupKey,
-        DEFAULT_ENTRY_GROUP,
-    },
-    walrus::StorageConf,
-};
+use crate::walrus::StorageConf;
 use {
     crate::{
         events::{NexusEvent, NexusEventKind, NexusEventQuery},
@@ -83,24 +68,6 @@ pub struct PublishResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
     pub dag_object_id: sui::types::Address,
-}
-
-#[cfg(feature = "walrus")]
-pub struct ExecuteResult {
-    pub tx_digest: sui::types::Digest,
-    pub execution_object_id: sui::types::Address,
-    pub tx_checkpoint: u64,
-    pub tap_execution: Option<TapExecutionSubmitMetadata>,
-}
-
-#[cfg(feature = "walrus")]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TapExecutionSubmitMetadata {
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub dag_id: sui::types::Address,
-    pub skill_revision_key: SkillRevisionLookupKey,
-    pub payment_max_budget_mist: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -375,64 +342,6 @@ impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
     }
 }
 
-#[cfg(feature = "walrus")]
-#[derive(Clone, Debug, Default)]
-pub struct AgentDagExecuteOptions {
-    pub payment_source: Vec<u8>,
-    pub payment_coin: Option<sui::types::ObjectReference>,
-    pub payment_coin_balance: Option<u64>,
-    pub payment_max_budget_mist: u64,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ResolvedAgentDagPaymentBudget {
-    payment_max_budget_mist: u64,
-}
-
-fn resolve_agent_dag_payment_budget(
-    options: &AgentDagExecuteOptions,
-    priority_fee_percentage: Option<u64>,
-) -> anyhow::Result<ResolvedAgentDagPaymentBudget> {
-    let quote = quote_priority_payment_budget(PriorityPaymentBudgetInput {
-        max_budget_mist: options.payment_max_budget_mist,
-        priority_fee_percentage,
-        gas_budget_mist: None,
-    })?;
-    if quote.gas_budget_mist == 0 {
-        return Err(anyhow!(
-            "TAP execution payment max budget {} MIST cannot fund a nonzero gas budget",
-            options.payment_max_budget_mist
-        ));
-    }
-
-    Ok(ResolvedAgentDagPaymentBudget {
-        payment_max_budget_mist: options.payment_max_budget_mist,
-    })
-}
-
-#[cfg(feature = "walrus")]
-fn resolve_default_agent_dag_executor(
-    objects: &crate::types::NexusObjects,
-    registry: &AgentRegistrySnapshot,
-) -> anyhow::Result<DefaultDagExecutorRecord> {
-    let configured = objects.default_dag_executor;
-    if let Ok(target) = resolve_active_tap_skill_execution_target(
-        registry,
-        configured.agent_id,
-        configured.skill_id,
-    ) {
-        if target.skill.dag_binding() == &SkillDagBinding::RuntimeSelected {
-            return Ok(DefaultDagExecutorRecord {
-                target: configured,
-                skill: target.skill,
-                skill_revision: target.skill_revision,
-            });
-        }
-    }
-
-    resolve_default_tap_dag_executor(registry)
-}
-
 pub struct InspectExecutionResult {
     pub next_event: UnboundedReceiver<NexusEvent>,
     pub poller: JoinHandle<Result<(), NexusError>>,
@@ -498,16 +407,16 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
         NexusEventKind::ExecutionPaymentToolCostSnapshotted(e) => Some(e.execution_id),
         NexusEventKind::ExecutionPaymentVertexLocked(e) => Some(e.execution_id),
         NexusEventKind::ExecutionPaymentVertexSettled(e) => Some(e.execution_id),
-        NexusEventKind::WalkAdvanced(e) => Some(e.execution.clone().into()),
-        NexusEventKind::WalkFailed(e) => Some(e.execution.clone().into()),
-        NexusEventKind::SubmissionFailureEvidenceRecorded(e) => Some(e.execution.clone().into()),
-        NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution.clone().into()),
-        NexusEventKind::ToolVerificationResolved(e) => Some(e.execution.clone().into()),
-        NexusEventKind::WalkPendingAbort(e) => Some(e.execution.clone().into()),
-        NexusEventKind::WalkAborted(e) => Some(e.execution.clone().into()),
-        NexusEventKind::WalkCancelled(e) => Some(e.execution.clone().into()),
-        NexusEventKind::EndStateReached(e) => Some(e.execution.clone().into()),
-        NexusEventKind::ExecutionFinished(e) => Some(e.execution.clone().into()),
+        NexusEventKind::WalkAdvanced(e) => Some(e.execution.into()),
+        NexusEventKind::WalkFailed(e) => Some(e.execution.into()),
+        NexusEventKind::SubmissionFailureEvidenceRecorded(e) => Some(e.execution.into()),
+        NexusEventKind::TerminalErrEvalRecorded(e) => Some(e.execution.into()),
+        NexusEventKind::ToolVerificationResolved(e) => Some(e.execution.into()),
+        NexusEventKind::WalkPendingAbort(e) => Some(e.execution.into()),
+        NexusEventKind::WalkAborted(e) => Some(e.execution.into()),
+        NexusEventKind::WalkCancelled(e) => Some(e.execution.into()),
+        NexusEventKind::EndStateReached(e) => Some(e.execution.into()),
+        NexusEventKind::ExecutionFinished(e) => Some(e.execution.into()),
         NexusEventKind::ExecutionPaymentRefilled(e) => Some(e.execution_id),
         _ => None,
     }
@@ -1391,365 +1300,6 @@ impl WorkflowActions {
         })
     }
 
-    /// Execute a published DAG through the configured standard default agent.
-    ///
-    /// The `entry_data` [`HashMap`] already holds information about the storage
-    /// kind for each port.
-    ///
-    /// `storage_conf` can accept [`StorageConf::default`] if no remote storage
-    /// is expected.
-    ///
-    /// `priority_fee_percentage` is normalized to the effective priority fee used by payment setup.
-    ///
-    /// Use [`WorkflowActions::inspect_execution`] to monitor the execution.
-    #[cfg(feature = "walrus")]
-    pub async fn execute(
-        &self,
-        dag_object_id: sui::types::Address,
-        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_percentage: Option<u64>,
-        entry_group: Option<&str>,
-        storage_conf: &StorageConf,
-    ) -> Result<ExecuteResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        self.execute_default_agent_dag(
-            dag_object_id,
-            entry_data,
-            priority_fee_percentage,
-            entry_group,
-            storage_conf,
-            AgentDagExecuteOptions {
-                payment_source: payment_source_from_address(address)
-                    .map_err(NexusError::TransactionBuilding)?,
-                payment_coin: None,
-                payment_coin_balance: None,
-                payment_max_budget_mist: self.client.gas.get_budget(),
-            },
-        )
-        .await
-    }
-
-    /// Execute a published DAG through the configured standard default agent
-    /// with explicit standard payment options.
-    #[cfg(feature = "walrus")]
-    #[allow(clippy::too_many_arguments)]
-    pub async fn execute_default_agent_dag(
-        &self,
-        dag_object_id: sui::types::Address,
-        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_percentage: Option<u64>,
-        entry_group: Option<&str>,
-        storage_conf: &StorageConf,
-        options: AgentDagExecuteOptions,
-    ) -> Result<ExecuteResult, NexusError> {
-        // == Commit data to their respective storage ==
-
-        let mut input_data = HashMap::new();
-
-        for (vertex, ports_data) in entry_data {
-            let committed_data = ports_data.commit_all(storage_conf).await.map_err(|e| {
-                NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
-            })?;
-
-            input_data.insert(vertex, committed_data);
-        }
-
-        // == Craft and submit the execute DAG transaction ==
-
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
-        let dag = self
-            .client
-            .crawler()
-            .get_object::<dag_move::DAG>(dag_object_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
-
-        let registry = tap::fetch_configured_agent_registry(self.client.crawler(), nexus_objects)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let default_executor = resolve_default_agent_dag_executor(nexus_objects, &registry.data)
-            .map_err(NexusError::Parsing)?;
-
-        let payment_budget = resolve_agent_dag_payment_budget(&options, priority_fee_percentage)
-            .map_err(NexusError::TransactionBuilding)?;
-        validate_execution_payment_options(
-            default_executor.target.agent_id,
-            &default_executor.skill_revision.requirements.payment_policy,
-            &options.payment_source,
-            payment_budget.payment_max_budget_mist,
-            address,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        if let Some(balance) = options.payment_coin_balance {
-            if balance < payment_budget.payment_max_budget_mist {
-                return Err(NexusError::TransactionBuilding(anyhow!(
-                    "TAP execution payment coin balance {balance} is below requested budget {}",
-                    payment_budget.payment_max_budget_mist
-                )));
-            }
-        }
-        let agent_execution = dag::AgentDagExecuteInput {
-            agent_id: default_executor.target.agent_id,
-            skill_id: default_executor.target.skill_id,
-            selected_dag: None,
-            authorization_templates: Vec::new(),
-            payment_source: options.payment_source,
-            payment_coin: options.payment_coin,
-            payment_coin_balance: options.payment_coin_balance,
-            payment_max_budget_mist: payment_budget.payment_max_budget_mist,
-        };
-
-        let transaction_input_data = input_data
-            .clone()
-            .into_iter()
-            .map(|(vertex, data)| (vertex, data.into_map()))
-            .collect();
-        let owned_payment_coin = agent_execution
-            .payment_coin
-            .as_ref()
-            .map(|payment_coin| *payment_coin.object_id());
-
-        let tx = dag::execute_default_agent_dag_ptb(
-            nexus_objects,
-            &dag.object_ref(),
-            priority_fee_percentage,
-            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-            &transaction_input_data,
-            &agent_execution,
-            &tools_gas,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
-        if let Some(payment_coin_id) = owned_payment_coin {
-            if let Some(updated_payment_coin) = response
-                .objects
-                .iter()
-                .find(|object| object.object_id() == payment_coin_id)
-            {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
-                    payment_gas_pool
-                        .release_gas_coin(sui::types::ObjectReference::new(
-                            updated_payment_coin.object_id(),
-                            updated_payment_coin.version(),
-                            updated_payment_coin.digest(),
-                        ))
-                        .await;
-                }
-            }
-        }
-
-        // == Find the created DAG execution object ID ==
-
-        let execution_tag =
-            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(nexus_objects);
-        let execution_object_id = response
-            .objects
-            .into_iter()
-            .find_map(|obj| {
-                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
-                    return None;
-                };
-
-                if nexus_objects.is_workflow_package(*object_type.address())
-                    && object_type.module() == execution_tag.module()
-                    && object_type.name() == execution_tag.name()
-                {
-                    Some(obj.object_id())
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow!("DAG execution object ID not found in TX response"))
-            })?;
-
-        Ok(ExecuteResult {
-            tx_digest: response.digest,
-            execution_object_id,
-            tx_checkpoint: response.checkpoint,
-            tap_execution: Some(TapExecutionSubmitMetadata {
-                agent_id: default_executor.target.agent_id,
-                skill_id: default_executor.target.skill_id,
-                dag_id: dag.object_id,
-                skill_revision_key: default_executor.skill_revision.key,
-                payment_max_budget_mist: payment_budget.payment_max_budget_mist,
-            }),
-        })
-    }
-
-    /// Execute the active agent skill for `(agent_id, skill_id)`.
-    ///
-    /// This resolves the registered DAG from the configured TAP registry, then
-    /// calls the explicit agent workflow entry.
-    #[cfg(feature = "walrus")]
-    #[allow(clippy::too_many_arguments)]
-    pub async fn execute_agent_dag(
-        &self,
-        agent_id: AgentId,
-        skill_id: SkillId,
-        entry_data: HashMap<String, VecMap<InputPort, NexusData>>,
-        priority_fee_percentage: Option<u64>,
-        entry_group: Option<&str>,
-        storage_conf: &StorageConf,
-        options: AgentDagExecuteOptions,
-    ) -> Result<ExecuteResult, NexusError> {
-        let mut input_data = HashMap::new();
-
-        for (vertex, ports_data) in entry_data {
-            let committed_data = ports_data.commit_all(storage_conf).await.map_err(|e| {
-                NexusError::Storage(anyhow!("Failed to commit data for port '{vertex}': {e}"))
-            })?;
-
-            input_data.insert(vertex, committed_data);
-        }
-
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
-        let target = tap::fetch_configured_active_tap_skill_execution_target(
-            self.client.crawler(),
-            nexus_objects,
-            agent_id,
-            skill_id,
-        )
-        .await
-        .map_err(NexusError::Rpc)?
-        .data;
-
-        let dag_id = match target.skill.dag_binding() {
-            SkillDagBinding::Pinned { dag_id } => *dag_id,
-            SkillDagBinding::RuntimeSelected => {
-                return Err(NexusError::Parsing(anyhow!(
-                    "runtime-selected skill {agent_id}:{skill_id} requires an explicit DAG selection; use WorkflowActions::execute or `nexus dag execute`"
-                )));
-            }
-        };
-
-        let dag = self
-            .client
-            .crawler()
-            .get_object::<dag_move::DAG>(dag_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let tools_gas = self.client.fetch_tool_gas_for_dag(&dag.data).await?;
-        let agent_object = self
-            .client
-            .crawler()
-            .get_object_metadata(agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-
-        let payment_budget = resolve_agent_dag_payment_budget(&options, priority_fee_percentage)
-            .map_err(NexusError::TransactionBuilding)?;
-        validate_execution_payment_options(
-            agent_id,
-            &target.skill_revision.requirements.payment_policy,
-            &options.payment_source,
-            payment_budget.payment_max_budget_mist,
-            address,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        if let Some(balance) = options.payment_coin_balance {
-            if balance < payment_budget.payment_max_budget_mist {
-                return Err(NexusError::TransactionBuilding(anyhow!(
-                    "TAP execution payment coin balance {balance} is below requested budget {}",
-                    payment_budget.payment_max_budget_mist
-                )));
-            }
-        }
-        let agent_execution = dag::AgentDagExecuteInput {
-            agent_id,
-            skill_id,
-            selected_dag: None,
-            authorization_templates: Vec::new(),
-            payment_source: options.payment_source,
-            payment_coin: options.payment_coin,
-            payment_coin_balance: options.payment_coin_balance,
-            payment_max_budget_mist: payment_budget.payment_max_budget_mist,
-        };
-
-        let transaction_input_data = input_data
-            .clone()
-            .into_iter()
-            .map(|(vertex, data)| (vertex, data.into_map()))
-            .collect();
-        let owned_payment_coin = agent_execution
-            .payment_coin
-            .as_ref()
-            .map(|payment_coin| *payment_coin.object_id());
-
-        let agent_input = tap::agent_input_from_metadata(&agent_object)
-            .map_err(NexusError::TransactionBuilding)?;
-        let tx = dag::execute_agent_dag_ptb(
-            nexus_objects,
-            &dag.object_ref(),
-            agent_input,
-            priority_fee_percentage,
-            entry_group.unwrap_or(DEFAULT_ENTRY_GROUP),
-            &transaction_input_data,
-            &agent_execution,
-            &tools_gas,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
-        if let Some(payment_coin_id) = owned_payment_coin {
-            if let Some(updated_payment_coin) = response
-                .objects
-                .iter()
-                .find(|object| object.object_id() == payment_coin_id)
-            {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
-                    payment_gas_pool
-                        .release_gas_coin(sui::types::ObjectReference::new(
-                            updated_payment_coin.object_id(),
-                            updated_payment_coin.version(),
-                            updated_payment_coin.digest(),
-                        ))
-                        .await;
-                }
-            }
-        }
-
-        let execution_tag =
-            crate::move_bindings::struct_tag::<execution_move::DAGExecution>(nexus_objects);
-        let execution_object_id = response
-            .objects
-            .into_iter()
-            .find_map(|obj| {
-                let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
-                    return None;
-                };
-
-                if nexus_objects.is_workflow_package(*object_type.address())
-                    && object_type.module() == execution_tag.module()
-                    && object_type.name() == execution_tag.name()
-                {
-                    Some(obj.object_id())
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| {
-                NexusError::Parsing(anyhow!("DAG execution object ID not found in TX response"))
-            })?;
-
-        Ok(ExecuteResult {
-            tx_digest: response.digest,
-            execution_object_id,
-            tx_checkpoint: response.checkpoint,
-            tap_execution: Some(TapExecutionSubmitMetadata {
-                agent_id,
-                skill_id,
-                dag_id,
-                skill_revision_key: target.skill_revision.key,
-                payment_max_budget_mist: payment_budget.payment_max_budget_mist,
-            }),
-        })
-    }
-
     /// Inspect a DAG execution by following updates to its shared object.
     ///
     /// The inspector reconstructs every transaction in the execution
@@ -2447,7 +1997,6 @@ mod tests {
             fqn,
             move_bindings::{
                 interface::{
-                    agent::{Agent, SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
                     dag as dag_move,
                     graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
@@ -2464,13 +2013,6 @@ mod tests {
                 },
                 move_std::{ascii::String as MoveString, option::Option as MoveOption},
                 primitives::data::NexusData,
-                registry::agent_registry::{
-                    AgentRecord,
-                    AgentRegistry,
-                    DefaultDagExecutor,
-                    DefaultDagExecutorFieldKey,
-                    SkillRecord,
-                },
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet},
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
@@ -2489,7 +2031,6 @@ mod tests {
             },
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
-            types::{AgentRegistrySnapshot, DefaultDagExecutorTarget, SkillRecordContext},
         },
         serde::Serialize,
         std::sync::{
@@ -2504,10 +2045,6 @@ mod tests {
         id: sui::types::Address,
         name: K,
         value: V,
-    }
-
-    fn inline_bytes(value: &'static [u8]) -> NexusData {
-        NexusData::inline_one(value.to_vec())
     }
 
     fn clock_bcs(timestamp_ms: u64) -> Vec<u8> {
@@ -2640,15 +2177,15 @@ mod tests {
         execution_move::DAGExecution {
             id: crate::move_bindings::sui_framework::object::UID::new(*execution_ref.object_id()),
             dag: object_id(*dag_ref.object_id()),
-            entry_group: graph_move::EntryGroup::new(DEFAULT_ENTRY_GROUP),
+            entry_group: graph_move::EntryGroup::new("default"),
             invoker: sui::types::Address::from_static("0x1"),
             created_at: 0,
             priority_fee_percentage: 0,
             agent_id: object_id(sui::types::Address::from_static("0xa")),
             skill_id: 11,
             interface_version: InterfaceVersion::new(7),
-            scheduled_task_id: MoveOption::from_option(None),
-            scheduled_occurrence_index: MoveOption::from_option(None),
+            task_id: object_id(sui::types::Address::from_static("0xb")),
+            occurrence_id: 0,
             last_request_for_execution_emitted_at_digest: vec![],
             last_request_for_execution_leaders: vec![],
             network: object_id(sui::types::Address::from_static("0xf")),
@@ -2956,122 +2493,6 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
-    struct RegistryObjectMock {
-        registry_object: AgentRegistry,
-        agent_field_ref: sui::types::ObjectReference,
-        skill_field_ref: sui::types::ObjectReference,
-        default_executor_field_ref: Option<sui::types::ObjectReference>,
-        default_executor_value: Option<DefaultDagExecutor>,
-        agent_record: AgentRecord,
-        skill_record: SkillRecord,
-        skill_context: SkillRecordContext,
-    }
-
-    fn registry_object_mock(registry: &AgentRegistrySnapshot) -> RegistryObjectMock {
-        assert_eq!(registry.agents.len(), 1, "test registry has one agent");
-        assert_eq!(registry.skills.len(), 1, "test registry has one skill");
-        let agent = registry.agents[0].clone();
-        let skill_context = registry.skills[0].clone();
-        let skill_record = skill_context.record.clone();
-        let default_executor_field_ref = registry
-            .default_executor
-            .as_ref()
-            .map(|_| sui_mocks::mock_sui_object_ref());
-        let default_executor_value = registry.default_executor.clone();
-
-        RegistryObjectMock {
-            registry_object: AgentRegistry {
-                id: crate::move_bindings::sui_framework::object::UID::new(registry.id),
-                agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-            },
-            agent_field_ref: sui_mocks::mock_sui_object_ref(),
-            skill_field_ref: sui_mocks::mock_sui_object_ref(),
-            default_executor_field_ref,
-            default_executor_value,
-            agent_record: agent,
-            skill_record,
-            skill_context,
-        }
-    }
-
-    fn mock_fetch_registry_from_tables(
-        ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
-        state_service_mock: &mut sui_mocks::grpc::MockStateService,
-        nexus_objects: &crate::types::NexusObjects,
-        registry: &AgentRegistrySnapshot,
-    ) {
-        let mock = registry_object_mock(registry);
-        sui_mocks::grpc::mock_get_object_bcs_for(
-            ledger_service_mock,
-            nexus_objects.agent_registry.clone(),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
-            crate::move_bindings::struct_tag::<AgentRegistry>(nexus_objects),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            state_service_mock,
-            vec![(
-                mock.skill_context.agent_id,
-                mock.agent_field_ref.object_id().to_owned(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            ledger_service_mock,
-            vec![(
-                mock.agent_field_ref,
-                sui::types::Owner::Shared(1),
-                mock.skill_context.agent_id,
-                mock.agent_record,
-            )],
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            state_service_mock,
-            vec![(
-                mock.skill_context.skill_id,
-                mock.skill_field_ref.object_id().to_owned(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            ledger_service_mock,
-            vec![(
-                mock.skill_field_ref,
-                sui::types::Owner::Shared(1),
-                mock.skill_context.skill_id,
-                mock.skill_record,
-            )],
-        );
-        if let (Some(field_ref), Some(value)) =
-            (mock.default_executor_field_ref, mock.default_executor_value)
-        {
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                state_service_mock,
-                vec![(
-                    DefaultDagExecutorFieldKey::default(),
-                    *field_ref.object_id(),
-                )],
-            );
-            sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-                ledger_service_mock,
-                vec![(
-                    field_ref,
-                    sui::types::Owner::Shared(1),
-                    DefaultDagExecutorFieldKey::default(),
-                    value,
-                )],
-            );
-        } else {
-            sui_mocks::grpc::mock_list_dynamic_fields::<DefaultDagExecutorFieldKey>(
-                state_service_mock,
-                vec![],
-            );
-            sui_mocks::grpc::mock_get_dynamic_table_values_bcs::<
-                DefaultDagExecutorFieldKey,
-                DefaultDagExecutor,
-            >(ledger_service_mock, vec![]);
-        }
-    }
-
     fn supported_grpc_events(
         objects: &crate::types::NexusObjects,
         nexus_events: Vec<NexusEventKind>,
@@ -3288,381 +2709,6 @@ mod tests {
         assert_eq!(result.tx_checkpoint, 1);
     }
 
-    #[cfg(feature = "walrus")]
-    #[tokio::test]
-    async fn test_workflow_actions_execute() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let mut nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_object_id = sui::types::Address::generate(&mut rng);
-        let dag_ref = sui_mocks::mock_sui_object_ref();
-        let tool_gas_ref = sui_mocks::mock_sui_object_ref();
-        let tool_fqn = fqn!("xyz.taluslabs.test@1");
-        let default_agent = sui::types::Address::generate(&mut rng);
-        let default_skill_id = 11;
-        let default_agent_ref = sui::types::ObjectReference::new(
-            default_agent,
-            1,
-            sui::types::Digest::generate(&mut rng),
-        );
-        nexus_objects.default_dag_executor = DefaultDagExecutorTarget {
-            agent_id: default_agent,
-            skill_id: default_skill_id,
-        };
-
-        let requirements = SkillRequirement {
-            input_commitment: vec![1],
-            payment_policy: SkillPaymentPolicy::default(),
-            schedule_policy: SkillSchedulePolicy::default(),
-            fixed_tools: Vec::new(),
-        };
-        let agent_registry = AgentRegistrySnapshot {
-            id: *nexus_objects.agent_registry.object_id(),
-            agents: vec![AgentRecord {
-                active: true,
-                skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-            }],
-            skills: vec![SkillRecordContext {
-                agent_id: default_agent,
-                skill_id: default_skill_id,
-                record: SkillRecord {
-                    description: vec![3],
-                    active: true,
-                    dag_binding: SkillDagBinding::runtime_selected(),
-                    requirements: requirements.clone(),
-                    current_interface_revision: InterfaceVersion::new(1),
-                    scheduled_task_count: 0,
-                },
-            }],
-            default_executor: Some(DefaultDagExecutor {
-                agent: Agent::from_ids(
-                    default_agent,
-                    1,
-                    Some(*nexus_objects.agent_registry.object_id()),
-                ),
-                skill_id: default_skill_id,
-            }),
-        };
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        let execution_created = sui::types::Object::new(
-            sui::types::ObjectData::Struct(
-                sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.workflow_pkg_id,
-                        sui::types::Identifier::from_static("execution"),
-                        sui::types::Identifier::from_static("DAGExecution"),
-                        vec![],
-                    ),
-                    true,
-                    0,
-                    execution_object_id.to_bcs().unwrap(),
-                )
-                .unwrap(),
-            ),
-            sui::types::Owner::Shared(0),
-            tx_digest,
-            1000,
-        );
-
-        // DAG
-        let dag = dag_bcs(1);
-
-        sui_mocks::grpc::mock_get_object_bcs(
-            &mut ledger_service_mock,
-            dag_ref.clone(),
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
-        );
-
-        // DagSpec.vertices
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            &mut state_service_mock,
-            vec![(
-                graph_move::Vertex::new("ToolVertex"),
-                *tool_gas_ref.object_id(),
-            )],
-        );
-
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            &mut ledger_service_mock,
-            vec![(
-                tool_gas_ref.clone(),
-                sui::types::Owner::Shared(0),
-                graph_move::Vertex::new("ToolVertex"),
-                offchain_vertex_node_bcs(&tool_fqn),
-            )],
-        );
-
-        // ToolGas
-        sui_mocks::grpc::mock_get_objects_metadata(
-            &mut ledger_service_mock,
-            vec![(tool_gas_ref, sui::types::Owner::Shared(0), None)],
-        );
-
-        mock_fetch_registry_from_tables(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            &agent_registry,
-        );
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            default_agent_ref,
-            sui::types::Owner::Shared(0),
-            None,
-        );
-
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            tx_digest,
-            gas_coin_ref.clone(),
-            vec![execution_created],
-            vec![],
-            vec![],
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            state_service_mock: Some(state_service_mock),
-        });
-
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let entry_data = HashMap::from([(
-            "entry_vertex".to_string(),
-            VecMap::<InputPort, NexusData>::from_map(HashMap::from([
-                ("entry_port".to_string(), inline_bytes(b"data")),
-                ("another_entry_port".to_string(), inline_bytes(b"data")),
-            ])),
-        )]);
-
-        let priority_fee_percentage = None;
-
-        let result = client
-            .workflow()
-            .execute(
-                *dag_ref.object_id(),
-                entry_data,
-                priority_fee_percentage,
-                None,
-                &StorageConf::default(),
-            )
-            .await
-            .expect("Failed to execute DAG");
-
-        assert_eq!(result.execution_object_id, execution_object_id);
-        assert_eq!(result.tx_digest, tx_digest);
-        let tap_execution = result.tap_execution.expect("TAP execution metadata");
-        assert_eq!(tap_execution.payment_max_budget_mist, 1000);
-    }
-
-    #[cfg(feature = "walrus")]
-    #[tokio::test]
-    async fn test_workflow_actions_execute_agent_dag_pinned_skill() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_object_id = sui::types::Address::generate(&mut rng);
-        let dag_ref = sui_mocks::mock_sui_object_ref();
-        let tool_fqn = fqn!("xyz.taluslabs.standard_tap@1");
-        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
-            *nexus_objects.gas_service.object_id(),
-            &tool_fqn,
-        )
-        .expect("derive tool gas id");
-        let tool_gas_ref = sui::types::ObjectReference::new(
-            tool_gas_id,
-            1,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let agent_id = sui::types::Address::generate(&mut rng);
-        let skill_id = 22;
-        let agent_ref =
-            sui::types::ObjectReference::new(agent_id, 2, sui::types::Digest::generate(&mut rng));
-        let requirements = SkillRequirement {
-            input_commitment: vec![1],
-            payment_policy: SkillPaymentPolicy::default(),
-            schedule_policy: SkillSchedulePolicy::default(),
-            fixed_tools: Vec::new(),
-        };
-        let agent_registry = AgentRegistrySnapshot {
-            id: *nexus_objects.agent_registry.object_id(),
-            agents: vec![AgentRecord {
-                active: true,
-                skills: MoveTable::new(sui::types::Address::generate(&mut rng), 1),
-            }],
-            skills: vec![SkillRecordContext {
-                agent_id,
-                skill_id,
-                record: SkillRecord {
-                    description: vec![3],
-                    active: true,
-                    dag_binding: SkillDagBinding::pinned(*dag_ref.object_id()),
-                    requirements: requirements.clone(),
-                    current_interface_revision: InterfaceVersion::new(1),
-                    scheduled_task_count: 0,
-                },
-            }],
-            default_executor: None,
-        };
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        let execution_created = sui::types::Object::new(
-            sui::types::ObjectData::Struct(
-                sui::types::MoveStruct::new(
-                    sui::types::StructTag::new(
-                        nexus_objects.workflow_pkg_id,
-                        sui::types::Identifier::from_static("execution"),
-                        sui::types::Identifier::from_static("DAGExecution"),
-                        vec![],
-                    ),
-                    true,
-                    0,
-                    execution_object_id.to_bcs().unwrap(),
-                )
-                .unwrap(),
-            ),
-            sui::types::Owner::Shared(0),
-            tx_digest,
-            1000,
-        );
-        let dag = dag_bcs(1);
-        mock_fetch_registry_from_tables(
-            &mut ledger_service_mock,
-            &mut state_service_mock,
-            &nexus_objects,
-            &agent_registry,
-        );
-        sui_mocks::grpc::mock_get_object_bcs(
-            &mut ledger_service_mock,
-            dag_ref.clone(),
-            sui::types::Owner::Shared(0),
-            bcs::to_bytes(&dag).expect("DAG BCS should serialize"),
-        );
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            &mut state_service_mock,
-            vec![(
-                graph_move::Vertex::new("ToolVertex"),
-                *tool_gas_ref.object_id(),
-            )],
-        );
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
-            &mut ledger_service_mock,
-            vec![(
-                tool_gas_ref.clone(),
-                sui::types::Owner::Shared(0),
-                graph_move::Vertex::new("ToolVertex"),
-                offchain_vertex_node_bcs(&tool_fqn),
-            )],
-        );
-        sui_mocks::grpc::mock_get_objects_metadata(
-            &mut ledger_service_mock,
-            vec![(tool_gas_ref, sui::types::Owner::Shared(0), None)],
-        );
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            agent_ref,
-            sui::types::Owner::Shared(2),
-            None,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            tx_digest,
-            gas_coin_ref,
-            vec![execution_created],
-            vec![],
-            vec![],
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            state_service_mock: Some(state_service_mock),
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-        let entry_data = HashMap::from([(
-            "entry_vertex".to_string(),
-            VecMap::<InputPort, NexusData>::from_map(HashMap::from([(
-                "entry_port".to_string(),
-                inline_bytes(b"data"),
-            )])),
-        )]);
-
-        let result = client
-            .workflow()
-            .execute_agent_dag(
-                agent_id,
-                skill_id,
-                entry_data,
-                None,
-                Some("custom"),
-                &StorageConf::default(),
-                AgentDagExecuteOptions {
-                    payment_max_budget_mist: 100,
-                    ..Default::default()
-                },
-            )
-            .await
-            .expect("agent DAG execution succeeds");
-
-        assert_eq!(result.execution_object_id, execution_object_id);
-        assert_eq!(result.tx_digest, tx_digest);
-        let metadata = result.tap_execution.expect("TAP execution metadata");
-        assert_eq!(metadata.agent_id, agent_id);
-        assert_eq!(metadata.skill_id, skill_id);
-        assert_eq!(metadata.dag_id, *dag_ref.object_id());
-        assert_eq!(metadata.payment_max_budget_mist, 100);
-    }
-
-    #[test]
-    fn agent_dag_payment_max_budget_is_total_mist_ceiling() {
-        let budget = resolve_agent_dag_payment_budget(
-            &AgentDagExecuteOptions {
-                payment_max_budget_mist: 120,
-                ..Default::default()
-            },
-            Some(20),
-        )
-        .expect("total MIST ceiling should resolve");
-
-        assert_eq!(budget.payment_max_budget_mist, 120);
-    }
-
-    #[test]
-    fn agent_dag_payment_max_budget_requires_nonzero_gas_capacity() {
-        let error = resolve_agent_dag_payment_budget(
-            &AgentDagExecuteOptions {
-                payment_max_budget_mist: 0,
-                ..Default::default()
-            },
-            Some(20),
-        )
-        .expect_err("zero total ceiling cannot fund gas");
-
-        assert!(error
-            .to_string()
-            .contains("cannot fund a nonzero gas budget"));
-    }
     #[test]
     fn inspect_execution_options_defaults_are_stable() {
         assert_eq!(
@@ -5021,7 +4067,7 @@ mod tests {
             subscription_service_mock: Some(sub_service_mock),
             ..Default::default()
         });
-        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rand::thread_rng());
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         NexusClient::builder()
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)

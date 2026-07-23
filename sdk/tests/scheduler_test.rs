@@ -1,19 +1,13 @@
 #![cfg(feature = "test_utils")]
 
-use nexus_sdk::move_bindings::scheduler::scheduler::State as TaskState;
+use nexus_sdk::move_bindings::scheduler::task::TaskStatus;
 
 #[test]
 fn task_state_roundtrips_through_bcs() {
-    for state in [
-        TaskState::Active,
-        TaskState::Paused,
-        TaskState::Canceled,
-        TaskState::Completed,
-        TaskState::Failed,
-    ] {
-        let bytes = bcs::to_bytes(&state).expect("bcs serialize TaskState");
+    for state in [TaskStatus::Active, TaskStatus::Paused, TaskStatus::Canceled] {
+        let bytes = bcs::to_bytes(&state).expect("bcs serialize TaskStatus");
 
-        let decoded: TaskState = bcs::from_bytes(&bytes).expect("bcs deserialize TaskState");
+        let decoded: TaskStatus = bcs::from_bytes(&bytes).expect("bcs deserialize TaskStatus");
         assert_eq!(decoded, state);
     }
 }

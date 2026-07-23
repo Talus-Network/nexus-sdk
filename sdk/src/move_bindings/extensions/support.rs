@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn type_name_bcs_roundtrip() {
-        let value = TypeName::new("0xa5::scheduler::QueueGeneratorWitness");
+        let value = TypeName::new("0xa5::example::Witness");
         assert_eq!(
             bcs::from_bytes::<TypeName>(&bcs::to_bytes(&value).unwrap()).unwrap(),
             value

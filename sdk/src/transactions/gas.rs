@@ -88,20 +88,6 @@ pub(crate) fn buy_expiry_gas_ticket_ptb(
     })
 }
 
-/// PTB template to snapshot all DAG tool costs into the execution payment.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn snapshot_dag_tool_costs(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    gas_service: sui::types::Argument,
-    execution: sui::types::Argument,
-    dag: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    tx.call_target(
-        gas_binding::snapshot_dag_tool_costs_target,
-        vec![gas_service, execution, dag],
-    )
-}
-
 /// PTB template to settle payment for a vertex using pending DAG settlement
 /// state when present.
 #[allow(clippy::too_many_arguments)]

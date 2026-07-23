@@ -2,7 +2,6 @@ use {
     crate::{
         move_bindings::{
             interface::{
-                authorization::AgentVertexAuthorizationTemplate,
                 dag as dag_binding,
                 graph::{
                     self as graph_binding,
@@ -24,8 +23,6 @@ use {
             },
             sui_framework::transfer as transfer_binding,
             workflow::{
-                execution as execution_binding,
-                execution_entries as execution_entries_binding,
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
                 gas as gas_binding,
@@ -33,10 +30,8 @@ use {
         },
         move_boundary,
         sui,
-        transactions::{agent_input::AgentInput, scheduler, tap},
+        transactions::{agent_input::AgentInput, scheduler},
         types::{
-            effective_priority_fee_percentage,
-            AgentId,
             DagDefaultValue,
             DagEdge,
             DagEntryPort,
@@ -46,7 +41,6 @@ use {
             DagVertexKind,
             ExternalVerifierRuntimeCall,
             NexusObjects,
-            SkillId,
             DEFAULT_ENTRY_GROUP,
         },
     },
@@ -95,32 +89,6 @@ fn runtime_vertex_arg(
             )
         }
     }
-}
-
-fn begin_execution_inputs_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-) -> anyhow::Result<sui::types::Argument> {
-    let mut vertices = Vec::new();
-    let mut ports = Vec::new();
-    let mut values = Vec::new();
-
-    for (vertex_name, data) in input_data {
-        for (port_name, value) in data {
-            vertices.push(tx.graph_vertex(vertex_name)?);
-            ports.push(tx.graph_input_port(port_name)?);
-            values.push(tx.nexus_data(value)?);
-        }
-    }
-
-    let vertices = tx.move_vector::<crate::move_bindings::interface::graph::Vertex>(vertices)?;
-    let ports = tx.move_vector::<crate::move_bindings::interface::graph::InputPort>(ports)?;
-    let values = tx.move_vector::<NexusData>(values)?;
-
-    tx.call_target(
-        graph_binding::inputs_to_begin_execution_target,
-        vec![vertices, ports, values],
-    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -271,18 +239,6 @@ fn build_runtime_tool_result_worksheet(
         tool_registry,
         verifier_registry,
     })
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AgentDagExecuteInput {
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub selected_dag: Option<sui::types::Address>,
-    pub authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    pub payment_source: Vec<u8>,
-    pub payment_coin: Option<sui::types::ObjectReference>,
-    pub payment_coin_balance: Option<u64>,
-    pub payment_max_budget_mist: u64,
 }
 
 /// PTB template for creating a new empty DAG.
@@ -491,30 +447,6 @@ fn create_vertex_verifier_mode(
     )
 }
 
-/// Build a PTB that accomplishes TAP execution payment.
-pub(crate) fn accomplish_tap_execution_payment_for_self_ptb(
-    objects: &NexusObjects,
-    execution: &sui::types::ObjectReference,
-    agent: Option<AgentInput>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        let execution = tx.shared_object(execution, true)?;
-        match agent {
-            Some(agent) => {
-                let agent = agent.mutable_ptb_argument(tx)?;
-                tx.call_target(execution_settlement_binding::accomplish_tap_execution_payment_from_agent_vault_target, vec![agent, execution])?;
-            }
-            None => {
-                tx.call_target(
-                    execution_settlement_binding::accomplish_tap_execution_payment_target,
-                    vec![execution],
-                )?;
-            }
-        }
-        Ok(())
-    })
-}
-
 /// Builds a [`ProgrammableTransaction`] that refills TAP execution payment from
 /// the sender's address balance.
 pub(crate) fn refill_tap_execution_payment_for_self_ptb(
@@ -586,15 +518,14 @@ fn runtime_tool_gas_args(
 
     for gas_ref in ordered_runtime_tool_gas_refs(tools_gas) {
         let key = (gas_ref.object_id, gas_ref.version);
-        if !tool_gas_args.contains_key(&key) {
-            let arg = tx.shared_object_by_id(gas_ref.object_id, gas_ref.version, true)?;
-            tool_gas_args.insert(key, arg);
-            lock_tool_gas_args.push(arg);
-        }
-
-        let tool_gas = *tool_gas_args
-            .get(&key)
-            .expect("tool gas argument was just inserted");
+        let tool_gas = match tool_gas_args.entry(key) {
+            std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let arg = tx.shared_object_by_id(gas_ref.object_id, gas_ref.version, true)?;
+                lock_tool_gas_args.push(arg);
+                *entry.insert(arg)
+            }
+        };
 
         if &gas_ref.vertex == next_vertex.vertex() {
             current_tool_gas = Some(tool_gas);
@@ -952,10 +883,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
     tool_witness_id: sui::types::Address,
     finalize_gas_charge: u64,
     settlement_gas_charge: u64,
-    scheduled_payment_settlement: Option<(
-        &sui::types::ObjectReference,
-        &sui::types::ObjectReference,
-    )>,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
@@ -989,12 +917,8 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
         lock_payment_state_for_tools(tx, tools_gas, dag, execution)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
-        if let Some((task, scheduled_execution)) = scheduled_payment_settlement {
-            scheduler::settle_finished_scheduled_execution_payment_if_ready(
-                tx,
-                task,
-                scheduled_execution,
-            )?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
         }
 
         Ok(())
@@ -1385,10 +1309,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
-    scheduled_payment_settlement: Option<(
-        &sui::types::ObjectReference,
-        &sui::types::ObjectReference,
-    )>,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let leader_cap = tx.shared_object(leader_cap, false)?;
@@ -1421,12 +1342,8 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
         lock_payment_state_for_tools(tx, tools_gas_args, dag, execution)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
-        if let Some((task, scheduled_execution)) = scheduled_payment_settlement {
-            scheduler::settle_finished_scheduled_execution_payment_if_ready(
-                tx,
-                task,
-                scheduled_execution,
-            )?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
         }
 
         Ok(())
@@ -1801,103 +1718,6 @@ fn mark_entry_input_port(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-fn begin_user_funded_agent_execution(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    agent: sui::types::Argument,
-    dag: sui::types::Argument,
-    _dag_id: sui::types::Argument,
-    priority_fee_percentage: u64,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    payment_coin: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let network = tx.object_id(objects.network_id)?;
-    let entry_group = tx.graph_entry_group(entry_group)?;
-    let with_vertex_inputs = begin_execution_inputs_arg(tx, input_data)?;
-
-    let priority_fee_percentage = tx.arg(&priority_fee_percentage)?;
-
-    let agent_id = tx.object_id(agent_execution.agent_id)?;
-    let agent_config = tap::agent_execution_config_arg(
-        tx,
-        agent_id,
-        network,
-        entry_group,
-        with_vertex_inputs,
-        priority_fee_percentage,
-        agent_execution.skill_id,
-        agent_execution.selected_dag,
-        &agent_execution.authorization_templates,
-    )?;
-
-    let payment_max_budget_mist = tx.arg(&agent_execution.payment_max_budget_mist)?;
-
-    tx.call_target(
-        execution_entries_binding::begin_user_funded_agent_execution_target,
-        vec![
-            dag,
-            agent_registry,
-            agent,
-            tool_registry,
-            agent_config,
-            payment_coin,
-            payment_max_budget_mist,
-            clock,
-        ],
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn begin_default_dag_execution(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    tool_registry: sui::types::Argument,
-    agent_registry: sui::types::Argument,
-    dag: sui::types::Argument,
-    dag_id: sui::types::Argument,
-    priority_fee_percentage: u64,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    payment_coin: sui::types::Argument,
-    clock: sui::types::Argument,
-) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let network = tx.object_id(objects.network_id)?;
-    let entry_group = tx.graph_entry_group(entry_group)?;
-    let with_vertex_inputs = begin_execution_inputs_arg(tx, input_data)?;
-
-    let priority_fee_percentage = tx.arg(&priority_fee_percentage)?;
-    let config = tap::default_agent_execution_config_arg(
-        tx,
-        dag_id,
-        network,
-        entry_group,
-        with_vertex_inputs,
-        priority_fee_percentage,
-    )?;
-
-    let payment_max_budget_mist = tx.arg(&agent_execution.payment_max_budget_mist)?;
-
-    tx.call_target(
-        execution_entries_binding::begin_default_dag_execution_target,
-        vec![
-            dag,
-            agent_registry,
-            tool_registry,
-            config,
-            payment_coin,
-            payment_max_budget_mist,
-            clock,
-        ],
-    )
-}
-
 /// PTB template to lock execution payment state for the given tools.
 #[allow(clippy::too_many_arguments)]
 fn lock_payment_state_for_tools(
@@ -1912,201 +1732,6 @@ fn lock_payment_state_for_tools(
             vec![tool_gas, dag, execution],
         )?;
     }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn append_execute_agent_dag(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    dag: &sui::types::ObjectReference,
-    agent: AgentInput,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-) -> anyhow::Result<()> {
-    execute_agent_dag_internal(
-        tx,
-        dag,
-        Some(agent),
-        priority_fee_percentage,
-        entry_group,
-        input_data,
-        agent_execution,
-        tools_gas,
-        false,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn execute_agent_dag_ptb(
-    objects: &NexusObjects,
-    dag: &sui::types::ObjectReference,
-    agent: AgentInput,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        append_execute_agent_dag(
-            tx,
-            dag,
-            agent,
-            priority_fee_percentage,
-            entry_group,
-            input_data,
-            agent_execution,
-            tools_gas,
-        )
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn execute_default_agent_dag_ptb(
-    objects: &NexusObjects,
-    dag: &sui::types::ObjectReference,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-) -> anyhow::Result<ProgrammableTransaction> {
-    move_boundary::ptb(objects, |tx| {
-        append_execute_default_agent_dag(
-            tx,
-            dag,
-            priority_fee_percentage,
-            entry_group,
-            input_data,
-            agent_execution,
-            tools_gas,
-        )
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn append_execute_default_agent_dag(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    dag: &sui::types::ObjectReference,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-) -> anyhow::Result<()> {
-    execute_agent_dag_internal(
-        tx,
-        dag,
-        None,
-        priority_fee_percentage,
-        entry_group,
-        input_data,
-        agent_execution,
-        tools_gas,
-        true,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn execute_agent_dag_internal(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    dag: &sui::types::ObjectReference,
-    agent: Option<AgentInput>,
-    priority_fee_percentage: Option<u64>,
-    entry_group: &str,
-    input_data: &HashMap<String, HashMap<String, NexusData>>,
-    agent_execution: &AgentDagExecuteInput,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
-    default_executor: bool,
-) -> anyhow::Result<()> {
-    let objects = tx.objects();
-    let dag_id = tx.object_id(*dag.object_id())?;
-    let dag = tx.shared_object(dag, false)?;
-
-    let agent = match agent {
-        Some(agent) => Some(agent.mutable_ptb_argument(tx)?),
-        None => None,
-    };
-
-    let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-
-    let agent_registry = tx.shared_object(&objects.agent_registry, false)?;
-
-    let clock = tx.clock()?;
-
-    let priority_fee_percentage = effective_priority_fee_percentage(priority_fee_percentage)?;
-    let locked_payment_budget_mist = agent_execution.payment_max_budget_mist;
-    let payment_coin = if let Some(payment_coin_ref) = agent_execution.payment_coin.as_ref() {
-        let owned_payment_coin = tx.owned_object(payment_coin_ref)?;
-        match agent_execution.payment_coin_balance {
-            Some(balance) if balance > locked_payment_budget_mist => {
-                let payment_amount = tx.arg(&locked_payment_budget_mist)?;
-                tx.split_coins(owned_payment_coin, vec![payment_amount])?
-            }
-            _ => owned_payment_coin,
-        }
-    } else {
-        tx.withdraw_sui_coin(locked_payment_budget_mist)?
-    };
-
-    let results = if default_executor {
-        begin_default_dag_execution(
-            tx,
-            tool_registry,
-            agent_registry,
-            dag,
-            dag_id,
-            priority_fee_percentage,
-            entry_group,
-            input_data,
-            agent_execution,
-            payment_coin,
-            clock,
-        )?
-    } else {
-        let agent =
-            agent.ok_or_else(|| anyhow::anyhow!("agent DAG execution requires an Agent input"))?;
-        begin_user_funded_agent_execution(
-            tx,
-            tool_registry,
-            agent_registry,
-            agent,
-            dag,
-            dag_id,
-            priority_fee_percentage,
-            entry_group,
-            input_data,
-            agent_execution,
-            payment_coin,
-            clock,
-        )?
-    };
-
-    let execution = results;
-    let gas_service = tx.shared_object(&objects.gas_service, false)?;
-    let tools_gas = tools_gas
-        .iter()
-        .map(|(address, version)| tx.shared_object_by_id(*address, *version, true))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    crate::transactions::gas::snapshot_dag_tool_costs(tx, gas_service, execution, dag)?;
-    lock_payment_state_for_tools(tx, tools_gas, dag, execution)?;
-
-    let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-
-    tx.call_target(
-        execution_entries_binding::start_execution_target,
-        vec![dag, execution, leader_registry, clock],
-    )?;
-
-    tx.call_target(
-        transfer_binding::public_share_object_target::<execution_binding::DAGExecution>,
-        vec![execution],
-    )?;
-
     Ok(())
 }
 
@@ -2534,36 +2159,6 @@ mod tests {
         expect_shared_object_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
         expect_shared_object_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, true);
         expect_u64_arg(&ptb, &call.arguments[6], 15);
-    }
-
-    #[test]
-    fn execute_default_agent_dag_rejects_invalid_explicit_priority() {
-        let objects = nexus_objects();
-        let agent_execution = AgentDagExecuteInput {
-            agent_id: addr("0xa1"),
-            skill_id: 177,
-            selected_dag: None,
-            authorization_templates: Vec::new(),
-            payment_source: Vec::new(),
-            payment_coin: None,
-            payment_coin_balance: None,
-            payment_max_budget_mist: 100,
-        };
-
-        let error = execute_default_agent_dag_ptb(
-            &objects,
-            &object_ref("0x50", 7, 50),
-            Some(crate::types::MIN_PRIORITY_FEE_PERCENTAGE - 1),
-            "group1",
-            &HashMap::new(),
-            &agent_execution,
-            &HashSet::new(),
-        )
-        .expect_err("invalid explicit priority must fail before PTB submission");
-
-        assert!(error
-            .to_string()
-            .contains("priority fee percentage must be in 10..=10000"));
     }
 
     #[test]

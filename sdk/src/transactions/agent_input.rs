@@ -16,6 +16,15 @@ pub enum AgentInput {
 }
 
 impl AgentInput {
+    /// Returns the referenced Agent object ID.
+    pub fn object_id(&self) -> sui::types::Address {
+        *match self {
+            Self::Owned(object) | Self::Shared(object) | Self::Immutable(object) => {
+                object.object_id()
+            }
+        }
+    }
+
     /// Export this object as a mutable generated boundary PTB argument.
     pub(crate) fn mutable_ptb_argument(
         self,

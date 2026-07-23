@@ -7,11 +7,10 @@ use {
         scheduler::helpers,
         sui::get_nexus_client,
     },
-    nexus_sdk::nexus::scheduler::OccurrenceRequest,
     serde_json::json,
 };
 
-/// Schedule a one-off occurrence for a scheduled task.
+/// Adds one manual occurrence to a Task.
 pub(crate) async fn add_occurrence_to_task(
     task_id: sui::types::Address,
     start_ms: Option<u64>,
@@ -20,39 +19,58 @@ pub(crate) async fn add_occurrence_to_task(
     priority_fee_percentage: Option<u64>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!(
-        "Scheduling occurrence for task '{task_id}'",
-        task_id = task_id
-    );
-
-    let schedule = OccurrenceRequest::new(
-        start_ms,
-        None,
-        start_offset_ms,
-        deadline_offset_ms,
-        priority_fee_percentage.and_then(helpers::optional_priority_fee_quote),
-        true,
-    )
-    .map_err(NexusCliError::Nexus)?;
+    command_title!("Scheduling occurrence for Task '{task_id}'");
 
     let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-
+    let clock_ms = nexus_client
+        .scheduler()
+        .clock_timestamp_ms()
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    let occurrence = helpers::occurrence_spec(
+        clock_ms,
+        start_ms,
+        start_offset_ms,
+        deadline_offset_ms,
+        priority_fee_percentage,
+    )?;
     let result = nexus_client
         .scheduler()
-        .add_occurrence(task_id, schedule)
+        .schedule(task_id, occurrence)
         .await
         .map_err(NexusCliError::Nexus)?;
 
     notify_success!("Occurrence scheduled");
-
     json_output(&json!({
         "digest": result.tx_digest,
-        "scheduled_task_id": task_id,
-        "start_ms": start_ms,
-        "start_offset_ms": start_offset_ms,
-        "deadline_offset_ms": deadline_offset_ms,
-        "priority_fee_percentage": priority_fee_percentage,
-    }))?;
+        "tx_checkpoint": result.tx_checkpoint,
+        "task_id": task_id,
+        "occurrence": occurrence,
+        "advertised": result.advertised,
+    }))
+}
 
-    Ok(())
+/// Expires one advertised occurrence after its deadline.
+pub(crate) async fn expire_occurrence(
+    task_id: sui::types::Address,
+    occurrence_id: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Expiring occurrence '{occurrence_id}' for Task '{task_id}'");
+
+    let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let result = nexus_client
+        .scheduler()
+        .expire(task_id, occurrence_id)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    notify_success!("Occurrence expired");
+    json_output(&json!({
+        "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
+        "task_id": task_id,
+        "occurrence_id": occurrence_id,
+        "advertised": result.advertised,
+    }))
 }

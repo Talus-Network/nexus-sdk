@@ -1,4 +1,5 @@
-//! Module defining container setups via [`testcontainers`].
+//! Module defining container setups via
+//! [`testcontainers`](testcontainers_modules::testcontainers).
 //!
 //! Contains functions for
 //! - Sui
