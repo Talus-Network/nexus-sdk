@@ -73,7 +73,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `/invoke` now returns exact BCS `TaggedOutput` result bytes instead of JSON output enums; only canonical result bodies are signed, while local HTTP and authentication errors remain unsigned JSON.
 - `AuthContext` now exposes the v2 authenticated leader identity, key id, canonical input hash, leader signature, and nonce.
-- Enabled Warp TLS and the SDK `types` feature required for canonical Tool output encoding.
+- Replaced Warp TLS with a local Rustls server integration, removing the vulnerable legacy TLS dependency while preserving direct TLS termination.
+- Enabled the SDK `types` feature required for canonical Tool output encoding.
 
 ## [`2.0.0-rc.4`] - 2026-07-09
 
