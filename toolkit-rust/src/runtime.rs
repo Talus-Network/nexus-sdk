@@ -1,5 +1,8 @@
 //! See <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
+#[doc(hidden)]
+pub mod tls;
+
 use {
     crate::{
         config::Config,
@@ -25,34 +28,6 @@ use {
         Reply,
     },
 };
-
-/// Direct TLS configuration for the Toolkit server.
-#[doc(hidden)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ToolTlsConfig {
-    Disabled,
-    Enabled { cert_path: String, key_path: String },
-}
-
-/// Validate the all-or-none TLS certificate/key pair used by [`bootstrap!`].
-#[doc(hidden)]
-pub fn tool_tls_config_(
-    cert_path: Option<String>,
-    key_path: Option<String>,
-) -> anyhow::Result<ToolTlsConfig> {
-    match (cert_path, key_path) {
-        (None, None) => Ok(ToolTlsConfig::Disabled),
-        (Some(cert_path), Some(key_path)) if !cert_path.is_empty() && !key_path.is_empty() => {
-            Ok(ToolTlsConfig::Enabled {
-                cert_path,
-                key_path,
-            })
-        }
-        _ => anyhow::bail!(
-            "NEXUS_TOOL_TLS_CERT_PATH and NEXUS_TOOL_TLS_KEY_PATH must both be set to non-empty paths"
-        ),
-    }
-}
 
 /// Load toolkit configuration from environment.
 ///
@@ -264,23 +239,19 @@ macro_rules! bootstrap {
             .map(move || $crate::warp::reply::json(&paths));
 
         let routes = routes.or(default_health_route).or(default_tools_route);
-        // Serve the routes, terminating TLS directly when a certificate/key pair is configured.
-        let tls_config = $crate::runtime::tool_tls_config_(
-            ::std::env::var("NEXUS_TOOL_TLS_CERT_PATH").ok(),
-            ::std::env::var("NEXUS_TOOL_TLS_KEY_PATH").ok(),
-        )
-        .expect("Invalid Nexus Tool TLS configuration");
-        match tls_config {
-            $crate::runtime::ToolTlsConfig::Disabled => {
+        // Terminate TLS directly when both credential paths are configured.
+        match $crate::runtime::tls::Config::from_env()
+            .expect("Invalid Nexus Tool TLS configuration")
+        {
+            $crate::runtime::tls::Config::Disabled => {
                 $crate::warp::serve(routes).run($addr).await
             }
-            $crate::runtime::ToolTlsConfig::Enabled { cert_path, key_path } => {
-                $crate::warp::serve(routes)
-                    .tls()
-                    .cert_path(cert_path)
-                    .key_path(key_path)
-                    .run($addr)
-                    .await
+            $crate::runtime::tls::Config::Enabled { cert_path, key_path } => {
+                let (_, incoming) =
+                    $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
+                        .await
+                        .expect("Failed to start Nexus Tool TLS server");
+                $crate::warp::serve(routes).run_incoming(incoming).await
             }
         }
     }};
@@ -298,34 +269,6 @@ macro_rules! bootstrap {
         let addr = bootstrap!(@get_addr);
         bootstrap!(addr, [$tool])
     }};
-}
-
-#[cfg(test)]
-mod tls_tests {
-    use super::*;
-
-    #[test]
-    fn toolkit_tls_paths_are_all_or_none() {
-        assert_eq!(
-            tool_tls_config_(None, None).unwrap(),
-            ToolTlsConfig::Disabled
-        );
-        assert_eq!(
-            tool_tls_config_(Some("cert.pem".into()), Some("key.pem".into())).unwrap(),
-            ToolTlsConfig::Enabled {
-                cert_path: "cert.pem".into(),
-                key_path: "key.pem".into(),
-            }
-        );
-        for (cert, key) in [
-            (Some("cert.pem".into()), None),
-            (None, Some("key.pem".into())),
-            (Some(String::new()), Some("key.pem".into())),
-            (Some("cert.pem".into()), Some(String::new())),
-        ] {
-            assert!(tool_tls_config_(cert, key).is_err());
-        }
-    }
 }
 
 /// This function generates the necessary routes for a given [NexusTool] using an already-loaded

@@ -24,16 +24,20 @@ serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error.workspace = true
 hex.workspace = true
-warp = { workspace = true, features = ["tls"] }
+warp.workspace = true
 env_logger.workspace = true
 log.workspace = true
 notify = "8.2.0"
+tls-listener.workspace = true
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+tokio-rustls.workspace = true
+tokio-stream.workspace = true
 tracing = "0.1"
 # === Nexus deps ===
 nexus-sdk = { workspace = true, features = ["signed_http", "types"] }
 
 [dev-dependencies]
+rcgen = "0.13"
 reqwest = { version = "0.12.14", default-features = false, features = ["json", "rustls-tls"] }
 tempfile.workspace = true
 tokio = { version = "1.44.1", features = ["macros"] }
