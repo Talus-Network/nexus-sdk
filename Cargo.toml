@@ -21,7 +21,7 @@ categories = [
 # starlark_map 0.13.0 derives Allocative for hashbrown 0.14 raw table types;
 # allocative 0.3.6 switched its hashbrown impls to 0.16, which breaks that derive.
 allocative = "=0.3.4"
-anyhow = "1.0.97"
+anyhow = "1.0.103"
 argon2 = "0.5"
 base64 = "0.21"
 bcs = "0.1.6"
