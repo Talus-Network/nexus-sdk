@@ -1,5 +1,8 @@
 //! See <https://github.com/Talus-Network/gitbook-docs/blob/production/nexus-sdk/toolkit-rust.md>
 
+#[doc(hidden)]
+pub mod tls;
+
 use {
     crate::{
         config::Config,
@@ -7,7 +10,6 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
-    anyhow::Context as _,
     nexus_sdk::move_bindings::{
         primitives::{
             data::{DataTypeHint, NexusData, TypedNexusData},
@@ -17,29 +19,7 @@ use {
     },
     reqwest::Url,
     serde_json::json,
-    std::{
-        future::Future,
-        io,
-        net::SocketAddr,
-        path::{Path, PathBuf},
-        pin::Pin,
-        sync::Arc,
-        task::{ready, Context, Poll},
-    },
-    tokio::{
-        io::{AsyncRead, AsyncWrite, ReadBuf},
-        net::TcpStream,
-    },
-    tokio_rustls::{
-        rustls::{
-            pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-            ServerConfig,
-        },
-        server::TlsStream,
-        Accept,
-        TlsAcceptor,
-    },
-    tokio_stream::{wrappers::TcpListenerStream, Stream, StreamExt},
+    std::sync::Arc,
     warp::{
         filters::{host::Authority, path::FullPath},
         http::{HeaderMap, StatusCode},
@@ -48,177 +28,6 @@ use {
         Reply,
     },
 };
-
-enum TlsConnectionState {
-    Handshaking(Accept<TcpStream>),
-    Streaming(TlsStream<TcpStream>),
-}
-
-/// A TLS connection used by [`bootstrap!`].
-#[doc(hidden)]
-pub struct TlsConnection {
-    state: TlsConnectionState,
-}
-
-impl TlsConnection {
-    fn new(stream: TcpStream, config: Arc<ServerConfig>) -> Self {
-        Self {
-            state: TlsConnectionState::Handshaking(TlsAcceptor::from(config).accept(stream)),
-        }
-    }
-}
-
-impl AsyncRead for TlsConnection {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let connection = self.get_mut();
-        match connection.state {
-            TlsConnectionState::Handshaking(ref mut handshake) => {
-                match ready!(Pin::new(handshake).poll(cx)) {
-                    Ok(mut stream) => {
-                        let result = Pin::new(&mut stream).poll_read(cx, buffer);
-                        connection.state = TlsConnectionState::Streaming(stream);
-                        result
-                    }
-                    Err(error) => Poll::Ready(Err(error)),
-                }
-            }
-            TlsConnectionState::Streaming(ref mut stream) => Pin::new(stream).poll_read(cx, buffer),
-        }
-    }
-}
-
-impl AsyncWrite for TlsConnection {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buffer: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        let connection = self.get_mut();
-        match connection.state {
-            TlsConnectionState::Handshaking(ref mut handshake) => {
-                match ready!(Pin::new(handshake).poll(cx)) {
-                    Ok(mut stream) => {
-                        let result = Pin::new(&mut stream).poll_write(cx, buffer);
-                        connection.state = TlsConnectionState::Streaming(stream);
-                        result
-                    }
-                    Err(error) => Poll::Ready(Err(error)),
-                }
-            }
-            TlsConnectionState::Streaming(ref mut stream) => {
-                Pin::new(stream).poll_write(cx, buffer)
-            }
-        }
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            TlsConnectionState::Handshaking(_) => Poll::Ready(Ok(())),
-            TlsConnectionState::Streaming(ref mut stream) => Pin::new(stream).poll_flush(cx),
-        }
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            TlsConnectionState::Handshaking(_) => Poll::Ready(Ok(())),
-            TlsConnectionState::Streaming(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-        }
-    }
-}
-
-fn tls_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<ServerConfig> {
-    let certificates = CertificateDer::pem_file_iter(cert_path)
-        .with_context(|| {
-            format!(
-                "failed to open TLS certificate file {}",
-                cert_path.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .with_context(|| {
-            format!(
-                "failed to read TLS certificate file {}",
-                cert_path.display()
-            )
-        })?;
-    if certificates.is_empty() {
-        anyhow::bail!(
-            "TLS certificate file {} contains no certificates",
-            cert_path.display()
-        );
-    }
-
-    let private_key = PrivateKeyDer::from_pem_file(key_path)
-        .with_context(|| format!("failed to read TLS private key file {}", key_path.display()))?;
-    if private_key.secret_der().is_empty() {
-        anyhow::bail!(
-            "TLS private key file {} contains no supported key",
-            key_path.display()
-        );
-    }
-
-    let mut config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certificates, private_key)
-        .context("failed to build TLS server configuration")?;
-    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
-    Ok(config)
-}
-
-/// Creates incoming TLS connections for [`bootstrap!`].
-#[doc(hidden)]
-pub async fn tls_incoming_(
-    address: SocketAddr,
-    cert_path: PathBuf,
-    key_path: PathBuf,
-) -> anyhow::Result<(SocketAddr, impl Stream<Item = io::Result<TlsConnection>>)> {
-    let config = Arc::new(tls_server_config(&cert_path, &key_path)?);
-    let listener = tokio::net::TcpListener::bind(address)
-        .await
-        .context("failed to bind TLS listener")?;
-    let address = listener
-        .local_addr()
-        .context("failed to read TLS listener address")?;
-    let incoming = TcpListenerStream::new(listener).map(move |connection| {
-        let config = config.clone();
-        connection.map(|stream| TlsConnection::new(stream, config))
-    });
-
-    Ok((address, incoming))
-}
-
-/// Direct TLS configuration for the Toolkit server.
-#[doc(hidden)]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ToolTlsConfig {
-    Disabled,
-    Enabled { cert_path: String, key_path: String },
-}
-
-/// Validate the all-or-none TLS certificate/key pair used by [`bootstrap!`].
-#[doc(hidden)]
-pub fn tool_tls_config_(
-    cert_path: Option<String>,
-    key_path: Option<String>,
-) -> anyhow::Result<ToolTlsConfig> {
-    match (cert_path, key_path) {
-        (None, None) => Ok(ToolTlsConfig::Disabled),
-        (Some(cert_path), Some(key_path)) if !cert_path.is_empty() && !key_path.is_empty() => {
-            Ok(ToolTlsConfig::Enabled {
-                cert_path,
-                key_path,
-            })
-        }
-        _ => anyhow::bail!(
-            "NEXUS_TOOL_TLS_CERT_PATH and NEXUS_TOOL_TLS_KEY_PATH must both be set to non-empty paths"
-        ),
-    }
-}
 
 /// Load toolkit configuration from environment.
 ///
@@ -430,19 +239,16 @@ macro_rules! bootstrap {
             .map(move || $crate::warp::reply::json(&paths));
 
         let routes = routes.or(default_health_route).or(default_tools_route);
-        // Serve the routes, terminating TLS directly when a certificate/key pair is configured.
-        let tls_config = $crate::runtime::tool_tls_config_(
-            ::std::env::var("NEXUS_TOOL_TLS_CERT_PATH").ok(),
-            ::std::env::var("NEXUS_TOOL_TLS_KEY_PATH").ok(),
-        )
-        .expect("Invalid Nexus Tool TLS configuration");
-        match tls_config {
-            $crate::runtime::ToolTlsConfig::Disabled => {
+        // Terminate TLS directly when both credential paths are configured.
+        match $crate::runtime::tls::Config::from_env()
+            .expect("Invalid Nexus Tool TLS configuration")
+        {
+            $crate::runtime::tls::Config::Disabled => {
                 $crate::warp::serve(routes).run($addr).await
             }
-            $crate::runtime::ToolTlsConfig::Enabled { cert_path, key_path } => {
+            $crate::runtime::tls::Config::Enabled { cert_path, key_path } => {
                 let (_, incoming) =
-                    $crate::runtime::tls_incoming_($addr.into(), cert_path.into(), key_path.into())
+                    $crate::runtime::tls::bind($addr.into(), cert_path, key_path)
                         .await
                         .expect("Failed to start Nexus Tool TLS server");
                 $crate::warp::serve(routes).run_incoming(incoming).await
@@ -463,72 +269,6 @@ macro_rules! bootstrap {
         let addr = bootstrap!(@get_addr);
         bootstrap!(addr, [$tool])
     }};
-}
-
-#[cfg(test)]
-mod tls_tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn toolkit_tls_accepts_https_while_another_handshake_is_stalled() {
-        let rcgen::CertifiedKey { cert, key_pair } =
-            rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let cert_pem = cert.pem();
-        let temp_dir = tempfile::tempdir().unwrap();
-        let cert_path = temp_dir.path().join("cert.pem");
-        let key_path = temp_dir.path().join("key.pem");
-        std::fs::write(&cert_path, &cert_pem).unwrap();
-        std::fs::write(&key_path, key_pair.serialize_pem()).unwrap();
-
-        let (address, incoming) = tls_incoming_(([127, 0, 0, 1], 0).into(), cert_path, key_path)
-            .await
-            .unwrap();
-        let server = tokio::spawn(
-            warp::serve(warp::path("health").map(|| StatusCode::OK)).run_incoming(incoming),
-        );
-        let stalled_connection = TcpStream::connect(address).await.unwrap();
-
-        let root = reqwest::Certificate::from_pem(cert_pem.as_bytes()).unwrap();
-        let client = reqwest::Client::builder()
-            .add_root_certificate(root)
-            .build()
-            .unwrap();
-        let response = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            client
-                .get(format!("https://localhost:{}/health", address.port()))
-                .send(),
-        )
-        .await
-        .unwrap();
-        drop(stalled_connection);
-        server.abort();
-
-        assert_eq!(response.unwrap().status().as_u16(), 200);
-    }
-
-    #[test]
-    fn toolkit_tls_paths_are_all_or_none() {
-        assert_eq!(
-            tool_tls_config_(None, None).unwrap(),
-            ToolTlsConfig::Disabled
-        );
-        assert_eq!(
-            tool_tls_config_(Some("cert.pem".into()), Some("key.pem".into())).unwrap(),
-            ToolTlsConfig::Enabled {
-                cert_path: "cert.pem".into(),
-                key_path: "key.pem".into(),
-            }
-        );
-        for (cert, key) in [
-            (Some("cert.pem".into()), None),
-            (None, Some("key.pem".into())),
-            (Some(String::new()), Some("key.pem".into())),
-            (Some("cert.pem".into()), Some(String::new())),
-        ] {
-            assert!(tool_tls_config_(cert, key).is_err());
-        }
-    }
 }
 
 /// This function generates the necessary routes for a given [NexusTool] using an already-loaded
