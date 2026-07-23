@@ -35,13 +35,13 @@ const SUI_READY_REQUEST: &str = r#"{"jsonrpc":"2.0","method":"sui_getChainIdenti
 pub struct SuiInstance {
     /// The container handle.
     pub container: SuiContainer,
-    /// The mapped JSON RPC port.
+    /// The mapped Sui gRPC port.
     pub rpc_port: u16,
     /// The mapped faucet port.
     pub faucet_port: u16,
 }
 
-/// Returns why Docker based tests cannot run in the current environment.
+/// Returns why Docker-based tests cannot run in the current environment.
 pub async fn docker_unavailable_reason() -> Option<String> {
     let docker = match client::docker_client_instance().await {
         Ok(docker) => docker,
