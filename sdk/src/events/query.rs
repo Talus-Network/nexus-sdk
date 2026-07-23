@@ -1,7 +1,7 @@
 //! Typed query for Nexus events.
 
 use {
-    super::parsing::{classify_nexus_event, decode_nexus_event, NexusEventClassification},
+    super::parsing::decode_nexus_event,
     crate::{
         events::NexusEvent,
         move_bindings::primitives::{
@@ -32,9 +32,9 @@ pub enum NexusEventDecodeError {
     /// The Sui event type is invalid.
     #[error("Nexus event type is invalid: {0}")]
     EventType(#[from] sui::types::TypeParseError),
-    /// The Nexus wrapper or its contents are invalid.
+    /// The Nexus event contents are invalid.
     #[error("Nexus event contents are invalid: {0}")]
-    Nexus(#[source] anyhow::Error),
+    Contents(#[source] anyhow::Error),
 }
 
 /// Query that selects and decodes events for one Nexus deployment.
@@ -47,6 +47,27 @@ impl NexusEventQuery {
     /// Creates a query for `objects`.
     pub fn new(objects: Arc<NexusObjects>) -> Self {
         Self { objects }
+    }
+
+    #[cfg(feature = "nexus")]
+    pub(crate) fn decode_sui_event(
+        &self,
+        index: u64,
+        digest: sui::types::Digest,
+        event: &sui::types::Event,
+    ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
+        self.decode_parts(index, digest, &event.type_, &event.contents)
+    }
+
+    fn decode_parts(
+        &self,
+        index: u64,
+        digest: sui::types::Digest,
+        wrapper_type: &sui::types::StructTag,
+        contents: &[u8],
+    ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
+        decode_nexus_event(index, digest, contents, wrapper_type, &self.objects)
+            .map_err(NexusEventDecodeError::Contents)
     }
 }
 
@@ -81,15 +102,6 @@ impl EventQuery for NexusEventQuery {
             .event_type_opt()
             .ok_or(NexusEventDecodeError::MissingField("event_type"))?
             .parse()?;
-        let (event_type, event_name) = match classify_nexus_event(&wrapper_type, &self.objects)
-            .map_err(NexusEventDecodeError::Nexus)?
-        {
-            NexusEventClassification::Decode {
-                event_type,
-                event_name,
-            } => (event_type, event_name),
-            NexusEventClassification::Ignore(_) => return Ok(None),
-        };
         let digest = event
             .transaction_digest
             .as_deref()
@@ -107,16 +119,8 @@ impl EventQuery for NexusEventQuery {
             .contents_opt()
             .and_then(|contents| contents.value_opt())
             .ok_or(NexusEventDecodeError::MissingField("contents"))?;
-        let event = decode_nexus_event(
-            event_index.into(),
-            digest,
-            contents,
-            event_type,
-            &event_name,
-        )
-        .map_err(NexusEventDecodeError::Nexus)?;
 
-        Ok(Some(event))
+        self.decode_parts(event_index.into(), digest, &wrapper_type, contents)
     }
 }
 

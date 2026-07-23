@@ -25,7 +25,7 @@ use crate::{
 };
 use {
     crate::{
-        events::{is_event_wrapper, FromSuiGrpcEvent, NexusEvent, NexusEventKind},
+        events::{NexusEvent, NexusEventKind, NexusEventQuery},
         move_bindings::{
             interface::{
                 dag as dag_move,
@@ -59,7 +59,7 @@ use {
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
-    std::collections::HashMap,
+    std::{collections::HashMap, sync::Arc},
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
@@ -579,7 +579,7 @@ async fn fetch_transaction_update_with_visibility_retry(
 
 async fn fetch_execution_update_events(
     crawler: &Crawler,
-    nexus_objects: &NexusObjects,
+    nexus_objects: &Arc<NexusObjects>,
     dag_execution_id: sui::types::Address,
     latest: ObjectUpdateReference,
     last_delivered_version: Option<sui::types::Version>,
@@ -589,6 +589,7 @@ async fn fetch_execution_update_events(
     let mut cursor = latest;
     let mut reverse_updates = Vec::new();
     let expected_type = crate::move_bindings::struct_tag::<DAGExecution>(nexus_objects);
+    let event_query = NexusEventQuery::new(Arc::clone(nexus_objects));
     let last_reconstructed = version_or_none(last_delivered_version);
 
     loop {
@@ -672,14 +673,17 @@ async fn fetch_execution_update_events(
             .events
             .iter()
             .enumerate()
-            .filter(|(_, event)| is_event_wrapper(&event.type_, nexus_objects))
-            .map(|(index, event)| {
-                NexusEvent::from_sui_grpc_event(index as u64, update.digest, event, nexus_objects)
-                    .map_err(|error| {
-                        NexusError::Parsing(error.context(format!(
-                            "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
-                            update.digest
-                        )))
+            .filter_map(|(index, event)| {
+                event_query
+                    .decode_sui_event(index as u64, update.digest, event)
+                    .transpose()
+                    .map(|result| {
+                        result.map_err(|error| {
+                            NexusError::Parsing(anyhow::Error::new(error).context(format!(
+                                "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
+                                update.digest
+                            )))
+                        })
                     })
             })
             .collect::<Result<Vec<_>, _>>()?

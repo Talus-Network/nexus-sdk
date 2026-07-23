@@ -2,7 +2,7 @@
 //! on Sui in Nexus context.
 use {
     crate::{
-        events::{FromSuiGrpcEvent, NexusEvent},
+        events::{NexusEvent, NexusEventQuery},
         nexus::{crawler::Crawler, error::NexusError},
         sui::{self, traits::*},
         types::NexusObjects,
@@ -128,9 +128,18 @@ impl Signer {
             )));
         };
 
-        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
-            NexusEvent::from_sui_grpc_event(index as u64, digest, event, &self.nexus_objects).ok()
-        });
+        let event_query = NexusEventQuery::new(Arc::clone(&self.nexus_objects));
+        let nexus_events = events
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                event_query
+                    .decode_sui_event(index as u64, digest, event)
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| NexusError::Parsing(error.into()))?;
 
         // Deserialize objects.
         let Ok(objects) = response
@@ -147,7 +156,7 @@ impl Signer {
 
         Ok(ExecutedTransaction {
             effects: *effects,
-            events: nexus_events.collect(),
+            events: nexus_events,
             objects,
             digest,
             checkpoint,

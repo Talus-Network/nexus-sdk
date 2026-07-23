@@ -1,144 +1,81 @@
-//! This module defines transformers from various Sui types to Nexus event types.
-//! Namely we support:
-//! - Parsing GRPC [`sui::types::Event`]
+//! Nexus event type selection and decoding.
 
-use {
-    crate::{
-        events::{parse_bcs, supports_event, NexusEvent},
-        move_bindings::primitives::{
-            data::NexusData as MoveNexusData,
-            distributed_event as distributed_event_move,
-            event as event_move,
-        },
-        sui,
-        types::NexusObjects,
+use crate::{
+    events::{parse_bcs, supports_event, NexusEvent},
+    move_bindings::primitives::{
+        data::NexusData as MoveNexusData,
+        distributed_event as distributed_event_move,
+        event as event_move,
     },
-    anyhow::bail,
+    sui,
+    types::NexusObjects,
 };
 
-/// [`sui::types::Event`] -> [`NexusEvent`]
-pub trait FromSuiGrpcEvent {
-    /// Parse a Sui GRPC event into a Nexus event.
-    fn from_sui_grpc_event(
-        index: u64,
-        digest: sui::types::Digest,
-        event: &sui::types::Event,
-        objects: &NexusObjects,
-    ) -> anyhow::Result<NexusEvent>;
+struct NexusEventType<'a> {
+    tag: &'a sui::types::StructTag,
+    name: &'a str,
 }
 
-pub(super) enum NexusEventClassification<'a> {
-    Decode {
-        event_type: &'a sui::types::StructTag,
-        event_name: String,
-    },
-    Ignore(String),
-}
-
-impl FromSuiGrpcEvent for NexusEvent {
-    fn from_sui_grpc_event(
-        index: u64,
-        digest: sui::types::Digest,
-        event: &sui::types::Event,
-        objects: &NexusObjects,
-    ) -> anyhow::Result<NexusEvent> {
-        match classify_nexus_event(&event.type_, objects)? {
-            NexusEventClassification::Decode {
-                event_type,
-                event_name,
-            } => decode_nexus_event(index, digest, &event.contents, event_type, &event_name),
-            NexusEventClassification::Ignore(reason) => Err(anyhow::Error::msg(reason)),
+impl<'a> NexusEventType<'a> {
+    fn resolve(wrapper_type: &'a sui::types::StructTag, objects: &NexusObjects) -> Option<Self> {
+        if !is_event_wrapper(wrapper_type, objects) {
+            return None;
         }
+
+        let tag = wrapper_type
+            .type_params()
+            .first()
+            .and_then(|tag| match tag {
+                sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
+                _ => None,
+            })?;
+        if !is_nexus_package(*tag.address(), objects) {
+            return None;
+        }
+
+        let name = normalize_event_name(tag, objects)?;
+        supports_event(name).then_some(Self { tag, name })
     }
-}
-
-pub(super) fn classify_nexus_event<'a>(
-    wrapper_type: &'a sui::types::StructTag,
-    objects: &NexusObjects,
-) -> anyhow::Result<NexusEventClassification<'a>> {
-    if !is_event_wrapper(wrapper_type, objects) {
-        return Ok(NexusEventClassification::Ignore(format!(
-            "Event is not wrapped in '{}::event::EventWrapper', found type: \
-             '{:?}'",
-            objects.primitives_pkg_id, wrapper_type
-        )));
-    }
-
-    let Some(event_type) = wrapper_type
-        .type_params()
-        .first()
-        .and_then(|tag| match tag {
-            sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
-            _ => None,
-        })
-    else {
-        bail!("EventWrapper does not have a valid event type parameter");
-    };
-
-    if !is_nexus_package(*event_type.address(), objects) {
-        return Ok(NexusEventClassification::Ignore(format!(
-            "Inner event does not come from a Nexus package, it comes from \
-             '{}' instead",
-            event_type.address()
-        )));
-    }
-
-    let event_name = normalize_event_name(event_type, objects)?;
-    if !supports_event(&event_name) {
-        return Ok(NexusEventClassification::Ignore(format!(
-            "Unknown event: {event_name}"
-        )));
-    }
-
-    Ok(NexusEventClassification::Decode {
-        event_type,
-        event_name,
-    })
 }
 
 pub(super) fn decode_nexus_event(
     index: u64,
     digest: sui::types::Digest,
     contents: &[u8],
-    event_type: &sui::types::StructTag,
-    event_name: &str,
-) -> anyhow::Result<NexusEvent> {
-    let (data, distribution) = parse_bcs(event_name, contents)?;
+    wrapper_type: &sui::types::StructTag,
+    objects: &NexusObjects,
+) -> anyhow::Result<Option<NexusEvent>> {
+    let Some(event_type) = NexusEventType::resolve(wrapper_type, objects) else {
+        return Ok(None);
+    };
+    let (data, distribution) = parse_bcs(event_type.name, contents)?;
 
-    Ok(NexusEvent {
+    Ok(Some(NexusEvent {
         id: (digest, index),
-        generics: event_type.type_params().to_vec(),
+        generics: event_type.tag.type_params().to_vec(),
         data,
         distribution,
-    })
+    }))
 }
 
-fn normalize_event_name(
-    event_type: &sui::types::StructTag,
+fn normalize_event_name<'a>(
+    event_type: &'a sui::types::StructTag,
     objects: &NexusObjects,
-) -> anyhow::Result<String> {
+) -> Option<&'a str> {
     let name = event_type.name().as_str();
 
     if name != "RequestScheduledExecution" {
-        return Ok(name.to_string());
+        return Some(name);
     }
 
     if *event_type.address() != objects.interface_pkg_id
         || event_type.module().as_str() != "scheduled_request"
     {
-        bail!(
-            "RequestScheduledExecution does not come from Nexus scheduled_request, found '{}::{}'",
-            event_type.address(),
-            event_type.module()
-        );
+        return None;
     }
 
-    let Some(type_tag) = event_type.type_params().first() else {
-        bail!("RequestScheduledExecution is missing a type parameter");
-    };
-
-    let sui::types::TypeTag::Struct(struct_tag) = type_tag else {
-        bail!("RequestScheduledExecution expects a struct type parameter");
+    let sui::types::TypeTag::Struct(struct_tag) = event_type.type_params().first()? else {
+        return None;
     };
 
     let normalized = match struct_tag.name().as_str() {
@@ -148,30 +85,18 @@ fn normalize_event_name(
         {
             "RequestScheduledOccurrenceEvent"
         }
-        "OccurrenceScheduledEvent" => {
-            bail!(
-                "RequestScheduledExecution occurrence payload does not come from Nexus scheduler, found '{}::{}'",
-                struct_tag.address(),
-                struct_tag.module()
-            )
-        }
+        "OccurrenceScheduledEvent" => return None,
         "RequestWalkExecutionEvent"
             if objects.is_workflow_package(*struct_tag.address())
                 && struct_tag.module().as_str() == "execution_events" =>
         {
             "RequestWalkExecutionEvent"
         }
-        "RequestWalkExecutionEvent" => {
-            bail!(
-                "RequestScheduledExecution walk payload does not come from Nexus workflow, found '{}::{}'",
-                struct_tag.address(),
-                struct_tag.module()
-            )
-        }
-        other => bail!("Unsupported RequestScheduledExecution payload: {other}"),
+        "RequestWalkExecutionEvent" => return None,
+        _ => return None,
     };
 
-    Ok(normalized.to_string())
+    Some(normalized)
 }
 
 /// Helper function to determine whether the given address is one of the Nexus
@@ -186,7 +111,7 @@ fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> boo
 
 /// Helper function to determine whether the provided struct tag corresponds to
 /// `nexus_primitives::event::EventWrapper`.
-pub(crate) fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
+fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
     crate::move_bindings::struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(
         objects, tag,
     ) || crate::move_bindings::struct_tag_matches::<
@@ -325,9 +250,7 @@ mod direct_event_tests {
             contents: bytes,
         };
 
-        let parsed_grpc =
-            NexusEvent::from_sui_grpc_event(index, sui::types::Digest::ZERO, &wrapped, objects)
-                .unwrap();
+        let parsed_grpc = decode_event(index, sui::types::Digest::ZERO, &wrapped, objects).unwrap();
 
         assert_eq!(parsed_grpc.id, (sui::types::Digest::ZERO, index));
         assert!(parsed_grpc.distribution.is_none());
@@ -393,6 +316,25 @@ mod direct_event_tests {
             type_,
             contents: bcs::to_bytes(&Wrapper { event }).unwrap(),
         }
+    }
+
+    fn decode_event(
+        index: u64,
+        digest: sui::types::Digest,
+        event: &sui::types::Event,
+        objects: &NexusObjects,
+    ) -> anyhow::Result<NexusEvent> {
+        decode_nexus_event(index, digest, &event.contents, &event.type_, objects)?
+            .ok_or_else(|| anyhow::anyhow!("event type is not supported by this Nexus deployment"))
+    }
+
+    fn decode_optional_event(
+        index: u64,
+        digest: sui::types::Digest,
+        event: &sui::types::Event,
+        objects: &NexusObjects,
+    ) -> anyhow::Result<Option<NexusEvent>> {
+        decode_nexus_event(index, digest, &event.contents, &event.type_, objects)
     }
 
     #[test]
@@ -522,7 +464,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_unwraps_distributed_scheduled_request_walk_event() {
+    fn decoder_unwraps_distributed_scheduled_request_walk_event() {
         let objects = sui_mocks::mock_nexus_objects();
         let execution = id(addr(0xb1));
         let task_id = addr(0x44);
@@ -574,8 +516,7 @@ mod direct_event_tests {
             .unwrap(),
         };
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(7, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(7, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -590,7 +531,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_rejects_non_wrapper_event() {
+    fn decoder_ignores_non_wrapper_event() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = sui::types::Event {
             package_id: objects.interface_pkg_id,
@@ -605,14 +546,15 @@ mod direct_event_tests {
             .unwrap(),
         };
 
-        let err = NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects)
-            .unwrap_err();
-
-        assert!(err.to_string().contains("Event is not wrapped"));
+        assert!(
+            decode_optional_event(0, sui::types::Digest::ZERO, &event, &objects)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
-    fn from_sui_grpc_event_rejects_foreign_inner_event() {
+    fn decoder_ignores_foreign_inner_event() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -623,16 +565,15 @@ mod direct_event_tests {
             },
         );
 
-        let err = NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects)
-            .unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("Inner event does not come from a Nexus package"));
+        assert!(
+            decode_optional_event(0, sui::types::Digest::ZERO, &event, &objects)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
-    fn from_sui_grpc_event_rejects_foreign_scheduled_request_payload() {
+    fn decoder_ignores_foreign_scheduled_request_payload() {
         let objects = sui_mocks::mock_nexus_objects();
         let scheduled_walk = scheduled_request::RequestScheduledExecution {
             request: RequestWalkExecutionEvent {
@@ -683,13 +624,11 @@ mod direct_event_tests {
             .unwrap(),
         };
 
-        let err =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &walk_event, &objects)
-                .unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("walk payload does not come from Nexus workflow"));
+        assert!(
+            decode_optional_event(0, sui::types::Digest::ZERO, &walk_event, &objects)
+                .unwrap()
+                .is_none()
+        );
 
         let scheduled_occurrence = RequestScheduledOccurrenceEvent {
             request: OccurrenceScheduledEvent {
@@ -729,21 +668,15 @@ mod direct_event_tests {
             .unwrap(),
         };
 
-        let err = NexusEvent::from_sui_grpc_event(
-            1,
-            sui::types::Digest::ZERO,
-            &occurrence_event,
-            &objects,
-        )
-        .unwrap_err();
-
-        assert!(err
-            .to_string()
-            .contains("occurrence payload does not come from Nexus scheduler"));
+        assert!(
+            decode_optional_event(1, sui::types::Digest::ZERO, &occurrence_event, &objects,)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_known_extension_events() {
+    fn decoder_allows_foreign_caller_for_known_extension_events() {
         let objects = sui_mocks::mock_nexus_objects();
         let execution = id(addr(0xa5));
         let event = wrapped_event(
@@ -770,8 +703,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -781,7 +713,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_skill_registered() {
+    fn decoder_allows_foreign_caller_for_skill_registered() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -800,8 +732,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -810,7 +741,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_skill_contract_revisioned() {
+    fn decoder_allows_foreign_caller_for_skill_contract_revisioned() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -830,8 +761,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -843,7 +773,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_execution_payment_receipt_created() {
+    fn decoder_allows_foreign_caller_for_execution_payment_receipt_created() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -865,8 +795,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -878,7 +807,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_execution_payment_tool_cost_snapshotted() {
+    fn decoder_allows_foreign_caller_for_execution_payment_tool_cost_snapshotted() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -898,8 +827,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -910,7 +838,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_allows_foreign_caller_for_execution_payment_vertex_locked() {
+    fn decoder_allows_foreign_caller_for_execution_payment_vertex_locked() {
         let objects = sui_mocks::mock_nexus_objects();
         let event = wrapped_event(
             &objects,
@@ -932,8 +860,7 @@ mod direct_event_tests {
             },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
@@ -945,7 +872,7 @@ mod direct_event_tests {
     }
 
     #[test]
-    fn from_sui_grpc_event_trusts_the_inner_event_type() {
+    fn decoder_trusts_the_inner_event_type() {
         let objects = sui_mocks::mock_nexus_objects();
         let dag = id(addr(0xaa));
         let event = wrapped_event(
@@ -955,8 +882,7 @@ mod direct_event_tests {
             DAGCreatedEvent { dag },
         );
 
-        let parsed =
-            NexusEvent::from_sui_grpc_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
+        let parsed = decode_event(0, sui::types::Digest::ZERO, &event, &objects).unwrap();
 
         assert!(matches!(
             parsed.data,
