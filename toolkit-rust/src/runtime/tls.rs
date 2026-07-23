@@ -35,12 +35,10 @@ use {
 pub enum Config {
     /// TLS is disabled.
     Disabled,
-
     /// TLS is enabled with credentials read from files.
     Enabled {
         /// Path to a PEM encoded certificate chain.
         cert_path: PathBuf,
-
         /// Path to a PEM encoded private key.
         key_path: PathBuf,
     },
