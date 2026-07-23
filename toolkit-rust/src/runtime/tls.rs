@@ -1,36 +1,28 @@
-//! Direct TLS support for [`crate::bootstrap!`].
-//!
-//! Each accepted connection negotiates TLS when Warp first polls it. This keeps
-//! connection acceptance independent from negotiation progress.
+//! TLS transport for [`crate::bootstrap!`].
 
 use {
     anyhow::Context as _,
     std::{
-        future::Future,
         io,
         net::SocketAddr,
         path::{Path, PathBuf},
-        pin::Pin,
         sync::Arc,
-        task::{ready, Context, Poll},
+        time::Duration,
     },
-    tokio::{
-        io::{AsyncRead, AsyncWrite, ReadBuf},
-        net::TcpStream,
-    },
+    tokio::io::{AsyncRead, AsyncWrite},
     tokio_rustls::{
         rustls::{
             pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
             ServerConfig,
         },
-        server::TlsStream,
-        Accept,
         TlsAcceptor,
     },
-    tokio_stream::{wrappers::TcpListenerStream, Stream, StreamExt},
+    tokio_stream::{Stream, StreamExt},
 };
 
-/// Direct TLS configuration for [`crate::bootstrap!`].
+const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// TLS configuration for [`crate::bootstrap!`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Config {
     /// TLS is disabled.
@@ -76,77 +68,6 @@ impl Config {
     }
 }
 
-enum State {
-    Handshaking(Accept<TcpStream>),
-    Streaming(TlsStream<TcpStream>),
-}
-
-impl State {
-    fn poll_stream(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&mut TlsStream<TcpStream>>> {
-        loop {
-            match self {
-                Self::Handshaking(handshake) => {
-                    let stream = ready!(Pin::new(handshake).poll(cx))?;
-                    *self = Self::Streaming(stream);
-                }
-                Self::Streaming(stream) => return Poll::Ready(Ok(stream)),
-            }
-        }
-    }
-}
-
-struct Connection {
-    state: State,
-}
-
-impl Connection {
-    fn new(stream: TcpStream, config: Arc<ServerConfig>) -> Self {
-        Self {
-            state: State::Handshaking(TlsAcceptor::from(config).accept(stream)),
-        }
-    }
-}
-
-impl AsyncRead for Connection {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buffer: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let connection = self.get_mut();
-        let stream = ready!(connection.state.poll_stream(cx))?;
-
-        Pin::new(stream).poll_read(cx, buffer)
-    }
-}
-
-impl AsyncWrite for Connection {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buffer: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        let connection = self.get_mut();
-        let stream = ready!(connection.state.poll_stream(cx))?;
-
-        Pin::new(stream).poll_write(cx, buffer)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            State::Handshaking(_) => Poll::Ready(Ok(())),
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_flush(cx),
-        }
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match self.state {
-            State::Handshaking(_) => Poll::Ready(Ok(())),
-            State::Streaming(ref mut stream) => Pin::new(stream).poll_shutdown(cx),
-        }
-    }
-}
-
 fn load_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<ServerConfig> {
     let certificates = CertificateDer::pem_file_iter(cert_path)
         .with_context(|| {
@@ -183,9 +104,8 @@ fn load_server_config(cert_path: &Path, key_path: &Path) -> anyhow::Result<Serve
 /// Creates the TLS connection stream consumed by [`crate::bootstrap!`].
 ///
 /// The certificate chain and private key are loaded and validated before the
-/// listener is bound. Each accepted [`TcpStream`] negotiates TLS when Warp first
-/// polls it for [`AsyncRead`] or [`AsyncWrite`]. This lets the listener continue
-/// accepting connections while another client is negotiating.
+/// listener is bound. Connections that fail or exceed the handshake timeout are
+/// discarded without stopping the listener.
 ///
 /// # Errors
 ///
@@ -199,17 +119,30 @@ pub async fn bind(
     SocketAddr,
     impl Stream<Item = io::Result<impl AsyncRead + AsyncWrite + Send + Unpin + 'static>>,
 )> {
-    let config = Arc::new(load_server_config(&cert_path, &key_path)?);
+    let acceptor = TlsAcceptor::from(Arc::new(load_server_config(&cert_path, &key_path)?));
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .context("failed to bind TLS listener")?;
     let address = listener
         .local_addr()
         .context("failed to read TLS listener address")?;
-    let incoming = TcpListenerStream::new(listener).map(move |connection| {
-        let config = config.clone();
-        connection.map(|stream| Connection::new(stream, config))
-    });
+
+    let mut builder = tls_listener::builder(acceptor);
+    builder.handshake_timeout(TLS_HANDSHAKE_TIMEOUT);
+    let incoming = builder
+        .listen(listener)
+        .connections()
+        .filter_map(|result| match result {
+            Ok(connection) => Some(Ok(connection)),
+            Err(tls_listener::Error::ListenerError(error)) => Some(Err(error)),
+            Err(error) => {
+                log::debug!(
+                    "discarding TLS connection from {:?}: {error}",
+                    error.peer_addr()
+                );
+                None
+            }
+        });
 
     Ok((address, incoming))
 }
@@ -218,6 +151,7 @@ pub async fn bind(
 mod tests {
     use {
         super::*,
+        tokio::net::TcpStream,
         warp::{http::StatusCode, Filter},
     };
 
