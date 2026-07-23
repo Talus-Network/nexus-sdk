@@ -3,7 +3,7 @@
 
 use {
     crate::{
-        events::EventPoller,
+        events::{NexusEventIngestor, NexusEventQuery},
         nexus::{
             address_balance::{fetch_submission_context, finish_transaction, NonceAllocator},
             crawler::Crawler,
@@ -254,14 +254,12 @@ impl NexusClientBuilder {
             Arc::clone(&nexus_objects),
         );
 
-        let event_poller = EventPoller::new(&rpc_url, Arc::clone(&nexus_objects));
         Ok(NexusClient {
             signer,
             gas,
             nexus_objects,
             crawler: Crawler::new(client),
             rpc_url,
-            event_poller,
         })
     }
 }
@@ -279,8 +277,6 @@ pub struct NexusClient {
     pub(super) crawler: Crawler,
     /// RPC URL used by the client.
     pub(super) rpc_url: String,
-    /// Provide access to an instantiated event poller.
-    pub(super) event_poller: EventPoller,
 }
 
 impl NexusClient {
@@ -346,9 +342,12 @@ impl NexusClient {
         &self.signer
     }
 
-    /// Return an [`EventPoller`] instance for fetching Nexus events.
-    pub fn event_poller(&self) -> &EventPoller {
-        &self.event_poller
+    /// Returns a [`NexusEventIngestor`] for this Nexus deployment.
+    pub fn event_ingestor(&self) -> NexusEventIngestor {
+        NexusEventIngestor::new(
+            &self.rpc_url,
+            NexusEventQuery::new(Arc::clone(&self.nexus_objects)),
+        )
     }
 
     /// Returns a clone of the configured [`Gas`].

@@ -83,7 +83,15 @@ types = [
 ]
 
 # Events feature enables the use of the `events` module.
-events = ["types", "futures", "tokio-util", "prometheus", "lazy_static", "tracing", "tonic"]
+events = [
+    "types",
+    "futures",
+    "tokio-util",
+    "prometheus",
+    "lazy_static",
+    "tonic",
+    "thiserror",
+]
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.

@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Replaced the Nexus specific event poller with typed Sui event queries and a
+  generic ingestor that shares filters and read masks across replay and live
+  subscriptions.
 - Tool registration PTBs now withdraw and refund address balance collateral in
   the configured `$US` type.
 - Leader registration PTBs now preserve any `$US` balance above the chosen

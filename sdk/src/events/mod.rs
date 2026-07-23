@@ -5,9 +5,9 @@ use {
 };
 
 mod parsing;
-mod polling;
+mod query;
 
-pub use {parsing::*, polling::*};
+pub use {parsing::*, query::*};
 
 fn deserialize_u64_to_datetime<'de, D>(
     deserializer: D,
@@ -179,6 +179,10 @@ macro_rules! events {
                 )*
                 _ => bail!("Unknown event: {}", name),
             }
+        }
+
+        pub(super) fn supports_event(name: &str) -> bool {
+            matches!(name, $($name)|*)
         }
     };
 }

@@ -81,6 +81,10 @@ pub mod grpc {
     }
 }
 
+/// Generic Sui event queries and ingestion.
+#[cfg(feature = "events")]
+pub mod events;
+
 /// Sui traits re-exported so that we can `use sui::traits::*` in our code.
 pub mod traits {
     pub use {sui_crypto::SuiSigner, sui_rpc::field::FieldMaskUtil, sui_sdk_types::bcs::ToBcs};
