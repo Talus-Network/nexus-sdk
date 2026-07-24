@@ -57,7 +57,7 @@ pub enum TaskFailureMode {
     Pause,
 }
 
-/// One manually scheduled occurrence.
+/// One standalone scheduled occurrence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceSpec {
     pub start_time_ms: u64,
@@ -511,7 +511,7 @@ pub fn create_task_ptb(
     })
 }
 
-/// Builds a PTB that adds one manual occurrence.
+/// Builds a PTB that adds one standalone occurrence.
 pub fn schedule_task_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,
@@ -768,7 +768,7 @@ pub(crate) fn append_settle_occurrence(
     Ok(())
 }
 
-/// Builds a PTB that closes a Task and refunds its remaining reserve.
+/// Builds a PTB that finalizes a Task and refunds its remaining reserve.
 pub fn close_task_ptb(
     objects: &NexusObjects,
     task: &sui::types::ObjectReference,

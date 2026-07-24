@@ -138,11 +138,10 @@ mod tests {
             100,
             MoveOption::from_option(Some(200)),
             20,
-            OccurrenceSource::Manual,
+            OccurrenceSource::Standalone,
         );
-        let pickup_task_id =
-            crate::move_bindings::derive_occurrence_advertisement_task_id(address("0x51"), &3)
-                .expect("pickup identity derives");
+        let pickup_task_id = crate::move_bindings::derive_task_execution_id(address("0x51"), 3)
+            .expect("execution identity derives");
         let bytes = bcs::to_bytes(&DistributedWrapper {
             event,
             deadline_ms: 30_000,

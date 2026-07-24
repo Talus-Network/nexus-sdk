@@ -80,7 +80,7 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
         input_data.insert(vertex, committed.into_map());
     }
 
-    let manual_requested = options.schedule
+    let standalone_requested = options.schedule
         || options.schedule_start.start_ms.is_some()
         || options.schedule_start.start_offset_ms.is_some()
         || options.schedule_deadline_offset_ms.is_some()
@@ -91,7 +91,7 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
         || options.recurrence_deadline_offset_ms.is_some()
         || options.recurrence_occurrences.is_some()
         || options.recurrence_priority_fee_percentage.is_some();
-    let clock_ms = if manual_requested || recurrence_requested {
+    let clock_ms = if standalone_requested || recurrence_requested {
         nexus_client
             .scheduler()
             .clock_timestamp_ms()
@@ -100,7 +100,7 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
     } else {
         0
     };
-    let occurrences = if manual_requested {
+    let occurrences = if standalone_requested {
         vec![helpers::occurrence_spec(
             clock_ms,
             options.schedule_start.start_ms,

@@ -15,7 +15,7 @@ pub(crate) struct OccurrenceStartOptions {
 
 #[derive(Subcommand)]
 pub(crate) enum OccurrenceCommand {
-    #[command(about = "Add a manual occurrence to a Task")]
+    #[command(about = "Add a standalone occurrence to a Task")]
     Add {
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
         task_id: sui::types::Address,

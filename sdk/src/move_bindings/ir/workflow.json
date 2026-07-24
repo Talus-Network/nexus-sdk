@@ -3844,6 +3844,19 @@
               }
             },
             {
+              "name": "execution_uid",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "UID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
               "name": "task_id",
               "ty": {
                 "Datatype": {
@@ -6962,6 +6975,19 @@
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
+            {
+              "name": "execution_uid",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "UID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -11019,6 +11045,19 @@
                       "type_arguments": []
                     }
                   }
+                }
+              }
+            },
+            {
+              "name": "execution_uid",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "UID"
+                  },
+                  "type_arguments": []
                 }
               }
             },

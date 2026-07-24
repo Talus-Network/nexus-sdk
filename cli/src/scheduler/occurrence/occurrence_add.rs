@@ -10,7 +10,7 @@ use {
     serde_json::json,
 };
 
-/// Adds one manual occurrence to a Task.
+/// Adds one standalone occurrence to a Task.
 pub(crate) async fn add_occurrence_to_task(
     task_id: sui::types::Address,
     start_ms: Option<u64>,

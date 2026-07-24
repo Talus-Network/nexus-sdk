@@ -95,7 +95,7 @@ pub(crate) async fn refill_task(
     }))
 }
 
-/// Closes a Task and releases its remaining resources.
+/// Finalizes a Task and releases its remaining resources.
 pub(crate) async fn close_task(
     task_id: sui::types::Address,
     gas: GasArgs,

@@ -90,7 +90,7 @@
             "Enum": {
               "variants": [
                 {
-                  "name": "Manual",
+                  "name": "Standalone",
                   "position": 0,
                   "fields": []
                 },
@@ -275,7 +275,7 @@
       ],
       "functions": [
         {
-          "name": "add_manual",
+          "name": "add_standalone",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -1373,7 +1373,7 @@
           ]
         },
         {
-          "name": "occurrence_source_is_manual",
+          "name": "occurrence_source_is_standalone",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2595,13 +2595,18 @@
             {
               "name": "task",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa5",
-                    "module": "task",
-                    "name": "Task"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             },
@@ -2653,13 +2658,18 @@
             {
               "name": "task",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa5",
-                    "module": "task",
-                    "name": "Task"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             },
@@ -5352,11 +5362,22 @@
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "ScheduledTaskRegistration"
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
                       },
-                      "type_arguments": []
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "agent_registry",
+                              "name": "ScheduledTaskRegistration"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -5446,6 +5467,11 @@
                 {
                   "name": "Canceled",
                   "position": 2,
+                  "fields": []
+                },
+                {
+                  "name": "Finalized",
+                  "position": 3,
                   "fields": []
                 }
               ]
@@ -5681,6 +5707,33 @@
           "return_types": []
         },
         {
+          "name": "assert_not_finalized",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "attach_components",
           "visibility": "Friend",
           "is_entry": false,
@@ -5833,6 +5886,48 @@
           "return_types": []
         },
         {
+          "name": "claim_execution_id",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "UID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "continue_on_failure",
           "visibility": "Public",
           "is_entry": false,
@@ -5890,39 +5985,6 @@
           ]
         },
         {
-          "name": "delete",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa5",
-                    "module": "task",
-                    "name": "Task"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa3",
-                  "module": "agent_registry",
-                  "name": "ScheduledTaskRegistration"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "execution",
           "visibility": "Public",
           "is_entry": false,
@@ -5961,6 +6023,43 @@
           ]
         },
         {
+          "name": "execution_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "failure_mode",
           "visibility": "Public",
           "is_entry": false,
@@ -5992,6 +6091,44 @@
                   "address": "0xa5",
                   "module": "task",
                   "name": "FailureMode"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "finalize",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa3",
+                  "module": "agent_registry",
+                  "name": "ScheduledTaskRegistration"
                 },
                 "type_arguments": []
               }
@@ -6201,6 +6338,35 @@
                     "name": "FailureMode"
                   },
                   "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_finalized",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }

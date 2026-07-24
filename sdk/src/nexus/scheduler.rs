@@ -1,6 +1,9 @@
 //! Scheduler actions exposed through [`NexusClient`].
 
-pub use scheduler_tx::{OccurrenceSpec, RecurrenceSpec, TaskFailureMode, TaskStateAction};
+pub use {
+    crate::move_bindings::derive_task_execution_id,
+    scheduler_tx::{OccurrenceSpec, RecurrenceSpec, TaskFailureMode, TaskStateAction},
+};
 use {
     crate::{
         events::NexusEventKind,
@@ -114,7 +117,7 @@ pub enum TaskFunding {
 
 /// Complete input for one [`Task`] creation transaction.
 ///
-/// Manual occurrences and recurrence are composed before the Task is shared.
+/// Standalone occurrences and recurrence are composed before the Task is shared.
 ///
 /// [`Task`]: crate::move_bindings::scheduler::task::Task
 #[derive(Clone, Debug)]
@@ -221,7 +224,7 @@ impl SchedulerActions {
         })
     }
 
-    /// Adds one manual occurrence to a [`Task`].
+    /// Adds one standalone occurrence to a [`Task`].
     ///
     /// [`Task`]: crate::move_bindings::scheduler::task::Task
     pub async fn schedule(
@@ -335,7 +338,9 @@ impl SchedulerActions {
         Ok(schedule_result(response))
     }
 
-    /// Closes a [`Task`] after all work and settlement are complete.
+    /// Finalizes a [`Task`] after all work and settlement are complete.
+    ///
+    /// The Task remains available as the durable record for its occurrences and executions.
     ///
     /// [`Task`]: crate::move_bindings::scheduler::task::Task
     pub async fn close(

@@ -10,7 +10,7 @@ use crate::prelude::*;
 pub(crate) enum SchedulerCommand {
     #[command(subcommand, about = "Manage scheduled tasks")]
     Task(task::TaskCommand),
-    #[command(subcommand, about = "Manage manual occurrences for a Task")]
+    #[command(subcommand, about = "Manage standalone occurrences for a Task")]
     Occurrence(occurrence::OccurrenceCommand),
     #[command(subcommand, about = "Manage recurrence for a Task")]
     Recurrence(recurrence::RecurrenceCommand),

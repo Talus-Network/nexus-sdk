@@ -212,12 +212,12 @@ pub fn derive_walk_execution_event_task_id(
     derive_object_id(runtime_task_id, &sui::types::TypeTag::U64, &iteration)
 }
 
-/// Derives the leader pickup identity for one advertised occurrence.
-pub fn derive_occurrence_advertisement_task_id(
+/// Derives the [`workflow::execution::DAGExecution`] ID for one [`scheduler::task::Task`] occurrence.
+pub fn derive_task_execution_id(
     task: sui::types::Address,
-    occurrence_id: &u64,
+    occurrence_id: u64,
 ) -> anyhow::Result<sui::types::Address> {
-    derive_object_id(task, &sui::types::TypeTag::U64, occurrence_id)
+    derive_object_id(task, &sui::types::TypeTag::U64, &occurrence_id)
 }
 
 pub mod interface {
@@ -311,7 +311,12 @@ pub mod workflow {
 #[cfg(test)]
 mod tests {
     use {
-        super::{derive_walk_execution_event_task_id, interface::graph::RuntimeVertex, registry},
+        super::{
+            derive_task_execution_id,
+            derive_walk_execution_event_task_id,
+            interface::graph::RuntimeVertex,
+            registry,
+        },
         crate::sui,
         sui_move::MoveType,
     };
@@ -346,5 +351,13 @@ mod tests {
 
         assert_ne!(plain, repetitive_zero);
         assert_ne!(repetitive_zero, repetitive_one);
+    }
+
+    #[test]
+    fn task_execution_id_uses_the_occurrence_identity() {
+        let task = sui::types::Address::from_static("0x51");
+        let expected = task.derive_object_id(&sui::types::TypeTag::U64, &7_u64.to_le_bytes());
+
+        assert_eq!(derive_task_execution_id(task, 7).unwrap(), expected);
     }
 }

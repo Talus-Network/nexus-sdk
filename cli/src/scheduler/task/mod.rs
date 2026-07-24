@@ -94,15 +94,15 @@ pub(crate) enum TaskCommand {
             value_name = "VERTEX.PORT"
         )]
         remote: Vec<String>,
-        /// Include one manual occurrence in the creation transaction.
+        /// Include one standalone occurrence in the creation transaction.
         #[arg(long = "schedule")]
         schedule: bool,
         #[command(flatten)]
         schedule_start: ScheduleStartOptions,
-        /// Deadline offset from the manual occurrence start.
+        /// Deadline offset from the standalone occurrence start.
         #[arg(long = "schedule-deadline-offset-ms", value_name = "MILLIS")]
         schedule_deadline_offset_ms: Option<u64>,
-        /// Priority fee percentage for the manual occurrence.
+        /// Priority fee percentage for the standalone occurrence.
         #[arg(long = "schedule-priority-fee-percentage", value_name = "PERCENTAGE")]
         schedule_priority_fee_percentage: Option<u64>,
         /// Recurrence interval in milliseconds.
@@ -166,7 +166,7 @@ pub(crate) enum TaskCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
-    #[command(about = "Close a task after all occurrences settle")]
+    #[command(about = "Finalize a task after all occurrences settle")]
     Close {
         #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
         task_id: sui::types::Address,
