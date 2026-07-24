@@ -2,9 +2,9 @@
 
 use crate::{
     move_bindings::{
-        interface::agent as agent_move,
+        interface::agent::{self as agent_move, SkillSchedulePolicy},
         scheduler::{
-            schedule::{Occurrence, OccurrenceSource},
+            schedule::{Occurrence, OccurrenceSource, Schedule},
             task::{Task, TaskController, TaskStatus},
         },
     },
@@ -69,6 +69,29 @@ impl OccurrenceSource {
     }
 }
 
+impl Schedule {
+    /// Returns the effective start time for an [`Occurrence`] under the given [`SkillSchedulePolicy`].
+    pub fn effective_start_time_ms(
+        &self,
+        policy: &SkillSchedulePolicy,
+        occurrence: &Occurrence,
+    ) -> u64 {
+        let min_interval_ms = match policy {
+            SkillSchedulePolicy::Once => 0,
+            SkillSchedulePolicy::Recurring {
+                min_interval_ms, ..
+            } => *min_interval_ms,
+        };
+        let earliest = self
+            .last_dispatch_ms
+            .copied_option()
+            .map_or(0, |last_dispatch_ms| {
+                last_dispatch_ms.saturating_add(min_interval_ms)
+            });
+        occurrence.start_time_ms.max(earliest)
+    }
+}
+
 impl Task {
     pub fn object_id(&self) -> sui::types::Address {
         self.id.id.bytes
@@ -102,5 +125,35 @@ impl Task {
     /// Returns whether the Task has released its live resources.
     pub fn is_finalized(&self) -> bool {
         matches!(self.status, TaskStatus::Finalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::move_bindings::move_std::option::Option as MoveOption};
+
+    #[test]
+    fn effective_start_respects_the_last_dispatch_interval() {
+        let schedule = Schedule::new(
+            vec![],
+            MoveOption::from_option(None),
+            MoveOption::from_option(None),
+            1,
+            1,
+            MoveOption::from_option(Some(100)),
+        );
+        let occurrence = Occurrence::new(
+            1,
+            105,
+            MoveOption::from_option(None),
+            10,
+            OccurrenceSource::Standalone,
+        );
+        let policy = SkillSchedulePolicy::Recurring {
+            min_interval_ms: 20,
+            max_occurrences: MoveOption::from_option(None),
+        };
+
+        assert_eq!(schedule.effective_start_time_ms(&policy, &occurrence), 120);
     }
 }
