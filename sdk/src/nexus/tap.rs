@@ -1913,10 +1913,9 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
-        let response = fetch_agent_registry(&crawler, registry.id)
+        let response = fetch_configured_agent_registry(client.crawler(), &nexus_objects)
             .await
             .expect("full registry recovery decodes the default executor");
 
@@ -1930,6 +1929,44 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_configured_default_tap_dag_executor_succeeds_without_owned_coins() {
+        let mut registry = registry();
+        registry.skills[0].record.dag_binding = SkillDagBinding::runtime_selected();
+        let registry_ref = sui_mocks::object_ref_for_id(registry.id);
+        let nexus_objects = NexusObjects {
+            agent_registry: registry_ref.clone(),
+            ..sui_mocks::mock_nexus_objects()
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        mock_fetch_registry_from_tables(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            registry_ref,
+            &registry,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = fetch_configured_default_tap_dag_executor(client.crawler(), &nexus_objects)
+            .await
+            .expect("default agent read should not require owned coins");
+
+        assert_eq!(
+            response.data.target,
+            DefaultDagExecutorTarget {
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+            }
         );
     }
 
@@ -2643,7 +2680,6 @@ mod tests {
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         mock_fetch_registry_from_tables(
             &mut ledger_service_mock,
             &mut state_service_mock,
@@ -2657,7 +2693,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
         let result = client
             .tap()
@@ -2710,6 +2746,127 @@ mod tests {
             final_state,
             locked_vertices: vec![],
         }
+    }
+
+    async fn coin_free_payment_client(
+        payment: ExecutionPayment,
+    ) -> (NexusClient, sui::types::Address) {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let payment_id = payment.id.id.bytes;
+        let payment_ref = sui_mocks::object_ref_for_id(payment_id);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            payment_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&payment).expect("payment BCS"),
+            crate::move_bindings::struct_tag::<ExecutionPayment>(&nexus_objects),
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        (client, payment_id)
+    }
+
+    #[tokio::test]
+    async fn fetch_execution_payment_succeeds_without_owned_coins() {
+        let payment = baseline_payment(false, false, ExecutionPaymentFinalState::Pending);
+        let (client, payment_id) = coin_free_payment_client(payment).await;
+
+        let response = fetch_execution_payment(client.crawler(), payment_id)
+            .await
+            .expect("payment read should not require owned coins");
+
+        assert_eq!(response.object_id, payment_id);
+    }
+
+    #[tokio::test]
+    async fn wait_for_payment_settled_succeeds_without_owned_coins() {
+        let payment = baseline_payment(true, false, ExecutionPaymentFinalState::Accomplished);
+        let (client, payment_id) = coin_free_payment_client(payment).await;
+
+        let result = client
+            .tap()
+            .wait_for_payment_settled(payment_id, Duration::from_secs(1), Duration::from_millis(1))
+            .await
+            .expect("settled payment read should not require owned coins");
+
+        assert!(result.terminal);
+    }
+
+    #[tokio::test]
+    async fn fetch_execution_payment_history_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let owner = sui::types::Address::from_static("0xa");
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::ListOwnedObjectsResponse::default(),
+                ))
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let history =
+            fetch_execution_payment_history(client.crawler(), &nexus_objects, owner, None)
+                .await
+                .expect("empty payment history should not require owned coins");
+
+        assert!(history.wallet_receipts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fetch_agent_payment_vault_for_agent_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_id = sui::types::Address::from_static("0xa");
+        let vault_id = sui::types::Address::from_static("0xb");
+        let field_id = sui::types::Address::from_static("0xc");
+        let vault_ref = sui_mocks::object_ref_for_id(vault_id);
+        let vault = AgentPaymentVault {
+            id: crate::move_bindings::sui_framework::object::UID::new(vault_id),
+            agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
+            available_balance: crate::move_bindings::sui_framework::balance::Balance {
+                value: 10,
+                phantom_t0: std::marker::PhantomData,
+            },
+            locked_amount: 3,
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(AgentVaultFieldKey::default(), field_id, vault_id)],
+        );
+        sui_mocks::grpc::mock_get_objects_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                vault_ref,
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&vault).expect("vault BCS"),
+                crate::move_bindings::struct_tag::<AgentPaymentVault>(&nexus_objects),
+            )],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = fetch_agent_payment_vault_for_agent(client.crawler(), agent_id)
+            .await
+            .expect("vault read should not require owned coins");
+
+        assert_eq!(response.data.unlocked_balance_value(), 7);
     }
 
     #[test]

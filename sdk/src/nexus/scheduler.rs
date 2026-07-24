@@ -1095,6 +1095,29 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn fetch_task_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_ref = sui_mocks::mock_sui_object_ref();
+        let owner = sui::types::Address::from_static("0xa");
+        let task = mock_task_object(*task_ref.object_id(), owner);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        mock_get_task_object(&mut ledger_service_mock, task_ref.clone(), owner, task);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = client
+            .scheduler()
+            .fetch_task(*task_ref.object_id())
+            .await
+            .expect("task read should not require owned coins");
+
+        assert_eq!(response.data.owner, owner);
+    }
+
     fn generator_symbol(scheduler_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
         PolicySymbol::witness(TypeName::new(&format!(
             "{scheduler_pkg_id}::scheduler::{name}"

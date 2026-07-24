@@ -30,6 +30,25 @@ fn agent_dag_execute_options_from_cli_budget(
     })
 }
 
+fn required_payment_coin(
+    payment_coin: Option<sui::types::Address>,
+    sui_gas_coin: Option<sui::types::Address>,
+) -> AnyResult<sui::types::Address, NexusCliError> {
+    let payment_coin = payment_coin.ok_or_else(|| {
+        NexusCliError::Any(anyhow!(
+            "nexus dag execute requires --payment-coin for default agent DAG execution"
+        ))
+    })?;
+
+    if sui_gas_coin == Some(payment_coin) {
+        return Err(NexusCliError::Any(anyhow!(
+            "--sui-gas-coin and --payment-coin must be different objects"
+        )));
+    }
+
+    Ok(payment_coin)
+}
+
 /// Execute a Nexus DAG based on the provided object ID and initial input data.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn execute_dag(
@@ -49,33 +68,8 @@ pub(crate) async fn execute_dag(
     let conf = CliConf::load().await.unwrap_or_default();
     let pk = get_signing_key(&conf).await?;
     let owner = pk.public_key().derive_address();
-    if payment_coin.is_none() {
-        return Err(NexusCliError::Any(anyhow!(
-            "nexus dag execute requires --payment-coin for default agent DAG execution"
-        )));
-    }
-    if let (Some(gas_coin), Some(payment_coin)) = (sui_gas_coin, payment_coin) {
-        if gas_coin == payment_coin {
-            return Err(NexusCliError::Any(anyhow!(
-                "--sui-gas-coin and --payment-coin must be different objects"
-            )));
-        }
-    }
-    let payment_coin_id = payment_coin.expect("checked above");
+    let payment_coin_id = required_payment_coin(payment_coin, sui_gas_coin)?;
     let client = build_sui_grpc_client(&conf).await?;
-    let (gas_coin, _) = fetch_coin_with_balance_excluding(
-        client.clone(),
-        owner,
-        sui_gas_coin,
-        0,
-        &[payment_coin_id],
-    )
-    .await?;
-    if *gas_coin.object_id() == payment_coin_id {
-        return Err(NexusCliError::Any(anyhow!(
-            "auto-selected gas coin matches --payment-coin; pass --sui-gas-coin with a different coin"
-        )));
-    }
     let (payment_coin, balance) =
         fetch_coin_with_balance(client.clone(), owner, Some(payment_coin_id), 0).await?;
     let payment_max_budget_mist = payment_max_budget_mist.unwrap_or(balance);
@@ -85,7 +79,7 @@ pub(crate) async fn execute_dag(
         )));
     }
 
-    let nexus_client = get_nexus_client(Some(*gas_coin.object_id()), sui_gas_budget).await?;
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     // Build the remote storage conf.
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
@@ -177,5 +171,27 @@ mod tests {
         assert_eq!(options.payment_coin, Some(payment_coin));
         assert_eq!(options.payment_coin_balance, Some(1_000));
         assert_eq!(options.payment_max_budget_mist, 120);
+    }
+
+    #[test]
+    fn dag_execute_accepts_address_balance_gas() {
+        let payment_coin = sui::types::Address::from_static("0x1");
+
+        assert_eq!(
+            required_payment_coin(Some(payment_coin), None).expect("gas coin should be optional"),
+            payment_coin
+        );
+    }
+
+    #[test]
+    fn dag_execute_rejects_same_explicit_payment_and_gas_coin() {
+        let coin = sui::types::Address::from_static("0x1");
+
+        let error = required_payment_coin(Some(coin), Some(coin))
+            .expect_err("payment and explicit gas coin must differ");
+
+        assert!(error
+            .to_string()
+            .contains("--sui-gas-coin and --payment-coin must be different"));
     }
 }

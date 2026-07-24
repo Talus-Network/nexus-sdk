@@ -1412,6 +1412,7 @@ impl WorkflowActions {
         storage_conf: &StorageConf,
     ) -> Result<ExecuteResult, NexusError> {
         let address = self.client.signer.get_active_address();
+        let gas = self.client.gas_configured()?;
         self.execute_default_agent_dag(
             dag_object_id,
             entry_data,
@@ -1423,7 +1424,7 @@ impl WorkflowActions {
                     .map_err(NexusError::TransactionBuilding)?,
                 payment_coin: None,
                 payment_coin_balance: None,
-                payment_max_budget_mist: self.client.gas.get_budget(),
+                payment_max_budget_mist: gas.get_budget(),
             },
         )
         .await
@@ -1522,6 +1523,7 @@ impl WorkflowActions {
             &tools_gas,
         )
         .map_err(NexusError::TransactionBuilding)?;
+        let gas = self.client.gas_configured()?;
         let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
@@ -1529,7 +1531,7 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                if let Some(payment_gas_pool) = gas.coin_pool() {
                     payment_gas_pool
                         .release_gas_coin(sui::types::ObjectReference::new(
                             updated_payment_coin.object_id(),
@@ -1694,6 +1696,7 @@ impl WorkflowActions {
             &tools_gas,
         )
         .map_err(NexusError::TransactionBuilding)?;
+        let gas = self.client.gas_configured()?;
         let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
@@ -1701,7 +1704,7 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                if let Some(payment_gas_pool) = gas.coin_pool() {
                     payment_gas_pool
                         .release_gas_coin(sui::types::ObjectReference::new(
                             updated_payment_coin.object_id(),
@@ -3290,6 +3293,39 @@ mod tests {
 
     #[cfg(feature = "walrus")]
     #[tokio::test]
+    async fn execute_without_gas_uses_gas_configured_error() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        let result = client
+            .workflow()
+            .execute(
+                sui::types::Address::from_static("0xd4"),
+                HashMap::new(),
+                None,
+                None,
+                &StorageConf::default(),
+            )
+            .await;
+        let Err(error) = result else {
+            panic!("workflow execution without gas should fail");
+        };
+
+        assert!(matches!(error, NexusError::Configuration(_)));
+        assert!(error
+            .to_string()
+            .contains("a gas source is required for transaction operations"));
+    }
+
+    #[cfg(feature = "walrus")]
+    #[tokio::test]
     async fn test_workflow_actions_execute() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
@@ -3723,7 +3759,6 @@ mod tests {
         let tx_9 = sui::types::Digest::generate(&mut rng);
         let tx_20 = sui::types::Digest::generate(&mut rng);
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         expect_object_update_reference(
             &mut ledger_service_mock,
             &nexus_objects,
@@ -3815,7 +3850,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
         let mut result = client
             .workflow()
             .inspect_execution(
@@ -4610,8 +4645,6 @@ mod tests {
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-
         let payment_id = *payment_ref.object_id();
 
         mock_get_dag_execution_bcs(
@@ -4686,7 +4719,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
         let result = client
             .workflow()

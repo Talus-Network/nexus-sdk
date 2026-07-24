@@ -50,7 +50,7 @@ pub(crate) async fn inspect_dag_execution(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Nexus DAG Execution '{dag_execution_id}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let mut result = nexus_client
         .workflow()

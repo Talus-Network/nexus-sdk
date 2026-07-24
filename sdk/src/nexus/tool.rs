@@ -435,7 +435,6 @@ mod tests {
     async fn inspect_tool_reports_missing_when_neither_object_exists() {
         let fixture = InspectionFixture::new();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         mock_get_object_not_found(&mut ledger_service_mock);
         mock_get_object_not_found(&mut ledger_service_mock);
 
@@ -443,7 +442,8 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&fixture.nexus_objects, &rpc_url).await;
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(&fixture.nexus_objects, &rpc_url).await;
 
         let inspection = client
             .tool()

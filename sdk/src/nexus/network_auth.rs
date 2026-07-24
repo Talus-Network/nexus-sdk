@@ -938,7 +938,7 @@ mod tests {
                     registry::network_auth::KeyRecord,
                     sui_framework::table::Table as MoveTable,
                 },
-                test_utils::sui_mocks,
+                test_utils::{nexus_mocks, sui_mocks},
             },
             serde::Serialize,
             tonic::{Response, Status},
@@ -1239,9 +1239,6 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            // Called once by NexusClientBuilder during initialization.
-            sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 42);
-
             let network_auth_object_id_str = network_auth_object_id.to_string();
             let binding_object_id_str = binding_object_id.to_string();
             ledger_service
@@ -1299,9 +1296,6 @@ mod tests {
                 ..Default::default()
             });
 
-            let mut rng = rand::thread_rng();
-            let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
-
             let mut nexus_objects = crate::test_utils::sui_mocks::mock_nexus_objects();
             nexus_objects.network_auth = sui::types::ObjectReference::new(
                 network_auth_object_id,
@@ -1310,15 +1304,8 @@ mod tests {
             );
             nexus_objects.registry_pkg_id = registry_pkg_id;
 
-            let gas_coin = sui_mocks::mock_sui_object_ref();
-            let client = NexusClient::builder()
-                .with_private_key(pk)
-                .with_rpc_url(&rpc_url)
-                .with_nexus_objects(nexus_objects)
-                .with_gas(vec![gas_coin], 1_000_000)
-                .build()
-                .await
-                .unwrap();
+            let client =
+                nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
             let expected_entry = AllowedLeaderFileV1 {
                 leader_id: leader_cap_id.to_string(),
@@ -1449,9 +1436,6 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            // Called once by NexusClientBuilder during initialization.
-            sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 42);
-
             // get_object: returns the binding (called by try_get_key_binding).
             let binding_object_id_str = binding_object_id.to_string();
             ledger_service
@@ -1520,7 +1504,6 @@ mod tests {
                 ..Default::default()
             });
 
-            let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
             let mut nexus_objects = crate::test_utils::sui_mocks::mock_nexus_objects();
 
             nexus_objects.network_auth = sui::types::ObjectReference::new(
@@ -1535,15 +1518,8 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             );
 
-            let gas_coin = sui_mocks::mock_sui_object_ref();
-            let client = NexusClient::builder()
-                .with_private_key(pk)
-                .with_rpc_url(&rpc_url)
-                .with_nexus_objects(nexus_objects)
-                .with_gas(vec![gas_coin], 1_000_000)
-                .build()
-                .await
-                .unwrap();
+            let client =
+                nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
             let list = client
                 .network_auth()

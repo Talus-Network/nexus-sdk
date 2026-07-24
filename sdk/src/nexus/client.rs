@@ -1,5 +1,5 @@
-//! A [`NexusClient`] combines a [`Signer`] with one [`Gas`] source to perform
-//! Nexus operations programmatically.
+//! A [`NexusClient`] combines a [`Signer`] with an optional shared [`Gas`]
+//! source to perform Nexus operations programmatically.
 
 use {
     crate::{
@@ -19,7 +19,7 @@ use {
     },
     std::sync::Arc,
     tokio::{
-        sync::{Mutex, Notify},
+        sync::{Mutex, Notify, OnceCell},
         time::Duration,
     },
 };
@@ -29,52 +29,63 @@ use {
     std::collections::HashSet,
 };
 
-/// Gas source configured for a [`NexusClient`].
-///
-/// A client uses exactly one coin based or address balance based source.
-#[derive(Clone)]
-pub struct Gas {
-    source: GasSource,
-}
+/// Default transaction gas budget used by clients that select a default.
+pub const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
 
-#[derive(Clone)]
-enum GasSource {
+/// Gas source used to configure a [`NexusClient`] for transactions.
+#[derive(Clone, Debug)]
+pub enum GasSource {
+    /// Owned coin-object gas with a transaction budget.
     Coin(CoinGasPool),
+    /// Address-balance gas with a reusable nonce authority.
     AddressBalance(AddressBalanceGas),
 }
 
-impl Gas {
+/// Configured gas inspected from a [`NexusClient`].
+pub type Gas = GasSource;
+
+impl GasSource {
+    /// Creates an owned coin-object gas source with a transaction budget.
+    pub fn coin(coins: Vec<sui::types::ObjectReference>, budget: u64) -> Self {
+        Self::Coin(CoinGasPool {
+            coins: Arc::new(Mutex::new(coins)),
+            notify: Arc::new(Notify::new()),
+            budget,
+            reference_gas_price: None,
+        })
+    }
+
     /// Returns the configured gas budget.
     pub fn get_budget(&self) -> u64 {
-        match &self.source {
-            GasSource::Coin(pool) => pool.budget,
-            GasSource::AddressBalance(gas) => gas.budget,
+        match self {
+            Self::Coin(pool) => pool.budget,
+            Self::AddressBalance(gas) => gas.budget,
         }
     }
 
     /// Returns the shared pool when coin based gas is configured.
     pub(crate) fn coin_pool(&self) -> Option<&CoinGasPool> {
-        match &self.source {
-            GasSource::Coin(pool) => Some(pool),
-            GasSource::AddressBalance(_) => None,
+        match self {
+            Self::Coin(pool) => Some(pool),
+            Self::AddressBalance(_) => None,
         }
     }
 
     fn reference_gas_price(&self) -> Option<u64> {
-        match &self.source {
-            GasSource::Coin(pool) => Some(pool.reference_gas_price),
-            GasSource::AddressBalance(_) => None,
+        match self {
+            Self::Coin(pool) => pool.reference_gas_price,
+            Self::AddressBalance(_) => None,
         }
     }
 }
 
 /// Shared owned coin source used for coin based gas.
-#[derive(Clone)]
-pub(crate) struct CoinGasPool {
+#[derive(Clone, Debug)]
+pub struct CoinGasPool {
     coins: Arc<Mutex<Vec<sui::types::ObjectReference>>>,
     notify: Arc<Notify>,
     budget: u64,
-    reference_gas_price: u64,
+    reference_gas_price: Option<u64>,
 }
 
 impl CoinGasPool {
@@ -190,11 +201,16 @@ impl NexusClientBuilder {
 
     /// Builds the [`NexusClient`].
     ///
+    /// When no gas strategy is configured, the client is built without gas.
+    /// Attach gas later with [`NexusClient::set_gas_source`] before submitting
+    /// a transaction.
+    ///
     /// # Errors
     ///
     /// Returns [`NexusError::Configuration`] when required configuration is
-    /// missing or both gas sources are configured. Returns [`NexusError::Rpc`]
-    /// when the client or coin based gas context cannot be initialized.
+    /// missing, both gas sources are configured, or coin based gas is
+    /// explicitly configured without a coin. Returns [`NexusError::Rpc`] when
+    /// the client or coin based gas context cannot be initialized.
     pub async fn build(self) -> Result<NexusClient, NexusError> {
         let pk = self
             .pk
@@ -208,44 +224,24 @@ impl NexusClientBuilder {
             self.nexus_objects
                 .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?,
         );
-        let client = Arc::new(Mutex::new(
-            sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?,
-        ));
-
         let coin_gas_requested = self.gas_budget.is_some() || !self.gas_coins.is_empty();
-        let source = match (coin_gas_requested, self.address_balance_gas) {
+        let gas_source = match (coin_gas_requested, self.address_balance_gas) {
             (true, Some(_)) => {
                 return Err(NexusError::Configuration(
                     "coin based gas and address balance based gas cannot both be configured".into(),
                 ));
             }
-            (true, None) if self.gas_coins.is_empty() => {
-                return Err(NexusError::Configuration(
-                    "at least one gas coin is required for coin based gas".into(),
-                ));
-            }
-            (true, None) => {
-                let reference_gas_price = client
-                    .lock()
-                    .await
-                    .get_reference_gas_price()
-                    .await
-                    .map_err(|error| NexusError::Rpc(error.into()))?;
-                GasSource::Coin(CoinGasPool {
-                    coins: Arc::new(Mutex::new(self.gas_coins)),
-                    notify: Arc::new(Notify::new()),
-                    budget: self.gas_budget.ok_or_else(|| {
-                        NexusError::Configuration("gas budget is required".into())
-                    })?,
-                    reference_gas_price,
-                })
-            }
-            (false, Some(gas)) => GasSource::AddressBalance(gas),
-            (false, None) => {
-                return Err(NexusError::Configuration("a gas source is required".into()));
-            }
+            (true, None) => Some(GasSource::coin(
+                self.gas_coins,
+                self.gas_budget
+                    .ok_or_else(|| NexusError::Configuration("gas budget is required".into()))?,
+            )),
+            (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
+            (false, None) => None,
         };
-        let gas = Gas { source };
+        let client = Arc::new(Mutex::new(
+            sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?,
+        ));
 
         let signer = Signer::new(
             Arc::clone(&client),
@@ -254,13 +250,18 @@ impl NexusClientBuilder {
             Arc::clone(&nexus_objects),
         );
 
-        Ok(NexusClient {
+        let nexus_client = NexusClient {
             signer,
-            gas,
+            gas: Arc::new(OnceCell::new()),
             nexus_objects,
             crawler: Crawler::new(client),
             rpc_url,
-        })
+        };
+        if let Some(gas_source) = gas_source {
+            nexus_client.set_gas_source(gas_source).await?;
+        }
+
+        Ok(nexus_client)
     }
 }
 
@@ -269,8 +270,8 @@ pub struct NexusClient {
     /// The wallet context to use for transactions. This defines the TX sender
     /// address and the RPC connection.
     pub(super) signer: Signer,
-    /// Gas configuration for Nexus operations.
-    pub(super) gas: Gas,
+    /// Shared optional gas configuration for Nexus operations.
+    gas: Arc<OnceCell<GasSource>>,
     /// Nexus objects to use.
     pub(super) nexus_objects: Arc<NexusObjects>,
     /// Provide access to an instantiated object crawler.
@@ -350,17 +351,57 @@ impl NexusClient {
         )
     }
 
-    /// Returns a clone of the configured [`Gas`].
-    pub fn gas_config(&self) -> Gas {
-        self.gas.clone()
+    /// Attaches the gas source shared by this client, its clones, and action facades.
+    ///
+    /// Coin based gas validates that at least one coin is present and fetches
+    /// the current reference gas price before the shared write-once transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Configuration`] when gas is already attached or
+    /// coin based gas has no coins. Returns [`NexusError::Rpc`] when the
+    /// reference gas price cannot be fetched.
+    pub async fn set_gas_source(&self, mut source: GasSource) -> Result<(), NexusError> {
+        const GAS_SOURCE_ALREADY_CONFIGURED: &str = "a gas source is already configured";
+
+        if self.gas.get().is_some() {
+            return Err(NexusError::Configuration(
+                GAS_SOURCE_ALREADY_CONFIGURED.into(),
+            ));
+        }
+
+        match &mut source {
+            GasSource::Coin(pool) => {
+                if pool.coins.lock().await.is_empty() {
+                    return Err(NexusError::Configuration(
+                        "at least one gas coin is required for coin based gas".into(),
+                    ));
+                }
+                let mut client = self.signer.client.lock().await.clone();
+                let reference_gas_price = client
+                    .get_reference_gas_price()
+                    .await
+                    .map_err(|error| NexusError::Rpc(error.into()))?;
+                pool.reference_gas_price = Some(reference_gas_price);
+            }
+            GasSource::AddressBalance(_) => {}
+        }
+
+        self.gas
+            .set(source)
+            .map_err(|_| NexusError::Configuration(GAS_SOURCE_ALREADY_CONFIGURED.into()))
+    }
+
+    /// Returns a clone of the configured [`Gas`], or `None` when unattached.
+    pub fn gas_config(&self) -> Option<Gas> {
+        self.gas.get().cloned()
     }
 
     /// Returns the cached reference gas price for coin based submissions.
     ///
-    /// Address balance based submissions fetch current network context for each
-    /// transaction and therefore return `None` here.
+    /// Missing gas and address balance based gas return `None`.
     pub fn get_reference_gas_price(&self) -> Option<u64> {
-        self.gas.reference_gas_price()
+        self.gas.get().and_then(GasSource::reference_gas_price)
     }
 
     /// Get the Nexus objects.
@@ -380,8 +421,12 @@ impl NexusClient {
         tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
-        match &self.gas.source {
+        let gas = self.gas_configured()?;
+        match &gas {
             GasSource::Coin(pool) => {
+                let reference_gas_price = pool.reference_gas_price.ok_or_else(|| {
+                    NexusError::Configuration("coin gas source is not prepared".into())
+                })?;
                 let mut gas_coin = pool.acquire_gas_coin().await;
                 let tx = sui::types::Transaction {
                     kind: sui::types::TransactionKind::ProgrammableTransaction(tx),
@@ -389,7 +434,7 @@ impl NexusClient {
                     gas_payment: sui::types::GasPayment {
                         objects: vec![gas_coin.clone()],
                         owner: address,
-                        price: pool.reference_gas_price,
+                        price: reference_gas_price,
                         budget: pool.budget,
                     },
                     expiration: sui::types::TransactionExpiration::None,
@@ -408,6 +453,12 @@ impl NexusClient {
                 self.signer.execute_tx_without_gas_coin(tx, signature).await
             }
         }
+    }
+
+    pub(crate) fn gas_configured(&self) -> Result<Gas, NexusError> {
+        self.gas_config().ok_or_else(|| {
+            NexusError::Configuration("a gas source is required for transaction operations".into())
+        })
     }
 
     // == Helpers reused by multiple actions ==
@@ -505,7 +556,7 @@ mod tests {
             coins: Arc::new(Mutex::new(vec![coin1.clone(), coin2.clone()])),
             notify: Arc::new(Notify::new()),
             budget: 1000,
-            reference_gas_price: 1,
+            reference_gas_price: Some(1),
         };
 
         // Acquire coins
@@ -526,14 +577,7 @@ mod tests {
 
     #[test]
     fn gas_reports_coin_budget() {
-        let gas = Gas {
-            source: GasSource::Coin(CoinGasPool {
-                coins: Arc::new(Mutex::new(vec![])),
-                notify: Arc::new(Notify::new()),
-                budget: 5000,
-                reference_gas_price: 1,
-            }),
-        };
+        let gas = GasSource::coin(vec![sui_mocks::mock_sui_object_ref()], 5000);
         assert_eq!(gas.get_budget(), 5000);
     }
 
@@ -544,7 +588,7 @@ mod tests {
             coins: Arc::new(Mutex::new(vec![])),
             notify: Arc::new(Notify::new()),
             budget: 100,
-            reference_gas_price: 1,
+            reference_gas_price: Some(1),
         };
 
         let gas_clone = gas.clone();
@@ -584,7 +628,13 @@ mod tests {
             .with_gas(coins, budget);
 
         let client = builder.build().await.unwrap();
-        assert_eq!(client.gas.get_budget(), budget);
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("legacy builder should attach coin gas")
+                .get_budget(),
+            budget
+        );
         assert_eq!(client.signer.transaction_timeout, Duration::from_secs(5));
     }
 
@@ -602,7 +652,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(client.gas.get_budget(), 7_000);
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("legacy builder should attach address balance gas")
+                .get_budget(),
+            7_000
+        );
         assert_eq!(client.get_reference_gas_price(), None);
     }
 
@@ -662,33 +718,243 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_builder_missing_gas() {
-        let mut rng = rand::thread_rng();
-        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
+    async fn builder_without_gas_supports_reads() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let object = sui_mocks::mock_sui_object_ref();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            object.clone(),
+            sui::types::Owner::Immutable,
+            None,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
 
-        let builder = NexusClientBuilder::new()
+        let client = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
-            .with_nexus_objects(objects);
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+        let response = client
+            .crawler()
+            .get_object_metadata(*object.object_id())
+            .await
+            .expect("read-only query should not require gas coins");
 
-        let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::Configuration(_))));
+        assert!(client.gas_config().is_none());
+        assert_eq!(client.get_reference_gas_price(), None);
+        assert_eq!(response.object_ref(), object);
     }
 
     #[tokio::test]
-    async fn test_builder_with_missing_budget() {
-        let mut rng = rand::thread_rng();
-        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
-        let objects = sui_mocks::mock_nexus_objects();
-
-        let builder = NexusClientBuilder::new()
+    async fn direct_address_balance_attachment_is_shared_with_clones_and_actions() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
             .with_private_key(pk)
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
-            .with_nexus_objects(objects);
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+        let client_clone = client.clone();
+        let workflow = client.workflow();
+        let tap = client.tap();
 
-        let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::Configuration(_))));
+        client
+            .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(4_321)))
+            .await
+            .expect("address balance gas should attach");
+
+        assert_eq!(
+            client_clone
+                .gas_config()
+                .expect("clone should observe attached gas")
+                .get_budget(),
+            4_321
+        );
+        assert_eq!(
+            workflow
+                .client
+                .gas_config()
+                .expect("workflow facade should observe attached gas")
+                .get_budget(),
+            4_321
+        );
+        assert_eq!(
+            tap.client
+                .gas_config()
+                .expect("TAP facade should observe attached gas")
+                .get_budget(),
+            4_321
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_coin_attachment_fetches_reference_gas_price() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let coin = sui_mocks::mock_sui_object_ref();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 987);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        client
+            .set_gas_source(GasSource::coin(vec![coin], 8_765))
+            .await
+            .expect("coin gas should attach");
+
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("coin gas should be configured")
+                .get_budget(),
+            8_765
+        );
+        assert_eq!(client.get_reference_gas_price(), Some(987));
+    }
+
+    #[tokio::test]
+    async fn direct_coin_attachment_rejects_empty_pool() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        let error = client
+            .set_gas_source(GasSource::coin(vec![], 1_000))
+            .await
+            .expect_err("empty coin gas should fail");
+
+        assert!(error.to_string().contains("at least one gas coin"));
+        assert!(client.gas_config().is_none());
+    }
+
+    #[tokio::test]
+    async fn gas_attachment_rejects_replacement() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+        client
+            .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(1_000)))
+            .await
+            .expect("first gas attachment should succeed");
+
+        let error = client
+            .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(2_000)))
+            .await
+            .expect_err("replacement should fail");
+
+        assert!(error.to_string().contains("already configured"));
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("original gas should remain")
+                .get_budget(),
+            1_000
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_gas_attachment_has_one_winner() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+        let first_client = client.clone();
+        let first_barrier = Arc::clone(&barrier);
+        let first = tokio::spawn(async move {
+            first_barrier.wait().await;
+            first_client
+                .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(1_000)))
+                .await
+        });
+        let second_client = client.clone();
+        let second_barrier = Arc::clone(&barrier);
+        let second = tokio::spawn(async move {
+            second_barrier.wait().await;
+            second_client
+                .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(2_000)))
+                .await
+        });
+        barrier.wait().await;
+        let results = [first.await.unwrap(), second.await.unwrap()];
+
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        assert!(results
+            .iter()
+            .filter_map(|result| result.as_ref().err())
+            .all(|error| error.to_string().contains("already configured")));
+        assert!(matches!(
+            client
+                .gas_config()
+                .expect("one gas source should win")
+                .get_budget(),
+            1_000 | 2_000
+        ));
+    }
+
+    #[tokio::test]
+    async fn submit_transaction_without_gas_returns_configuration_error() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let sender = pk.public_key().derive_address();
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        let result = client
+            .submit_transaction(
+                sui::types::ProgrammableTransaction {
+                    inputs: vec![],
+                    commands: vec![],
+                },
+                sender,
+            )
+            .await;
+        let Err(error) = result else {
+            panic!("submission without gas should fail");
+        };
+
+        assert!(matches!(error, NexusError::Configuration(_)));
+        assert!(error
+            .to_string()
+            .contains("a gas source is required for transaction operations"));
     }
 
     #[tokio::test]
@@ -705,8 +971,11 @@ mod tests {
             .with_nexus_objects(objects)
             .with_gas(coins, budget);
 
-        let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::Configuration(_))));
+        let Err(error) = builder.build().await else {
+            panic!("explicit coin gas without coins should fail");
+        };
+        assert!(matches!(error, NexusError::Configuration(_)));
+        assert!(error.to_string().contains("at least one gas coin"));
     }
 
     #[tokio::test]
@@ -750,8 +1019,36 @@ mod tests {
             .with_transaction_timeout(Duration::from_secs(10));
 
         let client = builder.build().await.unwrap();
-        assert_eq!(client.gas.get_budget(), budget);
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("legacy builder should attach coin gas")
+                .get_budget(),
+            budget
+        );
         assert_eq!(client.signer.transaction_timeout, Duration::from_secs(10));
+    }
+
+    #[tokio::test]
+    async fn reusable_address_balance_builder_configuration_remains_supported() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .with_address_balance_gas_config(AddressBalanceGas::new(6_000))
+            .build()
+            .await
+            .expect("legacy reusable address balance configuration should build");
+
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("legacy builder should attach reusable gas")
+                .get_budget(),
+            6_000
+        );
     }
 
     #[tokio::test]
@@ -789,7 +1086,10 @@ mod tests {
 
         assert_eq!(client.get_reference_gas_price(), Some(1000));
 
-        let mut gas_coin = client.gas.coin_pool().unwrap().acquire_gas_coin().await;
+        let gas = client
+            .gas_config()
+            .expect("mock client should configure coin gas");
+        let mut gas_coin = gas.coin_pool().unwrap().acquire_gas_coin().await;
         let sender = client.signer.get_active_address();
         let tx = sui::types::Transaction {
             kind: sui::types::TransactionKind::ProgrammableTransaction(
@@ -948,6 +1248,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.digest, digest);
+    }
+
+    #[tokio::test]
+    async fn attached_address_balance_failure_is_reported_at_submission() {
+        let mut rng = rand::thread_rng();
+        let chain = sui::types::Digest::generate(&mut rng);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
+
+        sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23, chain);
+        sub_service_mock
+            .expect_subscribe_checkpoints()
+            .times(1)
+            .returning(|_| {
+                Ok(tonic::Response::new(
+                    Box::pin(futures::stream::empty()) as sui_mocks::grpc::BoxCheckpointStream
+                ))
+            });
+        tx_service_mock
+            .expect_execute_transaction()
+            .times(1)
+            .returning(|_| {
+                Err(tonic::Status::failed_precondition(
+                    "address balance is insufficient",
+                ))
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            execution_service_mock: Some(tx_service_mock),
+            subscription_service_mock: Some(sub_service_mock),
+            ..Default::default()
+        });
+        let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
+        let sender = pk.public_key().derive_address();
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client should build before gas attachment");
+        client
+            .set_gas_source(GasSource::AddressBalance(AddressBalanceGas::new(
+                DEFAULT_GAS_BUDGET,
+            )))
+            .await
+            .expect("address balance gas should attach without preflight");
+
+        let Err(error) = client
+            .submit_transaction(
+                sui::types::ProgrammableTransaction {
+                    inputs: vec![],
+                    commands: vec![],
+                },
+                sender,
+            )
+            .await
+        else {
+            panic!("Sui should reject an insufficient address balance");
+        };
+
+        assert!(matches!(error, NexusError::Rpc(_)));
+        assert!(error
+            .to_string()
+            .contains("address balance is insufficient"));
     }
 
     #[allow(dead_code)]
