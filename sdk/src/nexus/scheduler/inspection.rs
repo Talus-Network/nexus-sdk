@@ -316,12 +316,6 @@ fn reduce_occurrence(
             "settlement exists without dispatch",
         ));
     }
-    if dispatched.is_some() && (missed.is_some() || withdrawn.is_some()) {
-        return Err(inconsistent(
-            reference,
-            "dispatch conflicts with a nondispatch terminal outcome",
-        ));
-    }
     if missed.is_some() && withdrawn.is_some() {
         return Err(inconsistent(
             reference,
@@ -332,6 +326,12 @@ fn reduce_occurrence(
         return Err(inconsistent(
             reference,
             "settlement conflicts with another terminal outcome",
+        ));
+    }
+    if dispatched.is_some() && (missed.is_some() || withdrawn.is_some()) {
+        return Err(inconsistent(
+            reference,
+            "dispatch conflicts with a nondispatch terminal outcome",
         ));
     }
 
@@ -668,21 +668,44 @@ mod tests {
         crate::{
             events::NexusEventKind,
             move_bindings::{
+                interface::{
+                    agent::{ExecutionSpec, SkillSchedulePolicy},
+                    graph::EntryGroup,
+                    version::InterfaceVersion,
+                },
                 move_std::option::Option as MoveOption,
                 scheduler::{
-                    schedule::{OccurrenceSource, OccurrenceWithdrawalReason},
+                    schedule::{
+                        Occurrence,
+                        OccurrenceSource,
+                        OccurrenceWithdrawalReason,
+                        Schedule,
+                    },
                     scheduler::{
+                        OccurrenceAdvertised,
                         OccurrenceDispatched,
                         OccurrenceMissed,
                         OccurrenceScheduled,
                         OccurrenceSettled,
                         OccurrenceWithdrawn,
                     },
+                    task::{FailureMode, TaskController, TaskStatus},
                 },
-                sui_framework::object::ID,
+                sui_framework::{
+                    object::{ID, UID},
+                    object_table::ObjectTable,
+                    table::Table,
+                    vec_map::VecMap,
+                },
             },
-            nexus::error::NexusError,
+            nexus::{client::NexusClient, error::NexusError},
             sui,
+            test_utils::sui_mocks,
+        },
+        serde::Serialize,
+        std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
         },
     };
 
@@ -712,6 +735,372 @@ mod tests {
             ID::new(execution_id),
             120,
         ))
+    }
+
+    fn advertised(start_time_ms: u64) -> NexusEventKind {
+        NexusEventKind::OccurrenceAdvertised(OccurrenceAdvertised::new(
+            ID::new(reference().task_id),
+            reference().occurrence_id,
+            start_time_ms,
+            MoveOption::from_option(Some(200)),
+            10,
+            OccurrenceSource::Standalone,
+        ))
+    }
+
+    fn missed() -> NexusEventKind {
+        NexusEventKind::OccurrenceMissed(OccurrenceMissed::new(
+            ID::new(reference().task_id),
+            reference().occurrence_id,
+            250,
+        ))
+    }
+
+    fn withdrawn() -> NexusEventKind {
+        NexusEventKind::OccurrenceWithdrawn(OccurrenceWithdrawn::new(
+            ID::new(reference().task_id),
+            reference().occurrence_id,
+            OccurrenceWithdrawalReason::TaskCanceled,
+        ))
+    }
+
+    fn settled(execution_id: sui::types::Address, succeeded: bool) -> NexusEventKind {
+        NexusEventKind::OccurrenceSettled(OccurrenceSettled::new(
+            ID::new(reference().task_id),
+            reference().occurrence_id,
+            ID::new(execution_id),
+            succeeded,
+        ))
+    }
+
+    fn task_with_schedule(pending: Vec<Occurrence>, advertised_occurrence_id: Option<u64>) -> Task {
+        Task {
+            id: UID::new(reference().task_id),
+            controller: TaskController::Address {
+                pos0: address("0x91"),
+            },
+            status: TaskStatus::Active,
+            failure_mode: FailureMode::Continue,
+            operation: ExecutionSpec::new(
+                ID::new(address("0x92")),
+                ID::new(address("0x93")),
+                7,
+                InterfaceVersion::new(1),
+                ID::new(address("0x94")),
+                EntryGroup::new("default"),
+                VecMap { contents: vec![] },
+                address("0x91"),
+            ),
+            schedule_policy: SkillSchedulePolicy::Once,
+            schedule: Schedule::new(
+                pending,
+                MoveOption::from_option(None),
+                MoveOption::from_option(advertised_occurrence_id),
+                4,
+                0,
+                MoveOption::from_option(None),
+            ),
+            in_flight: Table::new(address("0x95"), 0),
+            registration: MoveOption::from_option(None),
+        }
+    }
+
+    fn scheduled_task_occurrence() -> Occurrence {
+        Occurrence::new(
+            reference().occurrence_id,
+            100,
+            MoveOption::from_option(Some(200)),
+            10,
+            OccurrenceSource::Standalone,
+        )
+    }
+
+    fn empty_object_table<T0, T1>(id: sui::types::Address) -> ObjectTable<T0, T1> {
+        ObjectTable {
+            id: UID::new(id),
+            size: 0,
+            phantom_t0: std::marker::PhantomData,
+            phantom_t1: std::marker::PhantomData,
+        }
+    }
+
+    fn execution(
+        task_id: sui::types::Address,
+        occurrence_id: u64,
+        active_walks: u64,
+    ) -> DAGExecution {
+        DAGExecution {
+            id: UID::new(
+                OccurrenceRef::new(task_id, occurrence_id)
+                    .execution_id()
+                    .expect("execution identity derives"),
+            ),
+            dag: ID::new(address("0x92")),
+            entry_group: EntryGroup::new("default"),
+            invoker: address("0x91"),
+            created_at: 125,
+            priority_fee_percentage: 10,
+            agent_id: ID::new(address("0x93")),
+            skill_id: 7,
+            interface_version: InterfaceVersion::new(1),
+            task_id: ID::new(task_id),
+            occurrence_id,
+            last_request_for_execution_emitted_at_digest: vec![],
+            last_request_for_execution_leaders: vec![],
+            network: ID::new(address("0x94")),
+            evaluations: empty_object_table(address("0x96")),
+            terminal_records: VecMap { contents: vec![] },
+            submission_failure_records: VecMap { contents: vec![] },
+            pending_retry_handoff_cap_ids: VecMap { contents: vec![] },
+            walk_request_authorities: VecMap { contents: vec![] },
+            pending_gas_settlements: VecMap { contents: vec![] },
+            walks: vec![],
+            active_walks,
+            pending_abort_walks: 0,
+            pending_settlement_walks: 0,
+            successful_walks: 2,
+            failed_walks: 1,
+            aborted_walks: 3,
+            consumed_walks: 0,
+            cancelled_walks: 0,
+        }
+    }
+
+    #[derive(Clone)]
+    struct TaskUpdateFixture {
+        object_ref: sui::types::ObjectReference,
+        previous_transaction: sui::types::Digest,
+        task_bcs: Vec<u8>,
+        input_state: sui::types::ObjectIn,
+        events: Vec<NexusEventKind>,
+        checkpoint: u64,
+    }
+
+    impl TaskUpdateFixture {
+        fn new(
+            version: u64,
+            digest_byte: u8,
+            transaction_byte: u8,
+            task: &Task,
+            input_state: sui::types::ObjectIn,
+            events: Vec<NexusEventKind>,
+        ) -> Self {
+            Self {
+                object_ref: sui::types::ObjectReference::new(
+                    reference().task_id,
+                    version,
+                    sui::types::Digest::from([digest_byte; 32]),
+                ),
+                previous_transaction: sui::types::Digest::from([transaction_byte; 32]),
+                task_bcs: bcs::to_bytes(task).expect("Task serializes"),
+                input_state,
+                events,
+                checkpoint: version + 10,
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    struct ObjectReply {
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        object_type: sui::types::StructTag,
+        previous_transaction: Option<sui::types::Digest>,
+        contents: Vec<u8>,
+        expected_requested_version: Option<u64>,
+    }
+
+    #[derive(Serialize)]
+    struct EventWrapper<T> {
+        event: T,
+    }
+
+    fn scheduler_grpc_event(
+        objects: &crate::types::NexusObjects,
+        event: NexusEventKind,
+    ) -> sui::grpc::Event {
+        let event_name = event.name();
+        let contents = match event {
+            NexusEventKind::OccurrenceAdvertised(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            NexusEventKind::OccurrenceDispatched(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            NexusEventKind::OccurrenceMissed(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            NexusEventKind::OccurrenceScheduled(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            NexusEventKind::OccurrenceSettled(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            NexusEventKind::OccurrenceWithdrawn(event) => {
+                bcs::to_bytes(&EventWrapper { event }).expect("event serializes")
+            }
+            _ => panic!("unsupported scheduler test event"),
+        };
+        let mut grpc_event = sui::grpc::Event::default();
+        grpc_event.set_package_id(objects.scheduler_pkg_id);
+        grpc_event.set_module("scheduler".to_string());
+        grpc_event.set_sender(sui::types::Address::ZERO);
+        grpc_event.set_event_type(format!(
+            "{}::event::EventWrapper<{}::scheduler::{event_name}>",
+            objects.primitives_pkg_id, objects.scheduler_pkg_id,
+        ));
+        grpc_event.set_contents(contents);
+        grpc_event
+    }
+
+    async fn actions_for_history(
+        objects: crate::types::NexusObjects,
+        updates: Vec<TaskUpdateFixture>,
+        execution_object: Option<(sui::types::ObjectReference, DAGExecution)>,
+    ) -> SchedulerActions {
+        let task_type = crate::move_bindings::struct_tag::<Task>(&objects);
+        let mut object_replies = Vec::new();
+        for update in &updates {
+            for expected_requested_version in [None, Some(update.object_ref.version())] {
+                object_replies.push(ObjectReply {
+                    object_ref: update.object_ref.clone(),
+                    owner: sui::types::Owner::Shared(1),
+                    object_type: task_type.clone(),
+                    previous_transaction: Some(update.previous_transaction),
+                    contents: update.task_bcs.clone(),
+                    expected_requested_version,
+                });
+            }
+        }
+        if let Some((execution_ref, execution)) = execution_object {
+            object_replies.push(ObjectReply {
+                object_ref: execution_ref,
+                owner: sui::types::Owner::Shared(1),
+                object_type: crate::move_bindings::struct_tag::<DAGExecution>(&objects),
+                previous_transaction: None,
+                contents: bcs::to_bytes(&execution).expect("DAGExecution serializes"),
+                expected_requested_version: None,
+            });
+        }
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let object_replies = Arc::new(object_replies);
+        let object_call = Arc::new(AtomicUsize::new(0));
+        let replies_for_object = Arc::clone(&object_replies);
+        let call_for_object = Arc::clone(&object_call);
+        ledger_service
+            .expect_get_object()
+            .times(object_replies.len())
+            .returning(move |request| {
+                let index = call_for_object.fetch_add(1, Ordering::SeqCst);
+                let reply = &replies_for_object[index];
+                assert_eq!(
+                    request.get_ref().object_id.as_deref(),
+                    Some(reply.object_ref.object_id().to_string().as_str()),
+                );
+                assert_eq!(request.get_ref().version, reply.expected_requested_version);
+
+                let mut object = sui::grpc::Object::default();
+                object.set_object_id(*reply.object_ref.object_id());
+                object.set_owner(sui::grpc::Owner::from(reply.owner));
+                object.set_object_type(reply.object_type.to_string());
+                object.set_version(reply.object_ref.version());
+                object.set_digest(*reply.object_ref.digest());
+                if let Some(previous_transaction) = reply.previous_transaction {
+                    object.set_previous_transaction(previous_transaction.to_string());
+                }
+                let mut contents = sui::grpc::Bcs::default();
+                contents.set_name(reply.object_type.to_string());
+                contents.set_value(reply.contents.clone());
+                object.contents = Some(contents);
+
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object);
+                Ok(tonic::Response::new(response))
+            });
+
+        let updates_for_transaction = Arc::new(updates);
+        let objects_for_transaction = objects.clone();
+        ledger_service
+            .expect_get_transaction()
+            .times(updates_for_transaction.len())
+            .returning(move |request| {
+                let requested_digest = request
+                    .get_ref()
+                    .digest_opt()
+                    .expect("transaction digest is requested");
+                let update = updates_for_transaction
+                    .iter()
+                    .find(|update| update.previous_transaction.to_string() == requested_digest)
+                    .expect("requested Task update exists");
+                let created = matches!(&update.input_state, sui::types::ObjectIn::NotExist);
+                let effects = sui::types::TransactionEffects::V2(Box::new(
+                    sui::types::TransactionEffectsV2 {
+                        status: sui::types::ExecutionStatus::Success,
+                        epoch: 1,
+                        gas_used: sui::types::GasCostSummary {
+                            computation_cost: 0,
+                            storage_cost: 0,
+                            storage_rebate: 0,
+                            non_refundable_storage_fee: 0,
+                        },
+                        transaction_digest: update.previous_transaction,
+                        gas_object_index: None,
+                        events_digest: None,
+                        dependencies: vec![],
+                        lamport_version: update.object_ref.version(),
+                        changed_objects: vec![sui::types::ChangedObject {
+                            object_id: reference().task_id,
+                            input_state: update.input_state.clone(),
+                            output_state: sui::types::ObjectOut::ObjectWrite {
+                                digest: *update.object_ref.digest(),
+                                owner: sui::types::Owner::Shared(1),
+                            },
+                            id_operation: if created {
+                                sui::types::IdOperation::Created
+                            } else {
+                                sui::types::IdOperation::None
+                            },
+                        }],
+                        unchanged_consensus_objects: vec![],
+                        auxiliary_data_digest: None,
+                    },
+                ));
+                let mut grpc_effects = sui::grpc::TransactionEffects::default();
+                grpc_effects.set_bcs(bcs::to_bytes(&effects).expect("effects serialize"));
+                let mut grpc_events = sui::grpc::TransactionEvents::default();
+                grpc_events.set_events(
+                    update
+                        .events
+                        .clone()
+                        .into_iter()
+                        .map(|event| scheduler_grpc_event(&objects_for_transaction, event))
+                        .collect(),
+                );
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(update.previous_transaction);
+                transaction.set_checkpoint(update.checkpoint);
+                transaction.set_effects(grpc_effects);
+                transaction.set_events(grpc_events);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(transaction);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(objects)
+            .with_address_balance_gas(1_000)
+            .build()
+            .await
+            .expect("mock Nexus client builds")
+            .scheduler()
     }
 
     #[test]
@@ -863,6 +1252,339 @@ mod tests {
         let execution_id = reference().execution_id().expect("identity derives");
         let error = reduce_occurrence(reference(), &[dispatched(execution_id)])
             .expect_err("missing allocation must fail");
+
+        assert!(matches!(
+            error,
+            NexusError::OccurrenceLifecycleIncomplete { .. }
+        ));
+    }
+
+    #[test]
+    fn occurrence_status_terminality_and_watch_defaults_are_stable() {
+        for status in [
+            OccurrenceStatus::Pending,
+            OccurrenceStatus::Advertised,
+            OccurrenceStatus::Executing,
+            OccurrenceStatus::Finished,
+        ] {
+            assert!(!status.is_terminal());
+        }
+        for status in [
+            OccurrenceStatus::Settled { succeeded: true },
+            OccurrenceStatus::Missed { missed_at_ms: 1 },
+            OccurrenceStatus::Withdrawn {
+                reason: OccurrenceWithdrawalReason::TaskCanceled,
+            },
+        ] {
+            assert!(status.is_terminal());
+        }
+
+        let options = WatchOccurrenceOptions::default();
+        assert_eq!(options.timeout, DEFAULT_OCCURRENCE_WATCH_TIMEOUT);
+        assert_eq!(
+            options.poll_interval,
+            DEFAULT_OCCURRENCE_WATCH_POLL_INTERVAL
+        );
+    }
+
+    #[test]
+    fn advertisement_updates_effective_start_and_unrelated_events_are_ignored() {
+        let unrelated = NexusEventKind::OccurrenceScheduled(OccurrenceScheduled::new(
+            ID::new(address("0x99")),
+            reference().occurrence_id,
+            1,
+            MoveOption::from_option(None),
+            0,
+            OccurrenceSource::Standalone,
+        ));
+        let reduced = reduce_occurrence(
+            reference(),
+            &[unrelated, scheduled(), advertised(125), advertised(150)],
+        )
+        .expect("history reduces");
+
+        assert_eq!(reduced.effective_start_time_ms, Some(150));
+    }
+
+    #[test]
+    fn missing_occurrence_history_is_not_found() {
+        let error = reduce_occurrence(reference(), &[]).expect_err("empty history must fail");
+
+        assert!(matches!(error, NexusError::OccurrenceNotFound { .. }));
+    }
+
+    #[test]
+    fn duplicate_lifecycle_records_are_rejected() {
+        let execution_id = reference().execution_id().expect("identity derives");
+        let histories = [
+            vec![scheduled(), scheduled()],
+            vec![
+                scheduled(),
+                dispatched(execution_id),
+                dispatched(execution_id),
+            ],
+            vec![scheduled(), missed(), missed()],
+            vec![scheduled(), withdrawn(), withdrawn()],
+            vec![
+                scheduled(),
+                dispatched(execution_id),
+                settled(execution_id, true),
+                settled(execution_id, true),
+            ],
+        ];
+
+        for history in histories {
+            let error =
+                reduce_occurrence(reference(), &history).expect_err("duplicate record must fail");
+            assert!(matches!(
+                error,
+                NexusError::OccurrenceLifecycleInconsistent { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn dispatch_and_terminal_conflicts_are_rejected() {
+        let execution_id = reference().execution_id().expect("identity derives");
+        for history in [
+            vec![scheduled(), dispatched(execution_id), missed()],
+            vec![scheduled(), dispatched(execution_id), withdrawn()],
+            vec![
+                scheduled(),
+                dispatched(execution_id),
+                settled(execution_id, true),
+                missed(),
+            ],
+        ] {
+            let error = reduce_occurrence(reference(), &history).expect_err("conflict must fail");
+            assert!(matches!(
+                error,
+                NexusError::OccurrenceLifecycleInconsistent { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn settlement_with_mismatched_execution_is_rejected() {
+        let execution_id = reference().execution_id().expect("identity derives");
+        let error = reduce_occurrence(
+            reference(),
+            &[
+                scheduled(),
+                dispatched(execution_id),
+                settled(address("0x82"), true),
+            ],
+        )
+        .expect_err("mismatched settlement must fail");
+
+        assert!(matches!(
+            error,
+            NexusError::OccurrenceLifecycleInconsistent { .. }
+        ));
+    }
+
+    #[test]
+    fn transaction_not_found_detection_is_specific() {
+        let missing = anyhow::Error::new(tonic::Status::not_found("missing"));
+        let unavailable = anyhow::Error::new(tonic::Status::unavailable("unavailable"));
+        let plain = anyhow::anyhow!("plain error");
+
+        assert!(is_not_found(&missing));
+        assert!(!is_not_found(&unavailable));
+        assert!(!is_not_found(&plain));
+    }
+
+    #[tokio::test]
+    async fn inspection_reconstructs_an_advertised_occurrence_from_task_updates() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = task_with_schedule(
+            vec![scheduled_task_occurrence()],
+            Some(reference().occurrence_id),
+        );
+        let update = TaskUpdateFixture::new(
+            1,
+            1,
+            11,
+            &task,
+            sui::types::ObjectIn::NotExist,
+            vec![scheduled(), advertised(125)],
+        );
+        let actions = actions_for_history(objects, vec![update], None).await;
+
+        let snapshot = actions
+            .inspect_occurrence(reference())
+            .await
+            .expect("occurrence inspection succeeds");
+
+        assert_eq!(snapshot.reference, reference());
+        assert_eq!(snapshot.source, OccurrenceSource::Standalone);
+        assert_eq!(snapshot.requested_start_time_ms, 100);
+        assert_eq!(snapshot.effective_start_time_ms, Some(125));
+        assert_eq!(snapshot.deadline_ms, Some(200));
+        assert_eq!(snapshot.priority_fee_percentage, 10);
+        assert_eq!(snapshot.status, OccurrenceStatus::Advertised);
+        assert!(snapshot.execution.is_none());
+        assert_eq!(snapshot.observed_task_version, 1);
+        assert_eq!(snapshot.observed_checkpoint, 11);
+    }
+
+    #[tokio::test]
+    async fn watch_reuses_task_history_and_observes_a_terminal_update() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let first_task = task_with_schedule(vec![scheduled_task_occurrence()], None);
+        let first = TaskUpdateFixture::new(
+            1,
+            1,
+            11,
+            &first_task,
+            sui::types::ObjectIn::NotExist,
+            vec![scheduled()],
+        );
+        let second_task = task_with_schedule(vec![], None);
+        let second = TaskUpdateFixture::new(
+            2,
+            2,
+            12,
+            &second_task,
+            sui::types::ObjectIn::Exist {
+                version: 1,
+                digest: *first.object_ref.digest(),
+                owner: sui::types::Owner::Shared(1),
+            },
+            vec![withdrawn()],
+        );
+        let actions = actions_for_history(objects, vec![first, second], None).await;
+
+        let snapshot = actions
+            .watch_occurrence(
+                reference(),
+                WatchOccurrenceOptions {
+                    timeout: Duration::from_secs(1),
+                    poll_interval: Duration::from_millis(1),
+                },
+            )
+            .await
+            .expect("watch observes the terminal update");
+
+        assert_eq!(
+            snapshot.status,
+            OccurrenceStatus::Withdrawn {
+                reason: OccurrenceWithdrawalReason::TaskCanceled,
+            }
+        );
+        assert_eq!(snapshot.observed_task_version, 2);
+        assert_eq!(snapshot.observed_checkpoint, 12);
+    }
+
+    async fn inspect_dispatched_occurrence(active_walks: u64) -> OccurrenceSnapshot {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = task_with_schedule(vec![], None);
+        let execution_id = reference().execution_id().expect("identity derives");
+        let update = TaskUpdateFixture::new(
+            1,
+            1,
+            11,
+            &task,
+            sui::types::ObjectIn::NotExist,
+            vec![scheduled(), dispatched(execution_id)],
+        );
+        let execution_ref =
+            sui::types::ObjectReference::new(execution_id, 1, sui::types::Digest::from([7; 32]));
+        let actions = actions_for_history(
+            objects,
+            vec![update],
+            Some((
+                execution_ref,
+                execution(reference().task_id, reference().occurrence_id, active_walks),
+            )),
+        )
+        .await;
+
+        actions
+            .inspect_occurrence(reference())
+            .await
+            .expect("dispatched occurrence inspection succeeds")
+    }
+
+    #[tokio::test]
+    async fn dispatched_runtime_objects_distinguish_executing_from_finished() {
+        let executing = inspect_dispatched_occurrence(1).await;
+        assert_eq!(executing.status, OccurrenceStatus::Executing);
+        let executing_snapshot = executing.execution.as_ref().expect("execution snapshot");
+        assert_eq!(executing_snapshot.created_at_ms, Some(125));
+        assert_eq!(executing_snapshot.active_walks, Some(1));
+        assert_eq!(executing_snapshot.successful_walks, Some(2));
+        assert_eq!(executing_snapshot.failed_walks, Some(1));
+        assert_eq!(executing_snapshot.aborted_walks, Some(3));
+        assert_eq!(
+            dispatched_execution_id(&executing).expect("execution was dispatched"),
+            reference().execution_id().expect("identity derives")
+        );
+
+        let finished = inspect_dispatched_occurrence(0).await;
+        assert_eq!(finished.status, OccurrenceStatus::Finished);
+        let mut undispatched = finished;
+        undispatched.execution = None;
+        assert!(matches!(
+            dispatched_execution_id(&undispatched),
+            Err(NexusError::OccurrenceNotDispatched { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn inspection_rejects_a_runtime_object_owned_by_another_occurrence() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = task_with_schedule(vec![], None);
+        let execution_id = reference().execution_id().expect("identity derives");
+        let update = TaskUpdateFixture::new(
+            1,
+            1,
+            11,
+            &task,
+            sui::types::ObjectIn::NotExist,
+            vec![scheduled(), dispatched(execution_id)],
+        );
+        let execution_ref =
+            sui::types::ObjectReference::new(execution_id, 1, sui::types::Digest::from([7; 32]));
+        let actions = actions_for_history(
+            objects,
+            vec![update],
+            Some((
+                execution_ref,
+                execution(address("0x98"), reference().occurrence_id, 1),
+            )),
+        )
+        .await;
+
+        let error = actions
+            .inspect_occurrence(reference())
+            .await
+            .expect_err("foreign runtime object must fail");
+
+        assert!(matches!(
+            error,
+            NexusError::OccurrenceLifecycleInconsistent { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn inspection_rejects_an_occurrence_missing_from_the_live_task() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let task = task_with_schedule(vec![], None);
+        let update = TaskUpdateFixture::new(
+            1,
+            1,
+            11,
+            &task,
+            sui::types::ObjectIn::NotExist,
+            vec![scheduled()],
+        );
+        let actions = actions_for_history(objects, vec![update], None).await;
+
+        let error = actions
+            .inspect_occurrence(reference())
+            .await
+            .expect_err("missing live occurrence must fail");
 
         assert!(matches!(
             error,
