@@ -115,6 +115,7 @@ nexus = [
 test_utils = [
     "types",
     "sui-transaction-builder",
+    "http",
     "tempfile",
     "tokio-retry",
     "tokio-stream",
@@ -123,6 +124,7 @@ test_utils = [
     "move_package",
     "move_package_alt",
     "portpicker",
+    "testcontainers",
     "testcontainers-modules",
     "mockall",
     "mockito",
@@ -169,6 +171,10 @@ optional = true
 
 [dependencies.hmac]
 version = "0.12"
+optional = true
+
+[dependencies.http]
+version = "1"
 optional = true
 
 [dependencies.hex]
@@ -366,10 +372,15 @@ tag = "testnet-v1.76.0"
 package = "move-package-alt"
 optional = true
 
+[dependencies.testcontainers]
+version = "0.27.3"
+default-features = false
+features = ["http_wait_plain"]
+optional = true
+
 [dependencies.testcontainers-modules]
-git = "https://github.com/Talus-Network/testcontainers-rs-modules-community"
-branch = "feat/add-sui-support"
-features = ["sui", "redis", "postgres"]
+version = "0.15.0"
+features = ["redis", "postgres"]
 optional = true
 
 [dependencies.toml]

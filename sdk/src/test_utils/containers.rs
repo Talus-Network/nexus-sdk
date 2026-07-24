@@ -1,41 +1,47 @@
-//! Module defining container setups via [`testcontainers`].
+//! Container setup helpers built with [`testcontainers`].
 //!
-//! Contains functions for
-//! - Sui
-//! - Redis
+//! The module supports Sui and Redis.
 
 use {
     anyhow::Context as _,
+    http::header::{HeaderValue, CONTENT_TYPE},
     portpicker::pick_unused_port,
     std::time::Duration,
-    testcontainers_modules::{
-        postgres::Postgres,
-        redis::Redis,
-        sui::Sui,
-        testcontainers::{
-            core::{client, ports::ContainerPort},
-            runners::AsyncRunner,
-            ContainerAsync,
-            ImageExt,
-        },
+    testcontainers::{
+        core::{client, ports::ContainerPort, wait::HttpWaitStrategy, ContainerRequest, WaitFor},
+        runners::AsyncRunner,
+        ContainerAsync,
+        GenericImage,
+        ImageExt,
     },
+    testcontainers_modules::{postgres::Postgres, redis::Redis},
 };
 
-pub type SuiContainer = ContainerAsync<Sui>;
+/// A running Sui container built from [`GenericImage`].
+pub type SuiContainer = ContainerAsync<GenericImage>;
 pub type PgContainer = ContainerAsync<Postgres>;
 pub type RedisContainer = ContainerAsync<Redis>;
-pub type ExecCommand = testcontainers_modules::testcontainers::core::ExecCommand;
+pub type ExecCommand = testcontainers::core::ExecCommand;
 
+const SUI_TOOLS_IMAGE: &str = "mysten/sui-tools";
 const SUI_TOOLS_TAG_AMD64: &str = "testnet-v1.76.0";
 const SUI_TOOLS_TAG_ARM64: &str = "testnet-v1.76.0-arm64";
+const SUI_RPC_PORT: ContainerPort = ContainerPort::Tcp(9000);
+const SUI_FAUCET_PORT: ContainerPort = ContainerPort::Tcp(9123);
+const SUI_GRAPHQL_PORT: ContainerPort = ContainerPort::Tcp(9125);
+const SUI_READY_REQUEST: &str = r#"{"jsonrpc":"2.0","method":"sui_getChainIdentifier","id":1}"#;
 
+/// A running Sui test network and its mapped service ports.
 pub struct SuiInstance {
+    /// The container handle.
     pub container: SuiContainer,
+    /// The mapped Sui gRPC port.
     pub rpc_port: u16,
+    /// The mapped faucet port.
     pub faucet_port: u16,
 }
 
-/// Returns why Docker-backed tests cannot run in the current environment.
+/// Returns why Docker-based tests cannot run in the current environment.
 pub async fn docker_unavailable_reason() -> Option<String> {
     let docker = match client::docker_client_instance().await {
         Ok(docker) => docker,
@@ -49,18 +55,40 @@ pub async fn docker_unavailable_reason() -> Option<String> {
         .map(|error| format!("failed to query Docker daemon: {error}"))
 }
 
-fn sui_image(epoch_duration: Option<Duration>) -> anyhow::Result<Sui> {
-    let mut image = Sui::default().with_force_regenesis(true).with_faucet(true);
+fn sui_request(
+    tag: &str,
+    epoch_duration: Option<Duration>,
+) -> anyhow::Result<ContainerRequest<GenericImage>> {
+    let mut command = vec![
+        "start".to_owned(),
+        "--force-regenesis".to_owned(),
+        "--with-faucet".to_owned(),
+    ];
 
     if let Some(duration) = epoch_duration {
-        let duration = duration
+        let duration_ms: u64 = duration
             .as_millis()
             .try_into()
             .context("convert Sui epoch duration to milliseconds")?;
-        image = image.with_epoch_duration_ms(duration);
+        command.push("--epoch-duration-ms".to_owned());
+        command.push(duration_ms.to_string());
     }
 
-    Ok(image)
+    let ready = HttpWaitStrategy::new("/")
+        .with_port(SUI_RPC_PORT)
+        .with_method("POST".parse().expect("POST is a valid HTTP method"))
+        .with_body(SUI_READY_REQUEST)
+        .with_header(CONTENT_TYPE, HeaderValue::from_static("application/json"))
+        .with_expected_status_code(200_u16);
+
+    Ok(GenericImage::new(SUI_TOOLS_IMAGE, tag)
+        .with_entrypoint("sui")
+        .with_exposed_port(SUI_RPC_PORT)
+        .with_exposed_port(SUI_FAUCET_PORT)
+        .with_exposed_port(SUI_GRAPHQL_PORT)
+        .with_wait_for(WaitFor::http(ready))
+        .with_env_var("RUST_LOG", "warning,sui_node=info")
+        .with_cmd(command))
 }
 
 /// Starts a Sui container with the default epoch duration.
@@ -115,11 +143,9 @@ pub async fn try_setup_sui_instance(
             }
         });
 
-    let sui_request = sui_image(epoch_duration)?
-        .with_name("mysten/sui-tools")
-        .with_tag(sui_tools_tag)
-        .with_mapped_port(rpc_host_port, ContainerPort::Tcp(9000))
-        .with_mapped_port(faucet_host_port, ContainerPort::Tcp(9123));
+    let sui_request = sui_request(sui_tools_tag, epoch_duration)?
+        .with_mapped_port(rpc_host_port, SUI_RPC_PORT)
+        .with_mapped_port(faucet_host_port, SUI_FAUCET_PORT);
 
     let container = sui_request.start().await.context("start Sui container")?;
 
@@ -172,26 +198,47 @@ pub async fn setup_redis_instance() -> (RedisContainer, u16) {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        std::{borrow::Cow, time::Duration},
-        testcontainers_modules::testcontainers::Image,
-    };
+    use {super::*, std::time::Duration, testcontainers::Image};
 
     #[test]
-    fn sui_image_uses_configured_epoch_duration() {
-        let command = sui_image(Some(Duration::from_secs(600)))
+    fn sui_request_uses_configured_epoch_duration() {
+        let command = sui_request(SUI_TOOLS_TAG_AMD64, Some(Duration::from_secs(600)))
             .unwrap()
             .cmd()
-            .into_iter()
-            .map(|argument| {
-                let argument: Cow<'_, str> = argument.into();
-                argument.into_owned()
-            })
+            .map(|argument| argument.into_owned())
             .collect::<Vec<_>>();
 
         assert!(command
             .windows(2)
             .any(|pair| pair == ["--epoch-duration-ms", "600000"]));
+    }
+
+    #[test]
+    fn sui_request_preserves_the_container_contract() {
+        let request = sui_request(SUI_TOOLS_TAG_AMD64, None).unwrap();
+        let command = request
+            .cmd()
+            .map(|argument| argument.into_owned())
+            .collect::<Vec<_>>();
+        let environment = request
+            .env_vars()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(command, vec!["start", "--force-regenesis", "--with-faucet"]);
+        assert_eq!(request.descriptor(), "mysten/sui-tools:testnet-v1.76.0");
+        assert_eq!(request.entrypoint(), Some("sui"));
+        assert_eq!(
+            request.image().expose_ports(),
+            &[SUI_RPC_PORT, SUI_FAUCET_PORT, SUI_GRAPHQL_PORT]
+        );
+        assert_eq!(
+            environment,
+            vec![("RUST_LOG".to_owned(), "warning,sui_node=info".to_owned())]
+        );
+        assert!(matches!(
+            request.image().ready_conditions().as_slice(),
+            [WaitFor::Http(_)]
+        ));
     }
 }
