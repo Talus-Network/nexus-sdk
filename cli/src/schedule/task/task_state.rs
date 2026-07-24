@@ -58,12 +58,15 @@ pub(crate) async fn set_task_state(
 
     json_output(&json!({
         "digest": result.tx_digest,
+        "tx_checkpoint": result.tx_checkpoint,
         "task_id": task_id,
         "state": match request {
             TaskStateRequest::Pause => "paused",
             TaskStateRequest::Resume => "resumed",
             TaskStateRequest::Cancel => "canceled",
         },
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))?;
 
@@ -91,6 +94,8 @@ pub(crate) async fn refill_task(
         "tx_checkpoint": result.tx_checkpoint,
         "task_id": task_id,
         "amount_mist": amount_mist,
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))
 }

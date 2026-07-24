@@ -6,6 +6,8 @@
 //! Executions begin through
 //! [`SchedulerActions::create_task`](crate::nexus::scheduler::SchedulerActions::create_task).
 
+#[cfg(test)]
+use crate::nexus::object_history::MAX_TRANSACTION_NOT_FOUND_RETRIES;
 #[cfg(feature = "walrus")]
 use crate::walrus::StorageConf;
 use {
@@ -34,8 +36,9 @@ use {
         move_boundary,
         nexus::{
             client::NexusClient,
-            crawler::{Crawler, ObjectUpdateReference, TransactionUpdate},
+            crawler::{Crawler, ObjectUpdateReference},
             error::NexusError,
+            object_history::{fetch_shared_object_history, version_or_none, ObjectHistoryRequest},
             tap,
         },
         sui,
@@ -58,7 +61,6 @@ const EXECUTION_PAYMENT_INSUFFICIENT_SETTLEMENT_VALUE_TYPE_SUFFIX: &str =
 const ONCHAIN_TOOL_RESULT_ID_VALUE_TYPE_SUFFIX: &str = "::object::ID";
 const DEFAULT_EXECUTION_INSPECTION_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 const DEFAULT_EXECUTION_INSPECTION_POLL_INTERVAL: Duration = Duration::from_secs(1);
-const MAX_TRANSACTION_NOT_FOUND_RETRIES: usize = 3;
 pub const EXPIRED_WALK_NOT_DOUBLE_TIMEOUT_EXPIRED_REASON: &str =
     "walk is not double timeout expired";
 pub const EXPIRED_WALK_ALREADY_TERMINAL_REASON: &str = "walk is already terminal";
@@ -422,12 +424,6 @@ fn event_execution_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     }
 }
 
-fn version_or_none(version: Option<sui::types::Version>) -> String {
-    version
-        .map(|version| version.to_string())
-        .unwrap_or_else(|| "none".to_string())
-}
-
 fn is_transient_inspection_error(error: &NexusError) -> bool {
     let NexusError::Rpc(error) = error else {
         return false;
@@ -448,44 +444,6 @@ fn is_transient_inspection_error(error: &NexusError) -> bool {
     })
 }
 
-fn is_transaction_not_found(error: &anyhow::Error) -> bool {
-    error.chain().any(|source| {
-        source
-            .downcast_ref::<tonic::Status>()
-            .is_some_and(|status| status.code() == tonic::Code::NotFound)
-    })
-}
-
-async fn fetch_transaction_update_with_visibility_retry(
-    crawler: &Crawler,
-    digest: sui::types::Digest,
-    poll_interval: Duration,
-    deadline: Instant,
-) -> anyhow::Result<TransactionUpdate> {
-    let mut retries = 0;
-
-    loop {
-        match crawler.get_transaction_update(digest).await {
-            Ok(update) => return Ok(update),
-            Err(error)
-                if retries < MAX_TRANSACTION_NOT_FOUND_RETRIES
-                    && is_transaction_not_found(&error) =>
-            {
-                let Some(retry_at) = Instant::now().checked_add(poll_interval) else {
-                    return Err(error);
-                };
-                if retry_at >= deadline {
-                    return Err(error);
-                }
-
-                retries += 1;
-                tokio::time::sleep_until(retry_at).await;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-}
-
 async fn fetch_execution_update_events(
     crawler: &Crawler,
     nexus_objects: &Arc<NexusObjects>,
@@ -495,167 +453,50 @@ async fn fetch_execution_update_events(
     poll_interval: Duration,
     deadline: Instant,
 ) -> Result<Vec<NexusEvent>, NexusError> {
-    let mut cursor = latest;
-    let mut reverse_updates = Vec::new();
     let expected_type = crate::move_bindings::struct_tag::<DAGExecution>(nexus_objects);
     let event_query = NexusEventQuery::new(Arc::clone(nexus_objects));
-    let last_reconstructed = version_or_none(last_delivered_version);
-
-    loop {
-        if !matches!(cursor.owner, sui::types::Owner::Shared(_)) {
-            return Err(NexusError::Parsing(anyhow!(
-                "Execution object '{dag_execution_id}' at version {} is not shared",
-                cursor.version
-            )));
-        }
-        if cursor.object_type != expected_type {
-            return Err(NexusError::Parsing(anyhow!(
-                "Execution object '{dag_execution_id}' at version {} has type '{}', expected '{}'",
-                cursor.version,
-                cursor.object_type,
-                expected_type
-            )));
-        }
-        if last_delivered_version == Some(cursor.version) {
-            break;
-        }
-        if let Some(last_delivered_version) = last_delivered_version {
-            if cursor.version < last_delivered_version {
-                return Err(NexusError::Rpc(anyhow!(
-                    "Execution object '{dag_execution_id}' moved backwards from delivered version {last_delivered_version} to observed version {}",
-                    cursor.version
-                )));
-            }
-        }
-
-        let update = fetch_transaction_update_with_visibility_retry(
-            crawler,
-            cursor.previous_transaction,
+    let updates = fetch_shared_object_history(
+        crawler,
+        ObjectHistoryRequest {
+            object_name: "Execution",
+            object_id: dag_execution_id,
+            expected_type,
+            latest,
+            after_version: last_delivered_version,
             poll_interval,
             deadline,
-        )
-            .await
-            .map_err(|error| {
-                NexusError::Rpc(error.context(format!(
-                    "Execution '{dag_execution_id}' history is incomplete: missing transaction '{}' for object version {}; last successfully reconstructed version {last_reconstructed}",
-                    cursor.previous_transaction, cursor.version
-                )))
-            })?;
-        if update.effects.lamport_version != cursor.version {
-            return Err(NexusError::Rpc(anyhow!(
-                "Transaction '{}' produced version {} while execution object '{dag_execution_id}' is at version {}",
-                update.digest,
-                update.effects.lamport_version,
-                cursor.version
-            )));
-        }
+        },
+    )
+    .await?;
 
-        let changed = update
-            .effects
-            .changed_objects
-            .iter()
-            .find(|changed| changed.object_id == dag_execution_id)
-            .ok_or_else(|| {
-                NexusError::Rpc(anyhow!(
-                    "Transaction '{}' did not update execution object '{dag_execution_id}'",
-                    update.digest
-                ))
-            })?;
-        let output_digest = match &changed.output_state {
-            sui::types::ObjectOut::ObjectWrite { digest, .. } => *digest,
-            output => {
-                return Err(NexusError::Rpc(anyhow!(
-                    "Transaction '{}' has unsupported output state {output:?} for execution object '{dag_execution_id}'",
-                    update.digest
-                )))
-            }
-        };
-        if output_digest != cursor.digest {
-            return Err(NexusError::Rpc(anyhow!(
-                "Transaction '{}' output digest for execution object '{dag_execution_id}' does not match object version {}",
-                update.digest,
-                cursor.version
-            )));
-        }
-
-        let events = update
-            .events
-            .iter()
-            .enumerate()
-            .filter_map(|(index, event)| {
-                event_query
-                    .decode_sui_event(index as u64, update.digest, event)
-                    .transpose()
-                    .map(|result| {
-                        result.map_err(|error| {
-                            NexusError::Parsing(anyhow::Error::new(error).context(format!(
-                                "Could not decode event {index} from transaction '{}' while reconstructing execution '{dag_execution_id}'",
-                                update.digest
-                            )))
-                        })
+    updates
+        .into_iter()
+        .flat_map(|update| {
+            update
+                .events
+                .into_iter()
+                .enumerate()
+                .map(move |(index, event)| (index, event, update.digest))
+        })
+        .filter_map(|(index, event, digest)| {
+            event_query
+                .decode_sui_event(index as u64, digest, &event)
+                .transpose()
+                .map(|result| {
+                    result.map_err(|error| {
+                        NexusError::Parsing(anyhow::Error::new(error).context(format!(
+                            "Could not decode event {index} from transaction '{digest}' while reconstructing execution '{dag_execution_id}'"
+                        )))
                     })
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|event| event_execution_id(&event.data) == Some(dag_execution_id))
-            .collect::<Vec<_>>();
-        reverse_updates.push(events);
-
-        let (previous_version, previous_digest) = match &changed.input_state {
-            sui::types::ObjectIn::NotExist => {
-                if let Some(last_delivered_version) = last_delivered_version {
-                    return Err(NexusError::Rpc(anyhow!(
-                        "Execution object '{dag_execution_id}' update chain ended before delivered version {last_delivered_version}"
-                    )));
-                }
-                break;
-            }
-            sui::types::ObjectIn::Exist {
-                version, digest, ..
-            } => (*version, *digest),
-            input => {
-                return Err(NexusError::Rpc(anyhow!(
-                    "Transaction '{}' has unsupported input state {input:?} for execution object '{dag_execution_id}'",
-                    update.digest
-                )))
-            }
-        };
-
-        if previous_version >= cursor.version {
-            return Err(NexusError::Rpc(anyhow!(
-                "Execution object '{dag_execution_id}' update chain did not move backwards from version {} to {previous_version}",
-                cursor.version
-            )));
-        }
-        if last_delivered_version == Some(previous_version) {
-            break;
-        }
-        if let Some(last_delivered_version) = last_delivered_version {
-            if previous_version < last_delivered_version {
-                return Err(NexusError::Rpc(anyhow!(
-                    "Execution object '{dag_execution_id}' update chain crossed delivered version {last_delivered_version} at version {previous_version}"
-                )));
-            }
-        }
-
-        cursor = crawler
-            .get_object_update_reference(dag_execution_id, Some(previous_version))
-            .await
-            .map_err(|error| {
-                NexusError::Rpc(error.context(format!(
-                    "Execution '{dag_execution_id}' history is incomplete: missing object version {previous_version}; last successfully reconstructed version {last_reconstructed}"
-                )))
-            })?;
-        if cursor.digest != previous_digest {
-            return Err(NexusError::Rpc(anyhow!(
-                "Execution object '{dag_execution_id}' digest at historical version {previous_version} does not match transaction '{}' input",
-                update.digest
-            )));
-        }
-    }
-
-    reverse_updates.reverse();
-    Ok(reverse_updates.into_iter().flatten().collect())
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|events| {
+            events
+                .into_iter()
+                .filter(|event| event_execution_id(&event.data) == Some(dag_execution_id))
+                .collect()
+        })
 }
 
 #[cfg(feature = "walrus")]
@@ -2639,6 +2480,7 @@ mod tests {
                 events.set_events(grpc_events.clone());
                 let mut transaction = sui::grpc::ExecutedTransaction::default();
                 transaction.set_digest(digest);
+                transaction.set_checkpoint(version);
                 transaction.set_effects(grpc_effects);
                 transaction.set_events(events);
                 let mut response = sui::grpc::GetTransactionResponse::default();

@@ -7,7 +7,7 @@ mod error;
 mod gas;
 mod nexus_data_json;
 mod prelude;
-mod scheduler;
+mod schedule;
 mod sui;
 mod tap;
 mod tool;
@@ -39,10 +39,10 @@ enum Command {
     Tool(tool::ToolCommand),
     #[command(subcommand, about = "Manage Nexus Configuration")]
     Conf(conf::ConfCommand),
-    #[command(subcommand, about = "Validate, publish and execute Nexus DAGs")]
+    #[command(subcommand, about = "Validate and publish Nexus DAGs")]
     Dag(dag::DagCommand),
     #[command(subcommand, about = "Manage scheduled tasks and occurrences")]
-    Scheduler(scheduler::SchedulerCommand),
+    Schedule(schedule::ScheduleCommand),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Prepare and operate standard TAP skills")]
@@ -90,7 +90,7 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Gas(gas) => gas::handle(gas).await,
-        Command::Scheduler(scheduler) => scheduler::handle(scheduler).await,
+        Command::Schedule(schedule) => schedule::handle(schedule).await,
         Command::Tap(tap) => tap::handle(tap).await,
         Command::Completion(completion) => completion::handle(completion),
     };

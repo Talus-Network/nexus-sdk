@@ -11,7 +11,7 @@ use {
     serde_json::json,
 };
 
-/// Reads a Task and reports its execution and scheduling state.
+/// Reads a Task and reports its operation and scheduling state.
 pub(crate) async fn inspect_task(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting scheduled Task '{task_id}'");
 

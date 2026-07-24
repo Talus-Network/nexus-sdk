@@ -4,9 +4,10 @@ use {
         display::json_output,
         notify_success,
         prelude::*,
-        scheduler::helpers,
+        schedule::helpers,
         sui::get_nexus_client,
     },
+    nexus_sdk::nexus::scheduler::OccurrenceRef,
     serde_json::json,
 };
 
@@ -36,7 +37,7 @@ pub(crate) async fn add_occurrence_to_task(
     )?;
     let result = nexus_client
         .scheduler()
-        .schedule(task_id, occurrence)
+        .schedule_occurrence(task_id, occurrence)
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -45,7 +46,8 @@ pub(crate) async fn add_occurrence_to_task(
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "task_id": task_id,
-        "occurrence": occurrence,
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))
 }
@@ -59,9 +61,10 @@ pub(crate) async fn expire_occurrence(
     command_title!("Expiring occurrence '{occurrence_id}' for Task '{task_id}'");
 
     let nexus_client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let occurrence = OccurrenceRef::new(task_id, occurrence_id);
     let result = nexus_client
         .scheduler()
-        .expire(task_id, occurrence_id)
+        .expire(occurrence)
         .await
         .map_err(NexusCliError::Nexus)?;
 
@@ -71,6 +74,8 @@ pub(crate) async fn expire_occurrence(
         "tx_checkpoint": result.tx_checkpoint,
         "task_id": task_id,
         "occurrence_id": occurrence_id,
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))
 }

@@ -4,7 +4,7 @@ use {
         display::json_output,
         notify_success,
         prelude::*,
-        scheduler::helpers,
+        schedule::helpers,
         sui::get_nexus_client,
     },
     nexus_sdk::nexus::scheduler::RecurrenceSpec,
@@ -73,6 +73,8 @@ pub(crate) async fn set_recurrence(options: SetRecurrenceOptions) -> AnyResult<(
             "interval_ms": interval_ms,
             "occurrences": occurrences,
         },
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))
 }

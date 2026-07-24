@@ -6,7 +6,7 @@ use {
         loading,
         notify_success,
         prelude::*,
-        scheduler::helpers,
+        schedule::helpers,
         sui::get_nexus_client,
         workflow,
     },
@@ -14,9 +14,9 @@ use {
         nexus::scheduler::{
             CreateTaskParams,
             RecurrenceSpec,
-            TaskExecution,
             TaskFailureMode,
             TaskFunding,
+            TaskOperation,
         },
         walrus::StorageConf,
     },
@@ -32,7 +32,7 @@ pub(crate) struct CreateTaskOptions {
     pub(crate) entry_group: String,
     pub(crate) input_json: Option<serde_json::Value>,
     pub(crate) remote: Vec<String>,
-    pub(crate) schedule: bool,
+    pub(crate) now: bool,
     pub(crate) schedule_start: ScheduleStartOptions,
     pub(crate) schedule_deadline_offset_ms: Option<u64>,
     pub(crate) schedule_priority_fee_percentage: Option<u64>,
@@ -49,10 +49,10 @@ pub(crate) struct CreateTaskOptions {
 
 /// Creates a Task with its initial schedule in one transaction.
 pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), NexusCliError> {
-    let execution = execution_target(options.dag_id, options.agent_id, options.skill_id)?;
-    let target = match &execution {
-        TaskExecution::Default { dag_id } => format!("DAG '{dag_id}'"),
-        TaskExecution::AgentSkill {
+    let operation = operation_target(options.dag_id, options.agent_id, options.skill_id)?;
+    let target = match &operation {
+        TaskOperation::Default { dag_id } => format!("DAG '{dag_id}'"),
+        TaskOperation::AgentSkill {
             agent_id, skill_id, ..
         } => format!("Agent '{agent_id}' skill '{skill_id}'"),
     };
@@ -80,7 +80,7 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
         input_data.insert(vertex, committed.into_map());
     }
 
-    let standalone_requested = options.schedule
+    let standalone_requested = options.now
         || options.schedule_start.start_ms.is_some()
         || options.schedule_start.start_offset_ms.is_some()
         || options.schedule_deadline_offset_ms.is_some()
@@ -151,7 +151,7 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
     let result = nexus_client
         .scheduler()
         .create_task(CreateTaskParams {
-            execution,
+            operation,
             entry_group: options.entry_group,
             input_data,
             funding,
@@ -173,22 +173,24 @@ pub(crate) async fn create_task(options: CreateTaskOptions) -> AnyResult<(), Nex
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
         "task_id": result.task_id,
+        "scheduled": result.scheduled,
+        "withdrawn": result.withdrawn,
         "advertised": result.advertised,
     }))
 }
 
-fn execution_target(
+fn operation_target(
     dag_id: Option<sui::types::Address>,
     agent_id: Option<sui::types::Address>,
     skill_id: Option<u64>,
-) -> AnyResult<TaskExecution, NexusCliError> {
+) -> AnyResult<TaskOperation, NexusCliError> {
     match (agent_id, skill_id) {
         (None, None) => dag_id
-            .map(|dag_id| TaskExecution::Default { dag_id })
+            .map(|dag_id| TaskOperation::Default { dag_id })
             .ok_or_else(|| {
-                NexusCliError::Any(anyhow!("--dag-id is required for default execution"))
+                NexusCliError::Any(anyhow!("--dag-id is required for the default operation"))
             }),
-        (Some(agent_id), Some(skill_id)) => Ok(TaskExecution::AgentSkill {
+        (Some(agent_id), Some(skill_id)) => Ok(TaskOperation::AgentSkill {
             agent_id,
             skill_id,
             selected_dag: dag_id,
@@ -206,14 +208,14 @@ mod tests {
 
     #[test]
     fn default_target_requires_a_dag() {
-        let error = execution_target(None, None, None).expect_err("DAG is required");
+        let error = operation_target(None, None, None).expect_err("DAG is required");
         assert!(error.to_string().contains("--dag-id"));
     }
 
     #[test]
     fn agent_target_uses_dag_as_optional_selection() {
         let selected_dag = sui::types::Address::from_static("0xd");
-        let target = execution_target(
+        let target = operation_target(
             Some(selected_dag),
             Some(sui::types::Address::from_static("0xa")),
             Some(7),
@@ -222,7 +224,7 @@ mod tests {
 
         assert!(matches!(
             target,
-            TaskExecution::AgentSkill {
+            TaskOperation::AgentSkill {
                 skill_id: 7,
                 selected_dag: Some(value),
                 ..

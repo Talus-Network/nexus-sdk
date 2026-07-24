@@ -10,6 +10,7 @@ pub mod crawler;
 pub mod error;
 pub mod gas;
 pub mod network_auth;
+mod object_history;
 pub mod registered_key;
 pub mod registry;
 pub mod scheduler;

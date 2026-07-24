@@ -8,22 +8,24 @@ use {
         prelude::*,
         sui::get_nexus_client,
     },
-    nexus_sdk::sui,
+    nexus_sdk::{nexus::scheduler::OccurrenceRef, sui},
     num_format::{Locale, ToFormattedString},
 };
 
-pub(crate) async fn execution_cost(
-    dag_execution_id: sui::types::Address,
+pub(crate) async fn occurrence_cost(
+    task_id: sui::types::Address,
+    occurrence_id: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Fetching DAG execution payment '{dag_execution_id}'");
+    command_title!("Fetching cost for occurrence '{occurrence_id}' in Task '{task_id}'");
 
     let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let occurrence = OccurrenceRef::new(task_id, occurrence_id);
 
     let fetch_handle = loading!("Fetching execution payment from Sui...");
 
     let result = match nexus_client
-        .workflow()
-        .execution_cost(dag_execution_id)
+        .scheduler()
+        .occurrence_cost(occurrence)
         .await
         .map_err(NexusCliError::Nexus)
     {
@@ -68,6 +70,8 @@ pub(crate) async fn execution_cost(
     );
 
     json_output(&serde_json::json!({
+        "task_id": task_id,
+        "occurrence_id": occurrence_id,
         "payment_id": result.payment_id,
         "max_budget_mist": result.max_budget_mist,
         "locked_budget_mist": result.locked_budget_mist,

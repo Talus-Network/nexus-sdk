@@ -99,6 +99,11 @@ impl Task {
 
     pub fn advertised_occurrence(&self) -> Option<&Occurrence> {
         let occurrence_id = self.schedule.advertised_occurrence_id.copied_option()?;
+        self.scheduled_occurrence(occurrence_id)
+    }
+
+    /// Returns one occurrence that remains in the current schedule.
+    pub fn scheduled_occurrence(&self, occurrence_id: u64) -> Option<&Occurrence> {
         self.schedule
             .pending
             .iter()

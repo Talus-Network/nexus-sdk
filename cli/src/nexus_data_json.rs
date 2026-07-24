@@ -31,6 +31,7 @@ pub(crate) fn nexus_data_from_json_value(storage_kind: StorageKind, data: Value)
     }
 }
 
+#[cfg(test)]
 pub(crate) fn nexus_data_to_json_value(data: &NexusData) -> Value {
     if data.one.is_empty() && data.many.is_empty() {
         return Value::Array(vec![]);
@@ -128,12 +129,14 @@ pub(crate) fn hint_remote_fields(json: &Value) -> anyhow::Result<Vec<String>> {
     Ok(remote_fields)
 }
 
+#[cfg(test)]
 fn decode_nexus_data_json(bytes: &[u8]) -> Value {
     let text = std::str::from_utf8(bytes).expect("NexusData JSON bytes must be UTF-8");
     let adjusted = wrap_large_numbers_as_string(text.trim());
     serde_json::from_str(&adjusted).unwrap_or_else(|_| Value::String(text.to_string()))
 }
 
+#[cfg(test)]
 fn is_large_number(s: &str) -> bool {
     if let Some(stripped) = s.strip_prefix('-') {
         stripped.chars().all(|c| c.is_ascii_digit()) && s.len() > 21
@@ -142,6 +145,7 @@ fn is_large_number(s: &str) -> bool {
     }
 }
 
+#[cfg(test)]
 fn wrap_large_numbers_as_string(value: &str) -> String {
     if is_large_number(value) {
         format!(r#""{value}""#)

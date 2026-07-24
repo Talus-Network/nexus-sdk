@@ -94,9 +94,9 @@ pub(crate) enum TaskCommand {
             value_name = "VERTEX.PORT"
         )]
         remote: Vec<String>,
-        /// Include one standalone occurrence in the creation transaction.
-        #[arg(long = "schedule")]
-        schedule: bool,
+        /// Include one immediate occurrence in the creation transaction.
+        #[arg(long = "now")]
+        now: bool,
         #[command(flatten)]
         schedule_start: ScheduleStartOptions,
         /// Deadline offset from the standalone occurrence start.
@@ -186,7 +186,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             entry_group,
             input_json,
             remote,
-            schedule,
+            now,
             schedule_start,
             schedule_deadline_offset_ms,
             schedule_priority_fee_percentage,
@@ -209,7 +209,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
                 entry_group,
                 input_json,
                 remote,
-                schedule,
+                now,
                 schedule_start,
                 schedule_deadline_offset_ms,
                 schedule_priority_fee_percentage,
@@ -249,40 +249,40 @@ mod tests {
     use {super::*, clap::Parser};
 
     #[test]
-    fn create_accepts_default_execution_with_composed_schedule() {
+    fn create_accepts_default_operation_with_composed_schedule() {
         let cli = crate::Cli::try_parse_from([
             "nexus",
-            "scheduler",
+            "schedule",
             "task",
             "create",
             "--dag-id",
             "0x42",
-            "--schedule",
+            "--now",
             "--prepay-amount-mist",
             "50000000",
             "--occurrence-budget-mist",
             "50000000",
         ])
-        .expect("scheduler task create arguments should parse");
+        .expect("schedule task create arguments should parse");
 
-        let crate::Command::Scheduler(crate::scheduler::SchedulerCommand::Task(
-            TaskCommand::Create {
-                dag_id, schedule, ..
-            },
-        )) = cli.command
+        let crate::Command::Schedule(crate::schedule::ScheduleCommand::Task(TaskCommand::Create {
+            dag_id,
+            now,
+            ..
+        })) = cli.command
         else {
-            panic!("expected scheduler task create command");
+            panic!("expected schedule task create command");
         };
 
         assert_eq!(dag_id, Some(sui::types::Address::from_static("0x42")));
-        assert!(schedule);
+        assert!(now);
     }
 
     #[test]
     fn skill_and_agent_identifiers_are_required_together() {
         let result = crate::Cli::try_parse_from([
             "nexus",
-            "scheduler",
+            "schedule",
             "task",
             "create",
             "--agent-id",

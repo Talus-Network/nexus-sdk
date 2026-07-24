@@ -8,7 +8,10 @@ use {
         sui::get_nexus_client,
     },
     nexus_sdk::{
-        nexus::workflow::{AbortExpiredExecutionResult, ToolGasAbortCandidateWalk},
+        nexus::{
+            scheduler::OccurrenceRef,
+            workflow::{AbortExpiredExecutionResult, ToolGasAbortCandidateWalk},
+        },
         sui,
     },
 };
@@ -21,14 +24,17 @@ fn abort_walk_json(walk: &ToolGasAbortCandidateWalk) -> serde_json::Value {
     })
 }
 
-pub(crate) fn abort_expired_execution_result_json(
+pub(crate) fn abort_expired_occurrence_result_json(
+    occurrence: OccurrenceRef,
     result: &AbortExpiredExecutionResult,
 ) -> serde_json::Value {
     json!({
         "digest": result.tx_digest,
         "tx_checkpoint": result.tx_checkpoint,
+        "task_id": occurrence.task_id,
+        "occurrence_id": occurrence.occurrence_id,
         "dag_id": result.dag_id,
-        "dag_execution_id": result.dag_execution_id,
+        "execution_id": result.dag_execution_id,
         "tool_fqn": result.selected_candidate.tool_fqn.to_string(),
         "tool_gas_id": result.selected_candidate.tool_gas_ref.object_id(),
         "matching_walks": result
@@ -40,20 +46,22 @@ pub(crate) fn abort_expired_execution_result_json(
     })
 }
 
-pub(crate) async fn abort_expired_execution(
-    dag_execution_id: sui::types::Address,
+pub(crate) async fn abort_expired_occurrence(
+    task_id: sui::types::Address,
+    occurrence_id: u64,
     tool_gas_id: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    command_title!("Aborting expired Nexus DAG execution '{dag_execution_id}'");
+    command_title!("Aborting expired occurrence '{occurrence_id}' in Task '{task_id}'");
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let occurrence = OccurrenceRef::new(task_id, occurrence_id);
 
     let tx_handle = loading!("Finding ToolGas candidate and submitting abort transaction...");
     let result = match nexus_client
-        .workflow()
-        .abort_expired_execution_with_tool_gas(dag_execution_id, tool_gas_id)
+        .scheduler()
+        .abort_expired_occurrence_with_tool_gas(occurrence, tool_gas_id)
         .await
         .map_err(NexusCliError::Nexus)
     {
@@ -79,7 +87,7 @@ pub(crate) async fn abort_expired_execution(
             .truecolor(100, 100, 100)
     );
 
-    json_output(&abort_expired_execution_result_json(&result))?;
+    json_output(&abort_expired_occurrence_result_json(occurrence, &result))?;
 
     Ok(())
 }
@@ -95,7 +103,7 @@ mod tests {
     };
 
     #[test]
-    fn abort_expired_execution_result_json_includes_selected_tool_gas_and_walks() {
+    fn abort_expired_occurrence_json_includes_selected_tool_gas_and_walks() {
         let result = AbortExpiredExecutionResult {
             tx_digest: sui::types::Digest::default(),
             tx_checkpoint: 42,
@@ -116,15 +124,18 @@ mod tests {
             },
         };
 
-        let json = abort_expired_execution_result_json(&result);
+        let occurrence = OccurrenceRef::new(sui::types::Address::from_static("0x81"), 3);
+        let json = abort_expired_occurrence_result_json(occurrence, &result);
 
         assert_eq!(json["tx_checkpoint"], 42);
+        assert_eq!(json["task_id"], occurrence.task_id.to_string());
+        assert_eq!(json["occurrence_id"], occurrence.occurrence_id);
         assert_eq!(
             json["dag_id"],
             sui::types::Address::from_static("0xda6").to_string()
         );
         assert_eq!(
-            json["dag_execution_id"],
+            json["execution_id"],
             sui::types::Address::from_static("0xe").to_string()
         );
         assert_eq!(json["tool_fqn"], "xyz.taluslabs.payable@1");

@@ -74,6 +74,7 @@ pub struct ObjectUpdateReference {
 #[derive(Clone, Debug)]
 pub struct TransactionUpdate {
     pub digest: sui::types::Digest,
+    pub checkpoint: u64,
     pub effects: sui::types::TransactionEffectsV2,
     pub events: Vec<sui::types::Event>,
 }
@@ -339,6 +340,7 @@ impl Crawler {
             .with_digest(digest.to_string())
             .with_read_mask(sui::grpc::FieldMask::from_paths([
                 "digest",
+                "checkpoint",
                 "effects.bcs",
                 "events.events",
             ]));
@@ -361,6 +363,9 @@ impl Crawler {
         if observed_digest != digest {
             bail!("Requested transaction '{digest}', received transaction '{observed_digest}'");
         }
+        let checkpoint = transaction
+            .checkpoint_opt()
+            .ok_or_else(|| anyhow!("Transaction '{digest}' response has no checkpoint"))?;
 
         let effects = match sui::types::TransactionEffects::try_from(transaction.effects())
             .map_err(|e| anyhow!("Could not decode effects for transaction '{digest}': {e}"))?
@@ -382,6 +387,7 @@ impl Crawler {
 
         Ok(TransactionUpdate {
             digest: observed_digest,
+            checkpoint,
             effects,
             events,
         })
@@ -1962,6 +1968,7 @@ mod tests {
                 grpc_effects.set_bcs(bcs::to_bytes(&effects).expect("effects serialize"));
                 let mut transaction = sui::grpc::ExecutedTransaction::default();
                 transaction.set_digest(requested_digest);
+                transaction.set_checkpoint(1);
                 transaction.set_effects(grpc_effects);
                 let mut response = sui::grpc::GetTransactionResponse::default();
                 response.set_transaction(transaction);
@@ -1983,5 +1990,62 @@ mod tests {
         assert!(message.contains(&requested_digest.to_string()));
         assert!(message.contains(&effects_digest.to_string()));
         assert!(message.contains("effects transaction digest"));
+    }
+
+    #[tokio::test]
+    async fn get_transaction_update_retains_checkpoint() {
+        let mut rng = rand::thread_rng();
+        let digest = sui::types::Digest::generate(&mut rng);
+        let effects =
+            sui::types::TransactionEffects::V2(Box::new(sui::types::TransactionEffectsV2 {
+                status: sui::types::ExecutionStatus::Success,
+                epoch: 1,
+                gas_used: sui::types::GasCostSummary {
+                    computation_cost: 0,
+                    storage_cost: 0,
+                    storage_rebate: 0,
+                    non_refundable_storage_fee: 0,
+                },
+                transaction_digest: digest,
+                gas_object_index: None,
+                events_digest: None,
+                dependencies: vec![],
+                lamport_version: 1,
+                changed_objects: vec![],
+                unchanged_consensus_objects: vec![],
+                auxiliary_data_digest: None,
+            }));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_transaction()
+            .times(1)
+            .returning(move |_| {
+                let mut grpc_effects = sui::grpc::TransactionEffects::default();
+                grpc_effects.set_bcs(bcs::to_bytes(&effects).expect("effects serialize"));
+                let mut grpc_events = sui::grpc::TransactionEvents::default();
+                grpc_events.set_events(vec![]);
+                let mut transaction = sui::grpc::ExecutedTransaction::default();
+                transaction.set_digest(digest);
+                transaction.set_checkpoint(42);
+                transaction.set_effects(grpc_effects);
+                transaction.set_events(grpc_events);
+                let mut response = sui::grpc::GetTransactionResponse::default();
+                response.set_transaction(transaction);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let update = crawler
+            .get_transaction_update(digest)
+            .await
+            .expect("transaction update loads");
+
+        assert_eq!(update.checkpoint, 42);
     }
 }

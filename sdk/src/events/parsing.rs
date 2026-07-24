@@ -83,8 +83,13 @@ mod tests {
             move_bindings::{
                 move_std::option::Option as MoveOption,
                 scheduler::{
-                    schedule::OccurrenceSource,
-                    scheduler::{OccurrenceAdvertised, TaskCreated},
+                    schedule::{OccurrenceSource, OccurrenceWithdrawalReason},
+                    scheduler::{
+                        OccurrenceAdvertised,
+                        OccurrenceScheduled,
+                        OccurrenceWithdrawn,
+                        TaskCreated,
+                    },
                     task::TaskController,
                 },
                 sui_framework::object::ID,
@@ -158,5 +163,38 @@ mod tests {
         let distribution = distribution.expect("distribution metadata");
         assert_eq!(distribution.task_id, pickup_task_id);
         assert_eq!(distribution.leaders, [address("0x52")]);
+    }
+
+    #[test]
+    fn parses_direct_occurrence_scheduled_event() {
+        let event = OccurrenceScheduled::new(
+            ID::new(address("0x61")),
+            4,
+            1_000,
+            MoveOption::from_option(Some(2_000)),
+            15,
+            OccurrenceSource::Recurring { iteration: 3 },
+        );
+        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+
+        let (event, distribution) = parse_bcs("OccurrenceScheduled", &bytes).expect("event parses");
+
+        assert!(distribution.is_none());
+        assert!(matches!(event, NexusEventKind::OccurrenceScheduled(_)));
+    }
+
+    #[test]
+    fn parses_direct_occurrence_withdrawn_event() {
+        let event = OccurrenceWithdrawn::new(
+            ID::new(address("0x71")),
+            5,
+            OccurrenceWithdrawalReason::TaskCanceled,
+        );
+        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+
+        let (event, distribution) = parse_bcs("OccurrenceWithdrawn", &bytes).expect("event parses");
+
+        assert!(distribution.is_none());
+        assert!(matches!(event, NexusEventKind::OccurrenceWithdrawn(_)));
     }
 }

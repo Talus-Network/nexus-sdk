@@ -1,7 +1,10 @@
 //! Scheduler actions exposed through [`NexusClient`].
 
+mod inspection;
+
 pub use {
     crate::move_bindings::derive_task_execution_id,
+    inspection::{ExecutionSnapshot, OccurrenceSnapshot, OccurrenceStatus, WatchOccurrenceOptions},
     scheduler_tx::{OccurrenceSpec, RecurrenceSpec, TaskFailureMode, TaskStateAction},
 };
 use {
@@ -16,7 +19,11 @@ use {
             move_std::option::Option as MoveOption,
             primitives::data::NexusData,
             scheduler::{
-                scheduler::OccurrenceAdvertised,
+                schedule::{OccurrenceSource, OccurrenceWithdrawalReason},
+                scheduler::{
+                    OccurrenceScheduled as OccurrenceScheduledEvent,
+                    OccurrenceWithdrawn as OccurrenceWithdrawnEvent,
+                },
                 task::{Task, TaskController},
             },
             sui_framework::{
@@ -39,6 +46,7 @@ use {
         types::{AgentId, SkillId},
     },
     anyhow::anyhow,
+    serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
 
@@ -48,23 +56,30 @@ pub struct SchedulerActions {
     pub(super) client: NexusClient,
 }
 
-/// Execution selected for every occurrence of a [`Task`].
+/// Operation selected for every occurrence of a [`Task`].
 ///
 /// [`Task`]: crate::move_bindings::scheduler::task::Task
 #[derive(Clone, Debug)]
-pub enum TaskExecution {
+pub enum TaskOperation {
     /// Uses the configured default Agent to execute a published DAG.
-    Default { dag_id: sui::types::Address },
+    Default {
+        /// Identifier of the published DAG.
+        dag_id: sui::types::Address,
+    },
     /// Uses one registered Agent skill.
     AgentSkill {
+        /// Identifier of the Agent.
         agent_id: AgentId,
+        /// Identifier of the registered skill.
         skill_id: SkillId,
+        /// Optional DAG selected for the skill.
         selected_dag: Option<sui::types::Address>,
+        /// Authorization templates materialized for each occurrence.
         authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
     },
 }
 
-impl TaskExecution {
+impl TaskOperation {
     fn agent_id(&self) -> Option<AgentId> {
         match self {
             Self::Default { .. } => None,
@@ -108,11 +123,16 @@ impl TaskExecution {
 pub enum TaskFunding {
     /// Uses sender funds and sender control.
     Address {
+        /// Funds reserved for future occurrences in MIST.
         prepay_amount_mist: u64,
+        /// Address that receives unused funds.
         refund_recipient: Option<sui::types::Address>,
     },
     /// Uses an Agent vault and Agent control.
-    Agent { prepay_amount_mist: u64 },
+    Agent {
+        /// Funds reserved from the Agent vault in MIST.
+        prepay_amount_mist: u64,
+    },
 }
 
 /// Complete input for one [`Task`] creation transaction.
@@ -122,40 +142,100 @@ pub enum TaskFunding {
 /// [`Task`]: crate::move_bindings::scheduler::task::Task
 #[derive(Clone, Debug)]
 pub struct CreateTaskParams {
-    pub execution: TaskExecution,
+    /// Operation performed by every occurrence.
+    pub operation: TaskOperation,
+    /// DAG entry group selected for every occurrence.
     pub entry_group: String,
+    /// Input values keyed by vertex and port.
     pub input_data: HashMap<String, HashMap<String, NexusData>>,
+    /// Funding source and controller.
     pub funding: TaskFunding,
+    /// Maximum funds available to each occurrence in MIST.
     pub occurrence_budget_mist: u64,
+    /// Behavior after an occurrence fails.
     pub failure_mode: TaskFailureMode,
+    /// Standalone occurrences composed into the Task.
     pub occurrences: Vec<OccurrenceSpec>,
+    /// Optional recurrence composed into the Task.
     pub recurrence: Option<RecurrenceSpec>,
 }
 
-/// Result of creating and composing one [`Task`].
+/// Identifies one materialized occurrence of a scheduler [`Task`].
 ///
 /// [`Task`]: crate::move_bindings::scheduler::task::Task
-#[derive(Clone, Debug)]
-pub struct CreateTaskResult {
-    pub tx_digest: sui::types::Digest,
-    pub tx_checkpoint: u64,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OccurrenceRef {
+    /// Identifier of the owning [`Task`].
     pub task_id: sui::types::Address,
-    pub advertised: Option<OccurrenceAdvertised>,
+    /// Identifier allocated within the owning [`Task`].
+    pub occurrence_id: u64,
+}
+
+impl OccurrenceRef {
+    /// Creates a reference to one materialized occurrence.
+    pub const fn new(task_id: sui::types::Address, occurrence_id: u64) -> Self {
+        Self {
+            task_id,
+            occurrence_id,
+        }
+    }
+
+    /// Derives the related [`DAGExecution`] identifier.
+    ///
+    /// [`DAGExecution`]: crate::move_bindings::workflow::execution::DAGExecution
+    pub fn execution_id(self) -> Result<sui::types::Address, NexusError> {
+        derive_task_execution_id(self.task_id, self.occurrence_id).map_err(NexusError::Parsing)
+    }
+}
+
+/// One occurrence allocated by a schedule mutation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScheduledOccurrence {
+    /// Stable occurrence identity.
+    pub reference: OccurrenceRef,
+    /// Requested start time in milliseconds.
+    pub start_time_ms: u64,
+    /// Optional deadline in milliseconds.
+    pub deadline_ms: Option<u64>,
+    /// Priority fee percentage selected for dispatch.
+    pub priority_fee_percentage: u64,
+    /// Source that allocated the occurrence.
+    pub source: OccurrenceSource,
+}
+
+/// One future occurrence removed by a schedule mutation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WithdrawnOccurrence {
+    /// Stable occurrence identity.
+    pub reference: OccurrenceRef,
+    /// Reason the occurrence was removed.
+    pub reason: OccurrenceWithdrawalReason,
 }
 
 /// Result of one scheduler mutation.
 #[derive(Clone, Debug)]
 pub struct SchedulerMutationResult {
+    /// Digest of the committed transaction.
     pub tx_digest: sui::types::Digest,
+    /// Checkpoint containing the committed transaction.
     pub tx_checkpoint: u64,
 }
 
-/// Result of a mutation that may advertise the next occurrence.
-#[derive(Clone, Debug)]
+/// Exact occurrence changes produced by one schedule mutation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScheduleMutationResult {
+    /// Digest of the committed transaction.
     pub tx_digest: sui::types::Digest,
+    /// Checkpoint containing the committed transaction.
     pub tx_checkpoint: u64,
-    pub advertised: Option<OccurrenceAdvertised>,
+    /// Identifier of the mutated [`Task`].
+    pub task_id: sui::types::Address,
+    /// Every occurrence allocated by the mutation.
+    pub scheduled: Vec<ScheduledOccurrence>,
+    /// Every occurrence removed by the mutation.
+    pub withdrawn: Vec<WithdrawnOccurrence>,
+    /// Final occurrence advertised by the mutation.
+    pub advertised: Option<OccurrenceRef>,
 }
 
 impl SchedulerActions {
@@ -165,16 +245,16 @@ impl SchedulerActions {
     pub async fn create_task(
         &self,
         params: CreateTaskParams,
-    ) -> Result<CreateTaskResult, NexusError> {
+    ) -> Result<ScheduleMutationResult, NexusError> {
         let sender = self.client.signer.get_active_address();
-        let agent = match params.execution.agent_id() {
+        let agent = match params.operation.agent_id() {
             Some(agent_id) => Some(self.agent_input(agent_id).await?),
             None => None,
         };
-        let execution = build_execution_config(
+        let operation = build_operation_config(
             &self.client.nexus_objects,
             sender,
-            &params.execution,
+            &params.operation,
             params.entry_group,
             params.input_data,
         );
@@ -198,14 +278,14 @@ impl SchedulerActions {
             }
             (TaskFunding::Agent { .. }, None) => {
                 return Err(NexusError::Configuration(
-                    "default execution cannot use Agent vault funding".into(),
+                    "default operation cannot use Agent vault funding".into(),
                 ));
             }
         };
         let tx = scheduler_tx::create_task_ptb(
             &self.client.nexus_objects,
             &scheduler_tx::CreateTaskParams {
-                execution,
+                execution: operation,
                 funding,
                 occurrence_budget_mist: params.occurrence_budget_mist,
                 failure_mode: params.failure_mode,
@@ -215,19 +295,15 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
+        let task_id = extract_task_id(&response)?;
 
-        Ok(CreateTaskResult {
-            task_id: extract_task_id(&response)?,
-            advertised: extract_advertisement(&response),
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-        })
+        schedule_result(response, task_id)
     }
 
     /// Adds one standalone occurrence to a [`Task`].
     ///
     /// [`Task`]: crate::move_bindings::scheduler::task::Task
-    pub async fn schedule(
+    pub async fn schedule_occurrence(
         &self,
         task_id: sui::types::Address,
         occurrence: OccurrenceSpec,
@@ -243,7 +319,7 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, task_id)
     }
 
     /// Replaces the lazy recurrence for a [`Task`].
@@ -265,7 +341,7 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, task_id)
     }
 
     /// Clears future recurring work from a [`Task`].
@@ -285,7 +361,7 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, task_id)
     }
 
     /// Applies a state transition to a [`Task`].
@@ -307,7 +383,7 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, task_id)
     }
 
     /// Refills the payment reserve for a [`Task`].
@@ -335,7 +411,7 @@ impl SchedulerActions {
         }
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, task_id)
     }
 
     /// Finalizes a [`Task`] after all work and settlement are complete.
@@ -360,36 +436,34 @@ impl SchedulerActions {
     /// Expires the advertised occurrence when its deadline has passed.
     pub async fn expire(
         &self,
-        task_id: sui::types::Address,
-        occurrence_id: u64,
+        occurrence: OccurrenceRef,
     ) -> Result<ScheduleMutationResult, NexusError> {
         let sender = self.client.signer.get_active_address();
-        let task = self.fetch_task(task_id).await?;
+        let task = self.fetch_task(occurrence.task_id).await?;
         let tx = scheduler_tx::expire_occurrence_ptb(
             &self.client.nexus_objects,
             &task.object_ref(),
-            occurrence_id,
+            occurrence.occurrence_id,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, occurrence.task_id)
     }
 
-    /// Settles a finished [`DAGExecution`] into its owning [`Task`].
+    /// Settles the finished runtime object for one occurrence into its owning [`Task`].
     ///
     /// [`DAGExecution`]: crate::move_bindings::workflow::execution::DAGExecution
     /// [`Task`]: crate::move_bindings::scheduler::task::Task
     pub async fn settle(
         &self,
-        task_id: sui::types::Address,
-        execution_id: sui::types::Address,
+        occurrence: OccurrenceRef,
     ) -> Result<ScheduleMutationResult, NexusError> {
         let sender = self.client.signer.get_active_address();
-        let task = self.fetch_task(task_id).await?;
+        let task = self.fetch_task(occurrence.task_id).await?;
         let execution = self
             .client
             .crawler()
-            .get_object::<DAGExecution>(execution_id)
+            .get_object::<DAGExecution>(occurrence.execution_id()?)
             .await
             .map_err(NexusError::Rpc)?;
         let tx = scheduler_tx::settle_occurrence_ptb(
@@ -399,7 +473,7 @@ impl SchedulerActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, sender).await?;
-        Ok(schedule_result(response))
+        schedule_result(response, occurrence.task_id)
     }
 
     /// Fetches a [`Task`] and its current object reference.
@@ -459,20 +533,20 @@ impl SchedulerActions {
     }
 }
 
-fn build_execution_config(
+fn build_operation_config(
     objects: &crate::types::NexusObjects,
     sender: sui::types::Address,
-    execution: &TaskExecution,
+    operation: &TaskOperation,
     entry_group: String,
     input_data: HashMap<String, HashMap<String, NexusData>>,
 ) -> AgentExecutionConfig {
     AgentExecutionConfig::new(
-        execution.selection(),
+        operation.selection(),
         ID::new(objects.network_id),
         EntryGroup::new(entry_group),
         execution_inputs(input_data),
         sender,
-        execution.authorization_templates(),
+        operation.authorization_templates(),
     )
 }
 
@@ -512,11 +586,78 @@ fn extract_task_id(response: &ExecutedTransaction) -> Result<sui::types::Address
         .ok_or_else(|| NexusError::Parsing(anyhow!("TaskCreated event missing from transaction")))
 }
 
-fn extract_advertisement(response: &ExecutedTransaction) -> Option<OccurrenceAdvertised> {
-    response.events.iter().find_map(|event| match &event.data {
-        NexusEventKind::OccurrenceAdvertised(event) => Some(event.clone()),
+#[derive(Debug, Default)]
+struct ScheduleChanges {
+    scheduled: Vec<ScheduledOccurrence>,
+    withdrawn: Vec<WithdrawnOccurrence>,
+    advertised: Option<OccurrenceRef>,
+}
+
+fn extract_schedule_changes(
+    task_id: sui::types::Address,
+    events: &[crate::events::NexusEvent],
+) -> Result<ScheduleChanges, NexusError> {
+    let mut changes = ScheduleChanges::default();
+
+    for event in events {
+        let event_task_id = scheduler_event_task_id(&event.data);
+        if let Some(event_task_id) = event_task_id {
+            if event_task_id != task_id {
+                return Err(NexusError::Parsing(anyhow!(
+                    "Scheduler transaction for Task '{task_id}' contains an event for Task '{event_task_id}'"
+                )));
+            }
+        }
+
+        match &event.data {
+            NexusEventKind::OccurrenceScheduled(event) => {
+                changes.scheduled.push(scheduled_occurrence(event));
+            }
+            NexusEventKind::OccurrenceWithdrawn(event) => {
+                changes.withdrawn.push(withdrawn_occurrence(event));
+            }
+            NexusEventKind::OccurrenceAdvertised(event) => {
+                changes.advertised = Some(OccurrenceRef::new(task_id, event.occurrence_id));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(changes)
+}
+
+fn scheduler_event_task_id(event: &NexusEventKind) -> Option<sui::types::Address> {
+    match event {
+        NexusEventKind::OccurrenceAdvertised(event) => Some(event.task_id.bytes),
+        NexusEventKind::OccurrenceDispatched(event) => Some(event.task_id.bytes),
+        NexusEventKind::OccurrenceMissed(event) => Some(event.task_id.bytes),
+        NexusEventKind::OccurrenceScheduled(event) => Some(event.task_id.bytes),
+        NexusEventKind::OccurrenceSettled(event) => Some(event.task_id.bytes),
+        NexusEventKind::OccurrenceWithdrawn(event) => Some(event.task_id.bytes),
+        NexusEventKind::TaskCanceled(event) => Some(event.task_id.bytes),
+        NexusEventKind::TaskClosed(event) => Some(event.task_id.bytes),
+        NexusEventKind::TaskCreated(event) => Some(event.task_id.bytes),
+        NexusEventKind::TaskPaused(event) => Some(event.task_id.bytes),
+        NexusEventKind::TaskResumed(event) => Some(event.task_id.bytes),
         _ => None,
-    })
+    }
+}
+
+fn scheduled_occurrence(event: &OccurrenceScheduledEvent) -> ScheduledOccurrence {
+    ScheduledOccurrence {
+        reference: OccurrenceRef::new(event.task_id.bytes, event.occurrence_id),
+        start_time_ms: event.start_time_ms,
+        deadline_ms: event.deadline_ms.copied_option(),
+        priority_fee_percentage: event.priority_fee_percentage,
+        source: event.source,
+    }
+}
+
+fn withdrawn_occurrence(event: &OccurrenceWithdrawnEvent) -> WithdrawnOccurrence {
+    WithdrawnOccurrence {
+        reference: OccurrenceRef::new(event.task_id.bytes, event.occurrence_id),
+        reason: event.reason,
+    }
 }
 
 fn mutation_result(response: ExecutedTransaction) -> SchedulerMutationResult {
@@ -526,12 +667,20 @@ fn mutation_result(response: ExecutedTransaction) -> SchedulerMutationResult {
     }
 }
 
-fn schedule_result(response: ExecutedTransaction) -> ScheduleMutationResult {
-    ScheduleMutationResult {
-        advertised: extract_advertisement(&response),
+fn schedule_result(
+    response: ExecutedTransaction,
+    task_id: sui::types::Address,
+) -> Result<ScheduleMutationResult, NexusError> {
+    let changes = extract_schedule_changes(task_id, &response.events)?;
+
+    Ok(ScheduleMutationResult {
         tx_digest: response.digest,
         tx_checkpoint: response.checkpoint,
-    }
+        task_id,
+        scheduled: changes.scheduled,
+        withdrawn: changes.withdrawn,
+        advertised: changes.advertised,
+    })
 }
 
 #[cfg(test)]
@@ -539,10 +688,141 @@ mod tests {
     use {
         super::*,
         crate::{
-            move_bindings::primitives::data::NexusData,
+            events::{NexusEvent, NexusEventKind},
+            move_bindings::{
+                move_std::option::Option as MoveOption,
+                primitives::data::NexusData,
+                scheduler::{
+                    schedule::{OccurrenceSource, OccurrenceWithdrawalReason},
+                    scheduler::{OccurrenceAdvertised, OccurrenceScheduled, OccurrenceWithdrawn},
+                },
+                sui_framework::object::ID,
+            },
             test_utils::sui_mocks::mock_nexus_objects,
         },
     };
+
+    fn scheduler_event(index: u64, data: NexusEventKind) -> NexusEvent {
+        NexusEvent {
+            id: (sui::types::Digest::ZERO, index),
+            generics: Vec::new(),
+            data,
+            distribution: None,
+        }
+    }
+
+    fn address(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    #[test]
+    fn occurrence_ref_derives_execution_id() {
+        let occurrence = OccurrenceRef::new(address("0x31"), 7);
+
+        assert_eq!(
+            occurrence.execution_id().expect("identity derives"),
+            derive_task_execution_id(address("0x31"), 7).expect("identity derives")
+        );
+    }
+
+    #[test]
+    fn mutation_collects_every_schedule_change_and_final_advertisement() {
+        let task_id = address("0x41");
+        let events = vec![
+            scheduler_event(
+                0,
+                NexusEventKind::OccurrenceScheduled(OccurrenceScheduled::new(
+                    ID::new(task_id),
+                    1,
+                    100,
+                    MoveOption::from_option(Some(200)),
+                    5,
+                    OccurrenceSource::Standalone,
+                )),
+            ),
+            scheduler_event(
+                1,
+                NexusEventKind::OccurrenceAdvertised(OccurrenceAdvertised::new(
+                    ID::new(task_id),
+                    1,
+                    100,
+                    MoveOption::from_option(Some(200)),
+                    5,
+                    OccurrenceSource::Standalone,
+                )),
+            ),
+            scheduler_event(
+                2,
+                NexusEventKind::OccurrenceWithdrawn(OccurrenceWithdrawn::new(
+                    ID::new(task_id),
+                    1,
+                    OccurrenceWithdrawalReason::RecurrenceReplaced,
+                )),
+            ),
+            scheduler_event(
+                3,
+                NexusEventKind::OccurrenceScheduled(OccurrenceScheduled::new(
+                    ID::new(task_id),
+                    2,
+                    300,
+                    MoveOption::from_option(None),
+                    10,
+                    OccurrenceSource::Recurring { iteration: 0 },
+                )),
+            ),
+            scheduler_event(
+                4,
+                NexusEventKind::OccurrenceAdvertised(OccurrenceAdvertised::new(
+                    ID::new(task_id),
+                    2,
+                    300,
+                    MoveOption::from_option(None),
+                    10,
+                    OccurrenceSource::Recurring { iteration: 0 },
+                )),
+            ),
+        ];
+
+        let changes = extract_schedule_changes(task_id, &events).expect("changes extract");
+
+        assert_eq!(changes.scheduled.len(), 2);
+        assert_eq!(
+            changes.scheduled[0].reference,
+            OccurrenceRef::new(task_id, 1)
+        );
+        assert_eq!(
+            changes.scheduled[1].reference,
+            OccurrenceRef::new(task_id, 2)
+        );
+        assert_eq!(changes.withdrawn.len(), 1);
+        assert_eq!(
+            changes.withdrawn[0].reason,
+            OccurrenceWithdrawalReason::RecurrenceReplaced
+        );
+        assert_eq!(changes.advertised, Some(OccurrenceRef::new(task_id, 2)));
+    }
+
+    #[test]
+    fn mutation_rejects_mismatched_task_events() {
+        let task_id = address("0x51");
+        let events = vec![scheduler_event(
+            0,
+            NexusEventKind::OccurrenceScheduled(OccurrenceScheduled::new(
+                ID::new(address("0x52")),
+                1,
+                100,
+                MoveOption::from_option(None),
+                0,
+                OccurrenceSource::Standalone,
+            )),
+        )];
+
+        let error =
+            extract_schedule_changes(task_id, &events).expect_err("mismatched Task must fail");
+
+        assert!(error.to_string().contains(&address("0x52").to_string()));
+        assert!(error.to_string().contains(&address("0x51").to_string()));
+    }
 
     #[test]
     fn execution_inputs_have_stable_vertex_and_port_order() {
@@ -570,10 +850,10 @@ mod tests {
     fn default_execution_config_has_no_authorization_templates() {
         let objects = mock_nexus_objects();
         let sender = sui::types::Address::from_static("0x42");
-        let config = build_execution_config(
+        let config = build_operation_config(
             &objects,
             sender,
-            &TaskExecution::Default {
+            &TaskOperation::Default {
                 dag_id: sui::types::Address::from_static("0x43"),
             },
             "entry".to_string(),
