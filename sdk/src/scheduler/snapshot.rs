@@ -453,3 +453,190 @@ impl OccurrenceCost {
         self.refunded
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn address(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    #[test]
+    fn occurrence_terminality_matches_scheduler_completion() {
+        for status in [
+            OccurrenceStatus::Pending,
+            OccurrenceStatus::Advertised,
+            OccurrenceStatus::Executing,
+            OccurrenceStatus::Finished,
+        ] {
+            assert!(!status.is_terminal());
+        }
+        for status in [
+            OccurrenceStatus::Settled { succeeded: true },
+            OccurrenceStatus::Missed { missed_at_ms: 10 },
+            OccurrenceStatus::Withdrawn {
+                reason: WithdrawalReason::TaskCanceled,
+            },
+        ] {
+            assert!(status.is_terminal());
+        }
+    }
+
+    #[test]
+    fn execution_snapshots_distinguish_missing_and_observed_runtime_state() {
+        let execution_id = address("0x10");
+        let unavailable = ExecutionSnapshot::unavailable(execution_id);
+        assert_eq!(unavailable.execution_id(), execution_id);
+        assert_eq!(unavailable.created_at_ms(), None);
+        assert_eq!(unavailable.active_walks(), None);
+        assert_eq!(unavailable.pending_abort_walks(), None);
+        assert_eq!(unavailable.pending_settlement_walks(), None);
+        assert_eq!(unavailable.successful_walks(), None);
+        assert_eq!(unavailable.failed_walks(), None);
+        assert_eq!(unavailable.aborted_walks(), None);
+
+        let observed = ExecutionSnapshot::observed(
+            execution_id,
+            ExecutionObservation {
+                created_at_ms: 1,
+                active_walks: 2,
+                pending_abort_walks: 3,
+                pending_settlement_walks: 4,
+                successful_walks: 5,
+                failed_walks: 6,
+                aborted_walks: 7,
+            },
+        );
+        assert_eq!(observed.execution_id(), execution_id);
+        assert_eq!(observed.created_at_ms(), Some(1));
+        assert_eq!(observed.active_walks(), Some(2));
+        assert_eq!(observed.pending_abort_walks(), Some(3));
+        assert_eq!(observed.pending_settlement_walks(), Some(4));
+        assert_eq!(observed.successful_walks(), Some(5));
+        assert_eq!(observed.failed_walks(), Some(6));
+        assert_eq!(observed.aborted_walks(), Some(7));
+    }
+
+    #[test]
+    fn occurrence_and_task_snapshots_expose_one_coherent_object_view() {
+        let task_id = address("0x11");
+        let execution_id = address("0x12");
+        let reference = OccurrenceRef::new(task_id, 8);
+        let execution = ExecutionSnapshot::observed(
+            execution_id,
+            ExecutionObservation {
+                created_at_ms: 10,
+                active_walks: 0,
+                pending_abort_walks: 0,
+                pending_settlement_walks: 0,
+                successful_walks: 1,
+                failed_walks: 0,
+                aborted_walks: 0,
+            },
+        );
+        let occurrence = OccurrenceSnapshot {
+            reference,
+            source: OccurrenceSource::Recurring { iteration: 2 },
+            requested_start_time_ms: 20,
+            effective_start_time_ms: Some(21),
+            deadline_ms: Some(30),
+            priority_fee_percentage: 40,
+            dispatched_at_ms: Some(22),
+            settled_at_ms: Some(29),
+            status: OccurrenceStatus::Settled { succeeded: true },
+            execution: Some(execution),
+            observed_task_version: 7,
+        };
+
+        assert_eq!(occurrence.reference(), reference);
+        assert_eq!(
+            occurrence.source(),
+            OccurrenceSource::Recurring { iteration: 2 }
+        );
+        assert_eq!(occurrence.requested_start_time_ms(), 20);
+        assert_eq!(occurrence.effective_start_time_ms(), Some(21));
+        assert_eq!(occurrence.deadline_ms(), Some(30));
+        assert_eq!(occurrence.priority_fee_percentage(), 40);
+        assert_eq!(occurrence.dispatched_at_ms(), Some(22));
+        assert_eq!(occurrence.settled_at_ms(), Some(29));
+        assert_eq!(
+            occurrence.status(),
+            OccurrenceStatus::Settled { succeeded: true }
+        );
+        assert_eq!(
+            occurrence.execution().map(ExecutionSnapshot::execution_id),
+            Some(execution_id)
+        );
+        assert_eq!(occurrence.observed_task_version(), 7);
+
+        let task = TaskSnapshot {
+            task_id,
+            controller: TaskController::Address {
+                address: address("0x13"),
+            },
+            status: TaskStatus::Paused,
+            failure_policy: FailurePolicy::Pause,
+            advertised: Some(reference),
+            allocated_occurrences: 9,
+            pending_occurrences: 3,
+            dispatched_occurrences: 6,
+            in_flight_occurrences: 2,
+            observed_version: 8,
+        };
+        assert_eq!(task.task_id(), task_id);
+        assert_eq!(
+            task.controller(),
+            TaskController::Address {
+                address: address("0x13")
+            }
+        );
+        assert_eq!(task.status(), TaskStatus::Paused);
+        assert_eq!(task.failure_policy(), FailurePolicy::Pause);
+        assert_eq!(task.advertised(), Some(reference));
+        assert_eq!(task.allocated_occurrences(), 9);
+        assert_eq!(task.pending_occurrences(), 3);
+        assert_eq!(task.dispatched_occurrences(), 6);
+        assert_eq!(task.in_flight_occurrences(), 2);
+        assert_eq!(task.observed_version(), 8);
+    }
+
+    #[test]
+    fn occurrence_pages_preserve_records_and_opaque_cursors() {
+        let page = OccurrencePage::new(Vec::new(), Some(vec![1, 2, 3]));
+        assert!(page.occurrences().is_empty());
+        assert_eq!(page.next_cursor(), Some([1, 2, 3].as_slice()));
+
+        let (occurrences, cursor) = page.into_parts();
+        assert!(occurrences.is_empty());
+        assert_eq!(cursor, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn watch_options_and_costs_expose_their_complete_policy() {
+        let options = WatchOptions::new(Duration::from_secs(4), Duration::from_millis(250));
+        assert_eq!(options.timeout(), Duration::from_secs(4));
+        assert_eq!(options.poll_interval(), Duration::from_millis(250));
+
+        let defaults = WatchOptions::default();
+        assert_eq!(defaults.timeout(), DEFAULT_WATCH_TIMEOUT);
+        assert_eq!(defaults.poll_interval(), DEFAULT_WATCH_POLL_INTERVAL);
+
+        let cost = OccurrenceCost {
+            payment_id: address("0x14"),
+            max_budget_mist: 100,
+            locked_budget_mist: 30,
+            consumed_mist: 40,
+            outstanding_locks: 2,
+            accomplished: true,
+            refunded: false,
+        };
+        assert_eq!(cost.payment_id(), address("0x14"));
+        assert_eq!(cost.max_budget_mist(), 100);
+        assert_eq!(cost.locked_budget_mist(), 30);
+        assert_eq!(cost.consumed_mist(), 40);
+        assert_eq!(cost.outstanding_locks(), 2);
+        assert!(cost.accomplished());
+        assert!(!cost.refunded());
+    }
+}

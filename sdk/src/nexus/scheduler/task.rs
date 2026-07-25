@@ -349,3 +349,38 @@ fn task_snapshot(
         observed_version: task.version,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::{nexus::client::AddressBalanceGas, test_utils::sui_mocks},
+    };
+
+    #[tokio::test]
+    async fn handles_preserve_identity_and_reject_zero_page_limit() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let client = NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url(&rpc_url)
+            .with_address_balance_gas_config(AddressBalanceGas::new(1_000))
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client builds");
+        let task_id = sui::types::Address::from_static("0x42");
+        let task = TaskHandle::new(client, task_id);
+
+        assert_eq!(task.id(), task_id);
+        assert_eq!(
+            task.occurrence(7).reference(),
+            OccurrenceRef::new(task_id, 7)
+        );
+        assert!(matches!(
+            task.occurrences(None, 0).await,
+            Err(SchedulerError::InvalidRequest { message })
+                if message == "occurrence page limit must be greater than zero"
+        ));
+    }
+}

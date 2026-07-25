@@ -456,9 +456,12 @@ fn dispatched_execution_id(
 mod tests {
     use {
         super::*,
-        crate::move_bindings::{
-            scheduler::schedule::OccurrenceWithdrawalReason,
-            sui_framework::object::ID,
+        crate::{
+            move_bindings::{
+                scheduler::schedule::OccurrenceWithdrawalReason,
+                sui_framework::object::ID,
+            },
+            scheduler::{OccurrenceSource, WithdrawalReason},
         },
     };
 
@@ -522,5 +525,101 @@ mod tests {
                 Some(30),
             )
         );
+    }
+
+    #[test]
+    fn stored_runtime_identity_is_present_only_after_dispatch() {
+        let execution_id = ID::new(sui::types::Address::from_static("0x43"));
+        for state in [
+            OccurrenceState::Scheduled,
+            OccurrenceState::Missed { missed_at_ms: 1 },
+            OccurrenceState::Withdrawn {
+                reason: OccurrenceWithdrawalReason::TaskCanceled,
+            },
+        ] {
+            assert_eq!(state_execution_id(&state), None);
+        }
+        assert_eq!(
+            state_execution_id(&OccurrenceState::Dispatched {
+                execution_id,
+                dispatched_at_ms: 2,
+            }),
+            Some(execution_id.bytes)
+        );
+        assert_eq!(
+            state_execution_id(&OccurrenceState::Settled {
+                execution_id,
+                dispatched_at_ms: 2,
+                settled_at_ms: 3,
+                succeeded: true,
+            }),
+            Some(execution_id.bytes)
+        );
+    }
+
+    #[test]
+    fn dispatched_identity_requires_runtime_observation() {
+        let task_id = sui::types::Address::from_static("0x44");
+        let execution_id = sui::types::Address::from_static("0x45");
+        let reference = OccurrenceRef::new(task_id, 6);
+        let snapshot = |execution: Option<ExecutionSnapshot>| OccurrenceSnapshot {
+            reference,
+            source: OccurrenceSource::Standalone,
+            requested_start_time_ms: 1,
+            effective_start_time_ms: Some(1),
+            deadline_ms: None,
+            priority_fee_percentage: 20,
+            dispatched_at_ms: execution.as_ref().map(|_| 2),
+            settled_at_ms: None,
+            status: if execution.is_some() {
+                OccurrenceStatus::Executing
+            } else {
+                OccurrenceStatus::Pending
+            },
+            execution,
+            observed_task_version: 1,
+        };
+
+        let unavailable = snapshot(None);
+        assert!(matches!(
+            dispatched_execution_id(&unavailable),
+            Err(SchedulerError::OccurrenceNotDispatched {
+                task_id: observed_task,
+                occurrence_id: 6,
+            }) if observed_task == task_id
+        ));
+
+        let dispatched = snapshot(Some(ExecutionSnapshot::unavailable(execution_id)));
+        assert_eq!(
+            dispatched_execution_id(&dispatched).expect("runtime identity is present"),
+            execution_id
+        );
+    }
+
+    #[test]
+    fn withdrawal_projection_maps_every_protocol_reason() {
+        for (stored, projected) in [
+            (
+                OccurrenceWithdrawalReason::RecurrenceReplaced,
+                WithdrawalReason::RecurrenceReplaced,
+            ),
+            (
+                OccurrenceWithdrawalReason::RecurrenceCleared,
+                WithdrawalReason::RecurrenceCleared,
+            ),
+            (
+                OccurrenceWithdrawalReason::TaskCanceled,
+                WithdrawalReason::TaskCanceled,
+            ),
+        ] {
+            assert_eq!(
+                project_lifecycle(&OccurrenceState::Withdrawn { reason: stored }, false, false,),
+                (
+                    OccurrenceStatus::Withdrawn { reason: projected },
+                    None,
+                    None,
+                )
+            );
+        }
     }
 }

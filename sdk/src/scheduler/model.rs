@@ -671,6 +671,10 @@ impl DispatchOffer {
 mod tests {
     use super::*;
 
+    fn address(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
     #[test]
     fn empty_schedule_is_composable_but_not_a_creation_shortcut() {
         let schedule = Schedule::new();
@@ -729,5 +733,192 @@ mod tests {
                 .expect_err("zero count"),
             ScheduleError::ZeroRecurrenceCount
         );
+    }
+
+    #[test]
+    fn task_spec_preserves_authored_operation_funding_and_inputs() {
+        let agent_id = address("0xa");
+        let selected_dag = address("0xb");
+        let recipient_id = address("0xc");
+        let authorization = AuthorizationTemplate::new(7, "summarize", recipient_id)
+            .expect("authorization vertex is present");
+        assert_eq!(authorization.skill_id(), 7);
+        assert_eq!(authorization.vertex(), "summarize");
+        assert_eq!(authorization.recipient_id(), recipient_id);
+
+        let operation =
+            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), vec![authorization]);
+        assert_eq!(operation.agent_id(), Some(agent_id));
+        assert_eq!(TaskOperation::default_dag(selected_dag).agent_id(), None);
+
+        let mut inputs = TaskInputs::new();
+        inputs.insert("summarize".to_owned(), BTreeMap::new());
+        let task = TaskSpec::new(operation, "main", TaskFunding::agent(90), 30)
+            .expect("Agent funding matches an Agent skill")
+            .with_inputs(inputs)
+            .with_failure_policy(FailurePolicy::Pause);
+
+        assert!(matches!(
+            task.operation(),
+            TaskOperation::AgentSkill {
+                agent_id: stored_agent,
+                skill_id: 11,
+                selected_dag: Some(stored_dag),
+                authorization_templates,
+            } if *stored_agent == agent_id
+                && *stored_dag == selected_dag
+                && authorization_templates.len() == 1
+        ));
+        assert_eq!(task.entry_group(), "main");
+        assert!(task.inputs().contains_key("summarize"));
+        assert_eq!(task.funding(), TaskFunding::agent(90));
+        assert_eq!(task.funding().prepay_amount_mist(), 90);
+        assert_eq!(task.occurrence_budget_mist(), 30);
+        assert_eq!(task.failure_policy(), FailurePolicy::Pause);
+    }
+
+    #[test]
+    fn task_authoring_rejects_blank_names_and_incompatible_funding() {
+        let dag_id = address("0xd");
+        assert_eq!(
+            AuthorizationTemplate::new(1, "  ", dag_id).expect_err("blank authorization vertex"),
+            ScheduleError::EmptyAuthorizationVertex
+        );
+        assert_eq!(
+            TaskSpec::new(
+                TaskOperation::default_dag(dag_id),
+                "  ",
+                TaskFunding::address(1),
+                1,
+            )
+            .expect_err("blank entry group"),
+            ScheduleError::EmptyEntryGroup
+        );
+        assert!(matches!(
+            TaskSpec::new(
+                TaskOperation::default_dag(dag_id),
+                "main",
+                TaskFunding::agent(1),
+                1,
+            ),
+            Err(ScheduleError::IncompatibleFunding { .. })
+        ));
+
+        let refund_recipient = address("0xe");
+        let funding = TaskFunding::address_with_refund(40, refund_recipient);
+        assert_eq!(funding.prepay_amount_mist(), 40);
+        assert!(matches!(
+            funding,
+            TaskFunding::Address {
+                prepay_amount_mist: 40,
+                refund_recipient: Some(stored_recipient),
+            } if stored_recipient == refund_recipient
+        ));
+        assert_eq!(TaskFunding::address(20).prepay_amount_mist(), 20);
+    }
+
+    #[test]
+    fn schedule_composition_preserves_every_time_form() {
+        let absolute = Occurrence::at_ms(100)
+            .deadline_at_ms(120)
+            .expect("deadline follows start")
+            .with_priority_fee_percentage(MIN_PRIORITY_FEE_PERCENTAGE)
+            .expect("minimum fee is valid");
+        assert_eq!(absolute.start(), StartTime::At { timestamp_ms: 100 });
+        assert_eq!(
+            absolute.deadline(),
+            Some(Deadline::At { timestamp_ms: 120 })
+        );
+        assert_eq!(
+            absolute.priority_fee_percentage(),
+            MIN_PRIORITY_FEE_PERCENTAGE
+        );
+
+        let relative = Occurrence::after_ms(10).deadline_after_ms(5);
+        assert_eq!(relative.start(), StartTime::After { offset_ms: 10 });
+        assert_eq!(
+            relative.deadline(),
+            Some(Deadline::AfterStart { offset_ms: 5 })
+        );
+        assert_eq!(Occurrence::now().start(), StartTime::Now);
+
+        let recurrence = Recurrence::new(relative, 25)
+            .expect("interval advances time")
+            .finite(3)
+            .expect("finite recurrence is nonempty");
+        assert_eq!(recurrence.first(), &relative);
+        assert_eq!(recurrence.interval_ms(), 25);
+        assert_eq!(recurrence.occurrences(), Some(3));
+        assert_eq!(recurrence.clone().unbounded().occurrences(), None);
+
+        let schedule = Schedule::new()
+            .with_occurrence(absolute)
+            .with_recurrence(recurrence);
+        assert!(!schedule.is_empty());
+        assert_eq!(schedule.occurrences(), &[absolute]);
+        assert!(schedule.recurrence().is_some());
+        assert_eq!(schedule.validate_for_task_creation(), Ok(()));
+    }
+
+    #[test]
+    fn nested_schedule_validation_rejects_invalid_stored_values() {
+        let invalid_priority = Occurrence {
+            start: StartTime::Now,
+            deadline: None,
+            priority_fee_percentage: MAX_PRIORITY_FEE_PERCENTAGE + 1,
+        };
+        assert!(matches!(
+            Schedule::new().with_occurrence(invalid_priority).validate(),
+            Err(ScheduleError::PriorityFeeOutOfRange { .. })
+        ));
+
+        let invalid_deadline = Occurrence {
+            start: StartTime::At { timestamp_ms: 20 },
+            deadline: Some(Deadline::At { timestamp_ms: 10 }),
+            priority_fee_percentage: DEFAULT_PRIORITY_FEE_PERCENTAGE,
+        };
+        assert!(matches!(
+            invalid_deadline.validate(),
+            Err(ScheduleError::DeadlineBeforeStart { .. })
+        ));
+
+        let invalid_recurrence = Recurrence {
+            first: Occurrence::now(),
+            interval_ms: 1,
+            occurrences: Some(0),
+        };
+        assert_eq!(
+            invalid_recurrence.validate(),
+            Err(ScheduleError::ZeroRecurrenceCount)
+        );
+        assert_eq!(
+            Schedule::new()
+                .with_recurrence(invalid_recurrence)
+                .validate(),
+            Err(ScheduleError::ZeroRecurrenceCount)
+        );
+    }
+
+    #[test]
+    fn dispatch_offer_validates_and_exposes_protocol_values() {
+        let reference = OccurrenceRef::new(address("0xf"), 9);
+        assert_eq!(reference.task_id(), address("0xf"));
+        assert_eq!(reference.occurrence_id(), 9);
+
+        let offer = DispatchOffer::new(reference, 100, Some(120), MAX_PRIORITY_FEE_PERCENTAGE)
+            .expect("offer values are valid");
+        assert_eq!(offer.occurrence(), reference);
+        assert_eq!(offer.effective_start_time_ms(), 100);
+        assert_eq!(offer.deadline_ms(), Some(120));
+        assert_eq!(offer.priority_fee_percentage(), MAX_PRIORITY_FEE_PERCENTAGE);
+
+        assert!(matches!(
+            DispatchOffer::new(reference, 100, Some(99), DEFAULT_PRIORITY_FEE_PERCENTAGE),
+            Err(ScheduleError::DeadlineBeforeStart { .. })
+        ));
+        assert!(matches!(
+            DispatchOffer::new(reference, 100, None, MIN_PRIORITY_FEE_PERCENTAGE - 1),
+            Err(ScheduleError::PriorityFeeOutOfRange { .. })
+        ));
     }
 }

@@ -282,6 +282,20 @@ mod tests {
         },
     };
 
+    async fn test_client(mocks: sui_mocks::grpc::ServerMocks) -> NexusClient {
+        let rpc_url = sui_mocks::grpc::mock_server(mocks);
+        let private_key = crate::sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+
+        NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url(&rpc_url)
+            .with_address_balance_gas_config(AddressBalanceGas::new(1_000))
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client builds")
+    }
+
     #[tokio::test]
     async fn mixed_schedule_uses_one_clock_snapshot() {
         let clock_ms = 1_000;
@@ -294,19 +308,11 @@ mod tests {
             bcs::to_bytes(&Clock::new(move_boundary::CLOCK_OBJECT_ID, clock_ms))
                 .expect("Clock serializes"),
         );
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        let client = test_client(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
-        });
-        let private_key = crate::sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
-        let client = NexusClient::builder()
-            .with_private_key(private_key)
-            .with_rpc_url(&rpc_url)
-            .with_address_balance_gas_config(AddressBalanceGas::new(1_000))
-            .with_nexus_objects(sui_mocks::mock_nexus_objects())
-            .build()
-            .await
-            .expect("client builds");
+        })
+        .await;
         let recurrence = Recurrence::new(Occurrence::after_ms(30), 100)
             .expect("recurrence is valid")
             .finite(2)
@@ -340,5 +346,129 @@ mod tests {
                 )),
             )
         );
+    }
+
+    #[tokio::test]
+    async fn absolute_schedule_preparation_does_not_read_the_clock() {
+        let client = test_client(sui_mocks::grpc::ServerMocks::default()).await;
+        let occurrence = Occurrence::at_ms(2_000)
+            .deadline_at_ms(2_500)
+            .expect("deadline follows start");
+        let recurrence =
+            Recurrence::new(Occurrence::at_ms(3_000), 200).expect("recurrence is valid");
+        let schedule = Schedule::new()
+            .with_occurrence(occurrence)
+            .with_recurrence(recurrence.clone());
+
+        assert_eq!(
+            prepare_schedule(&client, &schedule)
+                .await
+                .expect("absolute schedule resolves"),
+            PreparedSchedule::new(
+                vec![PreparedOccurrence::new(
+                    2_000,
+                    Some(2_500),
+                    DEFAULT_PRIORITY_FEE_PERCENTAGE,
+                )],
+                Some(PreparedRecurrence::new(
+                    PreparedOccurrence::new(3_000, None, DEFAULT_PRIORITY_FEE_PERCENTAGE,),
+                    200,
+                    None,
+                )),
+            )
+        );
+        assert_eq!(
+            prepare_occurrence(&client, &occurrence)
+                .await
+                .expect("absolute occurrence resolves"),
+            PreparedOccurrence::new(2_000, Some(2_500), DEFAULT_PRIORITY_FEE_PERCENTAGE,)
+        );
+        assert_eq!(
+            prepare_recurrence(&client, &recurrence)
+                .await
+                .expect("absolute recurrence resolves"),
+            PreparedRecurrence::new(
+                PreparedOccurrence::new(3_000, None, DEFAULT_PRIORITY_FEE_PERCENTAGE),
+                200,
+                None,
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn address_funded_task_preparation_preserves_authored_values() {
+        let client = test_client(sui_mocks::grpc::ServerMocks::default()).await;
+        let dag_id = crate::sui::types::Address::from_static("0x31");
+        let refund_recipient = crate::sui::types::Address::from_static("0x32");
+        let task = TaskSpec::new(
+            crate::scheduler::TaskOperation::default_dag(dag_id),
+            "main",
+            TaskFunding::address_with_refund(90, refund_recipient),
+            30,
+        )
+        .expect("Task is valid")
+        .with_failure_policy(crate::scheduler::FailurePolicy::Pause);
+
+        let prepared = prepare_task(&client, &task)
+            .await
+            .expect("Task preparation succeeds");
+
+        assert!(matches!(
+            prepared.operation,
+            crate::scheduler::TaskOperation::DefaultDag {
+                dag_id: stored_dag,
+            } if stored_dag == dag_id
+        ));
+        assert!(prepared.agent.is_none());
+        assert_eq!(prepared.entry_group, "main");
+        assert!(prepared.inputs.is_empty());
+        assert_eq!(
+            prepared.funding,
+            PreparedFunding::Address {
+                prepay_amount_mist: 90,
+                refund_recipient,
+            }
+        );
+        assert_eq!(prepared.occurrence_budget_mist, 30);
+        assert_eq!(
+            prepared.failure_policy,
+            crate::scheduler::FailurePolicy::Pause
+        );
+    }
+
+    #[test]
+    fn relative_time_resolution_reports_missing_clock_and_overflow() {
+        assert!(matches!(
+            resolve_occurrence(&Occurrence::now(), None),
+            Err(SchedulerError::InconsistentChainState { .. })
+        ));
+        assert!(matches!(
+            resolve_occurrence(&Occurrence::after_ms(1), Some(u64::MAX)),
+            Err(SchedulerError::Schedule(ScheduleError::TimeOverflow {
+                field: "occurrence start",
+                ..
+            }))
+        ));
+        assert!(matches!(
+            resolve_occurrence(&Occurrence::at_ms(u64::MAX).deadline_after_ms(1), None,),
+            Err(SchedulerError::Schedule(ScheduleError::TimeOverflow {
+                field: "occurrence deadline",
+                ..
+            }))
+        ));
+        assert!(matches!(
+            resolve_occurrence(
+                &Occurrence::after_ms(10)
+                    .deadline_at_ms(5)
+                    .expect("relative start is resolved later"),
+                Some(100),
+            ),
+            Err(SchedulerError::Schedule(
+                ScheduleError::DeadlineBeforeStart {
+                    start_time_ms: 110,
+                    deadline_ms: 5,
+                }
+            ))
+        ));
     }
 }

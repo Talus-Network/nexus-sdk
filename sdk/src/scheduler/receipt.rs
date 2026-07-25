@@ -222,3 +222,69 @@ impl AbortReceipt {
         self.execution_id
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn address(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    #[test]
+    fn mutation_receipts_preserve_transaction_and_schedule_changes() {
+        let task_id = address("0x20");
+        let reference = OccurrenceRef::new(task_id, 4);
+        let transaction = TransactionReference::new(sui::types::Digest::new([7; 32]), 12);
+        assert_eq!(transaction.digest(), &sui::types::Digest::new([7; 32]));
+        assert_eq!(transaction.checkpoint(), 12);
+
+        let scheduled = ScheduledOccurrence::new(
+            reference,
+            100,
+            Some(120),
+            30,
+            OccurrenceSource::Recurring { iteration: 2 },
+        );
+        assert_eq!(scheduled.reference(), reference);
+        assert_eq!(scheduled.start_time_ms(), 100);
+        assert_eq!(scheduled.deadline_ms(), Some(120));
+        assert_eq!(scheduled.priority_fee_percentage(), 30);
+        assert_eq!(
+            scheduled.source(),
+            OccurrenceSource::Recurring { iteration: 2 }
+        );
+
+        let withdrawn = WithdrawnOccurrence::new(reference, WithdrawalReason::RecurrenceReplaced);
+        assert_eq!(withdrawn.reference(), reference);
+        assert_eq!(withdrawn.reason(), WithdrawalReason::RecurrenceReplaced);
+
+        let delta = ScheduleDelta::new(
+            vec![scheduled.clone()],
+            vec![withdrawn.clone()],
+            Some(reference),
+        );
+        assert_eq!(delta.scheduled(), &[scheduled]);
+        assert_eq!(delta.withdrawn(), &[withdrawn]);
+        assert_eq!(delta.advertised(), Some(reference));
+        assert!(!delta.is_empty());
+        assert!(ScheduleDelta::default().is_empty());
+
+        let receipt = TaskMutationReceipt::new(transaction.clone(), task_id, delta.clone());
+        assert_eq!(receipt.transaction(), &transaction);
+        assert_eq!(receipt.task_id(), task_id);
+        assert_eq!(receipt.delta(), &delta);
+    }
+
+    #[test]
+    fn abort_receipt_identifies_the_occurrence_and_runtime_object() {
+        let transaction = TransactionReference::new(sui::types::Digest::new([8; 32]), 13);
+        let occurrence = OccurrenceRef::new(address("0x21"), 5);
+        let execution_id = address("0x22");
+        let receipt = AbortReceipt::new(transaction.clone(), occurrence, execution_id);
+
+        assert_eq!(receipt.transaction(), &transaction);
+        assert_eq!(receipt.occurrence(), occurrence);
+        assert_eq!(receipt.execution_id(), execution_id);
+    }
+}

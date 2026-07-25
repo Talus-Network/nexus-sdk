@@ -197,3 +197,28 @@ impl SchedulerError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boundary_errors_retain_transport_and_transaction_sources() {
+        let transport = SchedulerError::transport(anyhow::anyhow!("RPC unavailable"));
+        assert_eq!(transport.to_string(), "scheduler transport failed");
+        assert_eq!(
+            transport.source().map(ToString::to_string).as_deref(),
+            Some("RPC unavailable")
+        );
+
+        let transaction = SchedulerError::transaction(anyhow::anyhow!("invalid PTB"));
+        assert_eq!(
+            transaction.to_string(),
+            "scheduler transaction construction failed"
+        );
+        assert_eq!(
+            transaction.source().map(ToString::to_string).as_deref(),
+            Some("invalid PTB")
+        );
+    }
+}
