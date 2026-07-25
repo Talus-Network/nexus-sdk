@@ -49,12 +49,11 @@ pub(crate) fn publish_dependency_ids_or_framework_defaults(
     }
 }
 
-/// Nexus scoped PTB builder.
+/// A PTB builder bound to one Nexus deployment.
 ///
-/// This is the single transaction building form inside the SDK: it carries the canonical
-/// `sui_move_ptb::PtbBuilder` together with the Nexus deployment object/package scope.
-/// Generic PTB input/command operations come from `PtbBuilder`; this type only adds
-/// Nexus scoped generated calls and domain constructors.
+/// The builder owns the canonical [`PtbBuilder`] and the [`NexusObjects`] that
+/// define package identity. Generated call targets and generic Move types are
+/// resolved through that same deployment.
 #[cfg(feature = "transactions")]
 pub struct NexusPtbBuilder<'a> {
     objects: &'a NexusObjects,
@@ -399,12 +398,21 @@ impl<'a> NexusPtbBuilder<'a> {
         self.call_target(one_target, vec![one])
     }
 
+    /// Build a typed Move `vector<T>` from existing PTB arguments.
+    pub fn move_vector<T>(&mut self, elements: Vec<Argument>) -> Result<Argument, BuildError>
+    where
+        T: sui_move::MoveType,
+    {
+        let element_type = crate::move_bindings::type_tag::<T>(self.objects);
+        self.tx.make_move_vector(Some(element_type), elements)
+    }
+
     /// Build a Move `0x1::option::Option<T>` from an optional PTB argument.
     pub fn option<T>(&mut self, value: Option<Argument>) -> Result<Argument, BuildError>
     where
         T: sui_move::MoveType,
     {
-        option::<T>(&mut self.tx, value)
+        crate::move_bindings::with_nexus_scope(self.objects, || option::<T>(&mut self.tx, value))
     }
 
     /// Finish and return the canonical programmable transaction.
@@ -424,7 +432,7 @@ pub fn ptb<'a>(
     build: impl FnOnce(&mut NexusPtbBuilder<'a>) -> anyhow::Result<()>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     let mut tx = NexusPtbBuilder::new(objects);
-    build(&mut tx)?;
+    crate::move_bindings::with_nexus_scope(objects, || build(&mut tx))?;
     Ok(tx.finish())
 }
 
@@ -468,7 +476,10 @@ mod tests {
     use {
         super::*,
         crate::{
-            move_bindings::workflow::gas::{deescalate_target, GasService},
+            move_bindings::{
+                interface::agent::FixedTool,
+                workflow::gas::{deescalate_target, GasService},
+            },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
@@ -584,6 +595,34 @@ mod tests {
 
         assert_eq!(target.package, objects.workflow_pkg_id);
         assert_eq!(*tag.address(), objects.workflow_type_origin_pkg_id());
+    }
+
+    #[test]
+    fn scopes_generated_generic_types() {
+        let objects = objects();
+
+        let mut transaction = NexusPtbBuilder::new(&objects);
+        transaction.move_vector::<FixedTool>(vec![]).unwrap();
+        transaction.option::<FixedTool>(None).unwrap();
+        let transaction = transaction.finish();
+
+        let sui::types::Command::MakeMoveVector(vector) = &transaction.commands[0] else {
+            panic!("expected a Move vector command");
+        };
+        let Some(sui::types::TypeTag::Struct(element_type)) = &vector.type_ else {
+            panic!("expected a generated struct element type");
+        };
+
+        assert_eq!(*element_type.address(), objects.interface_pkg_id);
+
+        let sui::types::Command::MoveCall(option) = &transaction.commands[1] else {
+            panic!("expected an Option constructor call");
+        };
+        let sui::types::TypeTag::Struct(element_type) = &option.type_arguments[0] else {
+            panic!("expected a generated Option element type");
+        };
+
+        assert_eq!(*element_type.address(), objects.interface_pkg_id);
     }
 
     #[test]
