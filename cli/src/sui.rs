@@ -1,11 +1,10 @@
+//! Constructs CLI Sui and Nexus clients and attaches transaction gas.
+
 use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
     nexus_sdk::{
-        nexus::{
-            client::{AddressBalanceGas, GasSource, NexusClient},
-            crawler::Crawler,
-        },
+        nexus::client::{AddressBalanceGas, GasSource, NexusClient},
         sui,
     },
 };
@@ -115,50 +114,6 @@ pub(crate) async fn get_signing_key(
     }
 }
 
-/// Fetch all coins owned by the provided address.
-pub(crate) async fn fetch_coins_for_address(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
-    fetch_coins_for_address_by_type(client, owner, sui::types::StructTag::gas_coin()).await
-}
-
-pub(crate) async fn fetch_coins_for_address_by_type(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    object_type: sui::types::StructTag,
-) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
-    let label = coin_type_label(&object_type);
-    let coins_handle = loading!("Fetching {label}...");
-    let crawler = Crawler::new(client);
-
-    match crawler
-        .fetch_coins_for_address_by_type(owner, object_type)
-        .await
-    {
-        Ok(coins) => {
-            coins_handle.success();
-            Ok(coins)
-        }
-        Err(e) => {
-            coins_handle.error();
-            Err(NexusCliError::Rpc(e))
-        }
-    }
-}
-
-fn coin_type_label(object_type: &sui::types::StructTag) -> String {
-    format!("coins of type '{object_type}'")
-}
-
-fn sort_coins_for_ordinal_selection(coins: &mut [(sui::types::ObjectReference, u64)]) {
-    coins.sort_by(|(left_coin, left_balance), (right_coin, right_balance)| {
-        right_balance
-            .cmp(left_balance)
-            .then_with(|| left_coin.object_id().cmp(right_coin.object_id()))
-    });
-}
-
 /// Wrapping some conf parsing functionality used around the CLI.
 pub(crate) async fn get_nexus_objects(
     conf: &mut CliConf,
@@ -222,118 +177,17 @@ async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
     Ok(objects)
 }
 
-/// Fetch a coin from the Sui client.
-///
-/// `by_address`: If specified, fetch the coin with this object ID.
-/// `by_order`: If `by_address` is not specified, fetch the coin by its order in
-/// the list of owned coins (0-based).
-pub(crate) async fn fetch_coin(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    fetch_coin_with_balance(client, owner, by_address, by_order)
-        .await
-        .map(|(coin, _)| coin)
-}
-
-pub(crate) async fn fetch_coin_with_balance(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
-    fetch_coin_with_balance_excluding(client, owner, by_address, by_order, &[]).await
-}
-
-pub(crate) async fn fetch_coin_with_balance_excluding(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-    excluded: &[sui::types::Address],
-) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
-    let mut coins = fetch_coins_for_address(client, owner).await?;
-
-    if coins.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough coins to submit the transaction"
-        )));
-    }
-
-    // If object gas coin object ID was specified, use it. If it was specified
-    // and could not be found, return error.
-    match by_address {
-        Some(id) => {
-            let coin = coins
-                .into_iter()
-                .find(|(coin, _)| *coin.object_id() == id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?;
-
-            Ok(coin)
-        }
-        None => {
-            coins.retain(|(coin, _)| !excluded.contains(coin.object_id()));
-            sort_coins_for_ordinal_selection(&mut coins);
-            if by_order >= coins.len() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "The wallet does not have enough coins to select coin #{by_order}"
-                )));
-            }
-
-            Ok(coins.swap_remove(by_order))
-        }
-    }
-}
-
-pub(crate) async fn fetch_coin_by_type(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-    object_type: sui::types::StructTag,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    let label = coin_type_label(&object_type);
-    let mut coins = fetch_coins_for_address_by_type(client, owner, object_type).await?;
-
-    if coins.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough {label}"
-        )));
-    }
-
-    match by_address {
-        Some(id) => coins
-            .into_iter()
-            .find(|(coin, _)| *coin.object_id() == id)
-            .map(|(coin, _)| coin)
-            .ok_or_else(|| {
-                NexusCliError::Any(anyhow!("Object '{id}' with {label} not found in wallet"))
-            }),
-        None => {
-            sort_coins_for_ordinal_selection(&mut coins);
-            if by_order >= coins.len() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "The wallet does not have enough {label} to select object #{by_order}"
-                )));
-            }
-
-            Ok(coins.swap_remove(by_order).0)
-        }
-    }
-}
-
 async fn configure_nexus_client_gas(
     nexus_client: &NexusClient,
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> Result<(), NexusCliError> {
     let config = match sui_gas_coin {
         Some(gas_coin_id) => {
-            let gas_coin = fetch_coin(client, owner, Some(gas_coin_id), 0).await?;
+            let gas_coin = nexus_client
+                .fetch_coin(gas_coin_id)
+                .await
+                .map_err(NexusCliError::Nexus)?;
             GasSource::coin(vec![gas_coin], sui_gas_budget)
         }
         None => GasSource::AddressBalance(AddressBalanceGas::new(sui_gas_budget)),
@@ -345,19 +199,11 @@ async fn configure_nexus_client_gas(
         .map_err(NexusCliError::Nexus)
 }
 
-async fn build_nexus_client_context() -> Result<
-    (
-        NexusClient,
-        Arc<Mutex<sui::grpc::Client>>,
-        sui::types::Address,
-    ),
-    NexusCliError,
-> {
+async fn build_nexus_client_context() -> Result<NexusClient, NexusCliError> {
     let mut conf = CliConf::load().await.unwrap_or_default();
 
     let client = build_sui_grpc_client(&conf).await?;
     let pk = get_signing_key(&conf).await?;
-    let owner = pk.public_key().derive_address();
     let mut nexus_objects = get_nexus_objects(&mut conf).await?;
 
     nexus_objects
@@ -374,16 +220,12 @@ async fn build_nexus_client_context() -> Result<
         .with_private_key(pk)
         .with_nexus_objects(nexus_objects.clone())
         .with_rpc_url(&rpc_url);
-    let nexus_client = builder.build().await.map_err(NexusCliError::Nexus)?;
-
-    Ok((nexus_client, client, owner))
+    builder.build().await.map_err(NexusCliError::Nexus)
 }
 
 /// Creates a Nexus client without attaching a gas source.
 pub(crate) async fn get_read_only_nexus_client() -> Result<NexusClient, NexusCliError> {
-    build_nexus_client_context()
-        .await
-        .map(|(nexus_client, _, _)| nexus_client)
+    build_nexus_client_context().await
 }
 
 /// Creates a Nexus client and attaches the selected transaction gas source.
@@ -391,8 +233,8 @@ pub(crate) async fn get_nexus_client(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> Result<NexusClient, NexusCliError> {
-    let (nexus_client, client, owner) = build_nexus_client_context().await?;
-    configure_nexus_client_gas(&nexus_client, client, owner, sui_gas_coin, sui_gas_budget).await?;
+    let nexus_client = build_nexus_client_context().await?;
+    configure_nexus_client_gas(&nexus_client, sui_gas_coin, sui_gas_budget).await?;
 
     Ok(nexus_client)
 }
@@ -806,49 +648,6 @@ mod tests {
         mock.assert_async().await;
     }
 
-    fn object_ref(id: &'static str, digest_byte: u8) -> sui::types::ObjectReference {
-        sui::types::ObjectReference::new(
-            sui::types::Address::from_static(id),
-            1,
-            sui::types::Digest::from([digest_byte; 32]),
-        )
-    }
-
-    #[test]
-    fn typed_coin_label_uses_requested_type() {
-        let expected_type =
-            nexus_sdk::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
-                .coin_type_tag();
-
-        assert_eq!(
-            coin_type_label(&expected_type),
-            format!("coins of type '{expected_type}'")
-        );
-    }
-
-    #[test]
-    fn ordinal_coin_sort_uses_balance_descending_then_object_id() {
-        let smallest_balance = object_ref("0x1", 1);
-        let lower_tied_id = object_ref("0x2", 2);
-        let higher_tied_id = object_ref("0x3", 3);
-        let mut coins = vec![
-            (smallest_balance.clone(), 10),
-            (higher_tied_id.clone(), 100),
-            (lower_tied_id.clone(), 100),
-        ];
-
-        sort_coins_for_ordinal_selection(&mut coins);
-
-        assert_eq!(
-            coins,
-            vec![
-                (lower_tied_id, 100),
-                (higher_tied_id, 100),
-                (smallest_balance, 10),
-            ]
-        );
-    }
-
     #[tokio::test]
     async fn cli_client_without_explicit_gas_coin_supports_reads() {
         assert_coin_free_client_supports_read("shared CLI client").await;
@@ -857,11 +656,7 @@ mod tests {
     #[tokio::test]
     async fn cli_transaction_setup_attaches_address_balance_gas() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
-        let owner = pk.public_key().derive_address();
         let rpc_url = nexus_sdk::test_utils::sui_mocks::grpc::mock_server(Default::default());
-        let grpc_client = Arc::new(Mutex::new(
-            sui::grpc::Client::new(&rpc_url).expect("mock RPC URL should be valid"),
-        ));
         let client = NexusClient::builder()
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)
@@ -870,7 +665,7 @@ mod tests {
             .await
             .expect("coin-free client should build");
 
-        configure_nexus_client_gas(&client, grpc_client, owner, None, 4_321)
+        configure_nexus_client_gas(&client, None, 4_321)
             .await
             .expect("address balance gas should attach without owned coins");
 
@@ -918,9 +713,6 @@ mod tests {
                 ..Default::default()
             },
         );
-        let grpc_client = Arc::new(Mutex::new(
-            sui::grpc::Client::new(&rpc_url).expect("mock RPC URL should be valid"),
-        ));
         let client = NexusClient::builder()
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)
@@ -929,7 +721,7 @@ mod tests {
             .await
             .expect("coin-free client should build");
 
-        configure_nexus_client_gas(&client, grpc_client, owner, Some(*coin.object_id()), 5_678)
+        configure_nexus_client_gas(&client, Some(*coin.object_id()), 5_678)
             .await
             .expect("explicit coin gas should attach");
 

@@ -1,3 +1,5 @@
+//! Registers on-chain tools with client-owned collateral selection.
+
 use {
     crate::{
         command_title,
@@ -59,29 +61,21 @@ pub(crate) async fn register_onchain_tool(
     }
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let signer = nexus_client.signer();
-    let address = signer.get_active_address();
-    let nexus_objects = &*nexus_client.get_nexus_objects();
-    let conf = CliConf::load().await.unwrap_or_default();
-    let client = build_sui_grpc_client(&conf).await?;
-
-    let collateral_coin = fetch_coin_by_type(
-        client.clone(),
-        address,
-        collateral_coin,
-        0,
-        nexus_objects.us_token.coin_type_tag(),
-    )
-    .await?;
+    let address = nexus_client.owner();
+    let nexus_objects = nexus_client.get_nexus_objects();
+    let collateral_coin = nexus_client
+        .fetch_coin_by_type(collateral_coin, 0, nexus_objects.us_token.coin_type_tag())
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     // Generate and customize schemas.
     let (input_schema, output_schema) =
-        generate_and_customize_schemas(client, package, &module).await?;
+        generate_and_customize_schemas(nexus_client.grpc_client(), package, &module).await?;
 
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match tool::register_on_chain_for_self_with_workflow_authorization_cap_ptb(
-        nexus_objects,
+        &nexus_objects,
         package,
         module.as_str(),
         &fqn,
@@ -135,7 +129,7 @@ pub(crate) async fn register_onchain_tool(
     };
 
     // Extract the OwnerCap<OverTool> and OwnerCap<OverGas> object IDs.
-    let (over_tool_id, over_gas_id) = extract_owner_caps(&response.objects, nexus_objects)?;
+    let (over_tool_id, over_gas_id) = extract_owner_caps(&response.objects, &nexus_objects)?;
 
     notify_success!(
         "Transaction digest: {digest}",

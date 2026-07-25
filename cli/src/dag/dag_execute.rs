@@ -1,3 +1,5 @@
+//! Executes DAGs with client-owned gas and payment-coin selection.
+
 use {
     crate::{
         command_title,
@@ -65,13 +67,13 @@ pub(crate) async fn execute_dag(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Executing Nexus DAG '{dag_id}'");
 
-    let conf = CliConf::load().await.unwrap_or_default();
-    let pk = get_signing_key(&conf).await?;
-    let owner = pk.public_key().derive_address();
     let payment_coin_id = required_payment_coin(payment_coin, sui_gas_coin)?;
-    let client = build_sui_grpc_client(&conf).await?;
-    let (payment_coin, balance) =
-        fetch_coin_with_balance(client.clone(), owner, Some(payment_coin_id), 0).await?;
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let owner = nexus_client.owner();
+    let (payment_coin, balance) = nexus_client
+        .fetch_coin_with_balance(payment_coin_id)
+        .await
+        .map_err(NexusCliError::Nexus)?;
     let payment_max_budget_mist = payment_max_budget_mist.unwrap_or(balance);
     if payment_max_budget_mist > balance {
         return Err(NexusCliError::Any(anyhow!(
@@ -79,9 +81,8 @@ pub(crate) async fn execute_dag(
         )));
     }
 
-    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-
     // Build the remote storage conf.
+    let conf = CliConf::load().await.unwrap_or_default();
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf = conf.data_storage.clone().into();
 

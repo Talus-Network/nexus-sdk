@@ -1,5 +1,5 @@
-//! A [`NexusClient`] combines a [`Signer`] with an optional shared [`Gas`]
-//! source to perform Nexus operations programmatically.
+//! A [`NexusClient`] combines a [`Signer`], object crawling, owned-coin
+//! selection, and an optional shared [`Gas`] source.
 
 use {
     crate::{
@@ -31,6 +31,14 @@ use {
 
 /// Default transaction gas budget used by clients that select a default.
 pub const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
+
+fn sort_coins_for_ordinal_selection(coins: &mut [(sui::types::ObjectReference, u64)]) {
+    coins.sort_by(|(left_coin, left_balance), (right_coin, right_balance)| {
+        right_balance
+            .cmp(left_balance)
+            .then_with(|| left_coin.object_id().cmp(right_coin.object_id()))
+    });
+}
 
 /// Gas source used to configure a [`NexusClient`] for transactions.
 #[derive(Clone, Debug)]
@@ -333,6 +341,126 @@ impl NexusClient {
         &self.crawler
     }
 
+    /// Return the owner address derived from this client's signing key.
+    pub fn owner(&self) -> sui::types::Address {
+        self.signer.get_active_address()
+    }
+
+    /// Return the shared gRPC client used by this client.
+    pub fn grpc_client(&self) -> Arc<Mutex<sui::grpc::Client>> {
+        Arc::clone(&self.signer.client)
+    }
+
+    /// Fetch every coin owned by this client's signing address with the exact
+    /// requested Move struct tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Rpc`] when the owned-object query fails.
+    pub async fn fetch_coins_by_type(
+        &self,
+        object_type: sui::types::StructTag,
+    ) -> Result<Vec<(sui::types::ObjectReference, u64)>, NexusError> {
+        self.crawler
+            .fetch_coins_for_address_by_type(self.owner(), object_type)
+            .await
+            .map_err(NexusError::Rpc)
+    }
+
+    /// Fetch an owned SUI coin by object ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Wallet`] when the signing address owns no SUI
+    /// coins or does not own `coin_id`. Returns [`NexusError::Rpc`] when the
+    /// owned-object query fails.
+    pub async fn fetch_coin(
+        &self,
+        coin_id: sui::types::Address,
+    ) -> Result<sui::types::ObjectReference, NexusError> {
+        self.fetch_coin_with_balance(coin_id)
+            .await
+            .map(|(coin, _)| coin)
+    }
+
+    /// Fetch an owned SUI coin and its balance by object ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Wallet`] when the signing address owns no SUI
+    /// coins or does not own `coin_id`. Returns [`NexusError::Rpc`] when the
+    /// owned-object query fails.
+    pub async fn fetch_coin_with_balance(
+        &self,
+        coin_id: sui::types::Address,
+    ) -> Result<(sui::types::ObjectReference, u64), NexusError> {
+        let coins = self
+            .fetch_coins_by_type(sui::types::StructTag::gas_coin())
+            .await?;
+
+        if coins.is_empty() {
+            return Err(NexusError::Wallet(anyhow::anyhow!(
+                "The wallet does not have enough coins to submit the transaction"
+            )));
+        }
+
+        coins
+            .into_iter()
+            .find(|(coin, _)| *coin.object_id() == coin_id)
+            .ok_or_else(|| {
+                NexusError::Wallet(anyhow::anyhow!("Coin '{coin_id}' not found in wallet"))
+            })
+    }
+
+    /// Fetch an owned coin with the requested Move type by object ID or
+    /// deterministic ordinal.
+    ///
+    /// When `coin_id` is `None`, coins are ordered by balance descending and
+    /// object ID ascending before selecting `ordinal`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Wallet`] when no matching coin exists or the
+    /// ordinal is out of range. Returns [`NexusError::Rpc`] when the
+    /// owned-object query fails.
+    pub async fn fetch_coin_by_type(
+        &self,
+        coin_id: Option<sui::types::Address>,
+        ordinal: usize,
+        object_type: sui::types::StructTag,
+    ) -> Result<sui::types::ObjectReference, NexusError> {
+        let label = format!("coins of type '{object_type}'");
+        let mut coins = self.fetch_coins_by_type(object_type).await?;
+
+        if coins.is_empty() {
+            return Err(NexusError::Wallet(anyhow::anyhow!(
+                "The wallet does not have enough {label}"
+            )));
+        }
+
+        match coin_id {
+            Some(coin_id) => coins
+                .into_iter()
+                .find(|(coin, _)| *coin.object_id() == coin_id)
+                .map(|(coin, _)| coin)
+                .ok_or_else(|| {
+                    NexusError::Wallet(anyhow::anyhow!(
+                        "Object '{coin_id}' with {label} not found in wallet"
+                    ))
+                }),
+            None => {
+                sort_coins_for_ordinal_selection(&mut coins);
+                if ordinal >= coins.len() {
+                    return Err(NexusError::Wallet(anyhow::anyhow!(
+                        "The wallet does not have enough {label} to select object #{ordinal}"
+                    )));
+                }
+
+                Ok(coins.swap_remove(ordinal).0)
+            }
+        }
+    }
+
     /// Return the RPC URL configured for this client.
     pub fn rpc_url(&self) -> &str {
         &self.rpc_url
@@ -358,16 +486,13 @@ impl NexusClient {
     ///
     /// # Errors
     ///
-    /// Returns [`NexusError::Configuration`] when gas is already attached or
-    /// coin based gas has no coins. Returns [`NexusError::Rpc`] when the
-    /// reference gas price cannot be fetched.
+    /// Returns [`NexusError::GasSourceAlreadyConfigured`] when gas is already
+    /// attached, or [`NexusError::Configuration`] when coin based gas has no
+    /// coins. Returns [`NexusError::Rpc`] when the reference gas price cannot
+    /// be fetched.
     pub async fn set_gas_source(&self, mut source: GasSource) -> Result<(), NexusError> {
-        const GAS_SOURCE_ALREADY_CONFIGURED: &str = "a gas source is already configured";
-
         if self.gas.get().is_some() {
-            return Err(NexusError::Configuration(
-                GAS_SOURCE_ALREADY_CONFIGURED.into(),
-            ));
+            return Err(NexusError::GasSourceAlreadyConfigured);
         }
 
         match &mut source {
@@ -389,7 +514,7 @@ impl NexusClient {
 
         self.gas
             .set(source)
-            .map_err(|_| NexusError::Configuration(GAS_SOURCE_ALREADY_CONFIGURED.into()))
+            .map_err(|_| NexusError::GasSourceAlreadyConfigured)
     }
 
     /// Returns a clone of the configured [`Gas`], or `None` when unattached.
@@ -546,6 +671,61 @@ mod tests {
             sui_mocks::{self},
         },
     };
+
+    fn owned_coin_object(
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Address,
+        balance: u64,
+        object_type: &sui::types::StructTag,
+    ) -> sui::grpc::Object {
+        let mut object = sui::grpc::Object::default();
+        object.set_object_id(*object_ref.object_id());
+        object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(owner)));
+        object.set_version(object_ref.version());
+        object.set_digest(*object_ref.digest());
+        object.set_balance(balance);
+        object.set_object_type(object_type.to_string());
+        object
+    }
+
+    async fn client_with_owned_coins(
+        pk: sui::crypto::Ed25519PrivateKey,
+        object_type: sui::types::StructTag,
+        objects: Vec<sui::grpc::Object>,
+    ) -> NexusClient {
+        let owner = pk.public_key().derive_address();
+        let expected_owner = owner.to_string();
+        let expected_object_type = object_type.to_string();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(move |request| {
+                assert_eq!(
+                    request.get_ref().owner.as_deref(),
+                    Some(expected_owner.as_str())
+                );
+                assert_eq!(
+                    request.get_ref().object_type.as_deref(),
+                    Some(expected_object_type.as_str())
+                );
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(objects);
+                Ok(response.into())
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+
+        NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build")
+    }
 
     #[tokio::test]
     async fn released_coin_can_be_acquired_again() {
@@ -752,6 +932,235 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn client_exposes_its_owner_and_shared_grpc_client() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        assert_eq!(client.owner(), owner);
+        assert!(Arc::ptr_eq(&client.grpc_client(), &client.signer.client));
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_uses_client_owner_and_crawler() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = sui::types::StructTag::gas_coin();
+        let coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![owned_coin_object(coin.clone(), owner, 50, &object_type)],
+        )
+        .await;
+
+        let selected = client
+            .fetch_coin(*coin.object_id())
+            .await
+            .expect("owned SUI coin should be selected");
+
+        assert_eq!(selected, coin);
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_with_balance_returns_exact_balance() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = sui::types::StructTag::gas_coin();
+        let coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![owned_coin_object(coin.clone(), owner, 7_654, &object_type)],
+        )
+        .await;
+
+        let selected = client
+            .fetch_coin_with_balance(*coin.object_id())
+            .await
+            .expect("owned SUI coin balance should be returned");
+
+        assert_eq!(selected, (coin, 7_654));
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_rejects_an_id_missing_from_the_wallet() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = sui::types::StructTag::gas_coin();
+        let owned_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x12"));
+        let missing_id = sui::types::Address::from_static("0x13");
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![owned_coin_object(owned_coin, owner, 100, &object_type)],
+        )
+        .await;
+
+        let error = client
+            .fetch_coin(missing_id)
+            .await
+            .expect_err("unowned SUI coin should be rejected");
+
+        assert!(matches!(error, NexusError::Wallet(_)));
+        assert!(error.to_string().contains("not found in wallet"));
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_rejects_an_empty_wallet() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let object_type = sui::types::StructTag::gas_coin();
+        let client = client_with_owned_coins(pk, object_type, vec![]).await;
+
+        let error = client
+            .fetch_coin(sui::types::Address::from_static("0x14"))
+            .await
+            .expect_err("empty wallet should not provide a SUI coin");
+
+        assert!(matches!(error, NexusError::Wallet(_)));
+        assert!(error.to_string().contains("does not have enough coins"));
+    }
+
+    #[tokio::test]
+    async fn fetch_coins_by_type_maps_crawler_failure_to_rpc() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let object_type = sui::types::StructTag::gas_coin();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(|_| Err(tonic::Status::unavailable("state service unavailable")));
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = NexusClientBuilder::new()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        let error = client
+            .fetch_coins_by_type(object_type)
+            .await
+            .expect_err("crawler failure should be preserved");
+
+        assert!(matches!(error, NexusError::Rpc(_)));
+        assert!(error.to_string().contains("state service unavailable"));
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_by_type_selects_the_explicit_id() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
+            .coin_type_tag();
+        let first_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
+        let requested_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x21"));
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![
+                owned_coin_object(first_coin, owner, 200, &object_type),
+                owned_coin_object(requested_coin.clone(), owner, 100, &object_type),
+            ],
+        )
+        .await;
+
+        let selected = client
+            .fetch_coin_by_type(Some(*requested_coin.object_id()), 0, object_type)
+            .await
+            .expect("explicit typed coin should be selected");
+
+        assert_eq!(selected, requested_coin);
+    }
+
+    #[test]
+    fn ordinal_coin_sort_uses_balance_descending_then_object_id() {
+        let smallest_balance =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x1"));
+        let lower_tied_id = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x2"));
+        let higher_tied_id = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x3"));
+        let mut coins = vec![
+            (smallest_balance.clone(), 10),
+            (higher_tied_id.clone(), 100),
+            (lower_tied_id.clone(), 100),
+        ];
+
+        sort_coins_for_ordinal_selection(&mut coins);
+
+        assert_eq!(
+            coins,
+            vec![
+                (lower_tied_id, 100),
+                (higher_tied_id, 100),
+                (smallest_balance, 10),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_by_type_selects_the_deterministic_ordinal() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
+            .coin_type_tag();
+        let smallest_balance =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x1"));
+        let lower_tied_id = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x2"));
+        let higher_tied_id = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x3"));
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![
+                owned_coin_object(smallest_balance, owner, 10, &object_type),
+                owned_coin_object(higher_tied_id.clone(), owner, 100, &object_type),
+                owned_coin_object(lower_tied_id, owner, 100, &object_type),
+            ],
+        )
+        .await;
+
+        let selected = client
+            .fetch_coin_by_type(None, 1, object_type)
+            .await
+            .expect("ordinal should use deterministic typed-coin ordering");
+
+        assert_eq!(selected, higher_tied_id);
+    }
+
+    #[tokio::test]
+    async fn fetch_coin_by_type_rejects_an_out_of_range_ordinal() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
+            .coin_type_tag();
+        let coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x30"));
+        let client = client_with_owned_coins(
+            pk,
+            object_type.clone(),
+            vec![owned_coin_object(coin, owner, 100, &object_type)],
+        )
+        .await;
+
+        let error = client
+            .fetch_coin_by_type(None, 1, object_type)
+            .await
+            .expect_err("ordinal beyond owned typed coins should be rejected");
+
+        assert!(matches!(error, NexusError::Wallet(_)));
+        assert!(error.to_string().contains("select object #1"));
+    }
+
+    #[tokio::test]
     async fn direct_address_balance_attachment_is_shared_with_clones_and_actions() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
@@ -870,7 +1279,8 @@ mod tests {
             .await
             .expect_err("replacement should fail");
 
-        assert!(error.to_string().contains("already configured"));
+        assert!(matches!(&error, NexusError::GasSourceAlreadyConfigured));
+        assert_eq!(error.to_string(), "a gas source is already configured");
         assert_eq!(
             client
                 .gas_config()
@@ -915,7 +1325,7 @@ mod tests {
         assert!(results
             .iter()
             .filter_map(|result| result.as_ref().err())
-            .all(|error| error.to_string().contains("already configured")));
+            .all(|error| matches!(error, NexusError::GasSourceAlreadyConfigured)));
         assert!(matches!(
             client
                 .gas_config()
