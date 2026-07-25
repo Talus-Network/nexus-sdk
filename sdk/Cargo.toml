@@ -95,7 +95,7 @@ events = [
 
 # Transactions feature enables the use of the `transactions` module. These are
 # used in the CLI and tests and hide away PTBs for various Nexus operations.
-transactions = ["types", "sui-move-ptb"]
+transactions = ["types", "sui-move-ptb", "thiserror"]
 
 # Provides various Nexus runtime utilities like execution of workflows. Move
 # package publishing helpers require the explicit `move_publish` feature.

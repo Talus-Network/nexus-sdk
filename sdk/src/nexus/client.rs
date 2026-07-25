@@ -9,8 +9,9 @@ use {
             crawler::Crawler,
             error::NexusError,
             gas::GasActions,
-            scheduler::SchedulerActions,
+            scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
+            transaction::NexusTransaction,
             workflow::WorkflowActions,
         },
         sui,
@@ -294,11 +295,16 @@ impl NexusClient {
         }
     }
 
-    /// Return a [`SchedulerActions`] instance for scheduler operations.
-    pub fn scheduler(&self) -> SchedulerActions {
-        SchedulerActions {
+    /// Returns the scheduler facade for this client.
+    pub fn scheduler(&self) -> Scheduler {
+        Scheduler {
             client: self.clone(),
         }
+    }
+
+    /// Starts one client scoped programmable transaction.
+    pub fn transaction(&self) -> NexusTransaction<'_> {
+        NexusTransaction::new(self)
     }
 
     /// Returns a

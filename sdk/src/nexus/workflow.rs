@@ -3,14 +3,19 @@
 //! - [`WorkflowActions::publish`] to publish a [`DagSpec`] instance to Nexus.
 //! - [`WorkflowActions::inspect_execution`] to monitor the execution of a DAG.
 //!
-//! Executions begin through
-//! [`SchedulerActions::create_task`](crate::nexus::scheduler::SchedulerActions::create_task).
+//! Runtime executions begin when an occurrence created through
+//! [`Scheduler`] is dispatched.
+//!
+//! [`Scheduler`]: crate::nexus::scheduler::Scheduler
+
+mod history;
 
 #[cfg(test)]
-use crate::nexus::object_history::MAX_TRANSACTION_NOT_FOUND_RETRIES;
+use self::history::MAX_TRANSACTION_NOT_FOUND_RETRIES;
 #[cfg(feature = "walrus")]
 use crate::walrus::StorageConf;
 use {
+    self::history::{fetch_shared_object_history, version_or_none, ObjectHistoryRequest},
     crate::{
         events::{NexusEvent, NexusEventKind, NexusEventQuery},
         move_bindings::{
@@ -38,7 +43,6 @@ use {
             client::NexusClient,
             crawler::{Crawler, ObjectUpdateReference},
             error::NexusError,
-            object_history::{fetch_shared_object_history, version_or_none, ObjectHistoryRequest},
             tap,
         },
         sui,

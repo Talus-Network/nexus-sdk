@@ -63,7 +63,7 @@ pub struct NexusPtbBuilder<'a> {
 
 #[cfg(feature = "transactions")]
 impl<'a> NexusPtbBuilder<'a> {
-    fn new(objects: &'a NexusObjects) -> Self {
+    pub(crate) fn new(objects: &'a NexusObjects) -> Self {
         Self {
             objects,
             tx: PtbBuilder::new(),
@@ -81,7 +81,8 @@ impl<'a> NexusPtbBuilder<'a> {
         target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
         arguments: Vec<Argument>,
     ) -> anyhow::Result<Argument> {
-        Ok(self.tx.call_target(target()?, arguments)?)
+        let target = crate::move_bindings::with_nexus_scope(self.objects, target)?;
+        Ok(self.tx.call_target(target, arguments)?)
     }
 
     /// Add an already built Move call target to this PTB.
@@ -110,7 +111,7 @@ impl<'a> NexusPtbBuilder<'a> {
         )?)
     }
 
-    /// Add a runtime-owned Move call with already validated type arguments.
+    /// Add a runtime owned Move call with already validated type arguments.
     pub fn call_function_with_type_args(
         &mut self,
         package: sui::types::Address,
@@ -423,7 +424,7 @@ pub fn ptb<'a>(
     build: impl FnOnce(&mut NexusPtbBuilder<'a>) -> anyhow::Result<()>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     let mut tx = NexusPtbBuilder::new(objects);
-    crate::move_bindings::with_nexus_scope(objects, || build(&mut tx))?;
+    build(&mut tx)?;
     Ok(tx.finish())
 }
 

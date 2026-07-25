@@ -1,4 +1,4 @@
-//! Shared object update history reconstruction.
+//! Workflow object update reconstruction.
 
 use {
     crate::{

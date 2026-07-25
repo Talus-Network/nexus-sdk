@@ -59,6 +59,30 @@ pub struct DynamicFieldReference<K> {
     pub field_id: sui::types::Address,
 }
 
+/// One RPC page of typed dynamic field values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DynamicFieldPage<K, V> {
+    data: Vec<(K, V)>,
+    next_cursor: Option<Vec<u8>>,
+}
+
+impl<K, V> DynamicFieldPage<K, V> {
+    /// Returns the decoded values in RPC order.
+    pub fn data(&self) -> &[(K, V)] {
+        &self.data
+    }
+
+    /// Returns the opaque cursor for the next RPC page.
+    pub fn next_cursor(&self) -> Option<&[u8]> {
+        self.next_cursor.as_deref()
+    }
+
+    /// Separates the decoded values from the opaque next page cursor.
+    pub fn into_parts(self) -> (Vec<(K, V)>, Option<Vec<u8>>) {
+        (self.data, self.next_cursor)
+    }
+}
+
 /// The on-chain reference that identifies the transaction which produced one
 /// version of an object.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -157,6 +181,60 @@ impl Crawler {
             .collect()
     }
 
+    async fn get_optional_objects_parsed<T>(
+        &self,
+        object_ids: &[sui::types::Address],
+        field_mask: sui::grpc::FieldMask,
+        parse_data: fn(&Crawler, &sui::grpc::Object) -> anyhow::Result<T>,
+    ) -> anyhow::Result<Vec<Option<Response<T>>>>
+    where
+        T: DeserializeOwned,
+    {
+        let results = self.fetch_object_results(object_ids, field_mask).await?;
+        if results.len() != object_ids.len() {
+            bail!(
+                "Batch object response contained {} results for {} requests",
+                results.len(),
+                object_ids.len()
+            );
+        }
+
+        object_ids
+            .iter()
+            .copied()
+            .zip(results)
+            .map(|(requested_id, result)| {
+                let object = match result.to_result() {
+                    Ok(object) => object,
+                    Err(status) if status.code == i32::from(tonic::Code::NotFound) => {
+                        return Ok(None);
+                    }
+                    Err(status) => {
+                        bail!(
+                            "Could not fetch object '{requested_id}': {}",
+                            status.message
+                        );
+                    }
+                };
+                let object_id = Self::parse_object_id(&object)?;
+                if object_id != requested_id {
+                    bail!("Requested object '{requested_id}', received object '{object_id}'");
+                }
+                let (owner, digest, version, balance) =
+                    self.parse_object_metadata(object_id, &object)?;
+                let data = parse_data(self, &object)?;
+                Ok(Some(Response {
+                    object_id,
+                    owner,
+                    version,
+                    data,
+                    digest,
+                    balance,
+                }))
+            })
+            .collect()
+    }
+
     fn parse_object_id(object: &sui::grpc::Object) -> anyhow::Result<sui::types::Address> {
         object
             .object_id_opt()
@@ -183,6 +261,46 @@ impl Crawler {
             .await
     }
 
+    /// Fetch an object when present.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for transport and decoding failures. A missing object
+    /// returns `Ok(None)`.
+    pub async fn get_optional_object<T>(
+        &self,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<Option<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
+        let Some(object) = self.fetch_optional_object(object_id, field_mask).await? else {
+            return Ok(None);
+        };
+        let returned_id = Self::parse_object_id(&object)?;
+        if returned_id != object_id {
+            bail!("Requested object '{object_id}', received object '{returned_id}'");
+        }
+        let (owner, digest, version, balance) = self.parse_object_metadata(object_id, &object)?;
+        let data = self.parse_object_contents_bcs::<T>(&object)?;
+        Ok(Some(Response {
+            object_id,
+            owner,
+            version,
+            data,
+            digest,
+            balance,
+        }))
+    }
+
     /// Fetch many objects by their IDs in batch and deserialize Move struct contents from BCS.
     pub async fn get_objects<T>(
         &self,
@@ -202,6 +320,43 @@ impl Crawler {
 
         self.get_objects_parsed(object_ids, field_mask, Self::parse_object_contents_bcs::<T>)
             .await
+    }
+
+    /// Fetches many objects that may no longer exist.
+    ///
+    /// Each result corresponds to the identifier at the same position in
+    /// `object_ids`. A missing object produces [`None`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC response is malformed, a present object
+    /// has the wrong identity, or transport or decoding fails.
+    pub async fn get_optional_objects<T>(
+        &self,
+        object_ids: &[sui::types::Address],
+    ) -> anyhow::Result<Vec<Option<Response<T>>>>
+    where
+        T: DeserializeOwned,
+    {
+        if object_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
+
+        self.get_optional_objects_parsed(
+            object_ids,
+            field_mask,
+            Self::parse_object_contents_bcs::<T>,
+        )
+        .await
     }
 
     /// Fetch the connected RPC's chain identifier in the 8-hex-char form
@@ -733,6 +888,120 @@ impl Crawler {
         Ok(None)
     }
 
+    /// Fetch one dynamic field directly from its parent and typed key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when key encoding, transport, or value decoding fails.
+    /// An absent field returns `Ok(None)`.
+    pub async fn get_dynamic_field_by_key<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        key: K,
+        key_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<Option<V>>
+    where
+        K: Eq + Serialize + DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let key_bytes = bcs::to_bytes(&key).context("Could not encode dynamic field key")?;
+        let field_id = parent_id.derive_dynamic_child_id(key_type, &key_bytes);
+        let Some(field) = self
+            .get_optional_object::<DynamicFieldValue<K, V>>(field_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if field.data.name != key {
+            bail!("Dynamic field '{field_id}' decoded with an unexpected key");
+        }
+        Ok(Some(field.data.value))
+    }
+
+    /// Fetch one RPC page of dynamic fields matching a key and value type.
+    ///
+    /// Fields from other namespaces are skipped. The returned cursor is the
+    /// unmodified cursor supplied by Sui for the requested page.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limit` is zero, the RPC request fails, or a
+    /// matching field object cannot be decoded.
+    pub async fn get_dynamic_field_page_matching_types<K, V>(
+        &self,
+        parent_id: sui::types::Address,
+        cursor: Option<Vec<u8>>,
+        limit: usize,
+        value_type_suffix: &str,
+    ) -> anyhow::Result<DynamicFieldPage<K, V>>
+    where
+        K: DeserializeOwned,
+        V: DeserializeOwned,
+    {
+        let page_size =
+            u32::try_from(limit).context("dynamic field page limit does not fit in u32")?;
+        if page_size == 0 {
+            bail!("dynamic field page limit must be greater than zero");
+        }
+
+        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id", "value_type"]);
+        let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+            .with_parent(parent_id)
+            .with_page_size(page_size)
+            .with_read_mask(field_mask);
+        if let Some(cursor) = cursor {
+            request = request.with_page_token(cursor);
+        }
+
+        let response = self
+            .client
+            .lock()
+            .await
+            .state_client()
+            .list_dynamic_fields(request)
+            .await
+            .map(|response| response.into_inner())
+            .map_err(|error| {
+                anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {error}")
+            })?;
+
+        let next_cursor = response.next_page_token.map(|cursor| cursor.to_vec());
+        let mut field_ids = Vec::new();
+        for field in response.dynamic_fields {
+            if !field
+                .value_type
+                .as_deref()
+                .is_some_and(|value_type| value_type.ends_with(value_type_suffix))
+            {
+                continue;
+            }
+            let Some(name) = field.name_opt() else {
+                continue;
+            };
+            if parse_dynamic_field_name::<K>(name.value()).is_err() {
+                continue;
+            }
+            let field_id = field
+                .field_id_opt()
+                .ok_or_else(|| anyhow!("Dynamic field ID missing for parent '{parent_id}'"))?
+                .parse()
+                .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?;
+            field_ids.push(field_id);
+        }
+
+        let data = if field_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.get_objects::<DynamicFieldValue<K, V>>(&field_ids)
+                .await?
+                .into_iter()
+                .map(|field| (field.data.name, field.data.value))
+                .collect()
+        };
+
+        Ok(DynamicFieldPage { data, next_cursor })
+    }
+
     /// Fetch dynamic field values from their field objects without decoding key
     /// names. This is useful for singleton dynamic fields whose on-chain name
     /// encoding is package-version dependent.
@@ -1007,24 +1276,28 @@ impl Crawler {
         object_id: sui::types::Address,
         field_mask: sui::grpc::FieldMask,
     ) -> anyhow::Result<sui::grpc::Object> {
+        self.fetch_optional_object(object_id, field_mask)
+            .await?
+            .ok_or_else(|| anyhow!("Object '{object_id}' not found"))
+    }
+
+    async fn fetch_optional_object(
+        &self,
+        object_id: sui::types::Address,
+        field_mask: sui::grpc::FieldMask,
+    ) -> anyhow::Result<Option<sui::grpc::Object>> {
         let mut client = self.client.lock().await;
 
         let request = sui::grpc::GetObjectRequest::default()
             .with_object_id(object_id)
             .with_read_mask(field_mask);
 
-        let response = client
-            .ledger_client()
-            .get_object(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow!("Could not fetch object: {e}"))?;
-
-        let Some(object) = response.object else {
-            bail!("Object '{object_id}' not found");
-        };
-
-        Ok(object)
+        match client.ledger_client().get_object(request).await {
+            Ok(response) => Ok(response.into_inner().object),
+            Err(status) if status.code() == tonic::Code::NotFound => Ok(None),
+            Err(status) => Err(anyhow::Error::new(status))
+                .with_context(|| format!("Could not fetch object '{object_id}'")),
+        }
     }
 
     /// Helper function to fetch many objects based on their IDs and field mask.
@@ -1033,6 +1306,25 @@ impl Crawler {
         object_ids: &[sui::types::Address],
         field_mask: sui::grpc::FieldMask,
     ) -> anyhow::Result<Vec<sui::grpc::Object>> {
+        let results = self.fetch_object_results(object_ids, field_mask).await?;
+
+        object_ids
+            .iter()
+            .copied()
+            .zip(results)
+            .map(|(object_id, result)| {
+                result.to_result().map_err(|status| {
+                    anyhow!("Could not fetch object '{object_id}': {}", status.message)
+                })
+            })
+            .collect()
+    }
+
+    async fn fetch_object_results(
+        &self,
+        object_ids: &[sui::types::Address],
+        field_mask: sui::grpc::FieldMask,
+    ) -> anyhow::Result<Vec<sui::grpc::GetObjectResult>> {
         let request = {
             let mut req = sui::grpc::BatchGetObjectsRequest::default();
 
@@ -1061,17 +1353,7 @@ impl Crawler {
             .map(|r| r.into_inner())
             .map_err(|e| anyhow!("Could not fetch objects: {e}"))?;
 
-        let mut objects = Vec::with_capacity(object_ids.len());
-
-        for result in response.objects {
-            let object = result
-                .object_opt()
-                .ok_or_else(|| anyhow!("Object not found"))?;
-
-            objects.push(object.clone());
-        }
-
-        Ok(objects)
+        Ok(response.objects)
     }
 
     /// Helper function to fetch all dynamic fields for a given parent object.
@@ -1616,6 +1898,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn optional_object_batch_preserves_missing_positions() {
+        let first_id = sui::types::Address::from_static("0x71");
+        let missing_id = sui::types::Address::from_static("0x72");
+        let last_id = sui::types::Address::from_static("0x73");
+        let requested_ids = [first_id, missing_id, last_id];
+        let first_ref = sui_mocks::object_ref_for_id(first_id);
+        let last_ref = sui_mocks::object_ref_for_id(last_id);
+        let expected_ids = requested_ids.map(|id| id.to_string());
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |request| {
+                let actual_ids = request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| request.object_id.clone().expect("object ID"))
+                    .collect::<Vec<_>>();
+                assert_eq!(actual_ids, expected_ids);
+
+                let missing = sui_rpc::proto::google::rpc::Status {
+                    code: tonic::Code::NotFound.into(),
+                    message: "object not found".to_owned(),
+                    ..Default::default()
+                };
+                let response = sui::grpc::BatchGetObjectsResponse::new(vec![
+                    sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                        first_ref,
+                        sui::types::Owner::Shared(1),
+                        &TestValue { value: 3 },
+                    )),
+                    sui::grpc::GetObjectResult::new_error(missing),
+                    sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                        last_ref,
+                        sui::types::Owner::Shared(1),
+                        &TestValue { value: 5 },
+                    )),
+                ]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let objects = crawler
+            .get_optional_objects::<TestValue>(&requested_ids)
+            .await
+            .expect("optional objects load");
+
+        assert_eq!(
+            objects[0].as_ref().map(|object| &object.data),
+            Some(&TestValue { value: 3 })
+        );
+        assert!(objects[1].is_none());
+        assert_eq!(
+            objects[2].as_ref().map(|object| &object.data),
+            Some(&TestValue { value: 5 })
+        );
+    }
+
+    #[tokio::test]
     async fn fetch_coins_for_address_by_type_reads_every_page() {
         let owner = sui::types::Address::from_static("0xa");
         let object_type = sui::types::StructTag::gas_coin();
@@ -1871,6 +2219,116 @@ mod tests {
             .expect("dynamic field value decodes");
 
         assert_eq!(fields.get(&key), Some(&TestValue { value: 42 }));
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_field_by_key_derives_the_field_identity() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key = 7_u64;
+        let key_type = sui::types::TypeTag::U64;
+        let field_id = parent_id
+            .derive_dynamic_child_id(&key_type, &bcs::to_bytes(&key).expect("key serializes"));
+        let field_ref = sui_mocks::object_ref_for_id(field_id);
+        let field = DynamicFieldValue {
+            id: field_id,
+            name: key,
+            value: TestValue { value: 42 },
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger_service_mock,
+            field_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&field).expect("dynamic field serializes"),
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let value = crawler
+            .get_dynamic_field_by_key::<u64, TestValue>(parent_id, key, &key_type)
+            .await
+            .expect("dynamic field loads");
+
+        assert_eq!(value, Some(TestValue { value: 42 }));
+    }
+
+    #[tokio::test]
+    async fn dynamic_field_page_forwards_both_cursors_unchanged() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key = TestKey {
+            name: "occurrence".to_owned(),
+        };
+        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x71"));
+        let request_cursor = Vec::from(&b"request-cursor"[..]);
+        let response_cursor = Vec::from(&b"response-cursor"[..]);
+        let expected_parent = parent_id.to_string();
+        let listed_field_ref = field_ref.clone();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_dynamic_fields()
+            .times(1)
+            .return_once({
+                let key = key.clone();
+                let expected_parent = expected_parent.clone();
+                let request_cursor = request_cursor.clone();
+                let response_cursor = response_cursor.clone();
+                move |request| {
+                    let request = request.get_ref();
+                    assert_eq!(request.parent.as_deref(), Some(expected_parent.as_str()));
+                    assert_eq!(request.page_size, Some(2));
+                    assert_eq!(
+                        request.page_token.as_deref(),
+                        Some(request_cursor.as_slice())
+                    );
+
+                    let mut field = sui::grpc::DynamicField::default();
+                    field.set_field_id(*listed_field_ref.object_id());
+                    let mut name = sui::grpc::Bcs::default();
+                    name.set_value(bcs::to_bytes(&key).expect("key serializes"));
+                    field.set_name(name);
+                    field.set_value_type("0xa5::task::OccurrenceRecord");
+                    let mut response = sui::grpc::ListDynamicFieldsResponse::default();
+                    response.set_dynamic_fields(vec![field]);
+                    response.next_page_token = Some(response_cursor.into());
+                    Ok(tonic::Response::new(response))
+                }
+            });
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                field_ref,
+                sui::types::Owner::Shared(1),
+                key.clone(),
+                TestValue { value: 42 },
+            )],
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+
+        let page = crawler
+            .get_dynamic_field_page_matching_types::<TestKey, TestValue>(
+                parent_id,
+                Some(request_cursor),
+                2,
+                "::task::OccurrenceRecord",
+            )
+            .await
+            .expect("dynamic field page loads");
+
+        assert_eq!(page.data(), &[(key, TestValue { value: 42 })]);
+        assert_eq!(page.next_cursor(), Some(response_cursor.as_slice()));
     }
 
     #[tokio::test]

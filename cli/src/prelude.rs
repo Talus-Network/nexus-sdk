@@ -80,14 +80,16 @@ pub(crate) struct GasArgs {
         long = "sui-gas-coin",
         short = 'g',
         help = "The gas coin object ID. First coin object is chosen if not present.",
+        help_heading = "Gas",
         value_name = "OBJECT_ID"
     )]
     pub(crate) sui_gas_coin: Option<sui::types::Address>,
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
-        help = "The gas budget for the transaction.",
-        value_name = "AMOUNT",
+        help = "Maximum MIST spent on Sui transaction gas.",
+        help_heading = "Gas",
+        value_name = "MIST",
         default_value_t = DEFAULT_GAS_BUDGET
     )]
     pub(crate) sui_gas_budget: u64,

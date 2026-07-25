@@ -1,5 +1,5 @@
 //! Module defining container setups via
-//! [`testcontainers`](testcontainers_modules::testcontainers).
+//! [`testcontainers`].
 //!
 //! The module supports Sui and Redis.
 

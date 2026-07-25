@@ -54,20 +54,28 @@ Commands:
   tool        Manage Nexus Tools
   conf        Manage Nexus Configuration
   dag         Validate and publish Nexus DAGs
-  schedule    Manage scheduled tasks and occurrences
+  task        Create and operate scheduled Tasks
   gas         Manage Nexus gas budgets and tickets
   tap         Prepare and operate standard TAP skills
   completion  Provide shell completions
   help        Print this message or the help of the given subcommand(s)
 
 Options:
-      --json        Change the output format to JSON
+      --json        Emit machine readable JSON
   -v, --verbose...  More output per occurrence
   -q, --quiet...    Less output per occurrence
   -h, --help        Print help
   -V, --version     Print version
 
 ```
+
+Scheduled work follows `Task -> Schedule -> Occurrence`.
+
+`nexus task create` creates an empty Task for later composition.
+`nexus task schedule` creates a Task and applies a complete nonempty Schedule
+atomically. Task and occurrence inspection read durable object state. Run
+`nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
+retained occurrence records, and `nexus task --help` for complete examples.
 
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 

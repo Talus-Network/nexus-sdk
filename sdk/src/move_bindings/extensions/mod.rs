@@ -12,7 +12,6 @@ mod payment;
 mod ports_data;
 mod priority_fee_vault;
 mod runtime_vertex;
-mod scheduler_models;
 mod shared_object_ref;
 mod support;
 mod tap;

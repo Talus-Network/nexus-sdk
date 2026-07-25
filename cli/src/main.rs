@@ -7,9 +7,9 @@ mod error;
 mod gas;
 mod nexus_data_json;
 mod prelude;
-mod schedule;
 mod sui;
 mod tap;
+mod task;
 mod tool;
 mod workflow;
 
@@ -22,7 +22,8 @@ struct Cli {
     #[arg(
         global = true,
         long = "json",
-        help = "Change the output format to JSON"
+        help = "Emit machine readable JSON",
+        help_heading = "Output"
     )]
     json: bool,
 
@@ -41,8 +42,8 @@ enum Command {
     Conf(conf::ConfCommand),
     #[command(subcommand, about = "Validate and publish Nexus DAGs")]
     Dag(dag::DagCommand),
-    #[command(subcommand, about = "Manage scheduled tasks and occurrences")]
-    Schedule(schedule::ScheduleCommand),
+    #[command(subcommand, about = "Create and operate scheduled Tasks")]
+    Task(Box<task::TaskCommand>),
     #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
     Gas(gas::GasCommand),
     #[command(subcommand, about = "Prepare and operate standard TAP skills")]
@@ -90,8 +91,8 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Gas(gas) => gas::handle(gas).await,
-        Command::Schedule(schedule) => schedule::handle(schedule).await,
         Command::Tap(tap) => tap::handle(tap).await,
+        Command::Task(task) => task::handle(*task).await,
         Command::Completion(completion) => completion::handle(completion),
     };
 
