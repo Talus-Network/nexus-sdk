@@ -440,27 +440,30 @@ fn register_on_chain_for_self_with_collateral_ptb(
         let pay_with = collateral.ptb_argument(tx)?;
         let clock = tx.clock()?;
 
-        let target = if workflow_authorization_cap_first {
-            tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target()?
+        let arguments = vec![
+            tool_registry,
+            package_addr,
+            module_name,
+            fqn,
+            description,
+            input_schema,
+            output_schema,
+            timeout_ms,
+            tool_witness_id,
+            pay_with,
+            clock,
+        ];
+        let register_result = if workflow_authorization_cap_first {
+            tx.call_target(
+                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
+                arguments,
+            )?
         } else {
-            tool_registry_binding::register_on_chain_tool_target()?
+            tx.call_target(
+                tool_registry_binding::register_on_chain_tool_target,
+                arguments,
+            )?
         };
-        let register_result = tx.call_target(
-            || Ok(target),
-            vec![
-                tool_registry,
-                package_addr,
-                module_name,
-                fqn,
-                description,
-                input_schema,
-                output_schema,
-                timeout_ms,
-                tool_witness_id,
-                pay_with,
-                clock,
-            ],
-        )?;
 
         let registration = configure_registration(tx, register_result, 0)?;
         finish_registrations(tx, &[registration], address)?;
@@ -1130,30 +1133,46 @@ mod tests {
     }
 
     #[test]
-    fn on_chain_registration_can_source_collateral_from_address_balance() {
+    fn on_chain_registration_scopes_generated_targets_and_uses_address_balance() {
         let objects = sui_mocks::mock_nexus_objects();
         let address = sui_mocks::mock_sui_address();
         let package = sui_mocks::mock_sui_address();
         let witness = sui_mocks::mock_sui_address();
         let fqn = "xyz.taluslabs.example@1".parse().unwrap();
 
-        let ptb = register_on_chain_for_self_with_address_balance_ptb(
-            &objects,
-            package,
-            "example",
-            &fqn,
-            "example",
-            "{}",
-            "{}",
-            Duration::from_secs(1),
-            witness,
-            42,
-            address,
-            false,
-        )
-        .unwrap();
+        for (workflow_authorization_cap_first, expected_function) in [
+            (false, "register_on_chain_tool"),
+            (
+                true,
+                "register_on_chain_tool_with_workflow_authorization_cap",
+            ),
+        ] {
+            let ptb = register_on_chain_for_self_with_address_balance_ptb(
+                &objects,
+                package,
+                "example",
+                &fqn,
+                "example",
+                "{}",
+                "{}",
+                Duration::from_secs(1),
+                witness,
+                42,
+                address,
+                workflow_authorization_cap_first,
+            )
+            .unwrap();
 
-        assert_us_address_balance_withdrawal(&objects, &ptb, 42);
+            assert_us_address_balance_withdrawal(&objects, &ptb, 42);
+            let registration = move_calls(&ptb)
+                .into_iter()
+                .find(|call| {
+                    call.module.as_str() == "tool_registry"
+                        && call.function.as_str() == expected_function
+                })
+                .expect("on chain registration call");
+            assert_eq!(registration.package, objects.registry_pkg_id);
+        }
     }
 
     #[test]
