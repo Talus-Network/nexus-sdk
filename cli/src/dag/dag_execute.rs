@@ -69,7 +69,7 @@ pub(crate) async fn execute_dag(
 
     let payment_coin_id = required_payment_coin(payment_coin, sui_gas_coin)?;
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let owner = nexus_client.owner();
+    let owner = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let (payment_coin, balance) = nexus_client
         .fetch_coin_with_balance(payment_coin_id)
         .await

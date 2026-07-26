@@ -28,7 +28,7 @@ pub(crate) async fn unregister_tool(
     }
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let signer = nexus_client.signer();
+    let signer = nexus_client.signer().map_err(NexusCliError::Nexus)?;
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();

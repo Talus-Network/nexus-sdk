@@ -333,7 +333,7 @@ impl TapActions {
             options.environment.clone(),
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let modules = package.package.get_package_bytes(false);
         let dependencies = publish_dependency_ids_or_framework_defaults(
             package
@@ -395,7 +395,7 @@ impl TapActions {
 
     /// Create a standard Talus agent through the configured TAP registry.
     pub async fn create_agent(&self) -> Result<CreateAgentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let tx = tap_tx::create_agent_for_self_ptb(nexus_objects, address)
             .map_err(NexusError::TransactionBuilding)?;
@@ -443,7 +443,7 @@ impl TapActions {
         agent_id: AgentId,
         artifact: &TapPublishArtifact,
     ) -> Result<RegisterSkillResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let agent_object = self
             .client
@@ -513,7 +513,7 @@ impl TapActions {
         skill_id: SkillId,
         artifact: &TapPublishArtifact,
     ) -> Result<UpdateSkillResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let agent_object = self
             .client
@@ -569,7 +569,7 @@ impl TapActions {
         &self,
         params: DepositAgentVaultParams,
     ) -> Result<DepositAgentVaultResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let agent_object = self
             .client
@@ -608,7 +608,7 @@ impl TapActions {
         &self,
         params: AccomplishExecutionPaymentParams,
     ) -> Result<AccomplishExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let crawler = self.client.crawler();
 
         let execution_ref = crawler
@@ -648,7 +648,7 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let execution_ref = self
             .client
             .crawler()
@@ -679,7 +679,7 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentFromAgentVaultParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let crawler = self.client.crawler();
         let execution_ref = crawler
             .get_object_metadata(params.execution_id)
@@ -736,7 +736,7 @@ impl TapActions {
             ));
         }
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let agent_ref = self
@@ -858,7 +858,7 @@ impl TapActions {
         agent_id: AgentId,
         action: AgentTaskStateAction,
     ) -> Result<SetAgentTaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
         let task_ref = crawler
@@ -903,7 +903,7 @@ impl TapActions {
     ) -> Result<BindAgentSkillResult, NexusError> {
         let BindAgentSkillParams { artifact } = params;
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let dag = self
             .client

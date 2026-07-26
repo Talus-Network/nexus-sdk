@@ -111,7 +111,7 @@ impl GasActions {
         &self,
         exchange_rate_sui_us: u64,
     ) -> Result<ConfigurePriorityFeeVaultResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate_sui_us)
             .map_err(NexusError::TransactionBuilding)?;
@@ -129,7 +129,7 @@ impl GasActions {
         us_coin: sui::types::Address,
         min_sui_out: u64,
     ) -> Result<SwapUsForSuiResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
         let us_coin = crawler
@@ -201,7 +201,7 @@ impl GasActions {
         leader_cap: sui::types::Address,
         share_to_withdraw: u64,
     ) -> Result<WithdrawPriorityFeeResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
         let leader_cap = crawler
@@ -229,7 +229,7 @@ impl GasActions {
         owner_cap: sui::types::Address,
         cost_per_minute: u64,
     ) -> Result<EnableExpiryExtensionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 
@@ -263,7 +263,7 @@ impl GasActions {
         tool_fqn: crate::tool_fqn::ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<DisableExpiryExtensionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 
@@ -297,7 +297,7 @@ impl GasActions {
         invocations: u64,
         coin: sui::types::Address,
     ) -> Result<BuyLimitedInvocationsTicketResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 
@@ -339,7 +339,7 @@ impl GasActions {
         min_invocations: u64,
         max_invocations: u64,
     ) -> Result<EnableLimitedInvocationsExtensionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 
@@ -380,7 +380,7 @@ impl GasActions {
         tool_fqn: crate::tool_fqn::ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<DisableLimitedInvocationsExtensionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 
@@ -414,7 +414,7 @@ impl GasActions {
         minutes: u64,
         coin: sui::types::Address,
     ) -> Result<BuyExpiryTicketResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let crawler = self.client.crawler();
 

@@ -331,7 +331,7 @@ impl SchedulerActions {
                 })
                 .await;
         }
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let tap_payment_result =
@@ -403,7 +403,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         metadata: Vec<(String, String)>,
     ) -> Result<UpdateMetadataResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -425,7 +425,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         request: TaskStateAction,
     ) -> Result<TaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -451,7 +451,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         request: OccurrenceRequest,
     ) -> Result<ScheduleExecutionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let task = self.fetch_task(task_id).await?;
 
         self.enqueue_occurrence(&task, request, address).await
@@ -463,7 +463,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         config: PeriodicScheduleConfig,
     ) -> Result<PeriodicScheduleResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
@@ -493,7 +493,7 @@ impl SchedulerActions {
         &self,
         task_id: sui::types::Address,
     ) -> Result<DisablePeriodicResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();

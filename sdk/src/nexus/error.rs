@@ -4,6 +4,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NexusError {
+    #[error("a private key is required for this operation")]
+    MissingPrivateKey,
     #[error("Sui wallet error: {0}")]
     Wallet(anyhow::Error),
     #[error("Client configuration error: {0}")]

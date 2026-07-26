@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added `NexusClient::clone_grpc_client` for independently owned gRPC transports that do not acquire the crawler-owned client mutex.
 - Added an atomic PTB builder for registering multiple off chain tools and their initial network authorization keys from one address balance withdrawal.
 - Move binding regeneration now accepts an optional matching Move source root for restoring
   function parameter names. Network package metadata remains authoritative, and regeneration
@@ -23,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- `NexusClientBuilder` now supports keyless query-only clients, while owner, gas, signing, and submission operations return a typed missing-private-key error when no signer is configured.
 - `NexusClientBuilder` can now build clients without gas for read-only use, while `NexusClient::set_gas_source` supports shared write-once transaction gas attachment after construction.
 - Replaced the Nexus specific event poller with typed Sui event queries and a
   generic ingestor that shares filters and read masks across replay and live

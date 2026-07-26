@@ -127,7 +127,7 @@ impl NetworkAuthActions {
         tool_signing_key: SigningKey,
         description: Option<Vec<u8>>,
     ) -> Result<RegisteredToolKey, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let codec =

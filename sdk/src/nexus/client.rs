@@ -219,11 +219,9 @@ impl NexusClientBuilder {
     /// missing, both gas sources are configured, or coin based gas is
     /// explicitly configured without a coin. Returns [`NexusError::Rpc`] when
     /// the client or coin based gas context cannot be initialized.
+    /// Returns [`NexusError::MissingPrivateKey`] when a gas source is
+    /// configured without a signing key.
     pub async fn build(self) -> Result<NexusClient, NexusError> {
-        let pk = self
-            .pk
-            .ok_or_else(|| NexusError::Configuration("User's private key is required".into()))?;
-
         let rpc_url = self
             .rpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
@@ -250,19 +248,22 @@ impl NexusClientBuilder {
         let client = Arc::new(Mutex::new(
             sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?,
         ));
+        let crawler = Crawler::new(client);
 
-        let signer = Signer::new(
-            Arc::clone(&client),
-            pk,
-            self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
-            Arc::clone(&nexus_objects),
-        );
+        let signer = self.pk.map(|pk| {
+            Signer::new(
+                crawler.grpc_client(),
+                pk,
+                self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
+                Arc::clone(&nexus_objects),
+            )
+        });
 
         let nexus_client = NexusClient {
             signer,
             gas: Arc::new(OnceCell::new()),
             nexus_objects,
-            crawler: Crawler::new(client),
+            crawler,
             rpc_url,
         };
         if let Some(gas_source) = gas_source {
@@ -276,8 +277,8 @@ impl NexusClientBuilder {
 #[derive(Clone)]
 pub struct NexusClient {
     /// The wallet context to use for transactions. This defines the TX sender
-    /// address and the RPC connection.
-    pub(super) signer: Signer,
+    /// address when a private key was configured.
+    pub(super) signer: Option<Signer>,
     /// Shared optional gas configuration for Nexus operations.
     gas: Arc<OnceCell<GasSource>>,
     /// Nexus objects to use.
@@ -342,13 +343,26 @@ impl NexusClient {
     }
 
     /// Return the owner address derived from this client's signing key.
-    pub fn owner(&self) -> sui::types::Address {
-        self.signer.get_active_address()
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
+    pub fn owner(&self) -> Result<sui::types::Address, NexusError> {
+        Ok(self.signer()?.get_active_address())
     }
 
     /// Return the shared gRPC client used by this client.
     pub fn grpc_client(&self) -> Arc<Mutex<sui::grpc::Client>> {
-        Arc::clone(&self.signer.client)
+        self.crawler.grpc_client()
+    }
+
+    /// Create a fresh gRPC client for independently owned or long-lived operations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Rpc`] when the configured RPC URL cannot create a client.
+    pub fn clone_grpc_client(&self) -> Result<sui::grpc::Client, NexusError> {
+        sui::grpc::client(&self.rpc_url).map_err(NexusError::Rpc)
     }
 
     /// Fetch every coin owned by this client's signing address with the exact
@@ -357,12 +371,14 @@ impl NexusClient {
     /// # Errors
     ///
     /// Returns [`NexusError::Rpc`] when the owned-object query fails.
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
     pub async fn fetch_coins_by_type(
         &self,
         object_type: sui::types::StructTag,
     ) -> Result<Vec<(sui::types::ObjectReference, u64)>, NexusError> {
+        let owner = self.owner()?;
         self.crawler
-            .fetch_coins_for_address_by_type(self.owner(), object_type)
+            .fetch_coins_for_address_by_type(owner, object_type)
             .await
             .map_err(NexusError::Rpc)
     }
@@ -374,6 +390,7 @@ impl NexusClient {
     /// Returns [`NexusError::Wallet`] when the signing address owns no SUI
     /// coins or does not own `coin_id`. Returns [`NexusError::Rpc`] when the
     /// owned-object query fails.
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
     pub async fn fetch_coin(
         &self,
         coin_id: sui::types::Address,
@@ -390,6 +407,7 @@ impl NexusClient {
     /// Returns [`NexusError::Wallet`] when the signing address owns no SUI
     /// coins or does not own `coin_id`. Returns [`NexusError::Rpc`] when the
     /// owned-object query fails.
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
     pub async fn fetch_coin_with_balance(
         &self,
         coin_id: sui::types::Address,
@@ -423,6 +441,7 @@ impl NexusClient {
     /// Returns [`NexusError::Wallet`] when no matching coin exists or the
     /// ordinal is out of range. Returns [`NexusError::Rpc`] when the
     /// owned-object query fails.
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
     pub async fn fetch_coin_by_type(
         &self,
         coin_id: Option<sui::types::Address>,
@@ -466,9 +485,13 @@ impl NexusClient {
         &self.rpc_url
     }
 
-    /// Return a [`Signer`] instance for signing transactions.
-    pub fn signer(&self) -> &Signer {
-        &self.signer
+    /// Return the [`Signer`] configured for this client.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::MissingPrivateKey`] for a query-only client.
+    pub fn signer(&self) -> Result<&Signer, NexusError> {
+        self.signer.as_ref().ok_or(NexusError::MissingPrivateKey)
     }
 
     /// Returns a [`NexusEventIngestor`] for this Nexus deployment.
@@ -487,10 +510,11 @@ impl NexusClient {
     /// # Errors
     ///
     /// Returns [`NexusError::GasSourceAlreadyConfigured`] when gas is already
-    /// attached, or [`NexusError::Configuration`] when coin based gas has no
-    /// coins. Returns [`NexusError::Rpc`] when the reference gas price cannot
-    /// be fetched.
+    /// attached, [`NexusError::MissingPrivateKey`] when no signing key is
+    /// configured, or [`NexusError::Configuration`] when coin based gas has no
+    /// coins. Returns [`NexusError::Rpc`] when the reference gas price cannot be fetched.
     pub async fn set_gas_source(&self, mut source: GasSource) -> Result<(), NexusError> {
+        self.signer()?;
         if self.gas.get().is_some() {
             return Err(NexusError::GasSourceAlreadyConfigured);
         }
@@ -502,7 +526,7 @@ impl NexusClient {
                         "at least one gas coin is required for coin based gas".into(),
                     ));
                 }
-                let mut client = self.signer.client.lock().await.clone();
+                let mut client = self.clone_grpc_client()?;
                 let reference_gas_price = client
                     .get_reference_gas_price()
                     .await
@@ -546,6 +570,7 @@ impl NexusClient {
         tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
+        let signer = self.signer()?;
         let gas = self.gas_configured()?;
         match &gas {
             GasSource::Coin(pool) => {
@@ -564,18 +589,18 @@ impl NexusClient {
                     },
                     expiration: sui::types::TransactionExpiration::None,
                 };
-                let signature = self.signer.sign_tx(&tx).await?;
-                let response = self.signer.execute_tx(tx, signature, &mut gas_coin).await;
+                let signature = signer.sign_tx(&tx).await?;
+                let response = signer.execute_tx(tx, signature, &mut gas_coin).await;
                 pool.release_gas_coin(gas_coin).await;
                 response
             }
             GasSource::AddressBalance(gas) => {
-                let mut client = self.signer.client.lock().await.clone();
+                let mut client = self.clone_grpc_client()?;
                 let context = fetch_submission_context(&mut client).await?;
                 let nonce = gas.allocate_nonce()?;
                 let tx = finish_transaction(tx, address, gas.budget, context, nonce);
-                let signature = self.signer.sign_tx(&tx).await?;
-                self.signer.execute_tx_without_gas_coin(tx, signature).await
+                let signature = signer.sign_tx(&tx).await?;
+                signer.execute_tx_without_gas_coin(tx, signature).await
             }
         }
     }
@@ -727,6 +752,15 @@ mod tests {
             .expect("client without gas should build")
     }
 
+    async fn keyless_client(rpc_url: &str) -> NexusClient {
+        NexusClientBuilder::new()
+            .with_rpc_url(rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("query-only client should build without a private key")
+    }
+
     #[tokio::test]
     async fn released_coin_can_be_acquired_again() {
         let coin1 = sui_mocks::mock_sui_object_ref();
@@ -815,7 +849,13 @@ mod tests {
                 .get_budget(),
             budget
         );
-        assert_eq!(client.signer.transaction_timeout, Duration::from_secs(5));
+        assert_eq!(
+            client
+                .signer()
+                .expect("private key should configure a signer")
+                .transaction_timeout,
+            Duration::from_secs(5)
+        );
     }
 
     #[tokio::test]
@@ -864,19 +904,192 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_builder_missing_pk() {
-        let coin = sui_mocks::mock_sui_object_ref();
-        let coins = vec![coin];
-        let objects = sui_mocks::mock_nexus_objects();
-        let budget = 1000;
+    async fn builder_without_private_key_supports_crawler_reads() {
+        let object = sui_mocks::mock_sui_object_ref();
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            object.clone(),
+            sui::types::Owner::Immutable,
+            None,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = keyless_client(&rpc_url).await;
 
-        let builder = NexusClientBuilder::new()
-            .with_rpc_url("https://fullnode.testnet.sui.io:443")
-            .with_nexus_objects(objects)
-            .with_gas(coins, budget);
+        let response = client
+            .crawler()
+            .get_object_metadata(*object.object_id())
+            .await
+            .expect("query-only crawler read should succeed");
 
-        let result = builder.build().await;
-        assert!(matches!(result, Err(NexusError::Configuration(_))));
+        assert_eq!(response.object_ref(), object);
+    }
+
+    #[tokio::test]
+    async fn keyless_client_supports_read_only_action_queries() {
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_object()
+            .times(2)
+            .returning(|_| Err(tonic::Status::not_found("object not present")));
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = keyless_client(&rpc_url).await;
+        let tool_fqn = "xyz.demo.tool@1"
+            .parse()
+            .expect("test tool FQN should parse");
+
+        let inspection = client
+            .tool()
+            .inspect_tool(&tool_fqn)
+            .await
+            .expect("query-only Tool action should succeed");
+
+        assert!(!inspection.exists);
+    }
+
+    #[tokio::test]
+    async fn builder_with_gas_without_private_key_returns_missing_private_key() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let result = NexusClientBuilder::new()
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .with_address_balance_gas(1_000)
+            .build()
+            .await;
+
+        assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
+    }
+
+    #[tokio::test]
+    async fn keyless_owner_and_signer_return_missing_private_key() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+
+        assert!(matches!(client.owner(), Err(NexusError::MissingPrivateKey)));
+        assert!(matches!(
+            client.signer(),
+            Err(NexusError::MissingPrivateKey)
+        ));
+    }
+
+    #[tokio::test]
+    async fn keyless_owned_coin_query_returns_missing_private_key_before_rpc() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+
+        let result = client
+            .fetch_coins_by_type(sui::types::StructTag::gas_coin())
+            .await;
+
+        assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
+    }
+
+    #[tokio::test]
+    async fn keyless_gas_attachment_returns_missing_private_key_before_source_validation() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+
+        let result = client.set_gas_source(GasSource::coin(vec![], 1_000)).await;
+
+        assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
+        assert!(client.gas_config().is_none());
+    }
+
+    #[tokio::test]
+    async fn keyless_submission_returns_missing_private_key_before_missing_gas() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+
+        let result = client
+            .submit_transaction(
+                sui::types::ProgrammableTransaction {
+                    inputs: vec![],
+                    commands: vec![],
+                },
+                sui::types::Address::ZERO,
+            )
+            .await;
+
+        assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
+    }
+
+    #[tokio::test]
+    async fn keyless_mutating_action_returns_missing_private_key_before_submission() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+
+        let result = client.gas().configure_priority_fee_vault(1).await;
+
+        assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
+    }
+
+    #[tokio::test]
+    async fn keyless_client_exposes_crawler_owned_raw_handle() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("query-only client should build without a private key");
+        let client_handle = client.grpc_client();
+        let crawler_handle = client.crawler().grpc_client();
+
+        assert!(Arc::ptr_eq(&client_handle, &crawler_handle));
+    }
+
+    #[tokio::test]
+    async fn clone_grpc_client_uses_stored_rpc_url() {
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 42);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = keyless_client(&rpc_url).await;
+
+        let mut fresh_client = client
+            .clone_grpc_client()
+            .expect("stored mock RPC URL should create a fresh client");
+
+        assert_eq!(
+            fresh_client
+                .get_reference_gas_price()
+                .await
+                .expect("fresh client should use the stored mock RPC URL"),
+            42
+        );
+    }
+
+    #[tokio::test]
+    async fn clone_grpc_client_maps_invalid_rpc_url() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let mut client = keyless_client(&rpc_url).await;
+        client.rpc_url = "not a URL".into();
+
+        let Err(error) = client.clone_grpc_client() else {
+            panic!("invalid RPC URL should fail client construction");
+        };
+
+        assert!(matches!(error, NexusError::Rpc(_)));
+    }
+
+    #[tokio::test]
+    async fn clone_grpc_client_does_not_acquire_crawler_mutex() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+        let shared_client = client.grpc_client();
+        let _shared_guard = shared_client.lock().await;
+
+        client
+            .clone_grpc_client()
+            .expect("fresh client construction should not acquire crawler mutex");
     }
 
     #[tokio::test]
@@ -944,8 +1157,20 @@ mod tests {
             .await
             .expect("client without gas should build");
 
-        assert_eq!(client.owner(), owner);
-        assert!(Arc::ptr_eq(&client.grpc_client(), &client.signer.client));
+        assert_eq!(
+            client
+                .owner()
+                .expect("private key should configure an owner"),
+            owner
+        );
+        let client_handle = client.grpc_client();
+        let crawler_handle = client.crawler().grpc_client();
+        let signer_handle = &client
+            .signer()
+            .expect("private key should configure a signer")
+            .client;
+        assert!(Arc::ptr_eq(&client_handle, &crawler_handle));
+        assert!(Arc::ptr_eq(&crawler_handle, signer_handle));
     }
 
     #[tokio::test]
@@ -1436,7 +1661,13 @@ mod tests {
                 .get_budget(),
             budget
         );
-        assert_eq!(client.signer.transaction_timeout, Duration::from_secs(10));
+        assert_eq!(
+            client
+                .signer()
+                .expect("private key should configure a signer")
+                .transaction_timeout,
+            Duration::from_secs(10)
+        );
     }
 
     #[tokio::test]
@@ -1500,7 +1731,10 @@ mod tests {
             .gas_config()
             .expect("mock client should configure coin gas");
         let mut gas_coin = gas.coin_pool().unwrap().acquire_gas_coin().await;
-        let sender = client.signer.get_active_address();
+        let signer = client
+            .signer()
+            .expect("mock client should configure a signer");
+        let sender = signer.get_active_address();
         let tx = sui::types::Transaction {
             kind: sui::types::TransactionKind::ProgrammableTransaction(
                 sui::types::ProgrammableTransaction {
@@ -1517,10 +1751,9 @@ mod tests {
             },
             expiration: sui::types::TransactionExpiration::None,
         };
-        let signature = client.signer.sign_tx(&tx).await.unwrap();
+        let signature = signer.sign_tx(&tx).await.unwrap();
 
-        let response = client
-            .signer
+        let response = signer
             .execute_tx(tx, signature, &mut gas_coin)
             .await
             .unwrap();
@@ -1565,7 +1798,10 @@ mod tests {
             ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-        let sender = client.signer.get_active_address();
+        let signer = client
+            .signer()
+            .expect("mock client should configure a signer");
+        let sender = signer.get_active_address();
         let tx = crate::nexus::address_balance::finish_transaction(
             sui::types::ProgrammableTransaction {
                 inputs: vec![],
@@ -1580,10 +1816,9 @@ mod tests {
             },
             0,
         );
-        let signature = client.signer.sign_tx(&tx).await.unwrap();
+        let signature = signer.sign_tx(&tx).await.unwrap();
 
-        let response = client
-            .signer
+        let response = signer
             .execute_tx_without_gas_coin(tx, signature)
             .await
             .unwrap();

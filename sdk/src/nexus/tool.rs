@@ -93,7 +93,7 @@ impl ToolActions {
         new_timeout: Duration,
         owner_cap: sui::types::Address,
     ) -> Result<UpdateToolTimeoutResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
 
         let owner_cap = self
@@ -127,7 +127,7 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let (tool_id, tool, owner_cap) =
             self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
@@ -169,7 +169,7 @@ impl ToolActions {
         function_name: &str,
         verifier_object_ids: &[sui::types::Address],
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let (tool_id, tool, owner_cap) =
             self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;

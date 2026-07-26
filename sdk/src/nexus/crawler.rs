@@ -83,6 +83,10 @@ impl Crawler {
         Self { client }
     }
 
+    pub(crate) fn grpc_client(&self) -> Arc<Mutex<sui::grpc::Client>> {
+        Arc::clone(&self.client)
+    }
+
     /// Fetch a published Move package descriptor for ABI inspection.
     pub async fn get_package(
         &self,

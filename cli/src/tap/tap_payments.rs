@@ -121,7 +121,7 @@ async fn list_payments(
     if let Some(agent_id) = agent_id {
         ensure_cli_agent_owner(&nexus_client, agent_id).await?;
     }
-    let owner = nexus_client.signer().get_active_address();
+    let owner = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let history = fetch_execution_payment_history(
         nexus_client.crawler(),
         &nexus_client.get_nexus_objects(),

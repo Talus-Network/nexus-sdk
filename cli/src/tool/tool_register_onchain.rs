@@ -61,7 +61,7 @@ pub(crate) async fn register_onchain_tool(
     }
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let address = nexus_client.owner();
+    let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let nexus_objects = nexus_client.get_nexus_objects();
     let collateral_coin = nexus_client
         .fetch_coin_by_type(collateral_coin, 0, nexus_objects.us_token.coin_type_tag())

@@ -91,7 +91,7 @@ async fn register_one_tool(
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
-    let address = nexus_client.owner();
+    let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let nexus_objects = nexus_client.get_nexus_objects();
     let collateral_coin = nexus_client
         .fetch_coin_by_type(collateral_coin, 0, nexus_objects.us_token.coin_type_tag())
