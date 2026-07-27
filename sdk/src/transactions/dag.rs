@@ -10,13 +10,14 @@ use {
                     RuntimeVertex,
                     Vertex as GraphVertex,
                 },
-                verifier::{FailureEvidenceKind, RegisteredKeyAuxiliary, ToolVerifierMode},
+                verifier::{
+                    self as verifier_binding,
+                    FailureEvidenceKind,
+                    RegisteredKeyAuxiliary,
+                    ToolVerifierMode,
+                },
             },
-            primitives::{
-                data::{self as data_binding, NexusData},
-                onchain_tool_result as onchain_tool_result_binding,
-                tagged_output::{self as tagged_output_binding, TaggedOutput},
-            },
+            primitives::{data::NexusData, tagged_output::TaggedOutput},
             registry::{
                 registered_key_verifier as registered_key_verifier_binding,
                 tool_registry as tool_registry_binding,
@@ -53,9 +54,6 @@ use {
     std::collections::{HashMap, HashSet},
     sui::types::ProgrammableTransaction,
 };
-
-const TERMINAL_ERR_EVAL_VARIANT: &str = "_err_eval";
-const TERMINAL_ERR_EVAL_REASON_PORT: &str = "reason";
 
 fn vertex_kind_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
@@ -127,15 +125,6 @@ fn begin_execution_inputs_arg(
 pub struct PreparedOnchainToolOutput {
     pub output_variant: String,
     pub output_ports_data: HashMap<String, NexusData>,
-}
-
-impl PreparedOnchainToolOutput {
-    pub fn terminal_err_eval(reason: NexusData) -> Self {
-        Self {
-            output_variant: TERMINAL_ERR_EVAL_VARIANT.to_string(),
-            output_ports_data: HashMap::from([(TERMINAL_ERR_EVAL_REASON_PORT.to_string(), reason)]),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,10 +208,12 @@ pub struct PreparedOnchainToolExecution {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PreparedOnchainToolResultSubmission {
     Execute(PreparedOnchainToolExecution),
+    /// Leader-authored terminal `_err_eval` commit for a walk whose on-chain tool cannot
+    /// execute. Commits directly through `commit_on_chain_tool_terminal_err_eval_for_walk`,
+    /// creating no `OnchainToolResult` (unlike `Execute`, which runs the tool).
     TerminalErrEval {
-        output: PreparedOnchainToolOutput,
+        reason: Vec<u8>,
         failure_evidence_kind: FailureEvidenceKind,
-        submitted_failure_reason: Option<Vec<u8>>,
     },
 }
 
@@ -916,21 +907,22 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
                 )?;
             }
             PreparedOnchainToolResultSubmission::TerminalErrEval {
-                output,
-                failure_evidence_kind: _,
-                submitted_failure_reason: _,
+                reason,
+                failure_evidence_kind,
             } => {
-                let result = create_on_chain_tool_result_for_walk(
+                commit_on_chain_tool_terminal_err_eval_for_walk(
                     tx,
                     dag_arg,
                     execution_arg,
+                    tool_registry,
                     worksheet,
+                    reason,
+                    failure_evidence_kind,
                     leader_cap,
                     leader_registry,
                     walk_index,
                     expected_vertex,
                 )?;
-                finalize_onchain_tool_result_output(tx, result, worksheet, output)?;
                 lock_payment_state_for_tools(tx, lock_tool_gas_args, dag_arg, execution_arg)?;
             }
         }
@@ -1152,6 +1144,62 @@ fn commit_off_chain_tool_result_for_walk(
     Ok(())
 }
 
+fn failure_evidence_kind_arg(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    kind: &FailureEvidenceKind,
+) -> anyhow::Result<sui::types::Argument> {
+    match kind {
+        FailureEvidenceKind::ToolEvidence => tx.call_target(
+            verifier_binding::failure_evidence_kind_tool_evidence_target,
+            vec![],
+        ),
+        FailureEvidenceKind::LeaderEvidence => tx.call_target(
+            verifier_binding::failure_evidence_kind_leader_evidence_target,
+            vec![],
+        ),
+    }
+}
+
+/// Commits a leader-authored terminal `_err_eval` for an on-chain tool walk directly, creating
+/// no `OnchainToolResult` (unlike `create_on_chain_tool_result_for_walk`/`commit_prepared_onchain_tool_execution`,
+/// which run the tool).
+#[allow(clippy::too_many_arguments)]
+fn commit_on_chain_tool_terminal_err_eval_for_walk(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
+    execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
+    worksheet: sui::types::Argument,
+    reason: &[u8],
+    failure_evidence_kind: &FailureEvidenceKind,
+    leader_cap: sui::types::Argument,
+    leader_registry: sui::types::Argument,
+    walk_index: u64,
+    expected_vertex: sui::types::Argument,
+) -> anyhow::Result<()> {
+    let walk_index = tx.arg(&walk_index)?;
+    let reason = tx.arg(&reason.to_vec())?;
+    let failure_evidence_kind = failure_evidence_kind_arg(tx, failure_evidence_kind)?;
+
+    tx.call_target(
+        execution_submission_binding::commit_on_chain_tool_terminal_err_eval_for_walk_target,
+        vec![
+            dag,
+            execution,
+            tool_registry,
+            worksheet,
+            reason,
+            failure_evidence_kind,
+            leader_cap,
+            leader_registry,
+            walk_index,
+            expected_vertex,
+        ],
+    )?;
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn release_vertex_authorization_for_onchain_walk(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
@@ -1244,40 +1292,6 @@ pub fn consume_on_chain_tool_result_for_walk(
     )?;
 
     Ok(())
-}
-
-fn finalize_onchain_tool_result_output(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    result: sui::types::Argument,
-    worksheet: sui::types::Argument,
-    output: &PreparedOnchainToolOutput,
-) -> anyhow::Result<()> {
-    let output = prepare_tagged_tool_output(tx, output)?;
-    tx.call_target(
-        onchain_tool_result_binding::finalize_and_share_target,
-        vec![result, worksheet, output],
-    )?;
-    Ok(())
-}
-
-fn prepare_tagged_tool_output(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    prepared: &PreparedOnchainToolOutput,
-) -> anyhow::Result<sui::types::Argument> {
-    let variant = tx.arg(&prepared.output_variant.as_bytes().to_vec())?;
-    let mut tagged_output = tx.call_target(tagged_output_binding::new_target, vec![variant])?;
-
-    for (output_port, dag_data) in &prepared.output_ports_data {
-        let port = tx.arg(&output_port.as_bytes().to_vec())?;
-        let value = tx.nexus_data(dag_data)?;
-        let typed_value = tx.call_target(data_binding::as_raw_target, vec![value])?;
-        tagged_output = tx.call_target(
-            tagged_output_binding::with_named_payload_target,
-            vec![tagged_output, port, typed_value],
-        )?;
-    }
-
-    Ok(tagged_output)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2399,6 +2413,43 @@ mod tests {
 
         assert!(lock_payment < execute);
         assert_eq!(execute, ptb.commands.len() - 1);
+    }
+
+    #[test]
+    fn terminal_err_eval_commits_without_creating_onchain_tool_result() {
+        let objects = nexus_objects();
+        let next_vertex = RuntimeVertex::plain("counter_increment");
+        let submission = PreparedOnchainToolResultSubmission::TerminalErrEval {
+            reason: b"boom".to_vec(),
+            failure_evidence_kind: FailureEvidenceKind::ToolEvidence,
+        };
+
+        let ptb = submit_on_chain_tool_result_for_walk_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            &[],
+            0,
+            &next_vertex,
+            true,
+            &submission,
+        )
+        .unwrap();
+
+        move_call_index(
+            &ptb,
+            None,
+            "execution_submission",
+            "commit_on_chain_tool_terminal_err_eval_for_walk",
+        );
+
+        assert!(
+            move_calls(&ptb)
+                .iter()
+                .all(|call| call.function.as_str() != "create_on_chain_tool_result_for_walk"),
+            "TerminalErrEval must not create an OnchainToolResult"
+        );
     }
 
     #[test]

@@ -16571,7 +16571,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "_self",
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
