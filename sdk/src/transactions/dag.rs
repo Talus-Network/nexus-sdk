@@ -122,12 +122,6 @@ fn begin_execution_inputs_arg(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PreparedOnchainToolOutput {
-    pub output_variant: String,
-    pub output_ports_data: HashMap<String, NexusData>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 struct RuntimeToolResultWorksheet {
     pub worksheet: sui::types::Argument,
     pub agent_registry: sui::types::Argument,

@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Regenerated Move bindings to add `execution_submission::commit_on_chain_tool_terminal_err_eval_for_walk`, and rewrote the previously dead `PreparedOnchainToolResultSubmission::TerminalErrEval` PTB arm to call it directly instead of creating and finalizing an `OnchainToolResult` that nothing ever consumed; the variant now carries `reason: Vec<u8>` and `failure_evidence_kind: FailureEvidenceKind` and no longer creates an on-chain tool result.
+- Regenerated Move bindings to add `execution_submission::commit_on_chain_tool_terminal_err_eval_for_walk`, and rewrote the previously dead `PreparedOnchainToolResultSubmission::TerminalErrEval` PTB arm to call it directly instead of creating and finalizing an `OnchainToolResult` that nothing ever consumed; the variant now carries `reason: Vec<u8>` and `failure_evidence_kind: FailureEvidenceKind` and no longer creates an on-chain tool result. Removed the now-orphaned `PreparedOnchainToolOutput` struct, whose last consumers were removed by this same rewrite.
 - `NexusClientBuilder` now supports keyless query-only clients, while owner, gas, signing, and submission operations return a typed missing-private-key error when no signer is configured.
 - `NexusClientBuilder` can now build clients without gas for read-only use, while `NexusClient::set_gas_source` supports shared write-once transaction gas attachment after construction.
 - Replaced the Nexus specific event poller with typed Sui event queries and a
