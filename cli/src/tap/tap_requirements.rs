@@ -6,7 +6,7 @@ pub(crate) async fn fetch_requirements(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Fetching TAP skill requirements for '{agent_id}:{skill_id}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
     ensure_cli_agent_owner(&nexus_client, agent_id).await?;
     let result = nexus_client
         .tap()

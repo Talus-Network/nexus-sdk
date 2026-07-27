@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{types::NexusObjects, *},
+    nexus_sdk::{nexus::client::DEFAULT_GAS_BUDGET, types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -14,7 +14,6 @@ pub(crate) use {
             Arc,
         },
     },
-    tokio::sync::Mutex,
 };
 
 /// Where to find config files.
@@ -43,9 +42,6 @@ pub(crate) const MAINNET_OBJECTS_TOML: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     "/objects.mainnet.toml"
 );
-
-/// What is the default gas budget to use? (0.1 SUI)
-pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
@@ -79,7 +75,7 @@ pub(crate) struct GasArgs {
     #[arg(
         long = "sui-gas-coin",
         short = 'g',
-        help = "The gas coin object ID. First coin object is chosen if not present.",
+        help = "Optional gas coin object ID. Address balance gas is used when omitted.",
         value_name = "OBJECT_ID"
     )]
     pub(crate) sui_gas_coin: Option<sui::types::Address>,

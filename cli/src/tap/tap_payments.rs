@@ -65,7 +65,7 @@ pub(crate) async fn handle_payments_command(
 async fn show_payment(payment_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Reading standard TAP execution payment '{payment_id}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
     let payment = fetch_execution_payment(nexus_client.crawler(), payment_id)
         .await
         .map_err(NexusCliError::Any)?
@@ -87,7 +87,7 @@ async fn wait_payment(
         )));
     }
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
     let result = nexus_client
         .tap()
         .wait_for_payment_settled(
@@ -117,11 +117,11 @@ async fn list_payments(
     } else {
         None
     };
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
     if let Some(agent_id) = agent_id {
         ensure_cli_agent_owner(&nexus_client, agent_id).await?;
     }
-    let owner = nexus_client.signer().get_active_address();
+    let owner = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let history = fetch_execution_payment_history(
         nexus_client.crawler(),
         &nexus_client.get_nexus_objects(),

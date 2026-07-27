@@ -6,7 +6,7 @@ use {
         notify_error,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
+        sui::get_read_only_nexus_client,
     },
     nexus_sdk::{
         nexus::tool::ToolInspection,
@@ -17,7 +17,7 @@ use {
 pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting tool '{fqn}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
     let inspection = nexus_client
         .tool()
         .inspect_tool(&fqn)

@@ -11,7 +11,6 @@ use {
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
     std::sync::Arc,
-    tokio::sync::Mutex,
 };
 
 /// Generate input schema by introspecting the execute function's parameters.
@@ -21,14 +20,13 @@ use {
 /// skips internal parameters such as `ProofOfUID`, `ProvenValue<AgentVertexAuthorization>`,
 /// and `TxContext`.
 pub async fn generate_input_schema(
-    client: Arc<Mutex<sui::grpc::Client>>,
+    client: Arc<sui::grpc::Client>,
     package_address: sui::types::Address,
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<String> {
     let request = sui::grpc::GetPackageRequest::default().with_package_id(package_address);
-
-    let mut client = client.lock().await;
+    let mut client = client.as_ref().clone();
 
     // Fetch all normalized Move modules for the package.
     let Some(package) = client
@@ -39,9 +37,6 @@ pub async fn generate_input_schema(
     else {
         bail!("Package '{package_address}' not found")
     };
-
-    drop(client);
-
     let all_modules = package.modules();
 
     // Find the specific module.
@@ -255,10 +250,10 @@ mod tests {
             })
             .expect("Move package must be published");
 
-        let client = Arc::new(Mutex::new(
+        let client = Arc::new(
             sui::grpc::client(format!("http://127.0.0.1:{rpc_port}"))
                 .expect("Could not create gRPC client"),
-        ));
+        );
 
         // Generate input schema for the onchain_tool::execute function.
         let schema_str = generate_input_schema(

@@ -6,6 +6,8 @@ use crate::move_bindings::{
     registry::agent_registry as agent_registry_move,
     workflow::execution as execution_move,
 };
+#[cfg(feature = "nexus")]
+use std::sync::Arc;
 use {
     crate::{
         move_bindings::{
@@ -28,8 +30,6 @@ use {
     serde::{Deserialize, Serialize},
     sui_move::{MoveStruct, MoveType},
 };
-#[cfg(feature = "nexus")]
-use {std::sync::Arc, tokio::sync::Mutex};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UsTokenConfig {
@@ -181,7 +181,7 @@ impl NexusObjects {
     #[cfg(feature = "nexus")]
     pub async fn resolve_workflow_original_pkg_id(
         &mut self,
-        client: &Arc<Mutex<sui::grpc::Client>>,
+        client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
         use sui::traits::FieldMaskUtil;
 
@@ -192,8 +192,8 @@ impl NexusObjects {
             .with_read_mask(field_mask);
 
         let response = client
-            .lock()
-            .await
+            .as_ref()
+            .clone()
             .ledger_client()
             .get_object(request)
             .await
@@ -232,7 +232,7 @@ impl NexusObjects {
     #[cfg(feature = "nexus")]
     pub async fn resolve_scheduler_original_pkg_id(
         &mut self,
-        client: &Arc<Mutex<sui::grpc::Client>>,
+        client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
         use sui::traits::FieldMaskUtil;
 
@@ -243,8 +243,8 @@ impl NexusObjects {
             .with_read_mask(field_mask);
 
         let response = client
-            .lock()
-            .await
+            .as_ref()
+            .clone()
             .ledger_client()
             .get_object(request)
             .await

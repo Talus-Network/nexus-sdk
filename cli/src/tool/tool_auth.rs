@@ -6,7 +6,12 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
+        sui::{
+            build_sui_grpc_client,
+            get_nexus_client,
+            get_nexus_objects,
+            get_read_only_nexus_client,
+        },
     },
     nexus_sdk::{
         nexus::network_auth::NetworkAuthReader,
@@ -196,7 +201,7 @@ async fn register_key(
 async fn list_keys(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
     command_title!("Listing keys for tool '{tool_fqn}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let handle = loading!("Fetching key binding...");
     let list = match nexus_client.network_auth().list_tool_keys(&tool_fqn).await {
@@ -246,7 +251,7 @@ async fn export_allowed_leaders(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Exporting allowed leaders file");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
     let file = if all {
@@ -382,7 +387,7 @@ async fn sync_allowed_leaders(
 
     let mut conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
-    let rpc_url = client.lock().await.uri().to_string();
+    let rpc_url = client.uri().to_string();
     let objects = get_nexus_objects(&mut conf).await?;
 
     let reader = NetworkAuthReader::from_rpc_url(
@@ -441,7 +446,7 @@ async fn sync_allowed_leaders(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, clap::Parser};
+    use {super::*, clap::Parser, nexus_sdk::test_utils::nexus_mocks};
 
     /// Verifies that clap correctly parses the humantime duration format for
     /// `sync-allowed-leaders --interval`. Guards against regressions where the
@@ -507,6 +512,27 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("invalid duration"));
+    }
+
+    #[tokio::test]
+    async fn sync_once_writes_allowlist_without_wallet_or_owned_coins() {
+        let out_dir = tempfile::tempdir().expect("temporary output directory");
+        let out_path = out_dir.path().join("allowed-leaders.json");
+        let reader = nexus_mocks::mock_network_auth_reader_without_wallet();
+        let syncer = AllowedLeadersFileSyncerV1::new(reader, out_path.clone());
+
+        let outcome = syncer
+            .sync_once()
+            .await
+            .expect("direct reader sync should not require wallet configuration");
+        let file: AllowedLeadersFileV1 = serde_json::from_slice(
+            &std::fs::read(out_path).expect("allowlist output should be written"),
+        )
+        .expect("allowlist output should decode");
+
+        assert_eq!(outcome, AllowedLeadersSyncOutcome::Updated);
+        assert_eq!(file.version, 1);
+        assert_eq!(file.leaders.len(), 1);
     }
 
     /// Verifies that `register-key --skip-if-active` is accepted by clap.

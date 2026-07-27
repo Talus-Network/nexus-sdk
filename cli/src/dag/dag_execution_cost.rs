@@ -6,7 +6,7 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
+        sui::get_read_only_nexus_client,
     },
     nexus_sdk::sui,
     num_format::{Locale, ToFormattedString},
@@ -17,7 +17,7 @@ pub(crate) async fn execution_cost(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Fetching DAG execution payment '{dag_execution_id}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let fetch_handle = loading!("Fetching execution payment from Sui...");
 

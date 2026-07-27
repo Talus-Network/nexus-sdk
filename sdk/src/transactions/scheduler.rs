@@ -105,7 +105,6 @@ mod metadata_vm_tests {
             test_utils::{self, sui_mocks},
         },
         std::sync::Arc,
-        tokio::sync::Mutex,
     };
 
     #[tokio::test]
@@ -182,7 +181,7 @@ mod metadata_vm_tests {
             .0
             .clone();
         let signer = Signer::new(
-            Arc::new(Mutex::new(client.clone())),
+            Arc::new(client.clone()),
             private_key,
             std::time::Duration::from_secs(30),
             Arc::new(nexus_objects),

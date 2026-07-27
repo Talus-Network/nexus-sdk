@@ -108,7 +108,14 @@ fn build_artifact(
 }
 
 async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8>, NexusCliError> {
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
+    fetch_input_commitment_with_client(&nexus_client, dag_id).await
+}
+
+async fn fetch_input_commitment_with_client(
+    nexus_client: &nexus_sdk::nexus::client::NexusClient,
+    dag_id: sui::types::Address,
+) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
     let dag = crawler.get_object::<DAG>(dag_id).await.map_err(|error| {
         NexusCliError::Any(anyhow!(
@@ -182,7 +189,22 @@ fn parse_fixed_tool(value: String) -> AnyResult<FixedTool, NexusCliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        nexus_sdk::{
+            move_bindings::{
+                interface::graph,
+                move_std::option::Option as MoveOption,
+                sui_framework::{
+                    linked_table::LinkedTable,
+                    object::UID,
+                    table::Table,
+                    vec_map::VecMap,
+                },
+            },
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+    };
 
     #[test]
     fn build_artifact_uses_dag_derived_input_commitment() {
@@ -281,6 +303,48 @@ mod tests {
         assert!(
             error.to_string().contains("expected '<TOOL_REGISTRY_ID>"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_input_commitment_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let dag_ref = sui_mocks::object_ref_for_id(dag_id);
+        let dag = DAG {
+            id: UID::new(dag_id),
+            vertices: LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
+            entry_groups: VecMap { contents: vec![] },
+            edges: Table::new(sui::types::Address::from_static("0x11"), 0),
+            outputs: Table::new(sui::types::Address::from_static("0x12"), 0),
+            defaults_to_input_ports: Table::new(sui::types::Address::from_static("0x13"), 0),
+            post_failure_action: MoveOption::from_option(None::<graph::PostFailureAction>),
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_get_object_value_bcs_for(
+            &mut ledger_service_mock,
+            dag_ref,
+            sui::types::Owner::Shared(1),
+            &dag,
+            nexus_sdk::move_bindings::struct_tag::<DAG>(&nexus_objects),
+        );
+        sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
+        sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 1);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let commitment = fetch_input_commitment_with_client(&client, dag_id)
+            .await
+            .expect("DAG input read should not require owned coins");
+
+        assert_eq!(
+            commitment,
+            tap_input_commitment_from_dag_inputs(std::iter::empty::<(&str, &str)>())
         );
     }
 }

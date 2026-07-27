@@ -1351,7 +1351,7 @@ pub async fn should_settle_tool_err_eval_gas(
 impl WorkflowActions {
     /// Publish the provided [`DagSpec`] specification.
     pub async fn publish(&self, dag_spec: DagSpec) -> Result<PublishResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
 
         // == Craft and submit the publish DAG transaction ==
@@ -1411,7 +1411,8 @@ impl WorkflowActions {
         entry_group: Option<&str>,
         storage_conf: &StorageConf,
     ) -> Result<ExecuteResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
+        let gas = self.client.gas_configured()?;
         self.execute_default_agent_dag(
             dag_object_id,
             entry_data,
@@ -1423,7 +1424,7 @@ impl WorkflowActions {
                     .map_err(NexusError::TransactionBuilding)?,
                 payment_coin: None,
                 payment_coin_balance: None,
-                payment_max_budget_mist: self.client.gas.get_budget(),
+                payment_max_budget_mist: gas.get_budget(),
             },
         )
         .await
@@ -1444,6 +1445,7 @@ impl WorkflowActions {
     ) -> Result<ExecuteResult, NexusError> {
         // == Commit data to their respective storage ==
 
+        let address = self.client.owner()?;
         let mut input_data = HashMap::new();
 
         for (vertex, ports_data) in entry_data {
@@ -1456,7 +1458,6 @@ impl WorkflowActions {
 
         // == Craft and submit the execute DAG transaction ==
 
-        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
         let dag = self
             .client
@@ -1522,6 +1523,7 @@ impl WorkflowActions {
             &tools_gas,
         )
         .map_err(NexusError::TransactionBuilding)?;
+        let gas = self.client.gas_configured()?;
         let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
@@ -1529,7 +1531,7 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                if let Some(payment_gas_pool) = gas.coin_pool() {
                     payment_gas_pool
                         .release_gas_coin(sui::types::ObjectReference::new(
                             updated_payment_coin.object_id(),
@@ -1596,6 +1598,7 @@ impl WorkflowActions {
         storage_conf: &StorageConf,
         options: AgentDagExecuteOptions,
     ) -> Result<ExecuteResult, NexusError> {
+        let address = self.client.owner()?;
         let mut input_data = HashMap::new();
 
         for (vertex, ports_data) in entry_data {
@@ -1606,7 +1609,6 @@ impl WorkflowActions {
             input_data.insert(vertex, committed_data);
         }
 
-        let address = self.client.signer.get_active_address();
         let nexus_objects = &self.client.nexus_objects;
         let target = tap::fetch_configured_active_tap_skill_execution_target(
             self.client.crawler(),
@@ -1694,6 +1696,7 @@ impl WorkflowActions {
             &tools_gas,
         )
         .map_err(NexusError::TransactionBuilding)?;
+        let gas = self.client.gas_configured()?;
         let response = self.client.submit_transaction(tx, address).await?;
         if let Some(payment_coin_id) = owned_payment_coin {
             if let Some(updated_payment_coin) = response
@@ -1701,7 +1704,7 @@ impl WorkflowActions {
                 .iter()
                 .find(|object| object.object_id() == payment_coin_id)
             {
-                if let Some(payment_gas_pool) = self.client.gas.coin_pool() {
+                if let Some(payment_gas_pool) = gas.coin_pool() {
                     payment_gas_pool
                         .release_gas_coin(sui::types::ObjectReference::new(
                             updated_payment_coin.object_id(),
@@ -1952,7 +1955,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let tx = dag::abort_expired_execution_for_self_ptb(
             &self.client.nexus_objects,
             &dag_ref,
@@ -2000,7 +2003,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
             objects,
@@ -2045,7 +2048,7 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
             objects,
@@ -2086,7 +2089,7 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
             &self.client.nexus_objects,
             &execution_ref.object_ref(),
@@ -2166,7 +2169,7 @@ impl WorkflowActions {
                     .await
                     .map_err(NexusError::Rpc)?
                     .object_ref();
-                let address = self.client.signer.get_active_address();
+                let address = self.client.owner()?;
                 let objects = &self.client.nexus_objects;
                 let tx = move_boundary::ptb(objects, |tx| {
                     let dag = tx.shared_object(&dag_ref, false)?;
@@ -2306,7 +2309,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let tx = gas::abort_expired_execution_with_tool_gas_ptb(
             nexus_objects,
@@ -2487,6 +2490,7 @@ mod tests {
                     execution_failure::WorkflowFailureClass,
                 },
             },
+            nexus::client::NexusClientBuilder,
             sui::traits::*,
             test_utils::{nexus_mocks, sui_mocks},
             types::{AgentRegistrySnapshot, DefaultDagExecutorTarget, SkillRecordContext},
@@ -2496,7 +2500,6 @@ mod tests {
             atomic::{AtomicBool, Ordering},
             Arc,
         },
-        tokio::sync::Mutex,
     };
 
     #[derive(Clone, Debug, Serialize)]
@@ -2508,6 +2511,60 @@ mod tests {
 
     fn inline_bytes(value: &'static [u8]) -> NexusData {
         NexusData::inline_one(value.to_vec())
+    }
+
+    #[cfg(feature = "walrus")]
+    #[tokio::test]
+    async fn keyless_workflow_execution_rejects_before_walrus_commit() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClientBuilder::new()
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("query-only client should build");
+        let entry_data = || {
+            HashMap::from([(
+                "entry".to_string(),
+                VecMap::<InputPort, NexusData>::from_map(HashMap::from([(
+                    "port".to_string(),
+                    NexusData::walrus_one(b"must-not-upload".to_vec()),
+                )])),
+            )])
+        };
+
+        let default_agent_result = client
+            .workflow()
+            .execute_default_agent_dag(
+                sui::types::Address::ZERO,
+                entry_data(),
+                None,
+                None,
+                &StorageConf::default(),
+                AgentDagExecuteOptions::default(),
+            )
+            .await;
+        let Err(default_agent_error) = default_agent_result else {
+            panic!("keyless default-agent execution should fail before storage");
+        };
+        assert!(matches!(default_agent_error, NexusError::MissingPrivateKey));
+
+        let agent_result = client
+            .workflow()
+            .execute_agent_dag(
+                sui::types::Address::ZERO,
+                0,
+                entry_data(),
+                None,
+                None,
+                &StorageConf::default(),
+                AgentDagExecuteOptions::default(),
+            )
+            .await;
+        let Err(agent_error) = agent_result else {
+            panic!("keyless agent execution should fail before storage");
+        };
+        assert!(matches!(agent_error, NexusError::MissingPrivateKey));
     }
 
     fn clock_bcs(timestamp_ms: u64) -> Vec<u8> {
@@ -2749,7 +2806,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        Crawler::new(Arc::new(Mutex::new(client)))
+        Crawler::new(Arc::new(client))
     }
 
     #[tokio::test]
@@ -3290,6 +3347,39 @@ mod tests {
 
     #[cfg(feature = "walrus")]
     #[tokio::test]
+    async fn execute_without_gas_uses_gas_configured_error() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("client without gas should build");
+
+        let result = client
+            .workflow()
+            .execute(
+                sui::types::Address::from_static("0xd4"),
+                HashMap::new(),
+                None,
+                None,
+                &StorageConf::default(),
+            )
+            .await;
+        let Err(error) = result else {
+            panic!("workflow execution without gas should fail");
+        };
+
+        assert!(matches!(error, NexusError::Configuration(_)));
+        assert!(error
+            .to_string()
+            .contains("a gas source is required for transaction operations"));
+    }
+
+    #[cfg(feature = "walrus")]
+    #[tokio::test]
     async fn test_workflow_actions_execute() {
         let mut rng = rand::thread_rng();
         let tx_digest = sui::types::Digest::generate(&mut rng);
@@ -3723,7 +3813,6 @@ mod tests {
         let tx_9 = sui::types::Digest::generate(&mut rng);
         let tx_20 = sui::types::Digest::generate(&mut rng);
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         expect_object_update_reference(
             &mut ledger_service_mock,
             &nexus_objects,
@@ -3815,7 +3904,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
         let mut result = client
             .workflow()
             .inspect_execution(
@@ -4610,8 +4699,6 @@ mod tests {
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-
         let payment_id = *payment_ref.object_id();
 
         mock_get_dag_execution_bcs(
@@ -4686,7 +4773,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
         let result = client
             .workflow()
@@ -5530,7 +5617,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
         let candidates = fetch_tool_gas_refs_for_abort_candidates(
             &crawler,
             gas_service_id,

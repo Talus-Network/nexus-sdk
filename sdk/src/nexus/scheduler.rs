@@ -331,7 +331,7 @@ impl SchedulerActions {
                 })
                 .await;
         }
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let tap_payment_result =
@@ -403,7 +403,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         metadata: Vec<(String, String)>,
     ) -> Result<UpdateMetadataResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -425,7 +425,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         request: TaskStateAction,
     ) -> Result<TaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
         let task = self.fetch_task(task_id).await?;
@@ -451,7 +451,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         request: OccurrenceRequest,
     ) -> Result<ScheduleExecutionResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let task = self.fetch_task(task_id).await?;
 
         self.enqueue_occurrence(&task, request, address).await
@@ -463,7 +463,7 @@ impl SchedulerActions {
         task_id: sui::types::Address,
         config: PeriodicScheduleConfig,
     ) -> Result<PeriodicScheduleResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
@@ -493,7 +493,7 @@ impl SchedulerActions {
         &self,
         task_id: sui::types::Address,
     ) -> Result<DisablePeriodicResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let task = self.fetch_task(task_id).await?;
         let task_ref = task.object_ref();
@@ -950,7 +950,6 @@ mod tests {
         rand::thread_rng,
         serde::Serialize,
         std::{marker::PhantomData, sync::Arc},
-        tokio::sync::Mutex,
     };
 
     type RequestScheduledOccurrenceEvent =
@@ -1093,6 +1092,29 @@ mod tests {
             sui::types::Owner::Address(owner),
             bcs::to_bytes(&task).expect("generated task serializes"),
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_task_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_ref = sui_mocks::mock_sui_object_ref();
+        let owner = sui::types::Address::from_static("0xa");
+        let task = mock_task_object(*task_ref.object_id(), owner);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        mock_get_task_object(&mut ledger_service_mock, task_ref.clone(), owner, task);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = client
+            .scheduler()
+            .fetch_task(*task_ref.object_id())
+            .await
+            .expect("task read should not require owned coins");
+
+        assert_eq!(response.data.owner, owner);
     }
 
     fn generator_symbol(scheduler_pkg_id: sui::types::Address, name: &str) -> PolicySymbol {
@@ -1369,7 +1391,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let config =
             fetch_scheduled_agent_execution_config(&crawler, &objects, &configured_automaton_id)

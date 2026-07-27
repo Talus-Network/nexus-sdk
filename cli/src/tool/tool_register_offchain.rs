@@ -1,3 +1,5 @@
+//! Registers off-chain tools with client-owned collateral selection.
+
 use {
     crate::{
         command_title,
@@ -86,28 +88,21 @@ fn load_meta_from_source(
 async fn register_one_tool(
     meta: ToolMeta,
     nexus_client: &NexusClient,
-    grpc_client: std::sync::Arc<tokio::sync::Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
-    let signer = nexus_client.signer();
-    let address = signer.get_active_address();
-    let nexus_objects = &*nexus_client.get_nexus_objects();
-    let collateral_coin = fetch_coin_by_type(
-        grpc_client,
-        owner,
-        collateral_coin,
-        0,
-        nexus_objects.us_token.coin_type_tag(),
-    )
-    .await?;
+    let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
+    let nexus_objects = nexus_client.get_nexus_objects();
+    let collateral_coin = nexus_client
+        .fetch_coin_by_type(collateral_coin, 0, nexus_objects.us_token.coin_type_tag())
+        .await
+        .map_err(NexusCliError::Nexus)?;
 
     // Craft a TX to register the tool.
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match tool::register_off_chain_for_self_ptb(
-        nexus_objects,
+        &nexus_objects,
         &meta,
         address,
         &collateral_coin,
@@ -168,7 +163,7 @@ async fn register_one_tool(
                 return None;
             };
 
-            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(nexus_objects, &object_type) {
+            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(&nexus_objects, &object_type) {
                 Some((obj.object_id(), object_type))
             } else {
                 None
@@ -180,7 +175,7 @@ async fn register_one_tool(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverTool>(nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverTool>(&nexus_objects, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -198,7 +193,7 @@ async fn register_one_tool(
     let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverGas>(nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverGas>(&nexus_objects, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -275,10 +270,6 @@ pub(crate) async fn register_off_chain_tool(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
-    let conf = CliConf::load().await.unwrap_or_default();
-    let client = build_sui_grpc_client(&conf).await?;
-    let pk = get_signing_key(&conf).await?;
-    let owner = pk.public_key().derive_address();
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
 
     let mut registration_results = Vec::new();
@@ -294,15 +285,8 @@ pub(crate) async fn register_off_chain_tool(
             url = meta.url
         );
 
-        let (result, caps) = register_one_tool(
-            meta,
-            &nexus_client,
-            client,
-            owner,
-            collateral_coin,
-            invocation_cost,
-        )
-        .await?;
+        let (result, caps) =
+            register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
 
         registration_results.push(result);
         caps_to_save.extend(caps);
@@ -341,15 +325,8 @@ pub(crate) async fn register_off_chain_tool(
                 url = meta.url
             );
 
-            let (result, caps) = register_one_tool(
-                meta,
-                &nexus_client,
-                client.clone(),
-                owner,
-                collateral_coin,
-                invocation_cost,
-            )
-            .await?;
+            let (result, caps) =
+                register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
 
             registration_results.push(result);
             caps_to_save.extend(caps);

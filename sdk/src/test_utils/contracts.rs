@@ -11,7 +11,6 @@ use {
         sync::{Arc, OnceLock},
     },
     tempfile::{Builder, TempDir},
-    tokio::sync::Mutex,
 };
 
 fn test_artifact_temp_root() -> PathBuf {
@@ -99,7 +98,7 @@ pub async fn publish_move_package_with_overrides(
     let mut client = sui::grpc::client(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
     let signer = Signer::new(
-        Arc::new(Mutex::new(client.clone())),
+        Arc::new(client.clone()),
         pk.clone(),
         std::time::Duration::from_secs(30),
         Arc::new(sui_mocks::mock_nexus_objects()),
