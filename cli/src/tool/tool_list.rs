@@ -12,6 +12,7 @@ use {
 };
 
 /// List tools available in the tool registry.
+/// TODO: Provide a search based solution or move this functions to nexus API
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Nexus tools");
 
