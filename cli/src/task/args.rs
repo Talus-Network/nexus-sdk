@@ -208,6 +208,9 @@ impl FundingArgs {
         "recurrence_interval_ms"
     ]
 )]
+#[command(group = clap::ArgGroup::new("standalone_source")
+    .args(["now", "at_ms", "after_ms"])
+    .multiple(true))]
 pub(crate) struct ScheduleArgs {
     #[arg(
         long,
@@ -259,6 +262,7 @@ pub(crate) struct ScheduleArgs {
     #[arg(
         long,
         value_name = "MILLIS",
+        requires = "standalone_source",
         conflicts_with = "deadline_after_ms",
         help_heading = "Timing",
         help = "Use one absolute deadline for inline standalone occurrences"
@@ -268,6 +272,7 @@ pub(crate) struct ScheduleArgs {
     #[arg(
         long,
         value_name = "MILLIS",
+        requires = "standalone_source",
         conflicts_with = "deadline_at_ms",
         help_heading = "Timing",
         help = "Set each standalone deadline from its resolved start"
@@ -277,6 +282,7 @@ pub(crate) struct ScheduleArgs {
     #[arg(
         long,
         value_name = "PERCENTAGE",
+        requires = "standalone_source",
         help_heading = "Timing",
         help = "Set the priority fee for inline standalone occurrences"
     )]

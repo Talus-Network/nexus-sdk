@@ -359,6 +359,10 @@ mod tests {
             "--now",
             "--at-ms",
             "2000",
+            "--deadline-after-ms",
+            "1000",
+            "--priority-fee-percentage",
+            "30",
             "--recurrence-interval-ms",
             "1000",
         ])
@@ -411,6 +415,51 @@ mod tests {
             "2",
         ]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn recurrence_only_rejects_standalone_modifiers() {
+        let cases: &[&[&str]] = &[
+            &["--deadline-at-ms", "123"],
+            &["--deadline-after-ms", "123"],
+            &["--priority-fee-percentage", "30"],
+            &["--deadline-at-ms", "123", "--priority-fee-percentage", "30"],
+            &[
+                "--deadline-after-ms",
+                "123",
+                "--priority-fee-percentage",
+                "30",
+            ],
+        ];
+
+        for options in cases {
+            let result = crate::Cli::try_parse_from(
+                [
+                    "nexus",
+                    "task",
+                    "schedule",
+                    "--dag-id",
+                    "0x42",
+                    "--prepay-amount-mist",
+                    "50000000",
+                    "--occurrence-budget-mist",
+                    "50000000",
+                    "--recurrence-interval-ms",
+                    "60000",
+                ]
+                .into_iter()
+                .chain(options.iter().copied()),
+            );
+            let error = match result {
+                Ok(_) => panic!("standalone modifiers without a source should be rejected"),
+                Err(error) => error,
+            };
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "unexpected error for {options:?}: {error}"
+            );
+        }
     }
 
     #[test]
