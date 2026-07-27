@@ -16,6 +16,15 @@ use {
     chrono::{DateTime, Utc},
 };
 
+/// Registry mode derived from an onchain Tool `execute` signature.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OnchainToolMode {
+    /// `execute` begins with `ProofOfUID` and `OnchainToolResult`.
+    Standard,
+    /// `execute` begins with an Agent vertex authorization proof.
+    WorkflowAuthorization,
+}
+
 impl Tool {
     /// Derive a `Tool` object ID from the `ToolRegistry` ID and tool FQN.
     pub fn derive_id(

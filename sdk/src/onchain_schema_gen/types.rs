@@ -189,7 +189,7 @@ pub fn is_onchain_tool_result_param(move_type: &sui::grpc::OpenSignatureBody) ->
     struct_shape_matches::<OnchainToolResult>(&struct_tag)
 }
 
-fn is_proof_of_uid_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+pub(super) fn is_proof_of_uid_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     let Some(type_name) = move_type.type_name_opt() else {
         return false;
     };

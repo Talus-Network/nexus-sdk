@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
 - Workflow and scheduler models now expose Task and occurrence provenance for
   every `DAGExecution`, and all execution requests are submitted through the
   scheduler.
@@ -71,6 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Onchain Tool registration now derives workflow authorization from the normalized `execute` signature instead of accepting a manual mode.
 - `scheduler task create` is now the single execution entry. A caller schedules
   for the current Clock timestamp when work should be eligible now.
 - Task creation accepts its initial manual occurrence and optional recurrence,

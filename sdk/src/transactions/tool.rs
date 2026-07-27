@@ -10,7 +10,7 @@ use {
         },
         move_boundary,
         sui,
-        types::{NexusObjects, ToolMeta},
+        types::{NexusObjects, OnchainToolMode, ToolMeta},
         ToolFqn,
     },
     anyhow::{bail, Context as _},
@@ -329,18 +329,17 @@ pub fn register_off_chain_batch_for_self_with_address_balance_ptb(
     })
 }
 
-/// Builds a [`ProgrammableTransaction`] that registers an on chain Nexus tool
+/// Builds a [`ProgrammableTransaction`] that registers an onchain Nexus Tool
 /// using an owned coin as collateral.
 ///
-/// `workflow_authorization_cap_first` selects whether workflow vertex
-/// authorization capability metadata is expected first.
+/// [`OnchainToolMode`] selects the matching registry entrypoint.
 ///
 /// # Errors
 ///
 /// Returns an error if the timeout does not fit in `u64` milliseconds or the
 /// transaction cannot be built.
 #[allow(clippy::too_many_arguments)]
-pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
+pub fn register_on_chain_for_self_ptb(
     objects: &NexusObjects,
     package_address: sui::types::Address,
     module_name: &str,
@@ -352,7 +351,7 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
     tool_witness_id: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     address: sui::types::Address,
-    workflow_authorization_cap_first: bool,
+    mode: OnchainToolMode,
 ) -> anyhow::Result<ProgrammableTransaction> {
     register_on_chain_for_self_with_collateral_ptb(
         objects,
@@ -366,15 +365,15 @@ pub fn register_on_chain_for_self_with_workflow_authorization_cap_ptb(
         tool_witness_id,
         ToolCollateral::Coin(collateral_coin),
         address,
-        workflow_authorization_cap_first,
+        mode,
     )
 }
 
-/// Builds a [`ProgrammableTransaction`] that registers an on chain tool using
+/// Builds a [`ProgrammableTransaction`] that registers an onchain Tool using
 /// `$US` collateral from the sender address balance.
 ///
 /// This is the address balance counterpart to
-/// [`register_on_chain_for_self_with_workflow_authorization_cap_ptb`].
+/// [`register_on_chain_for_self_ptb`].
 ///
 /// # Errors
 ///
@@ -393,7 +392,7 @@ pub fn register_on_chain_for_self_with_address_balance_ptb(
     tool_witness_id: sui::types::Address,
     collateral_us: u64,
     address: sui::types::Address,
-    workflow_authorization_cap_first: bool,
+    mode: OnchainToolMode,
 ) -> anyhow::Result<ProgrammableTransaction> {
     register_on_chain_for_self_with_collateral_ptb(
         objects,
@@ -407,7 +406,7 @@ pub fn register_on_chain_for_self_with_address_balance_ptb(
         tool_witness_id,
         ToolCollateral::AddressBalance(collateral_us),
         address,
-        workflow_authorization_cap_first,
+        mode,
     )
 }
 
@@ -424,7 +423,7 @@ fn register_on_chain_for_self_with_collateral_ptb(
     tool_witness_id: sui::types::Address,
     collateral: ToolCollateral<'_>,
     address: sui::types::Address,
-    workflow_authorization_cap_first: bool,
+    mode: OnchainToolMode,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let tool_registry = tx.shared_object(&objects.tool_registry, true)?;
@@ -453,16 +452,15 @@ fn register_on_chain_for_self_with_collateral_ptb(
             pay_with,
             clock,
         ];
-        let register_result = if workflow_authorization_cap_first {
-            tx.call_target(
-                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
-                arguments,
-            )?
-        } else {
-            tx.call_target(
+        let register_result = match mode {
+            OnchainToolMode::Standard => tx.call_target(
                 tool_registry_binding::register_on_chain_tool_target,
                 arguments,
-            )?
+            )?,
+            OnchainToolMode::WorkflowAuthorization => tx.call_target(
+                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
+                arguments,
+            )?,
         };
 
         let registration = configure_registration(tx, register_result, 0)?;
@@ -1140,10 +1138,13 @@ mod tests {
         let witness = sui_mocks::mock_sui_address();
         let fqn = "xyz.taluslabs.example@1".parse().unwrap();
 
-        for (workflow_authorization_cap_first, expected_function) in [
-            (false, "register_on_chain_tool"),
+        for (mode, expected_function) in [
             (
-                true,
+                crate::types::OnchainToolMode::Standard,
+                "register_on_chain_tool",
+            ),
+            (
+                crate::types::OnchainToolMode::WorkflowAuthorization,
                 "register_on_chain_tool_with_workflow_authorization_cap",
             ),
         ] {
@@ -1159,7 +1160,7 @@ mod tests {
                 witness,
                 42,
                 address,
-                workflow_authorization_cap_first,
+                mode,
             )
             .unwrap();
 
@@ -1195,7 +1196,7 @@ mod tests {
             witness,
             42,
             address,
-            false,
+            OnchainToolMode::Standard,
         )
         .unwrap_err();
 
