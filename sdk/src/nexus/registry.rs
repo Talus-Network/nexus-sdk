@@ -493,7 +493,6 @@ mod tests {
             open_signature::Reference,
             open_signature_body::Type,
         },
-        tokio::sync::Mutex,
     };
 
     fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
@@ -762,7 +761,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::Client::new(rpc_url).unwrap();
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
         fetch_current_tool_registration(&crawler, &registry_ref, tool_id)
             .await
             .unwrap()
@@ -825,7 +824,7 @@ mod tests {
             state_service_mock: Some(state_service),
             ..Default::default()
         });
-        let crawler = Crawler::new(Arc::new(Mutex::new(sui::grpc::Client::new(rpc_url)?)));
+        let crawler = Crawler::new(Arc::new(sui::grpc::Client::new(rpc_url)?));
         fetch_external_verifier_runtime_call(&crawler, &registry_ref, tool_id).await
     }
 
@@ -874,9 +873,7 @@ mod tests {
     async fn external_preflight_rejects_invalid_object_lists_before_package_lookup() {
         let objects = sui_mocks::mock_nexus_objects();
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
-        let crawler = Crawler::new(Arc::new(Mutex::new(
-            sui::grpc::Client::new(rpc_url).unwrap(),
-        )));
+        let crawler = Crawler::new(Arc::new(sui::grpc::Client::new(rpc_url).unwrap()));
         let package = sui::types::Address::from_static("0x401");
         let object = sui::types::Address::from_static("0x402");
 
@@ -957,9 +954,9 @@ mod tests {
                 .await
                 .unwrap();
         });
-        Crawler::new(Arc::new(Mutex::new(
+        Crawler::new(Arc::new(
             sui::grpc::Client::new(format!("http://{address}")).unwrap(),
-        )))
+        ))
     }
 
     fn package_with_function(

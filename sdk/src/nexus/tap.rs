@@ -1872,7 +1872,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let crawler = Crawler::new(std::sync::Arc::new(client));
 
         let response = fetch_skill_revision(
             &crawler,

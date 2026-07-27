@@ -245,14 +245,12 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        let client = Arc::new(Mutex::new(
-            sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?,
-        ));
-        let crawler = Crawler::new(client);
+        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
+        let crawler = Crawler::new(Arc::clone(&client));
 
         let signer = self.pk.map(|pk| {
             Signer::new(
-                crawler.grpc_client(),
+                client,
                 pk,
                 self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
                 Arc::clone(&nexus_objects),
@@ -351,18 +349,17 @@ impl NexusClient {
         Ok(self.signer()?.get_active_address())
     }
 
-    /// Return the shared gRPC client used by this client.
-    pub fn grpc_client(&self) -> Arc<Mutex<sui::grpc::Client>> {
+    /// Return a shared handle to the gRPC client used by this client.
+    pub fn grpc_client(&self) -> Arc<sui::grpc::Client> {
         self.crawler.grpc_client()
     }
 
-    /// Create a fresh gRPC client for independently owned or long-lived operations.
+    /// Clone the inner gRPC client for independently mutable or long-lived operations.
     ///
-    /// # Errors
-    ///
-    /// Returns [`NexusError::Rpc`] when the configured RPC URL cannot create a client.
-    pub fn clone_grpc_client(&self) -> Result<sui::grpc::Client, NexusError> {
-        sui::grpc::client(&self.rpc_url).map_err(NexusError::Rpc)
+    /// The clone reuses the configured transport and does not reconstruct a connection from the
+    /// stored RPC URL.
+    pub fn clone_grpc_client(&self) -> sui::grpc::Client {
+        self.crawler.clone_grpc_client()
     }
 
     /// Fetch every coin owned by this client's signing address with the exact
@@ -526,7 +523,7 @@ impl NexusClient {
                         "at least one gas coin is required for coin based gas".into(),
                     ));
                 }
-                let mut client = self.clone_grpc_client()?;
+                let mut client = self.clone_grpc_client();
                 let reference_gas_price = client
                     .get_reference_gas_price()
                     .await
@@ -595,7 +592,7 @@ impl NexusClient {
                 response
             }
             GasSource::AddressBalance(gas) => {
-                let mut client = self.clone_grpc_client()?;
+                let mut client = self.clone_grpc_client();
                 let context = fetch_submission_context(&mut client).await?;
                 let nonce = gas.allocate_nonce()?;
                 let tx = finish_transaction(tx, address, gas.budget, context, nonce);
@@ -1030,7 +1027,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keyless_client_exposes_crawler_owned_raw_handle() {
+    async fn keyless_client_exposes_shared_grpc_arc() {
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let client = NexusClientBuilder::new()
             .with_rpc_url(&rpc_url)
@@ -1042,54 +1039,29 @@ mod tests {
         let crawler_handle = client.crawler().grpc_client();
 
         assert!(Arc::ptr_eq(&client_handle, &crawler_handle));
+        assert_eq!(client_handle.uri().to_string(), format!("{rpc_url}/"));
     }
 
     #[tokio::test]
-    async fn clone_grpc_client_uses_stored_rpc_url() {
+    async fn clone_grpc_client_uses_stored_transport_without_reconstruction() {
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 42);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = keyless_client(&rpc_url).await;
+        let mut client = keyless_client(&rpc_url).await;
+        client.rpc_url = "not a valid URL".into();
 
-        let mut fresh_client = client
-            .clone_grpc_client()
-            .expect("stored mock RPC URL should create a fresh client");
+        let mut grpc_client = client.clone_grpc_client();
 
         assert_eq!(
-            fresh_client
+            grpc_client
                 .get_reference_gas_price()
                 .await
-                .expect("fresh client should use the stored mock RPC URL"),
+                .expect("cloned client should use the configured transport"),
             42
         );
-    }
-
-    #[tokio::test]
-    async fn clone_grpc_client_maps_invalid_rpc_url() {
-        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
-        let mut client = keyless_client(&rpc_url).await;
-        client.rpc_url = "not a URL".into();
-
-        let Err(error) = client.clone_grpc_client() else {
-            panic!("invalid RPC URL should fail client construction");
-        };
-
-        assert!(matches!(error, NexusError::Rpc(_)));
-    }
-
-    #[tokio::test]
-    async fn clone_grpc_client_does_not_acquire_crawler_mutex() {
-        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
-        let client = keyless_client(&rpc_url).await;
-        let shared_client = client.grpc_client();
-        let _shared_guard = shared_client.lock().await;
-
-        client
-            .clone_grpc_client()
-            .expect("fresh client construction should not acquire crawler mutex");
     }
 
     #[tokio::test]
@@ -1145,7 +1117,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn client_exposes_its_owner_and_shared_grpc_client() {
+    async fn client_exposes_its_owner_and_shared_grpc_arc() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let owner = pk.public_key().derive_address();
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());

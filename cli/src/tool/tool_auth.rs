@@ -387,7 +387,7 @@ async fn sync_allowed_leaders(
 
     let mut conf = CliConf::load().await.unwrap_or_default();
     let client = build_sui_grpc_client(&conf).await?;
-    let rpc_url = client.lock().await.uri().to_string();
+    let rpc_url = client.uri().to_string();
     let objects = get_nexus_objects(&mut conf).await?;
 
     let reader = NetworkAuthReader::from_rpc_url(

@@ -14,7 +14,6 @@ pub(crate) use {
             Arc,
         },
     },
-    tokio::sync::Mutex,
 };
 
 /// Where to find config files.

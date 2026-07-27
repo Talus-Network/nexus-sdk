@@ -12,7 +12,7 @@ use {
 /// Build Sui client for the provided Sui net.
 pub(crate) async fn build_sui_grpc_client(
     conf: &CliConf,
-) -> AnyResult<Arc<Mutex<sui::grpc::Client>>, NexusCliError> {
+) -> AnyResult<Arc<sui::grpc::Client>, NexusCliError> {
     let client_handle = loading!("Building Sui client...");
 
     // Try to get the `SUI_RPC_URL` from the environment, otherwise use
@@ -34,7 +34,7 @@ pub(crate) async fn build_sui_grpc_client(
         Ok(client) => {
             client_handle.success();
 
-            Ok(Arc::new(Mutex::new(client)))
+            Ok(Arc::new(client))
         }
         Err(e) => {
             client_handle.error();
@@ -214,7 +214,7 @@ async fn build_nexus_client_context() -> Result<NexusClient, NexusCliError> {
                 "Failed to resolve workflow original package ID: {e}"
             ))
         })?;
-    let rpc_url = client.lock().await.uri().to_string();
+    let rpc_url = client.uri().to_string();
 
     let builder = NexusClient::builder()
         .with_private_key(pk)

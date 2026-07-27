@@ -38,7 +38,6 @@ use {
     },
     ed25519_dalek::{Signature, Signer as _, SigningKey},
     std::sync::Arc,
-    tokio::sync::Mutex,
 };
 
 const POP_DOMAIN_V1: &[u8] = b"nexus_registry.network_auth.pop_v1";
@@ -530,7 +529,7 @@ impl NetworkAuthReader {
         network_auth_object_id: sui::types::Address,
     ) -> Result<Self, NexusError> {
         let client = sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?;
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
         Ok(Self::new(crawler, registry_pkg_id, network_auth_object_id))
     }
 

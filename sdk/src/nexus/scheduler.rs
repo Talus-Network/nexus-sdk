@@ -950,7 +950,6 @@ mod tests {
         rand::thread_rng,
         serde::Serialize,
         std::{marker::PhantomData, sync::Arc},
-        tokio::sync::Mutex,
     };
 
     type RequestScheduledOccurrenceEvent =
@@ -1392,7 +1391,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let config =
             fetch_scheduled_agent_execution_config(&crawler, &objects, &configured_automaton_id)

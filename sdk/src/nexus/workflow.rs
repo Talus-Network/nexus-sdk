@@ -2500,7 +2500,6 @@ mod tests {
             atomic::{AtomicBool, Ordering},
             Arc,
         },
-        tokio::sync::Mutex,
     };
 
     #[derive(Clone, Debug, Serialize)]
@@ -2807,7 +2806,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        Crawler::new(Arc::new(Mutex::new(client)))
+        Crawler::new(Arc::new(client))
     }
 
     #[tokio::test]
@@ -5618,7 +5617,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
         let candidates = fetch_tool_gas_refs_for_abort_candidates(
             &crawler,
             gas_service_id,
