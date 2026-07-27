@@ -1,32 +1,48 @@
 name: Audit Dependencies
+
 on:
   pull_request:
   push:
+    branches:
+      - main
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
 
-jobs:
-  detect-changes:
-    uses: ./.github/workflows/detect_changes.yml
-    with:
-      files: |
-        **/Cargo.toml
-        **/Cargo.lock
-        **/audit.toml
+permissions:
+  contents: read
 
-  audit:
-    name: Audit Dependencies
-    needs: detect-changes
-    if: needs.detect-changes.outputs.changed == 'true' && ( github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+jobs:
+  policy:
+    name: Enforce dependency policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check accepted dependency policy
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --all-features --locked
+          command: check
+          command-arguments: advisories
+
+  discovery:
+    name: Discover RustSec advisories
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
 
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Audit Rust Dependencies
+      # Cargo Deny owns blocking policy. This step keeps every finding visible.
+      - name: Audit Rust dependencies
+        continue-on-error: true
         uses: actions-rust-lang/audit@v1
+        with:
+          createIssues: ${{ github.ref == 'refs/heads/main' }}
