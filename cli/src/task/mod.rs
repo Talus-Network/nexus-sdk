@@ -1,5 +1,6 @@
 mod args;
 mod create;
+mod list;
 mod occurrence;
 mod recurrence;
 mod schedule;
@@ -20,6 +21,7 @@ its Task.
 Commands:
   task create    Creates an empty Task for later composition.
   task schedule  Creates and schedules atomically in one transaction.
+  task list      Lists Tasks discoverable through owned TaskPointer objects.
 
 Use --now to schedule at the current Sui Clock time. Task inspection and
 occurrence inspection read durable object state.
@@ -40,6 +42,7 @@ Examples:
     --prepay-amount-mist 50000000 \
     --occurrence-budget-mist 50000000 \
     --schedule-file schedule.json
+  nexus task list --limit 50
   nexus task inspect --task-id 0x123
   nexus task occurrence list --task-id 0x123 --json
   nexus task occurrence inspect --task-id 0x123 --occurrence-id 7"#;
@@ -91,6 +94,24 @@ pub(crate) enum TaskCommand {
         long_about = SCHEDULE_HELP
     )]
     Schedule(Box<ScheduleTaskArgs>),
+
+    #[command(about = "List Tasks owned by the configured signer")]
+    List {
+        #[arg(
+            long,
+            value_name = "HEX",
+            help = "Opaque cursor returned by the previous page"
+        )]
+        cursor: Option<String>,
+        #[arg(
+            long,
+            value_name = "COUNT",
+            default_value_t = 50,
+            value_parser = parse_page_limit,
+            help = "Maximum TaskPointer objects read from one RPC page"
+        )]
+        limit: usize,
+    },
 
     #[command(about = "Inspect current Task object state")]
     Inspect {
@@ -182,7 +203,7 @@ pub(crate) enum OccurrenceCommand {
             long,
             value_name = "COUNT",
             default_value_t = 50,
-            value_parser = parse_occurrence_page_limit,
+            value_parser = parse_page_limit,
             help = "Maximum dynamic fields read from one RPC page"
         )]
         limit: usize,
@@ -272,6 +293,7 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
             } = *args;
             schedule::run(task, schedule, gas).await
         }
+        TaskCommand::List { cursor, limit } => list::run(cursor, limit).await,
         TaskCommand::Inspect { task_id } => state::inspect(task_id).await,
         TaskCommand::Pause { task_id, gas } => state::pause(task_id, gas).await,
         TaskCommand::Resume { task_id, gas } => state::resume(task_id, gas).await,
@@ -287,16 +309,16 @@ pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError>
     }
 }
 
-fn parse_occurrence_page_limit(value: &str) -> Result<usize, String> {
+fn parse_page_limit(value: &str) -> Result<usize, String> {
     let limit = value
         .parse::<usize>()
-        .map_err(|error| format!("invalid occurrence page limit: {error}"))?;
+        .map_err(|error| format!("invalid page limit: {error}"))?;
     if limit == 0 {
-        return Err("occurrence page limit must be greater than zero".to_owned());
+        return Err("page limit must be greater than zero".to_owned());
     }
     u32::try_from(limit)
         .map(|_| limit)
-        .map_err(|_| "occurrence page limit must fit in u32".to_owned())
+        .map_err(|_| "page limit must fit in u32".to_owned())
 }
 
 #[cfg(test)]
@@ -322,6 +344,51 @@ mod tests {
             crate::Command::Task(task)
                 if matches!(*task, TaskCommand::Create(_))
         ));
+    }
+
+    #[test]
+    fn task_list_uses_the_default_page_limit() {
+        let cli =
+            crate::Cli::try_parse_from(["nexus", "task", "list"]).expect("Task list should parse");
+        assert!(matches!(
+            cli.command,
+            crate::Command::Task(task)
+                if matches!(
+                    *task,
+                    TaskCommand::List {
+                        cursor: None,
+                        limit: 50,
+                    }
+                )
+        ));
+    }
+
+    #[test]
+    fn task_list_accepts_cursor_and_limit() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus", "task", "list", "--cursor", "0102", "--limit", "7",
+        ])
+        .expect("Task list page should parse");
+        assert!(matches!(
+            cli.command,
+            crate::Command::Task(task)
+                if matches!(
+                    *task,
+                    TaskCommand::List {
+                        cursor: Some(ref cursor),
+                        limit: 7,
+                    } if cursor == "0102"
+                )
+        ));
+    }
+
+    #[test]
+    fn task_list_rejects_a_zero_limit() {
+        let error = match crate::Cli::try_parse_from(["nexus", "task", "list", "--limit", "0"]) {
+            Ok(_) => panic!("zero page limit should fail"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("greater than zero"));
     }
 
     #[test]

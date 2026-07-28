@@ -179,6 +179,7 @@ impl<'builder, 'client> TaskDraft<'builder, 'client> {
     ///
     /// Returns [`SchedulerError`] when the share command cannot be built.
     pub fn share(self) -> Result<(), SchedulerError> {
-        self.compiler.share()
+        let owner = self.client.owner().map_err(SchedulerError::transport)?;
+        self.compiler.share(owner)
     }
 }

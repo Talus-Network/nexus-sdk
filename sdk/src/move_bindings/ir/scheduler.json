@@ -2383,10 +2383,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceAdvertised"
+            "name": "OccurrenceAdvertisedEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceAdvertised",
+          "name": "OccurrenceAdvertisedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2462,10 +2462,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceDispatched"
+            "name": "OccurrenceDispatchedEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceDispatched",
+          "name": "OccurrenceDispatchedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2520,10 +2520,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceMissed"
+            "name": "OccurrenceMissedEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceMissed",
+          "name": "OccurrenceMissedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2564,10 +2564,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceScheduled"
+            "name": "OccurrenceScheduledEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceScheduled",
+          "name": "OccurrenceScheduledEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2643,10 +2643,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceSettled"
+            "name": "OccurrenceSettledEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceSettled",
+          "name": "OccurrenceSettledEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2701,10 +2701,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "OccurrenceWithdrawn"
+            "name": "OccurrenceWithdrawnEvent"
           },
           "module": "scheduler",
-          "name": "OccurrenceWithdrawn",
+          "name": "OccurrenceWithdrawnEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2789,10 +2789,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "TaskCanceled"
+            "name": "TaskCanceledEvent"
           },
           "module": "scheduler",
-          "name": "TaskCanceled",
+          "name": "TaskCanceledEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2823,10 +2823,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "TaskClosed"
+            "name": "TaskClosedEvent"
           },
           "module": "scheduler",
-          "name": "TaskClosed",
+          "name": "TaskClosedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2857,10 +2857,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "TaskCreated"
+            "name": "TaskCreatedEvent"
           },
           "module": "scheduler",
-          "name": "TaskCreated",
+          "name": "TaskCreatedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2924,10 +2924,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "TaskPaused"
+            "name": "TaskPausedEvent"
           },
           "module": "scheduler",
-          "name": "TaskPaused",
+          "name": "TaskPausedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -2958,10 +2958,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "scheduler",
-            "name": "TaskResumed"
+            "name": "TaskResumedEvent"
           },
           "module": "scheduler",
-          "name": "TaskResumed",
+          "name": "TaskResumedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -4085,6 +4085,16 @@
                 },
                 "type_arguments": []
               }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
             }
           ]
         },
@@ -4196,6 +4206,16 @@
                   "address": "0xa5",
                   "module": "task",
                   "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
                 },
                 "type_arguments": []
               }
@@ -4328,6 +4348,16 @@
                   "address": "0xa5",
                   "module": "task",
                   "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
                 },
                 "type_arguments": []
               }
@@ -6494,6 +6524,54 @@
           "type_name": {
             "address": "0xa5",
             "module": "task",
+            "name": "TaskPointer"
+          },
+          "module": "task",
+          "name": "TaskPointer",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "task_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "task",
             "name": "TaskStatus"
           },
           "module": "task",
@@ -7838,6 +7916,16 @@
                 },
                 "type_arguments": []
               }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
             }
           ]
         },
@@ -8831,6 +8919,44 @@
                 "type_arguments": [
                   "Bool"
                 ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "task_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "TaskPointer"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
               }
             }
           ]

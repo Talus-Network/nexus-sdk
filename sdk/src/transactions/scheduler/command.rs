@@ -40,6 +40,12 @@ pub(crate) struct PreparedTask {
     pub(crate) failure_policy: FailurePolicy,
 }
 
+pub(super) struct CreatedTask {
+    pub(super) task: Argument,
+    pub(super) pointer: Argument,
+    pub(super) authority: ResolvedAuthority,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PreparedOccurrence {
     pub(super) start_time_ms: u64,
@@ -120,7 +126,7 @@ fn incompatible_funding(message: &'static str) -> SchedulerError {
 pub(super) fn create_unshared_task(
     transaction: &mut NexusPtbBuilder<'_>,
     task: &PreparedTask,
-) -> Result<(Argument, ResolvedAuthority), SchedulerError> {
+) -> Result<CreatedTask, SchedulerError> {
     if task.occurrence_budget_mist == 0 {
         return Err(ScheduleError::ZeroOccurrenceBudget.into());
     }
@@ -150,7 +156,7 @@ pub(super) fn create_unshared_task(
             let refund_recipient = transaction
                 .arg(refund_recipient)
                 .map_err(SchedulerError::transaction)?;
-            let task = transaction
+            let result = transaction
                 .call_target(
                     scheduler_binding::new_default_task_target,
                     vec![
@@ -163,7 +169,7 @@ pub(super) fn create_unshared_task(
                     ],
                 )
                 .map_err(SchedulerError::transaction)?;
-            Ok((task, ResolvedAuthority::Address))
+            created_task(transaction, result, ResolvedAuthority::Address)
         }
         (
             TaskOperation::AgentSkill { agent_id, .. },
@@ -183,7 +189,7 @@ pub(super) fn create_unshared_task(
             let refund_recipient = transaction
                 .arg(refund_recipient)
                 .map_err(SchedulerError::transaction)?;
-            let task = transaction
+            let result = transaction
                 .call_target(
                     scheduler_binding::new_user_task_target,
                     vec![
@@ -197,7 +203,7 @@ pub(super) fn create_unshared_task(
                     ],
                 )
                 .map_err(SchedulerError::transaction)?;
-            Ok((task, ResolvedAuthority::Address))
+            created_task(transaction, result, ResolvedAuthority::Address)
         }
         (
             TaskOperation::AgentSkill { agent_id, .. },
@@ -211,7 +217,7 @@ pub(super) fn create_unshared_task(
             let prepay_amount_mist = transaction
                 .arg(prepay_amount_mist)
                 .map_err(SchedulerError::transaction)?;
-            let task = transaction
+            let result = transaction
                 .call_target(
                     scheduler_binding::new_agent_task_target,
                     vec![
@@ -224,7 +230,7 @@ pub(super) fn create_unshared_task(
                     ],
                 )
                 .map_err(SchedulerError::transaction)?;
-            Ok((task, ResolvedAuthority::Agent(agent.clone())))
+            created_task(transaction, result, ResolvedAuthority::Agent(agent.clone()))
         }
         (TaskOperation::DefaultDag { .. }, PreparedFunding::Agent { .. }, _) => Err(
             incompatible_funding("a default DAG Task cannot use Agent-vault funding"),
@@ -239,6 +245,24 @@ pub(super) fn create_unshared_task(
             "the resolved Agent does not match the Task operation",
         )),
     }
+}
+
+fn created_task(
+    transaction: &NexusPtbBuilder<'_>,
+    result: Argument,
+    authority: ResolvedAuthority,
+) -> Result<CreatedTask, SchedulerError> {
+    let task = transaction
+        .nested_result(result, 0)
+        .map_err(SchedulerError::transaction)?;
+    let pointer = transaction
+        .nested_result(result, 1)
+        .map_err(SchedulerError::transaction)?;
+    Ok(CreatedTask {
+        task,
+        pointer,
+        authority,
+    })
 }
 
 fn shared_task_arg(
@@ -325,12 +349,20 @@ pub(super) fn append_schedule(
     Ok(())
 }
 
-pub(super) fn share_task(
+pub(super) fn finish_task(
     transaction: &mut NexusPtbBuilder<'_>,
     task: Argument,
+    pointer: Argument,
+    pointer_owner: sui::types::Address,
 ) -> Result<(), SchedulerError> {
     transaction
         .call_target(scheduler_binding::share_target, vec![task])
+        .map_err(SchedulerError::transaction)?;
+    let pointer_owner = transaction
+        .arg(&pointer_owner)
+        .map_err(SchedulerError::transaction)?;
+    transaction
+        .transfer_objects(vec![pointer], pointer_owner)
         .map_err(SchedulerError::transaction)?;
     Ok(())
 }
@@ -338,10 +370,11 @@ pub(super) fn share_task(
 pub(crate) fn create_task_ptb(
     objects: &NexusObjects,
     task: &PreparedTask,
+    pointer_owner: sui::types::Address,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
-        let (task, _) = create_unshared_task(transaction, task)?;
-        share_task(transaction, task)
+        let created = create_unshared_task(transaction, task)?;
+        finish_task(transaction, created.task, created.pointer, pointer_owner)
     })
 }
 
@@ -349,14 +382,15 @@ pub(crate) fn schedule_task_ptb(
     objects: &NexusObjects,
     task: &PreparedTask,
     schedule: &PreparedSchedule,
+    pointer_owner: sui::types::Address,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     if schedule.is_empty() {
         return Err(ScheduleError::EmptySchedule.into());
     }
     ptb(objects, |transaction| {
-        let (task, authority) = create_unshared_task(transaction, task)?;
-        append_schedule(transaction, task, &authority, schedule)?;
-        share_task(transaction, task)
+        let created = create_unshared_task(transaction, task)?;
+        append_schedule(transaction, created.task, &created.authority, schedule)?;
+        finish_task(transaction, created.task, created.pointer, pointer_owner)
     })
 }
 
@@ -687,7 +721,7 @@ mod tests {
             transactions::scheduler::compose::TaskDraftCompiler,
         },
         std::collections::BTreeMap,
-        sui_sdk_types::{Command, MoveCall},
+        sui_sdk_types::{Argument, Command, MoveCall},
     };
 
     fn address(value: &'static str) -> sui::types::Address {
@@ -755,8 +789,9 @@ mod tests {
 
     #[test]
     fn complete_schedule_has_one_structural_command_path() {
-        let transaction = schedule_task_ptb(&mock_nexus_objects(), &task(), &schedule())
-            .expect("complete Task compiles");
+        let transaction =
+            schedule_task_ptb(&mock_nexus_objects(), &task(), &schedule(), address("0x46"))
+                .expect("complete Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
@@ -773,8 +808,8 @@ mod tests {
 
     #[test]
     fn empty_creation_is_composable() {
-        let transaction =
-            create_task_ptb(&mock_nexus_objects(), &task()).expect("empty Task compiles");
+        let transaction = create_task_ptb(&mock_nexus_objects(), &task(), address("0x46"))
+            .expect("empty Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
@@ -791,14 +826,16 @@ mod tests {
         let objects = mock_nexus_objects();
         let task = task();
         let schedule = schedule();
-        let complete = schedule_task_ptb(&objects, &task, &schedule).expect("complete compile");
+        let pointer_owner = address("0x46");
+        let complete =
+            schedule_task_ptb(&objects, &task, &schedule, pointer_owner).expect("complete compile");
 
         let mut builder = NexusPtbBuilder::new(&objects);
         TaskDraftCompiler::create(&mut builder, &task)
             .expect("draft creation")
             .schedule(&schedule)
             .expect("draft scheduling")
-            .share()
+            .share(pointer_owner)
             .expect("draft sharing");
         let composed = builder.finish();
 
@@ -824,6 +861,7 @@ mod tests {
             &mock_nexus_objects(),
             &task,
             &PreparedSchedule::new(vec![PreparedOccurrence::new(100, None, 20)], None),
+            address("0x46"),
         )
         .expect("Agent Task compiles");
 
@@ -836,5 +874,38 @@ mod tests {
                 "share",
             ]
         );
+    }
+
+    #[test]
+    fn creation_transfers_the_pointer_result_to_its_owner() {
+        let transaction = create_task_ptb(&mock_nexus_objects(), &task(), address("0x46"))
+            .expect("Task compiles");
+        let new_task_index = transaction
+            .commands
+            .iter()
+            .position(|command| {
+                matches!(
+                    command,
+                    Command::MoveCall(call) if call.function.as_str() == "new_default_task"
+                )
+            })
+            .expect("Task constructor");
+        let (objects, recipient) = transaction
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::TransferObjects(transfer) => Some((&transfer.objects, transfer.address)),
+                _ => None,
+            })
+            .expect("TaskPointer transfer");
+
+        assert_eq!(
+            objects,
+            &[Argument::NestedResult(
+                new_task_index.try_into().expect("command index"),
+                1,
+            )]
+        );
+        assert!(matches!(recipient, Argument::Input(_)));
     }
 }

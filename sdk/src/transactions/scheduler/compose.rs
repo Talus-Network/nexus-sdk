@@ -4,7 +4,7 @@ use {
         command::{
             append_schedule,
             create_unshared_task,
-            share_task,
+            finish_task,
             PreparedSchedule,
             PreparedTask,
         },
@@ -16,6 +16,7 @@ use {
 pub(crate) struct TaskDraftCompiler<'builder, 'objects> {
     transaction: &'builder mut NexusPtbBuilder<'objects>,
     task: Argument,
+    pointer: Argument,
     authority: ResolvedAuthority,
 }
 
@@ -24,11 +25,12 @@ impl<'builder, 'objects> TaskDraftCompiler<'builder, 'objects> {
         transaction: &'builder mut NexusPtbBuilder<'objects>,
         task: &PreparedTask,
     ) -> Result<Self, SchedulerError> {
-        let (task, authority) = create_unshared_task(transaction, task)?;
+        let created = create_unshared_task(transaction, task)?;
         Ok(Self {
             transaction,
-            task,
-            authority,
+            task: created.task,
+            pointer: created.pointer,
+            authority: created.authority,
         })
     }
 
@@ -37,7 +39,10 @@ impl<'builder, 'objects> TaskDraftCompiler<'builder, 'objects> {
         Ok(self)
     }
 
-    pub(crate) fn share(self) -> Result<(), SchedulerError> {
-        share_task(self.transaction, self.task)
+    pub(crate) fn share(
+        self,
+        pointer_owner: crate::sui::types::Address,
+    ) -> Result<(), SchedulerError> {
+        finish_task(self.transaction, self.task, self.pointer, pointer_owner)
     }
 }

@@ -59,6 +59,8 @@ pub use {
         OccurrenceSource,
         OccurrenceStatus,
         TaskController,
+        TaskPointer,
+        TaskPointerPage,
         TaskSnapshot,
         TaskStatus,
         WatchOptions,

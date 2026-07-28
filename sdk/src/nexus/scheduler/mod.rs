@@ -12,6 +12,7 @@ mod task;
 
 use crate::{
     events::NexusEventKind,
+    move_bindings::{self, scheduler::task::TaskPointer as MoveTaskPointer},
     nexus::{client::NexusClient, signer::ExecutedTransaction},
     scheduler::{
         OccurrenceRef,
@@ -21,6 +22,8 @@ use crate::{
         ScheduledOccurrence,
         SchedulerError,
         TaskMutationReceipt,
+        TaskPointer,
+        TaskPointerPage,
         TaskSpec,
         TransactionReference,
         WithdrawalReason,
@@ -53,7 +56,7 @@ impl Scheduler {
     pub async fn create_task(&self, task: TaskSpec) -> Result<TaskMutationReceipt, SchedulerError> {
         let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let prepared = resolve::prepare_task(&self.client, &task).await?;
-        let transaction = compile_create_task_ptb(&self.client.nexus_objects, &prepared)?;
+        let transaction = compile_create_task_ptb(&self.client.nexus_objects, &prepared, sender)?;
         let executed = self
             .client
             .submit_transaction(transaction, sender)
@@ -84,6 +87,7 @@ impl Scheduler {
             &self.client.nexus_objects,
             &prepared_task,
             &prepared_schedule,
+            sender,
         )?;
         let executed = self
             .client
@@ -97,6 +101,54 @@ impl Scheduler {
     /// Returns a stateful handle for one Task identifier.
     pub fn task(&self, task_id: sui::types::Address) -> TaskHandle {
         TaskHandle::new(self.client.clone(), task_id)
+    }
+
+    /// Reads one RPC page of [`TaskPointer`] objects owned by the signer.
+    ///
+    /// The cursor is opaque and may be passed unchanged from
+    /// [`TaskPointerPage::next_cursor`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when the client has no signer, `limit` is
+    /// zero, the page cannot be decoded, or chain data violates pointer
+    /// identity.
+    pub async fn task_pointers(
+        &self,
+        cursor: Option<Vec<u8>>,
+        limit: usize,
+    ) -> Result<TaskPointerPage, SchedulerError> {
+        if limit == 0 {
+            return Err(SchedulerError::InvalidRequest {
+                message: "Task pointer page limit must be greater than zero".to_owned(),
+            });
+        }
+        let owner = self.client.owner().map_err(SchedulerError::transport)?;
+        let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&self.client.nexus_objects);
+        let page = self
+            .client
+            .crawler()
+            .get_owned_object_page::<MoveTaskPointer>(owner, object_type, cursor, limit)
+            .await
+            .map_err(SchedulerError::transport)?;
+        let (objects, next_cursor) = page.into_parts();
+        let mut pointers = Vec::with_capacity(objects.len());
+        for object in objects {
+            let embedded_id = object.data.id.id.bytes;
+            if embedded_id != object.object_id {
+                return Err(SchedulerError::InconsistentChainState {
+                    message: format!(
+                        "TaskPointer object '{}' contains UID '{}'",
+                        object.object_id, embedded_id
+                    ),
+                });
+            }
+            pointers.push(TaskPointer::new(
+                object.object_id,
+                object.data.task_id.bytes,
+            ));
+        }
+        Ok(TaskPointerPage::new(pointers, next_cursor))
     }
 }
 
@@ -231,10 +283,11 @@ mod tests {
                         OccurrenceWithdrawalReason,
                     },
                     scheduler as scheduler_binding,
-                    task::TaskController as MoveTaskController,
+                    task::{TaskController as MoveTaskController, TaskPointer as MoveTaskPointer},
                 },
-                sui_framework::object::ID,
+                sui_framework::object::{ID, UID},
             },
+            test_utils::{nexus_mocks, sui_mocks},
         },
     };
 
@@ -284,7 +337,7 @@ mod tests {
     }
 
     fn task_created(task_id: sui::types::Address) -> NexusEventKind {
-        NexusEventKind::TaskCreated(scheduler_binding::TaskCreated::new(
+        NexusEventKind::TaskCreated(scheduler_binding::TaskCreatedEvent::new(
             ID::new(task_id),
             MoveTaskController::Address {
                 pos0: address("0x52"),
@@ -299,7 +352,7 @@ mod tests {
         let task_id = address("0x51");
         let executed = executed(vec![
             task_created(task_id),
-            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduled::new(
+            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduledEvent::new(
                 ID::new(task_id),
                 1,
                 100,
@@ -307,7 +360,7 @@ mod tests {
                 20,
                 MoveOccurrenceSource::Standalone,
             )),
-            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduled::new(
+            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduledEvent::new(
                 ID::new(task_id),
                 2,
                 200,
@@ -315,19 +368,21 @@ mod tests {
                 30,
                 MoveOccurrenceSource::Recurring { iteration: 3 },
             )),
-            NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawn::new(
+            NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawnEvent::new(
                 ID::new(task_id),
                 1,
                 OccurrenceWithdrawalReason::RecurrenceCleared,
             )),
-            NexusEventKind::OccurrenceAdvertised(scheduler_binding::OccurrenceAdvertised::new(
-                ID::new(task_id),
-                2,
-                200,
-                MoveOption::from_option(None),
-                30,
-                MoveOccurrenceSource::Recurring { iteration: 3 },
-            )),
+            NexusEventKind::OccurrenceAdvertised(
+                scheduler_binding::OccurrenceAdvertisedEvent::new(
+                    ID::new(task_id),
+                    2,
+                    200,
+                    MoveOption::from_option(None),
+                    30,
+                    MoveOccurrenceSource::Recurring { iteration: 3 },
+                ),
+            ),
         ]);
 
         assert_eq!(
@@ -377,7 +432,7 @@ mod tests {
         assert!(matches!(
             mutation_receipt(
                 executed(vec![NexusEventKind::TaskPaused(
-                    scheduler_binding::TaskPaused::new(ID::new(other_task)),
+                    scheduler_binding::TaskPausedEvent::new(ID::new(other_task)),
                 )]),
                 task_id,
             ),
@@ -390,26 +445,30 @@ mod tests {
         let task_id = address("0x56");
         let execution_id = ID::new(address("0x57"));
         let events = [
-            NexusEventKind::OccurrenceAdvertised(scheduler_binding::OccurrenceAdvertised::new(
-                ID::new(task_id),
-                1,
-                10,
-                MoveOption::from_option(None),
-                20,
-                MoveOccurrenceSource::Standalone,
-            )),
-            NexusEventKind::OccurrenceDispatched(scheduler_binding::OccurrenceDispatched::new(
-                ID::new(task_id),
-                1,
-                execution_id,
-                11,
-            )),
-            NexusEventKind::OccurrenceMissed(scheduler_binding::OccurrenceMissed::new(
+            NexusEventKind::OccurrenceAdvertised(
+                scheduler_binding::OccurrenceAdvertisedEvent::new(
+                    ID::new(task_id),
+                    1,
+                    10,
+                    MoveOption::from_option(None),
+                    20,
+                    MoveOccurrenceSource::Standalone,
+                ),
+            ),
+            NexusEventKind::OccurrenceDispatched(
+                scheduler_binding::OccurrenceDispatchedEvent::new(
+                    ID::new(task_id),
+                    1,
+                    execution_id,
+                    11,
+                ),
+            ),
+            NexusEventKind::OccurrenceMissed(scheduler_binding::OccurrenceMissedEvent::new(
                 ID::new(task_id),
                 1,
                 12,
             )),
-            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduled::new(
+            NexusEventKind::OccurrenceScheduled(scheduler_binding::OccurrenceScheduledEvent::new(
                 ID::new(task_id),
                 1,
                 10,
@@ -417,22 +476,24 @@ mod tests {
                 20,
                 MoveOccurrenceSource::Standalone,
             )),
-            NexusEventKind::OccurrenceSettled(scheduler_binding::OccurrenceSettled::new(
+            NexusEventKind::OccurrenceSettled(scheduler_binding::OccurrenceSettledEvent::new(
                 ID::new(task_id),
                 1,
                 execution_id,
                 true,
             )),
-            NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawn::new(
+            NexusEventKind::OccurrenceWithdrawn(scheduler_binding::OccurrenceWithdrawnEvent::new(
                 ID::new(task_id),
                 1,
                 OccurrenceWithdrawalReason::TaskCanceled,
             )),
-            NexusEventKind::TaskCanceled(scheduler_binding::TaskCanceled::new(ID::new(task_id))),
-            NexusEventKind::TaskClosed(scheduler_binding::TaskClosed::new(ID::new(task_id))),
+            NexusEventKind::TaskCanceled(scheduler_binding::TaskCanceledEvent::new(ID::new(
+                task_id,
+            ))),
+            NexusEventKind::TaskClosed(scheduler_binding::TaskClosedEvent::new(ID::new(task_id))),
             task_created(task_id),
-            NexusEventKind::TaskPaused(scheduler_binding::TaskPaused::new(ID::new(task_id))),
-            NexusEventKind::TaskResumed(scheduler_binding::TaskResumed::new(ID::new(task_id))),
+            NexusEventKind::TaskPaused(scheduler_binding::TaskPausedEvent::new(ID::new(task_id))),
+            NexusEventKind::TaskResumed(scheduler_binding::TaskResumedEvent::new(ID::new(task_id))),
         ];
 
         for event in events {
@@ -466,5 +527,74 @@ mod tests {
         ] {
             assert_eq!(withdrawal_reason(stored), projected);
         }
+    }
+
+    #[tokio::test]
+    async fn task_pointer_discovery_reaches_grpc_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let pointer_id = address("0x61");
+        let task_id = address("0x62");
+        let pointer_ref = sui_mocks::object_ref_for_id(pointer_id);
+        let pointer_type = move_bindings::struct_tag::<MoveTaskPointer>(&nexus_objects);
+        let expected_type = pointer_type.to_string();
+        let request_cursor = Vec::from(&b"request-cursor"[..]);
+        let response_cursor = Vec::from(&b"response-cursor"[..]);
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        state_service
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once({
+                let pointer_ref = pointer_ref.clone();
+                let request_cursor = request_cursor.clone();
+                let response_cursor = response_cursor.clone();
+                move |request| {
+                    let request = request.get_ref();
+                    let owner = request
+                        .owner
+                        .as_deref()
+                        .expect("address owner")
+                        .parse::<sui::types::Address>()
+                        .expect("valid address owner");
+                    assert_eq!(request.object_type.as_deref(), Some(expected_type.as_str()));
+                    assert_eq!(request.page_size, Some(7));
+                    assert_eq!(
+                        request.page_token.as_deref(),
+                        Some(request_cursor.as_slice())
+                    );
+
+                    let pointer = MoveTaskPointer::new(UID::new(pointer_id), ID::new(task_id));
+                    let mut object = sui::grpc::Object::default();
+                    object.set_object_id(pointer_id);
+                    object.set_owner(sui::types::Owner::Address(owner));
+                    object.set_object_type(expected_type);
+                    object.set_version(pointer_ref.version());
+                    object.set_digest(*pointer_ref.digest());
+                    let mut contents = sui::grpc::Bcs::default();
+                    contents.set_value(bcs::to_bytes(&pointer).expect("pointer BCS"));
+                    object.set_contents(contents);
+
+                    let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                    response.set_objects(vec![object]);
+                    response.next_page_token = Some(response_cursor.into());
+                    Ok(tonic::Response::new(response))
+                }
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let page = client
+            .scheduler()
+            .task_pointers(Some(request_cursor), 7)
+            .await
+            .expect("TaskPointer page");
+
+        assert_eq!(
+            page.task_pointers(),
+            &[TaskPointer::new(pointer_id, task_id)]
+        );
+        assert_eq!(page.next_cursor(), Some(response_cursor.as_slice()));
     }
 }

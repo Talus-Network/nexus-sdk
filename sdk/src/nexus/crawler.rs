@@ -82,6 +82,30 @@ impl<K, V> DynamicFieldPage<K, V> {
     }
 }
 
+/// One RPC page of typed objects owned by one address.
+#[derive(Clone, Debug)]
+pub struct OwnedObjectPage<T> {
+    data: Vec<Response<T>>,
+    next_cursor: Option<Vec<u8>>,
+}
+
+impl<T> OwnedObjectPage<T> {
+    /// Returns the decoded objects in RPC order.
+    pub fn data(&self) -> &[Response<T>] {
+        &self.data
+    }
+
+    /// Returns the opaque cursor for the next RPC page.
+    pub fn next_cursor(&self) -> Option<&[u8]> {
+        self.next_cursor.as_deref()
+    }
+
+    /// Separates the decoded objects from the opaque next page cursor.
+    pub fn into_parts(self) -> (Vec<Response<T>>, Option<Vec<u8>>) {
+        (self.data, self.next_cursor)
+    }
+}
+
 /// The on-chain reference that identifies the transaction which produced one
 /// version of an object.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -648,59 +672,117 @@ impl Crawler {
     where
         T: DeserializeOwned,
     {
-        let field_mask = sui::grpc::FieldMask::from_paths([
-            "object_id",
-            "owner",
-            "version",
-            "digest",
-            "balance",
-            "contents",
-        ]);
         let mut results = Vec::new();
-        let mut page_token = None;
-        let mut client = self.clone_grpc_client();
+        let mut cursor = None;
 
         loop {
-            let mut request = sui::grpc::ListOwnedObjectsRequest::default()
-                .with_owner(owner)
-                .with_page_size(1000)
-                .with_object_type(object_type.clone())
-                .with_read_mask(field_mask.clone());
-
-            if let Some(token) = page_token.clone() {
-                request = request.with_page_token(token);
-            }
-
-            let response = client
-                .state_client()
-                .list_owned_objects(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| anyhow!("Could not fetch owned objects for '{owner}': {e}"))?;
-
-            page_token = response.next_page_token;
-
-            for object in response.objects {
-                let object_id = Self::parse_object_id(&object)?;
-                let (owner, digest, version, balance) =
-                    self.parse_object_metadata(object_id, &object)?;
-                let data = Self::parse_object_contents_bcs::<T>(self, &object)?;
-                results.push(Response {
-                    object_id,
-                    owner,
-                    version,
-                    data,
-                    digest,
-                    balance,
-                });
-            }
-
-            if page_token.is_none() {
+            let page = self
+                .get_owned_object_page(owner, object_type.clone(), cursor, 1000)
+                .await?;
+            let (data, next_cursor) = page.into_parts();
+            results.extend(data);
+            cursor = next_cursor;
+            if cursor.is_none() {
                 break;
             }
         }
 
         Ok(results)
+    }
+
+    /// Fetch one RPC page of objects owned by an address with an exact type.
+    ///
+    /// The address owner and type of every returned object are validated after
+    /// the state service applies the same filters.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limit` is zero, the RPC request fails, the
+    /// response violates its owner or type filter, or an object cannot be
+    /// decoded.
+    pub async fn get_owned_object_page<T>(
+        &self,
+        owner: sui::types::Address,
+        object_type: sui::types::StructTag,
+        cursor: Option<Vec<u8>>,
+        limit: usize,
+    ) -> anyhow::Result<OwnedObjectPage<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let page_size =
+            u32::try_from(limit).context("owned object page limit does not fit in u32")?;
+        if page_size == 0 {
+            bail!("owned object page limit must be greater than zero");
+        }
+
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "owner",
+            "object_type",
+            "version",
+            "digest",
+            "balance",
+            "contents",
+        ]);
+        let mut request = sui::grpc::ListOwnedObjectsRequest::default()
+            .with_owner(owner)
+            .with_page_size(page_size)
+            .with_object_type(object_type.clone())
+            .with_read_mask(field_mask);
+        if let Some(cursor) = cursor {
+            request = request.with_page_token(cursor);
+        }
+
+        let mut client = self.clone_grpc_client();
+        let response = client
+            .state_client()
+            .list_owned_objects(request)
+            .await
+            .map(|response| response.into_inner())
+            .map_err(|error| {
+                anyhow!(
+                    "Could not fetch objects of type '{object_type}' owned by '{owner}': {error}"
+                )
+            })?;
+
+        let expected_owner = sui::types::Owner::Address(owner);
+        let mut data = Vec::with_capacity(response.objects.len());
+        for object in response.objects {
+            let object_id = Self::parse_object_id(&object)?;
+            let (observed_owner, digest, version, balance) =
+                self.parse_object_metadata(object_id, &object)?;
+            if observed_owner != expected_owner {
+                bail!(
+                    "Object '{object_id}' has owner '{observed_owner:?}', expected address owner \
+                     '{owner}'"
+                );
+            }
+            let observed_type = object
+                .object_type_opt()
+                .ok_or_else(|| anyhow!("Object type missing for object '{object_id}'"))?
+                .parse::<sui::types::StructTag>()
+                .map_err(|error| {
+                    anyhow!("Could not parse object type for object '{object_id}': {error}")
+                })?;
+            if observed_type != object_type {
+                bail!("Object '{object_id}' has type '{observed_type}', expected '{object_type}'");
+            }
+            let decoded = Self::parse_object_contents_bcs::<T>(self, &object)?;
+            data.push(Response {
+                object_id,
+                owner: observed_owner,
+                version,
+                data: decoded,
+                digest,
+                balance,
+            });
+        }
+
+        Ok(OwnedObjectPage {
+            data,
+            next_cursor: response.next_page_token.map(|cursor| cursor.to_vec()),
+        })
     }
 
     /// Fetch all dynamic fields for a given parent table object and parse them into a
@@ -1870,6 +1952,20 @@ mod tests {
         object
     }
 
+    fn typed_object_with_bcs<T>(
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        object_type: &sui::types::StructTag,
+        value: &T,
+    ) -> sui::grpc::Object
+    where
+        T: Serialize,
+    {
+        let mut object = object_with_bcs(object_ref, owner, value);
+        object.set_object_type(object_type.to_string());
+        object
+    }
+
     fn coin_object(
         object_ref: sui::types::ObjectReference,
         owner: sui::types::Owner,
@@ -2145,14 +2241,16 @@ mod tests {
         let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
         let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        let first_object = object_with_bcs(
+        let first_object = typed_object_with_bcs(
             first_ref.clone(),
             sui::types::Owner::Address(owner),
+            &test_value_tag(),
             &TestValue { value: 7 },
         );
-        let second_object = object_with_bcs(
+        let second_object = typed_object_with_bcs(
             second_ref.clone(),
             sui::types::Owner::Address(owner),
+            &test_value_tag(),
             &TestValue { value: 9 },
         );
         let responses: Vec<(Vec<sui::grpc::Object>, Option<Vec<u8>>)> = vec![
@@ -2189,6 +2287,63 @@ mod tests {
         assert_eq!(objects[0].data, TestValue { value: 7 });
         assert_eq!(objects[1].object_id, *second_ref.object_id());
         assert_eq!(objects[1].data, TestValue { value: 9 });
+    }
+
+    #[tokio::test]
+    async fn owned_object_page_preserves_filters_and_both_cursors() {
+        let owner = sui::types::Address::from_static("0xa");
+        let object_type = test_value_tag();
+        let object_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let request_cursor = Vec::from(&b"request-cursor"[..]);
+        let response_cursor = Vec::from(&b"response-cursor"[..]);
+        let expected_owner = owner.to_string();
+        let expected_type = object_type.to_string();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once({
+                let object_type = object_type.clone();
+                let object_ref = object_ref.clone();
+                let request_cursor = request_cursor.clone();
+                let response_cursor = response_cursor.clone();
+                move |request| {
+                    let request = request.get_ref();
+                    assert_eq!(request.owner.as_deref(), Some(expected_owner.as_str()));
+                    assert_eq!(request.object_type.as_deref(), Some(expected_type.as_str()));
+                    assert_eq!(request.page_size, Some(2));
+                    assert_eq!(
+                        request.page_token.as_deref(),
+                        Some(request_cursor.as_slice())
+                    );
+
+                    let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                    response.set_objects(vec![typed_object_with_bcs(
+                        object_ref,
+                        sui::types::Owner::Address(owner),
+                        &object_type,
+                        &TestValue { value: 42 },
+                    )]);
+                    response.next_page_token = Some(response_cursor.into());
+                    Ok(tonic::Response::new(response))
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let page = crawler
+            .get_owned_object_page::<TestValue>(owner, object_type, Some(request_cursor), 2)
+            .await
+            .expect("owned object page loads");
+
+        assert_eq!(page.data().len(), 1);
+        assert_eq!(page.data()[0].object_id, *object_ref.object_id());
+        assert_eq!(page.data()[0].data, TestValue { value: 42 });
+        assert_eq!(page.next_cursor(), Some(response_cursor.as_slice()));
     }
 
     #[tokio::test]

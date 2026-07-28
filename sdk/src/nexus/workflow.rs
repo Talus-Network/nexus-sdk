@@ -1859,7 +1859,7 @@ mod tests {
                 },
                 move_std::{ascii::String as MoveString, option::Option as MoveOption},
                 primitives::data::NexusData,
-                scheduler::scheduler::OccurrenceDispatched,
+                scheduler::scheduler::OccurrenceDispatchedEvent,
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet},
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
@@ -3265,7 +3265,7 @@ mod tests {
     #[test]
     fn execution_history_includes_the_scheduler_dispatch() {
         let execution = sui::types::Address::TWO;
-        let event = NexusEventKind::OccurrenceDispatched(OccurrenceDispatched {
+        let event = NexusEventKind::OccurrenceDispatched(OccurrenceDispatchedEvent {
             task_id: object_id(sui::types::Address::ZERO),
             occurrence_id: 7,
             execution_id: object_id(execution),

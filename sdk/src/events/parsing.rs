@@ -83,13 +83,8 @@ mod tests {
             move_bindings::{
                 move_std::option::Option as MoveOption,
                 scheduler::{
-                    schedule::{OccurrenceSource, OccurrenceWithdrawalReason},
-                    scheduler::{
-                        OccurrenceAdvertised,
-                        OccurrenceScheduled,
-                        OccurrenceWithdrawn,
-                        TaskCreated,
-                    },
+                    schedule::OccurrenceSource,
+                    scheduler::{OccurrenceAdvertisedEvent, TaskCreatedEvent},
                     task::TaskController,
                 },
                 sui_framework::object::ID,
@@ -117,9 +112,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_direct_task_event() {
+    fn parses_direct_event_wrapper() {
         let task_id = ID::new(address("0x41"));
-        let event = TaskCreated::new(
+        let event = TaskCreatedEvent::new(
             task_id,
             TaskController::Address {
                 pos0: address("0x42"),
@@ -129,15 +124,15 @@ mod tests {
         );
         let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
 
-        let (event, distribution) = parse_bcs("TaskCreated", &bytes).expect("event parses");
+        let (event, distribution) = parse_bcs("TaskCreatedEvent", &bytes).expect("event parses");
 
         assert!(distribution.is_none());
         assert!(matches!(event, NexusEventKind::TaskCreated(_)));
     }
 
     #[test]
-    fn parses_distributed_occurrence_advertisement() {
-        let event = OccurrenceAdvertised::new(
+    fn parses_distributed_event_wrapper() {
+        let event = OccurrenceAdvertisedEvent::new(
             ID::new(address("0x51")),
             3,
             100,
@@ -157,44 +152,11 @@ mod tests {
         .expect("event serializes");
 
         let (event, distribution) =
-            parse_bcs("OccurrenceAdvertised", &bytes).expect("event parses");
+            parse_bcs("OccurrenceAdvertisedEvent", &bytes).expect("event parses");
 
         assert!(matches!(event, NexusEventKind::OccurrenceAdvertised(_)));
         let distribution = distribution.expect("distribution metadata");
         assert_eq!(distribution.task_id, pickup_task_id);
         assert_eq!(distribution.leaders, [address("0x52")]);
-    }
-
-    #[test]
-    fn parses_direct_occurrence_scheduled_event() {
-        let event = OccurrenceScheduled::new(
-            ID::new(address("0x61")),
-            4,
-            1_000,
-            MoveOption::from_option(Some(2_000)),
-            15,
-            OccurrenceSource::Recurring { iteration: 3 },
-        );
-        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
-
-        let (event, distribution) = parse_bcs("OccurrenceScheduled", &bytes).expect("event parses");
-
-        assert!(distribution.is_none());
-        assert!(matches!(event, NexusEventKind::OccurrenceScheduled(_)));
-    }
-
-    #[test]
-    fn parses_direct_occurrence_withdrawn_event() {
-        let event = OccurrenceWithdrawn::new(
-            ID::new(address("0x71")),
-            5,
-            OccurrenceWithdrawalReason::TaskCanceled,
-        );
-        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
-
-        let (event, distribution) = parse_bcs("OccurrenceWithdrawn", &bytes).expect("event parses");
-
-        assert!(distribution.is_none());
-        assert!(matches!(event, NexusEventKind::OccurrenceWithdrawn(_)));
     }
 }

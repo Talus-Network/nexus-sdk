@@ -254,6 +254,15 @@ mod tests {
 
     const READ_ONLY_NEXUS_COMMANDS: &[ReadOnlyCommandCallSite] = &[
         ReadOnlyCommandCallSite {
+            command: "nexus task list",
+            source: include_str!("task/list.rs"),
+            function_signature: "pub(crate) async fn run(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/mod.rs"),
+            boundary_test_signature:
+                "async fn task_pointer_discovery_reaches_grpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        ReadOnlyCommandCallSite {
             command: "nexus task inspect",
             source: include_str!("task/state.rs"),
             function_signature: "pub(crate) async fn inspect(",

@@ -106,6 +106,66 @@ impl OccurrenceStatus {
     }
 }
 
+/// Owned reference that makes one scheduler Task discoverable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskPointer {
+    task_pointer_id: sui::types::Address,
+    task_id: sui::types::Address,
+}
+
+impl TaskPointer {
+    pub(crate) const fn new(
+        task_pointer_id: sui::types::Address,
+        task_id: sui::types::Address,
+    ) -> Self {
+        Self {
+            task_pointer_id,
+            task_id,
+        }
+    }
+
+    /// Returns the [`TaskPointer`] object identifier.
+    pub const fn task_pointer_id(&self) -> sui::types::Address {
+        self.task_pointer_id
+    }
+
+    /// Returns the referenced Task identifier.
+    pub const fn task_id(&self) -> sui::types::Address {
+        self.task_id
+    }
+}
+
+/// One page of owned [`TaskPointer`] objects.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskPointerPage {
+    task_pointers: Vec<TaskPointer>,
+    next_cursor: Option<Vec<u8>>,
+}
+
+impl TaskPointerPage {
+    pub(crate) fn new(task_pointers: Vec<TaskPointer>, next_cursor: Option<Vec<u8>>) -> Self {
+        Self {
+            task_pointers,
+            next_cursor,
+        }
+    }
+
+    /// Returns the [`TaskPointer`] values in RPC order.
+    pub fn task_pointers(&self) -> &[TaskPointer] {
+        &self.task_pointers
+    }
+
+    /// Returns the opaque cursor for the next page.
+    pub fn next_cursor(&self) -> Option<&[u8]> {
+        self.next_cursor.as_deref()
+    }
+
+    /// Separates the [`TaskPointer`] values from the opaque next page cursor.
+    pub fn into_parts(self) -> (Vec<TaskPointer>, Option<Vec<u8>>) {
+        (self.task_pointers, self.next_cursor)
+    }
+}
+
 /// Observable workflow state related to one dispatched occurrence.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionSnapshot {
@@ -609,6 +669,21 @@ mod tests {
 
         let (occurrences, cursor) = page.into_parts();
         assert!(occurrences.is_empty());
+        assert_eq!(cursor, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn task_pointer_pages_preserve_identity_and_opaque_cursors() {
+        let pointer = TaskPointer::new(address("0x20"), address("0x21"));
+        assert_eq!(pointer.task_pointer_id(), address("0x20"));
+        assert_eq!(pointer.task_id(), address("0x21"));
+
+        let page = TaskPointerPage::new(vec![pointer], Some(vec![1, 2, 3]));
+        assert_eq!(page.task_pointers(), &[pointer]);
+        assert_eq!(page.next_cursor(), Some([1, 2, 3].as_slice()));
+
+        let (pointers, cursor) = page.into_parts();
+        assert_eq!(pointers, vec![pointer]);
         assert_eq!(cursor, Some(vec![1, 2, 3]));
     }
 
