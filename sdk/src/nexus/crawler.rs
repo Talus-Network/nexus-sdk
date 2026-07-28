@@ -89,6 +89,15 @@ pub struct OwnedObjectPage<T> {
     next_cursor: Option<Vec<u8>>,
 }
 
+fn is_owned_by_address(owner: &sui::types::Owner, address: sui::types::Address) -> bool {
+    match owner {
+        sui::types::Owner::Address(owner) | sui::types::Owner::ConsensusAddress { owner, .. } => {
+            *owner == address
+        }
+        _ => false,
+    }
+}
+
 impl<T> OwnedObjectPage<T> {
     /// Returns the decoded objects in RPC order.
     pub fn data(&self) -> &[Response<T>] {
@@ -746,15 +755,14 @@ impl Crawler {
                 )
             })?;
 
-        let expected_owner = sui::types::Owner::Address(owner);
         let mut data = Vec::with_capacity(response.objects.len());
         for object in response.objects {
             let object_id = Self::parse_object_id(&object)?;
             let (observed_owner, digest, version, balance) =
                 self.parse_object_metadata(object_id, &object)?;
-            if observed_owner != expected_owner {
+            if !is_owned_by_address(&observed_owner, owner) {
                 bail!(
-                    "Object '{object_id}' has owner '{observed_owner:?}', expected address owner \
+                    "Object '{object_id}' has owner '{observed_owner:?}', expected owner address \
                      '{owner}'"
                 );
             }
@@ -2320,7 +2328,10 @@ mod tests {
                     let mut response = sui::grpc::ListOwnedObjectsResponse::default();
                     response.set_objects(vec![typed_object_with_bcs(
                         object_ref,
-                        sui::types::Owner::Address(owner),
+                        sui::types::Owner::ConsensusAddress {
+                            start_version: 5,
+                            owner,
+                        },
                         &object_type,
                         &TestValue { value: 42 },
                     )]);
@@ -2343,6 +2354,13 @@ mod tests {
         assert_eq!(page.data().len(), 1);
         assert_eq!(page.data()[0].object_id, *object_ref.object_id());
         assert_eq!(page.data()[0].data, TestValue { value: 42 });
+        assert_eq!(
+            page.data()[0].owner,
+            sui::types::Owner::ConsensusAddress {
+                start_version: 5,
+                owner,
+            }
+        );
         assert_eq!(page.next_cursor(), Some(response_cursor.as_slice()));
     }
 
