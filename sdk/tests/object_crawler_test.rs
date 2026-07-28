@@ -25,7 +25,6 @@ use {
         str::FromStr,
         sync::Arc,
     },
-    tokio::sync::Mutex,
 };
 
 #[derive(Clone, Debug, Deserialize)]
@@ -163,7 +162,7 @@ async fn test_object_crawler() {
     let grpc = sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
         .expect("Could not create gRPC client");
 
-    let crawler = Crawler::new(Arc::new(Mutex::new(grpc)));
+    let crawler = Crawler::new(Arc::new(grpc));
 
     let guy = crawler
         .get_object::<Guy>(guy)
@@ -449,9 +448,11 @@ async fn test_object_crawler_get_object_update_reference() {
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    let grpc = sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
-        .expect("Could not create gRPC client");
-    let crawler = Crawler::new(Arc::new(Mutex::new(grpc.clone())));
+    let grpc = Arc::new(
+        sui::grpc::Client::new(format!("http://127.0.0.1:{rpc_port}"))
+            .expect("Could not create gRPC client"),
+    );
+    let crawler = Crawler::new(Arc::clone(&grpc));
 
     // Read the freshly-published `Guy` to capture its `initial_shared_version`,
     // which is needed to feed the shared input to subsequent PTBs and is the
@@ -475,12 +476,13 @@ async fn test_object_crawler_get_object_update_reference() {
         .expect("gas coin metadata")
         .object_ref();
     let reference_gas_price = grpc
+        .as_ref()
         .clone()
         .get_reference_gas_price()
         .await
         .expect("Failed to get reference gas price.");
     let signer = Signer::new(
-        Arc::new(Mutex::new(grpc.clone())),
+        Arc::clone(&grpc),
         pk.clone(),
         std::time::Duration::from_secs(30),
         Arc::new(sui_mocks::mock_nexus_objects()),

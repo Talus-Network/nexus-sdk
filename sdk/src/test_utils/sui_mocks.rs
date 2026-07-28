@@ -695,6 +695,22 @@ pub mod grpc {
             });
     }
 
+    pub fn mock_get_object_value_bcs_for<T: Serialize>(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        value: &T,
+        object_type: sui::types::StructTag,
+    ) {
+        mock_get_object_bcs_for(
+            ledger_service,
+            object_ref,
+            owner,
+            bcs::to_bytes(value).expect("mock object value serializes as BCS"),
+            object_type,
+        );
+    }
+
     pub fn mock_get_objects_bcs(
         ledger_service: &mut MockLedgerService,
         objects: Vec<(
@@ -729,6 +745,17 @@ pub mod grpc {
 
                 response.set_objects(objs);
                 Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_empty_batch_get_objects(ledger_service: &mut MockLedgerService, times: usize) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(times)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::default(),
+                ))
             });
     }
 
@@ -901,6 +928,17 @@ pub mod grpc {
 
                 response.set_dynamic_fields(dynamic_fields);
                 Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_empty_dynamic_fields(state_service: &mut MockStateService, times: usize) {
+        state_service
+            .expect_list_dynamic_fields()
+            .times(times)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::ListDynamicFieldsResponse::default(),
+                ))
             });
     }
 

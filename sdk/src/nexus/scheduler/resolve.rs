@@ -39,7 +39,7 @@ pub(crate) async fn prepare_task(
     task: &TaskSpec,
 ) -> Result<PreparedTask, SchedulerError> {
     task.validate()?;
-    let sender = client.signer.get_active_address();
+    let sender = client.owner().map_err(SchedulerError::transport)?;
     let agent = match task.operation().agent_id() {
         Some(agent_id) => Some(agent_input(client, agent_id).await?),
         None => None,
@@ -150,7 +150,7 @@ async fn resolve_authority(
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {
-            let sender = client.signer.get_active_address();
+            let sender = client.owner().map_err(SchedulerError::transport)?;
             if *pos0 != sender {
                 return Err(SchedulerError::AuthorityUnavailable {
                     task_id: task.object_id,

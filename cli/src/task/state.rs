@@ -5,14 +5,14 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
+        sui::{get_nexus_client, get_read_only_nexus_client},
     },
     nexus_sdk::scheduler::TaskMutationReceipt,
 };
 
 pub(crate) async fn inspect(task_id: sui::types::Address) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting Task");
-    let client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let client = get_read_only_nexus_client().await?;
     let progress = loading!("Reading Task object...");
     let snapshot = client.scheduler().task(task_id).snapshot().await?;
     progress.success();

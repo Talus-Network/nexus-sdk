@@ -6,7 +6,7 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
+        sui::{get_nexus_client, get_read_only_nexus_client},
     },
     nexus_sdk::scheduler::WatchOptions,
 };
@@ -65,7 +65,7 @@ async fn list(
         })
         .transpose()
         .map_err(NexusCliError::Any)?;
-    let client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let client = get_read_only_nexus_client().await?;
     let progress = loading!("Reading permanent occurrence records...");
     let page = client
         .scheduler()
@@ -107,7 +107,7 @@ async fn inspect(
     follow: bool,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting occurrence");
-    let client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let client = get_read_only_nexus_client().await?;
     let occurrence = client.scheduler().task(task_id).occurrence(occurrence_id);
     let progress = loading!("Reading permanent occurrence record...");
     let snapshot = if follow {
@@ -140,7 +140,7 @@ async fn expire(
 
 async fn cost(task_id: sui::types::Address, occurrence_id: u64) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting occurrence cost");
-    let client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let client = get_read_only_nexus_client().await?;
     let progress = loading!("Reading occurrence payment accounting...");
     let cost = client
         .scheduler()

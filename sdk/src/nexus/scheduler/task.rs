@@ -290,7 +290,7 @@ impl TaskHandle {
         &self,
         transaction: sui::types::ProgrammableTransaction,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let executed = self
             .client
             .submit_transaction(transaction, sender)
@@ -354,7 +354,10 @@ fn task_snapshot(
 mod tests {
     use {
         super::*,
-        crate::{nexus::client::AddressBalanceGas, test_utils::sui_mocks},
+        crate::{
+            nexus::client::AddressBalanceGas,
+            test_utils::{nexus_mocks, sui_mocks},
+        },
     };
 
     #[tokio::test]
@@ -382,5 +385,39 @@ mod tests {
             Err(SchedulerError::InvalidRequest { message })
                 if message == "occurrence page limit must be greater than zero"
         ));
+    }
+
+    #[tokio::test]
+    async fn scheduler_reads_reach_rpc_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let task_id = sui::types::Address::from_static("0x42");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_object()
+            .times(3)
+            .returning(|_| Err(tonic::Status::not_found("Task not present")));
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+        let task = client.scheduler().task(task_id);
+
+        let snapshot = task.snapshot().await;
+        let occurrences = task.occurrences(None, 10).await;
+        let occurrence = task.occurrence(7).snapshot().await;
+
+        for result in [
+            snapshot.map(|_| ()),
+            occurrences.map(|_| ()),
+            occurrence.map(|_| ()),
+        ] {
+            assert!(matches!(
+                result,
+                Err(SchedulerError::TaskNotFound {
+                    task_id: missing_task
+                }) if missing_task == task_id
+            ));
+        }
     }
 }

@@ -51,7 +51,7 @@ impl Scheduler {
     /// Returns [`SchedulerError`] when the Task is invalid, request
     /// preparation fails, or the transaction is not confirmed.
     pub async fn create_task(&self, task: TaskSpec) -> Result<TaskMutationReceipt, SchedulerError> {
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let prepared = resolve::prepare_task(&self.client, &task).await?;
         let transaction = compile_create_task_ptb(&self.client.nexus_objects, &prepared)?;
         let executed = self
@@ -77,7 +77,7 @@ impl Scheduler {
         schedule: Schedule,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
         schedule.validate_for_task_creation()?;
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let prepared_task = resolve::prepare_task(&self.client, &task).await?;
         let prepared_schedule = resolve::prepare_schedule(&self.client, &schedule).await?;
         let transaction = compile_schedule_task_ptb(

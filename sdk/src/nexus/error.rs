@@ -4,10 +4,14 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NexusError {
+    #[error("a private key is required for this operation")]
+    MissingPrivateKey,
     #[error("Sui wallet error: {0}")]
     Wallet(anyhow::Error),
     #[error("Client configuration error: {0}")]
     Configuration(String),
+    #[error("a gas source is already configured")]
+    GasSourceAlreadyConfigured,
     #[error("Transaction building error: {0}")]
     TransactionBuilding(anyhow::Error),
     #[error("RPC error: {0}")]

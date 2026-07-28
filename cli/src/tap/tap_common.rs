@@ -76,7 +76,7 @@ pub(crate) async fn ensure_cli_agent_access(
     agent_id: AgentId,
     access: AgentAccess,
 ) -> AnyResult<(), NexusCliError> {
-    let signer = nexus_client.signer().get_active_address();
+    let signer = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let metadata = nexus_client
         .crawler()
         .get_object_metadata(agent_id)

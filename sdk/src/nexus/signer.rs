@@ -9,7 +9,7 @@ use {
     },
     futures::TryStreamExt,
     std::sync::Arc,
-    tokio::{sync::Mutex, time::Duration},
+    tokio::time::Duration,
 };
 
 /// Resulting struct from executing a transaction.
@@ -25,7 +25,7 @@ pub struct ExecutedTransaction {
 /// provided [`sui::crypto::Ed25519PrivateKey`].
 #[derive(Clone)]
 pub struct Signer {
-    pub(super) client: Arc<Mutex<sui::grpc::Client>>,
+    pub(super) client: Arc<sui::grpc::Client>,
     pub(super) pk: sui::crypto::Ed25519PrivateKey,
     pub(super) transaction_timeout: Duration,
     pub(super) nexus_objects: Arc<NexusObjects>,
@@ -33,7 +33,7 @@ pub struct Signer {
 
 impl Signer {
     pub fn new(
-        client: Arc<Mutex<sui::grpc::Client>>,
+        client: Arc<sui::grpc::Client>,
         pk: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
         nexus_objects: Arc<NexusObjects>,
@@ -170,9 +170,7 @@ impl Signer {
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
     ) -> Result<(sui::grpc::ExecutedTransaction, sui::types::Digest, u64), NexusError> {
-        // Clone the gRPC client before starting the request so checkpoint waits
-        // do not serialize independent submissions.
-        let mut client = self.client.lock().await.clone();
+        let mut client = self.client.as_ref().clone();
 
         let checkpoints_request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
             sui::grpc::FieldMask::from_paths(["transactions.digest", "sequence_number"]),

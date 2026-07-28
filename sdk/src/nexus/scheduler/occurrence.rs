@@ -137,7 +137,7 @@ impl OccurrenceHandle {
             &task.object_ref(),
             self.reference.occurrence_id(),
         )?;
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let executed = self
             .client
             .submit_transaction(transaction, sender)
@@ -175,7 +175,7 @@ impl OccurrenceHandle {
             &task.object_ref(),
             &execution.object_ref(),
         )?;
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner().map_err(SchedulerError::transport)?;
         let executed = self
             .client
             .submit_transaction(transaction, sender)

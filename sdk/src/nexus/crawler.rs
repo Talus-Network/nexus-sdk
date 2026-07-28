@@ -13,7 +13,6 @@ use {
         hash::Hash,
         sync::Arc,
     },
-    tokio::sync::Mutex,
 };
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +42,7 @@ where
 /// The main crawler struct.
 #[derive(Clone)]
 pub struct Crawler {
-    client: Arc<Mutex<sui::grpc::Client>>,
+    client: Arc<sui::grpc::Client>,
 }
 
 #[derive(Debug)]
@@ -104,8 +103,16 @@ pub struct TransactionUpdate {
 }
 
 impl Crawler {
-    pub fn new(client: Arc<Mutex<sui::grpc::Client>>) -> Self {
+    pub fn new(client: Arc<sui::grpc::Client>) -> Self {
         Self { client }
+    }
+
+    pub(crate) fn grpc_client(&self) -> Arc<sui::grpc::Client> {
+        Arc::clone(&self.client)
+    }
+
+    pub(crate) fn clone_grpc_client(&self) -> sui::grpc::Client {
+        self.client.as_ref().clone()
     }
 
     /// Fetch a published Move package descriptor for ABI inspection.
@@ -114,9 +121,8 @@ impl Crawler {
         package_id: sui::types::Address,
     ) -> anyhow::Result<sui::grpc::Package> {
         let request = sui::grpc::GetPackageRequest::default().with_package_id(package_id);
-        self.client
-            .lock()
-            .await
+        let mut client = self.clone_grpc_client();
+        client
             .package_client()
             .get_package(request)
             .await
@@ -365,7 +371,7 @@ impl Crawler {
     /// returns the genesis checkpoint digest base58-encoded; we decode it
     /// and hex-encode the first four bytes to derive the short identifier.
     pub async fn get_chain_id(&self) -> anyhow::Result<String> {
-        let mut client = self.client.lock().await;
+        let mut client = self.clone_grpc_client();
         let response = client
             .ledger_client()
             .get_service_info(sui::grpc::GetServiceInfoRequest::default())
@@ -429,10 +435,8 @@ impl Crawler {
             request = request.with_version(version);
         }
 
-        let object = self
-            .client
-            .lock()
-            .await
+        let mut client = self.clone_grpc_client();
+        let object = client
             .ledger_client()
             .get_object(request)
             .await
@@ -499,10 +503,8 @@ impl Crawler {
                 "effects.bcs",
                 "events.events",
             ]));
-        let transaction = self
-            .client
-            .lock()
-            .await
+        let mut client = self.clone_grpc_client();
+        let transaction = client
             .ledger_client()
             .get_transaction(request)
             .await
@@ -602,6 +604,7 @@ impl Crawler {
         ]);
         let mut results = Vec::new();
         let mut page_token = None;
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListOwnedObjectsRequest::default()
@@ -614,7 +617,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_owned_objects(request)
@@ -624,7 +626,6 @@ impl Crawler {
                     anyhow!("Could not fetch coins of type '{object_type}' owned by '{owner}': {e}")
                 })?;
 
-            drop(client);
             page_token = response.next_page_token;
             results.extend(response.objects.iter().filter_map(|object| {
                 Self::parse_owned_coin_with_type(object, owner, &object_type)
@@ -657,6 +658,7 @@ impl Crawler {
         ]);
         let mut results = Vec::new();
         let mut page_token = None;
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListOwnedObjectsRequest::default()
@@ -669,7 +671,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_owned_objects(request)
@@ -677,7 +678,6 @@ impl Crawler {
                 .map(|r| r.into_inner())
                 .map_err(|e| anyhow!("Could not fetch owned objects for '{owner}': {e}"))?;
 
-            drop(client);
             page_token = response.next_page_token;
 
             for object in response.objects {
@@ -826,6 +826,7 @@ impl Crawler {
     {
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id", "value_type"]);
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -837,7 +838,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_dynamic_fields(request)
@@ -846,8 +846,6 @@ impl Crawler {
                 .map_err(|e| {
                     anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
                 })?;
-
-            drop(client);
 
             page_token = response.next_page_token;
 
@@ -953,10 +951,8 @@ impl Crawler {
             request = request.with_page_token(cursor);
         }
 
-        let response = self
-            .client
-            .lock()
-            .await
+        let mut client = self.clone_grpc_client();
+        let response = client
             .state_client()
             .list_dynamic_fields(request)
             .await
@@ -1039,6 +1035,7 @@ impl Crawler {
         let mut page_token = None;
         let field_mask =
             sui::grpc::FieldMask::from_paths(["field_id", "kind", "value", "value_type"]);
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -1050,7 +1047,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_dynamic_fields(request)
@@ -1059,8 +1055,6 @@ impl Crawler {
                 .map_err(|e| {
                     anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
                 })?;
-
-            drop(client);
 
             page_token = response.next_page_token;
 
@@ -1159,6 +1153,7 @@ impl Crawler {
         let mut child_ids = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["child_id"]);
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -1170,7 +1165,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_dynamic_fields(request)
@@ -1179,8 +1173,6 @@ impl Crawler {
                 .map_err(|e| {
                     anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
                 })?;
-
-            drop(client);
 
             page_token = response.next_page_token;
 
@@ -1286,7 +1278,7 @@ impl Crawler {
         object_id: sui::types::Address,
         field_mask: sui::grpc::FieldMask,
     ) -> anyhow::Result<Option<sui::grpc::Object>> {
-        let mut client = self.client.lock().await;
+        let mut client = self.clone_grpc_client();
 
         let request = sui::grpc::GetObjectRequest::default()
             .with_object_id(object_id)
@@ -1344,7 +1336,7 @@ impl Crawler {
             req
         };
 
-        let mut client = self.client.lock().await;
+        let mut client = self.clone_grpc_client();
 
         let response = client
             .ledger_client()
@@ -1370,6 +1362,7 @@ impl Crawler {
         let mut results = Vec::with_capacity(expected_size);
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["name", "child_id", "field_id"]);
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -1381,7 +1374,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_dynamic_fields(request)
@@ -1390,8 +1382,6 @@ impl Crawler {
                 .map_err(|e| {
                     anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
                 })?;
-
-            drop(client);
 
             page_token = response.next_page_token;
 
@@ -1439,6 +1429,7 @@ impl Crawler {
         let mut results = Vec::new();
         let mut page_token = None;
         let field_mask = sui::grpc::FieldMask::from_paths(["field_id"]);
+        let mut client = self.clone_grpc_client();
 
         loop {
             let mut request = sui::grpc::ListDynamicFieldsRequest::default()
@@ -1450,7 +1441,6 @@ impl Crawler {
                 request = request.with_page_token(token);
             }
 
-            let mut client = self.client.lock().await;
             let response = client
                 .state_client()
                 .list_dynamic_fields(request)
@@ -1459,8 +1449,6 @@ impl Crawler {
                 .map_err(|e| {
                     anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
                 })?;
-
-            drop(client);
 
             page_token = response.next_page_token;
 
@@ -1841,6 +1829,7 @@ mod tests {
         crate::test_utils::sui_mocks,
         mockall::predicate::always,
         serde::{Deserialize, Serialize},
+        std::sync::{Arc, Barrier},
     };
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1897,6 +1886,80 @@ mod tests {
         object
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn inner_client_clones_allow_independent_requests_to_progress_concurrently() {
+        let owner = sui::types::Address::from_static("0xa");
+        let object_type = sui::types::StructTag::gas_coin();
+        let metadata_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x10"));
+        let coin_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x11"));
+        let request_barrier = Arc::new(Barrier::new(2));
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service_mock
+            .expect_get_object()
+            .times(1)
+            .return_once({
+                let request_barrier = Arc::clone(&request_barrier);
+                let metadata_ref = metadata_ref.clone();
+                move |_request| {
+                    request_barrier.wait();
+                    let object = object_with_bcs(
+                        metadata_ref,
+                        sui::types::Owner::Immutable,
+                        &TestValue { value: 1 },
+                    );
+                    let mut response = sui::grpc::GetObjectResponse::default();
+                    response.set_object(object);
+                    Ok(tonic::Response::new(response))
+                }
+            });
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once({
+                let request_barrier = Arc::clone(&request_barrier);
+                let coin_ref = coin_ref.clone();
+                let object_type = object_type.clone();
+                move |_request| {
+                    request_barrier.wait();
+                    let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                    response.set_objects(vec![coin_object(
+                        coin_ref,
+                        sui::types::Owner::Address(owner),
+                        50,
+                        &object_type,
+                    )]);
+                    Ok(tonic::Response::new(response))
+                }
+            });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let (metadata, coins) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            tokio::join!(
+                crawler.get_object_metadata(*metadata_ref.object_id()),
+                crawler.fetch_coins_for_address_by_type(owner, object_type),
+            )
+        })
+        .await
+        .expect("independent RPCs should not wait on a shared client mutex");
+
+        assert_eq!(
+            metadata
+                .expect("metadata request should succeed")
+                .object_ref(),
+            metadata_ref
+        );
+        assert_eq!(
+            coins.expect("coin request should succeed"),
+            vec![(coin_ref, 50)]
+        );
+    }
+
     #[tokio::test]
     async fn optional_object_batch_preserves_missing_positions() {
         let first_id = sui::types::Address::from_static("0x71");
@@ -1945,7 +2008,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let objects = crawler
             .get_optional_objects::<TestValue>(&requested_ids)
@@ -2008,7 +2071,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let coins = crawler
             .fetch_coins_for_address_by_type(owner, object_type)
@@ -2066,7 +2129,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let coins = crawler
             .fetch_coins_for_address_by_type(owner, object_type)
@@ -2114,7 +2177,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let objects = crawler
             .get_owned_objects::<TestValue>(owner, test_value_tag())
@@ -2159,7 +2222,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let object = crawler
             .get_dynamic_object_field::<TestKey, TestValue>(parent_id, key)
@@ -2211,7 +2274,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let fields = crawler
             .get_dynamic_fields::<TestKey, TestValue>(parent_id, 1)
@@ -2247,7 +2310,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let value = crawler
             .get_dynamic_field_by_key::<u64, TestValue>(parent_id, key, &key_type)
@@ -2315,7 +2378,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let page = crawler
             .get_dynamic_field_page_matching_types::<TestKey, TestValue>(
@@ -2373,7 +2436,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let values = crawler
             .get_dynamic_field_values::<TestValue>(parent_id)
@@ -2438,7 +2501,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let error = crawler
             .get_transaction_update(requested_digest)
@@ -2497,7 +2560,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
 
         let update = crawler
             .get_transaction_update(digest)

@@ -57,7 +57,7 @@ impl<'client> NexusTransaction<'client> {
     ///
     /// Returns [`NexusError`] when signing, submission, or confirmation fails.
     pub async fn submit(self) -> Result<ExecutedTransaction, NexusError> {
-        let sender = self.client.signer.get_active_address();
+        let sender = self.client.owner()?;
         let client = self.client;
         let transaction = self.transaction.finish();
         client.submit_transaction(transaction, sender).await

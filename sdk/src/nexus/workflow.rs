@@ -1106,7 +1106,7 @@ pub async fn should_settle_tool_err_eval_gas(
 impl WorkflowActions {
     /// Publish the provided [`DagSpec`] specification.
     pub async fn publish(&self, dag_spec: DagSpec) -> Result<PublishResult, NexusError> {
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
 
         // == Craft and submit the publish DAG transaction ==
@@ -1348,7 +1348,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let tx = dag::abort_expired_execution_for_self_ptb(
             &self.client.nexus_objects,
             &dag_ref,
@@ -1396,7 +1396,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
             objects,
@@ -1441,7 +1441,7 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
             objects,
@@ -1482,7 +1482,7 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?;
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
             &self.client.nexus_objects,
             &execution_ref.object_ref(),
@@ -1562,7 +1562,7 @@ impl WorkflowActions {
                     .await
                     .map_err(NexusError::Rpc)?
                     .object_ref();
-                let address = self.client.signer.get_active_address();
+                let address = self.client.owner()?;
                 let objects = &self.client.nexus_objects;
                 let tx = move_boundary::ptb(objects, |tx| {
                     let dag = tx.shared_object(&dag_ref, false)?;
@@ -1702,7 +1702,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.signer.get_active_address();
+        let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
         let tx = gas::abort_expired_execution_with_tool_gas_ptb(
             nexus_objects,
@@ -1884,7 +1884,6 @@ mod tests {
             atomic::{AtomicBool, Ordering},
             Arc,
         },
-        tokio::sync::Mutex,
     };
 
     #[derive(Clone, Debug, Serialize)]
@@ -2133,7 +2132,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        Crawler::new(Arc::new(Mutex::new(client)))
+        Crawler::new(Arc::new(client))
     }
 
     #[tokio::test]
@@ -2617,7 +2616,6 @@ mod tests {
         let tx_9 = sui::types::Digest::generate(&mut rng);
         let tx_20 = sui::types::Digest::generate(&mut rng);
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         expect_object_update_reference(
             &mut ledger_service_mock,
             &nexus_objects,
@@ -2709,7 +2707,7 @@ mod tests {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
         let mut result = client
             .workflow()
             .inspect_execution(
@@ -3518,8 +3516,6 @@ mod tests {
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
 
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-
         let payment_id = *payment_ref.object_id();
 
         mock_get_dag_execution_bcs(
@@ -3594,7 +3590,7 @@ mod tests {
             ..Default::default()
         });
 
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
         let result = client
             .workflow()
@@ -4438,7 +4434,7 @@ mod tests {
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let crawler = Crawler::new(Arc::new(client));
         let candidates = fetch_tool_gas_refs_for_abort_candidates(
             &crawler,
             gas_service_id,

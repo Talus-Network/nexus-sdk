@@ -6,7 +6,6 @@ use {
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{json, Map, Value},
     std::sync::Arc,
-    tokio::sync::Mutex,
 };
 
 /// Generate output schema by introspecting the Move module's Output enum.
@@ -15,14 +14,13 @@ use {
 /// Output enum to generate a JSON schema. Each variant becomes a key in the
 /// schema with its fields represented as nested schema objects.
 pub async fn generate_output_schema(
-    client: Arc<Mutex<sui::grpc::Client>>,
+    client: Arc<sui::grpc::Client>,
     package_address: sui::types::Address,
     module_name: &str,
     output_enum_name: &str,
 ) -> AnyResult<String> {
     let request = sui::grpc::GetPackageRequest::default().with_package_id(package_address);
-
-    let mut client = client.lock().await;
+    let mut client = client.as_ref().clone();
 
     // Fetch all normalized Move modules for the package.
     let Some(package) = client
@@ -33,9 +31,6 @@ pub async fn generate_output_schema(
     else {
         bail!("Package '{package_address}' not found")
     };
-
-    drop(client);
-
     let all_modules = package.modules();
 
     // Find the specific module.
@@ -153,10 +148,10 @@ mod tests {
             })
             .expect("Move package must be published");
 
-        let client = Arc::new(Mutex::new(
+        let client = Arc::new(
             sui::grpc::client(format!("http://127.0.0.1:{rpc_port}"))
                 .expect("Could not create gRPC client"),
-        ));
+        );
 
         // Generate output schema for the onchain_tool::Output enum.
         let schema_str = generate_output_schema(
