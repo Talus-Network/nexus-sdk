@@ -1154,9 +1154,8 @@ fn failure_evidence_kind_arg(
     }
 }
 
-/// Commits a leader-authored terminal `_err_eval` for an on-chain tool walk directly, creating
-/// no `OnchainToolResult` (unlike `create_on_chain_tool_result_for_walk`/`commit_prepared_onchain_tool_execution`,
-/// which run the tool).
+/// Creates no `OnchainToolResult`, unlike `create_on_chain_tool_result_for_walk`/
+/// `commit_prepared_onchain_tool_execution`, which run the tool.
 #[allow(clippy::too_many_arguments)]
 fn commit_on_chain_tool_terminal_err_eval_for_walk(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
