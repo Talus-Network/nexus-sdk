@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Workflow and scheduler models now expose Task and occurrence provenance for every `DAGExecution`, and all execution requests are submitted through the scheduler.
 - Scheduler transaction builders create the Task, attach its keyed authorization and payment reserve children, add initial scheduling state, and share it in one PTB.
 - Generated scheduler Move event structs now use the `Event` suffix consistently while SDK event variants keep concise names.
+- Split failed on-chain Tool handling across state-only primary gas-record builders and payment-owning secondary settlement builders, with both operations carrying the exact runtime vertex and canonical failure evidence required by the two-phase flow.
 - `NexusClientBuilder` now supports keyless query-only clients, while owner, gas, signing, and submission operations return a typed missing-private-key error when no signer is configured.
 - `NexusClientBuilder` can now build clients without gas for read-only use, while `NexusClient::set_gas_source` supports shared write-once transaction gas attachment after construction.
 - Replaced the Nexus specific event poller with typed Sui event queries and a generic ingestor that shares filters and read masks across replay and live subscriptions.
