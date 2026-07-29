@@ -21,21 +21,21 @@ pub fn object_ref_for_id(object_id: sui::types::Address) -> sui::types::ObjectRe
     sui::types::ObjectReference::new(object_id, 1, sui::types::Digest::from([1; 32]))
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates a random event cursor.
 pub fn mock_sui_event_id() -> (sui::types::Digest, u64) {
     let mut rng = rand::thread_rng();
 
     (sui::types::Digest::generate(&mut rng), 0)
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates a random [`sui::types::Address`].
 pub fn mock_sui_address() -> sui::types::Address {
     let mut rng = rand::thread_rng();
 
     sui::types::Address::generate(&mut rng)
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates random [`NexusObjects`].
 pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 

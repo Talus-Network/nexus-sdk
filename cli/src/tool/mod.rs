@@ -259,12 +259,6 @@ pub(crate) enum RegisterCommand {
         )]
         no_save: bool,
 
-        #[arg(
-            long = "workflow-authorization-cap-first",
-            help = "Use the cap-gated WAC register_on_chain_tool_with_workflow_authorization_cap entrypoint."
-        )]
-        workflow_authorization_cap_first: bool,
-
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -558,7 +552,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 tool_witness_id,
                 collateral_coin,
                 no_save,
-                workflow_authorization_cap_first,
                 gas,
             } => {
                 register_onchain_tool(
@@ -570,7 +563,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     tool_witness_id,
                     collateral_coin,
                     no_save,
-                    workflow_authorization_cap_first,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
                 )
@@ -647,5 +639,32 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
             )
             .await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    #[test]
+    fn onchain_registration_rejects_manual_authorization_mode() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "register",
+            "onchain",
+            "--package",
+            "0x1",
+            "--module",
+            "tool",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--description",
+            "example",
+            "--tool-witness-id",
+            "0x2",
+            "--workflow-authorization-cap-first",
+        ])
+        .is_err());
     }
 }

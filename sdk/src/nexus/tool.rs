@@ -196,7 +196,7 @@ impl ToolActions {
     /// object. Returns `exists: false` when neither object is present yet,
     /// and the full on-chain `Tool` record when both exist. The same shape
     /// works for HTTP and Sui tools. Callers can inspect the generated
-    /// `Tool::r#ref` field or use [`ToolRef`](crate::types::ToolRef) helper
+    /// `Tool::r#ref` field or use [`ToolRef`] helper
     /// methods for ergonomic projections.
     ///
     /// Returns [`NexusError::Configuration`] when only one of Tool/ToolGas

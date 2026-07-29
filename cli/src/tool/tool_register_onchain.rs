@@ -20,6 +20,7 @@ use {
         nexus::error::NexusError,
         sui,
         transactions::tool,
+        types::OnchainToolMode,
     },
     serde::{Deserialize, Serialize},
     serde_json::{json, Map, Value},
@@ -43,7 +44,6 @@ pub(crate) async fn register_onchain_tool(
     tool_witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
     no_save: bool,
-    workflow_authorization_cap_first: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -69,13 +69,13 @@ pub(crate) async fn register_onchain_tool(
         .map_err(NexusCliError::Nexus)?;
 
     // Generate and customize schemas.
-    let (input_schema, output_schema) =
+    let (input_schema, output_schema, mode) =
         generate_and_customize_schemas(nexus_client.grpc_client(), package, &module).await?;
 
     let tx_handle = loading!("Crafting transaction...");
 
-    let tx = match tool::register_on_chain_for_self_with_workflow_authorization_cap_ptb(
-        &nexus_objects,
+    let tx = match tool::register_on_chain_for_self_ptb(
+        nexus_objects.as_ref(),
         package,
         module.as_str(),
         &fqn,
@@ -86,7 +86,7 @@ pub(crate) async fn register_onchain_tool(
         tool_witness_id,
         &collateral_coin,
         address,
-        workflow_authorization_cap_first,
+        mode,
     ) {
         Ok(tx) => tx,
         Err(e) => {
@@ -173,26 +173,27 @@ async fn generate_and_customize_schemas(
     client: Arc<sui::grpc::Client>,
     package_address: sui::types::Address,
     module_name: &str,
-) -> AnyResult<(String, String), NexusCliError> {
+) -> AnyResult<(String, String, OnchainToolMode), NexusCliError> {
     // Generate input schema by introspecting the Move module's "execute" function.
     let input_handle = loading!("Auto-generating input schema from Move module...");
-    let base_input_schema = match nexus_sdk::onchain_schema_gen::generate_input_schema(
-        Arc::clone(&client),
-        package_address,
-        module_name,
-        "execute",
-    )
-    .await
-    {
-        Ok(schema) => {
-            input_handle.success();
-            schema
-        }
-        Err(e) => {
-            input_handle.error();
-            return Err(NexusCliError::Any(e));
-        }
-    };
+    let (base_input_schema, mode) =
+        match nexus_sdk::onchain_schema_gen::generate_input_schema_with_mode(
+            client.clone(),
+            package_address,
+            module_name,
+            "execute",
+        )
+        .await
+        {
+            Ok(generated) => {
+                input_handle.success();
+                generated
+            }
+            Err(e) => {
+                input_handle.error();
+                return Err(NexusCliError::Any(e));
+            }
+        };
 
     // Generate output schema by introspecting the Move module's "Output" enum.
     let output_handle = loading!("Auto-generating output schema from Move module...");
@@ -220,7 +221,7 @@ async fn generate_and_customize_schemas(
     // Allow user to customize output variant and field descriptions.
     let output_schema = customize_output_variant_and_field_descriptions(base_output_schema)?;
 
-    Ok((input_schema, output_schema))
+    Ok((input_schema, output_schema, mode))
 }
 
 /// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
@@ -1390,7 +1391,8 @@ mod tests {
 
         // Should succeed.
         assert!(result.is_ok());
-        let (input_schema, output_schema) = result.unwrap();
+        let (input_schema, output_schema, mode) = result.unwrap();
+        assert_eq!(mode, OnchainToolMode::Standard);
 
         // Verify input schema is valid JSON.
         let input_json: serde_json::Value =

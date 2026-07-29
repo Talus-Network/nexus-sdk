@@ -10,12 +10,13 @@ it when a pattern is unclear.
 nexus-sdk/                  cargo workspace root
 ├── sdk/                    `nexus-sdk` crate — Rust SDK
 │   └── src/
-│       ├── nexus/          high-level action types (TapActions, ToolActions,
-│       │                   WorkflowActions, SchedulerActions, GasActions,
-│       │                   NetworkAuthActions) + NexusClient, Crawler,
-│       │                   Signer, gas pool, EventPoller, errors
+│       ├── nexus/          high-level action types, Scheduler and Task handles,
+│       │                   NexusTransaction, NexusClient, Crawler, Signer,
+│       │                   gas pool, EventPoller, and errors
+│       ├── scheduler/      Task, Schedule, occurrence, receipt, and snapshot
+│       │                   domain types
 │       ├── transactions/   PTB builders: tap.rs, tool.rs, workflow.rs,
-│       │                   scheduler.rs, gas.rs, network_auth.rs
+│       │                   scheduler/, gas.rs, network_auth.rs
 │       ├── types/          typed on-chain object/event models
 │       │                   (TapRegistry, TapExecutionPayment, Tool, ToolRef,
 │       │                   DagExecution, NexusObjects, derive helpers, …)
@@ -38,7 +39,7 @@ nexus-sdk/                  cargo workspace root
 │       │                   json_output(), JSON_MODE: AtomicBool
 │       ├── sui.rs          get_nexus_client(), gRPC client helpers
 │       ├── cli_conf.rs     CliConf (~/.nexus/conf.toml)
-│       └── {tool,conf,dag,scheduler,gas,tap,completion}/mod.rs
+│       └── {tool,conf,dag,task,gas,tap,completion}/mod.rs
 │                           subcommand groups with their handlers
 ├── toolkit-rust/           Rust toolkit (`nexus-toolkit`) for tool authors
 ├── helpers/                workspace helper crates / just recipes
@@ -69,6 +70,11 @@ Sibling repos checked out next to this one (paths depend on local layout):
   shared signer/gas/crawler, and returns a typed `*Result` struct. Free-
   function `fetch_*` helpers (e.g. `fetch_registry`) live in the same
   file when they're useful without a full client.
+- **Scheduling** uses the neutral domain in `sdk/src/scheduler`, stateful
+  handles in `sdk/src/nexus/scheduler`, and one compiler in
+  `sdk/src/transactions/scheduler`. Stateful calls begin at
+  `NexusClient::scheduler`; custom programmable transactions begin at
+  `NexusClient::transaction`.
 - **PTB builders** live in `sdk/src/transactions/<area>.rs` and take
   `&mut TransactionBuilder` plus `&NexusObjects`. They never read from the
   network; they only emit move calls/inputs. Pair an action with one PTB

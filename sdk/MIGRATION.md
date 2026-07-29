@@ -48,7 +48,7 @@ value. Old local mirror types are no longer the authority.
 | `TapVertexAuthorizationSchema` | `SkillRequirement.fixed_tools` |
 | Endpoint config digest fields | No direct replacement in active TAP flows |
 | Shared object requirement fields in TAP artifacts | No direct replacement in active TAP flows |
-| `TapActions::schedule_skill_execution*` | `TapActions::create_agent_task` or `SchedulerActions::create_task` |
+| Scheduled execution request helpers | `TaskSpec` plus `Schedule` through `NexusClient::scheduler()` |
 | `WorkflowActions::inspect_execution(execution, timeout)` | `WorkflowActions::inspect_execution(execution, InspectExecutionOptions { timeout, poll_interval })` |
 
 Use this import style for new TAP code:
@@ -140,43 +140,53 @@ active sender is the payer.
 
 ## Scheduled Task Migration
 
-The old scheduled TAP execution helpers were attach style APIs. The new model
-creates a scheduled task first, then runs occurrences from that task.
+Scheduling now has one public request model:
 
-Use `TapActions::create_agent_task` when the task is tied to an explicit agent
-and skill:
+```text
+Task -> Schedule -> Occurrence
+```
+
+Build work and funding with `TaskSpec`. Build timing with `Schedule`,
+`Occurrence`, and `Recurrence`. Use `create_task` for an empty composable Task,
+or `schedule_task` to create a Task and apply a nonempty complete Schedule in
+one transaction.
 
 ```rust
-use nexus_sdk::nexus::{
-    scheduler::GeneratorKind,
-    tap::{AgentTaskPayment, CreateAgentTaskParams},
+use nexus_sdk::{
+    scheduler::{
+        Occurrence, Schedule, TaskFunding, TaskOperation, TaskSpec,
+    },
+    types::DEFAULT_ENTRY_GROUP,
 };
 
-let task = client
-    .tap()
-    .create_agent_task(CreateAgentTaskParams {
-        entry_group: "default".to_owned(),
-        input_data,
-        metadata: vec![],
-        execution_priority_fee_per_gas_unit: 0,
-        initial_schedule: None,
-        generator: GeneratorKind::Queue,
-        agent_id,
-        skill_id,
-        payment: AgentTaskPayment::UserFunded {
-            prepay_amount,
-            refund_recipient: None,
-            occurrence_budget,
-            selected_dag: None,
-            authorization_templates: vec![],
-        },
-    })
+let task = TaskSpec::new(
+    TaskOperation::default_dag(dag_id),
+    DEFAULT_ENTRY_GROUP,
+    TaskFunding::address(50_000_000),
+    50_000_000,
+)?
+.with_inputs(input_data);
+
+let receipt = client
+    .scheduler()
+    .schedule_task(task, Schedule::new().with_occurrence(Occurrence::now()))
+    .await?;
+let occurrence = receipt
+    .delta()
+    .scheduled()
+    .first()
+    .expect("schedule contains one occurrence")
+    .reference();
+let snapshot = client
+    .scheduler()
+    .task(occurrence.task_id())
+    .occurrence(occurrence.occurrence_id())
+    .snapshot()
     .await?;
 ```
 
-Use `SchedulerActions::create_task` when creating a default agent scheduler
-task. If you provide `agent_id`, you must also provide `skill_id`; if you omit
-one, omit both.
+Inspect Tasks and occurrences through their client handles. Occurrence
+snapshots remain available after settlement and after the Task is closed.
 
 ## Workflow Result Migration
 

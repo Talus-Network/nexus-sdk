@@ -8,7 +8,6 @@ use {
                     self as agent_binding,
                     FixedTool,
                     SkillDagBinding,
-                    SkillRecurrenceKind,
                     SkillRequirement,
                     SkillSchedulePolicy,
                 },
@@ -140,11 +139,9 @@ fn tap_schedule_policy_arg(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
-    let recurrence = match &schedule_policy.recurrence {
-        SkillRecurrenceKind::Once => {
-            tx.call_target(agent_binding::recurrence_once_target, vec![])?
-        }
-        SkillRecurrenceKind::Recursive {
+    match schedule_policy {
+        SkillSchedulePolicy::Once => tx.call_target(agent_binding::schedule_once_target, vec![]),
+        SkillSchedulePolicy::Recurring {
             min_interval_ms,
             max_occurrences,
         } => {
@@ -157,19 +154,14 @@ fn tap_schedule_policy_arg(
                 None => tx.option::<u64>(None)?,
             };
             tx.call_target(
-                agent_binding::recurrence_recursive_target,
+                agent_binding::schedule_recurring_target,
                 vec![min_interval_ms, max_occurrences],
-            )?
+            )
         }
-    };
-    let allow_recursive = tx.arg(&schedule_policy.allow_recursive)?;
-
-    tx.call_target(
-        agent_binding::schedule_policy_target,
-        vec![recurrence, allow_recursive],
-    )
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_tap_register_skill(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     registry: sui::types::Argument,
@@ -420,10 +412,8 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
         agent_id: object_id(addr("0xa1")),
         skill_id: 177,
         interface_version: interface_version(7),
-        scheduled_task_id: nexus_sdk::move_bindings::move_std::option::Option::from_option(None),
-        scheduled_occurrence_index: nexus_sdk::move_bindings::move_std::option::Option::from_option(
-            None,
-        ),
+        task_id: object_id(addr("0x55")),
+        occurrence_id: 9,
     }
 }
 
@@ -445,8 +435,8 @@ fn request_walk_context_uses_required_agent_fields() {
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
     assert_eq!(context.interface_revision, InterfaceVersion::new(7));
-    assert_eq!(context.scheduled_task_id, None);
-    assert_eq!(context.scheduled_occurrence_index, None);
+    assert_eq!(context.task_id, addr("0x55"));
+    assert_eq!(context.occurrence_id, 9);
 }
 
 #[test]
@@ -681,13 +671,11 @@ fn update_skill_compatibility_builds_dag_and_policy_calls() {
         )?;
         let schedule_policy = tap_schedule_policy_arg(
             tx,
-            &SkillSchedulePolicy {
-                recurrence: SkillRecurrenceKind::Recursive {
-                    min_interval_ms: 5000,
-                    max_occurrences:
-                        nexus_sdk::move_bindings::move_std::option::Option::from_option(Some(3)),
-                },
-                allow_recursive: true,
+            &SkillSchedulePolicy::Recurring {
+                min_interval_ms: 5000,
+                max_occurrences: nexus_sdk::move_bindings::move_std::option::Option::from_option(
+                    Some(3),
+                ),
             },
         )?;
         tx.call_target(

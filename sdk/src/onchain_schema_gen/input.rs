@@ -3,11 +3,13 @@
 use {
     super::types::{
         convert_move_signature_to_schema,
+        is_agent_vertex_authorization_proof_param,
         is_hidden_internal_tool_param,
         is_onchain_tool_result_param,
+        is_proof_of_uid_param,
         is_workflow_dag_execution_param,
     },
-    crate::sui,
+    crate::{sui, types::OnchainToolMode},
     anyhow::{anyhow, bail, Result as AnyResult},
     serde_json::{Map, Value},
     std::sync::Arc,
@@ -25,6 +27,19 @@ pub async fn generate_input_schema(
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<String> {
+    let (schema, _) =
+        generate_input_schema_with_mode(client, package_address, module_name, execute_function)
+            .await?;
+    Ok(schema)
+}
+
+/// Generate an input schema and derive its [`OnchainToolMode`].
+pub async fn generate_input_schema_with_mode(
+    client: Arc<sui::grpc::Client>,
+    package_address: sui::types::Address,
+    module_name: &str,
+    execute_function: &str,
+) -> AnyResult<(String, OnchainToolMode)> {
     let request = sui::grpc::GetPackageRequest::default().with_package_id(package_address);
     let mut client = client.as_ref().clone();
 
@@ -55,7 +70,7 @@ pub async fn generate_input_schema(
         .ok_or_else(|| {
             anyhow!("Function '{execute_function}' not found in module '{module_name}'")
         })?;
-    validate_execute_signature(execute_func, module_name, execute_function)?;
+    let mode = validate_execute_signature(execute_func, module_name, execute_function)?;
 
     // Parse function parameters.
     let mut schema_map = Map::new();
@@ -107,22 +122,22 @@ pub async fn generate_input_schema(
     let schema_json = Value::Object(schema_map);
     let schema_string = serde_json::to_string(&schema_json)?;
 
-    Ok(schema_string)
+    Ok((schema_string, mode))
 }
 
 fn validate_execute_signature(
     execute_func: &sui::grpc::FunctionDescriptor,
     module_name: &str,
     execute_function: &str,
-) -> AnyResult<()> {
+) -> AnyResult<OnchainToolMode> {
     if !execute_func.is_entry() {
         bail!(
-            "On-chain tool function '{module_name}::{execute_function}' must be an entry function"
+            "Onchain tool function '{module_name}::{execute_function}' must be an entry function"
         );
     }
     if !execute_func.returns().is_empty() {
         bail!(
-            "On-chain tool function '{module_name}::{execute_function}' must not return values; finalize output through an owned OnchainToolResult argument"
+            "Onchain tool function '{module_name}::{execute_function}' must not return values; finalize output through an owned OnchainToolResult argument"
         );
     }
     let has_owned_result_arg = execute_func.parameters().iter().any(|param| {
@@ -134,11 +149,51 @@ fn validate_execute_signature(
     });
     if !has_owned_result_arg {
         bail!(
-            "On-chain tool function '{module_name}::{execute_function}' must accept result: OnchainToolResult"
+            "Onchain tool function '{module_name}::{execute_function}' must accept result: OnchainToolResult"
         );
     }
 
-    Ok(())
+    let parameters = execute_func.parameters();
+    let (mode, fixed_prefix_len) = match parameters {
+        [authorization, worksheet, result, ..]
+            if is_owned_param(authorization, is_agent_vertex_authorization_proof_param)
+                && is_owned_param(worksheet, is_proof_of_uid_param)
+                && is_owned_param(result, is_onchain_tool_result_param) =>
+        {
+            (OnchainToolMode::WorkflowAuthorization, 3)
+        }
+        [worksheet, result, ..]
+            if is_owned_param(worksheet, is_proof_of_uid_param)
+                && is_owned_param(result, is_onchain_tool_result_param) =>
+        {
+            (OnchainToolMode::Standard, 2)
+        }
+        _ => bail!(
+            "Onchain tool function '{module_name}::{execute_function}' must begin with owned ProofOfUID and OnchainToolResult parameters, optionally preceded by an owned AgentVertexAuthorization proof"
+        ),
+    };
+    if parameters[fixed_prefix_len..]
+        .iter()
+        .filter_map(sui::grpc::OpenSignature::body_opt)
+        .any(|body| {
+            is_agent_vertex_authorization_proof_param(body)
+                || is_proof_of_uid_param(body)
+                || is_onchain_tool_result_param(body)
+        })
+    {
+        bail!(
+            "Onchain tool function '{module_name}::{execute_function}' must contain internal parameters only in its fixed prefix"
+        );
+    }
+
+    Ok(mode)
+}
+
+fn is_owned_param(
+    parameter: &sui::grpc::OpenSignature,
+    predicate: impl FnOnce(&sui::grpc::OpenSignatureBody) -> bool,
+) -> bool {
+    parameter.reference.is_none() && parameter.body_opt().is_some_and(predicate)
 }
 
 #[cfg(test)]
@@ -159,10 +214,41 @@ mod tests {
         owned_onchain_tool_result_signature().with_reference(reference)
     }
 
+    fn owned_proof_of_uid_signature() -> sui::grpc::OpenSignature {
+        sui::grpc::OpenSignature::default().with_body(
+            sui::grpc::OpenSignatureBody::default()
+                .with_type(Type::Datatype)
+                .with_type_name("0x42::proof_of_uid::ProofOfUID"),
+        )
+    }
+
+    fn owned_authorization_signature() -> sui::grpc::OpenSignature {
+        sui::grpc::OpenSignature::default().with_body(
+            sui::grpc::OpenSignatureBody::default()
+                .with_type(Type::Datatype)
+                .with_type_name(
+                    "0x42::authorization::ProvenValue<0x43::authorization::AgentVertexAuthorization>",
+                ),
+        )
+    }
+
     fn valid_execute_descriptor() -> sui::grpc::FunctionDescriptor {
         sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
-            .with_parameters(vec![owned_onchain_tool_result_signature()])
+            .with_parameters(vec![
+                owned_proof_of_uid_signature(),
+                owned_onchain_tool_result_signature(),
+            ])
+    }
+
+    fn authorized_execute_descriptor() -> sui::grpc::FunctionDescriptor {
+        sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![
+                owned_authorization_signature(),
+                owned_proof_of_uid_signature(),
+                owned_onchain_tool_result_signature(),
+            ])
     }
 
     #[test]
@@ -185,9 +271,12 @@ mod tests {
     fn validate_execute_signature_rejects_referenced_onchain_tool_result() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
-            .with_parameters(vec![referenced_onchain_tool_result_signature(
-                sui::grpc::open_signature::Reference::Immutable,
-            )]);
+            .with_parameters(vec![
+                owned_proof_of_uid_signature(),
+                referenced_onchain_tool_result_signature(
+                    sui::grpc::open_signature::Reference::Immutable,
+                ),
+            ]);
         let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
         assert!(err
             .to_string()
@@ -195,8 +284,60 @@ mod tests {
     }
 
     #[test]
+    fn validate_execute_signature_rejects_missing_worksheet() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![owned_onchain_tool_result_signature()]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must begin with"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_misplaced_authorization() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![
+                owned_proof_of_uid_signature(),
+                owned_authorization_signature(),
+                owned_onchain_tool_result_signature(),
+            ]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("must begin with"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_duplicate_internal_parameter() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![
+                owned_proof_of_uid_signature(),
+                owned_onchain_tool_result_signature(),
+                owned_authorization_signature(),
+            ]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("fixed prefix"));
+    }
+
+    #[test]
     fn validate_execute_signature_accepts_entry_no_return_owned_result() {
         validate_execute_signature(&valid_execute_descriptor(), "tool", "execute").unwrap();
+    }
+
+    #[test]
+    fn validate_execute_signature_detects_standard_mode() {
+        assert_eq!(
+            validate_execute_signature(&valid_execute_descriptor(), "tool", "execute").unwrap(),
+            OnchainToolMode::Standard
+        );
+    }
+
+    #[test]
+    fn validate_execute_signature_detects_workflow_authorization() {
+        assert_eq!(
+            validate_execute_signature(&authorized_execute_descriptor(), "tool", "execute")
+                .unwrap(),
+            OnchainToolMode::WorkflowAuthorization
+        );
     }
 
     #[tokio::test]
@@ -296,7 +437,7 @@ mod tests {
         assert_eq!(param1["description"], "64-bit unsigned integer");
         assert!(param1.get("mutable").is_none());
 
-        // Verify only 2 user-facing parameters remain after internal params are skipped.
+        // Verify only 2 user inputs remain after internal params are skipped.
         assert_eq!(schema.as_object().unwrap().len(), 2);
     }
 }

@@ -8,7 +8,7 @@ mod output;
 mod types;
 
 pub use {
-    input::generate_input_schema,
+    input::{generate_input_schema, generate_input_schema_with_mode},
     output::generate_output_schema,
     types::{
         convert_move_signature_to_schema,

@@ -1,10 +1,7 @@
 use {
     super::*,
     crate::types::AgentId,
-    nexus_sdk::{
-        move_bindings::interface::agent::{SkillRecurrenceKind, SkillSchedulePolicy},
-        nexus::client::NexusClient,
-    },
+    nexus_sdk::{move_bindings::interface::agent::SkillSchedulePolicy, nexus::client::NexusClient},
 };
 
 pub(crate) async fn read_artifact(path: PathBuf) -> AnyResult<TapPublishArtifact, NexusCliError> {
@@ -14,48 +11,23 @@ pub(crate) async fn read_artifact(path: PathBuf) -> AnyResult<TapPublishArtifact
     serde_json::from_str(&text).map_err(|e| NexusCliError::Any(e.into()))
 }
 
-pub(crate) fn decode_hex_arg(value: &str, name: &str) -> AnyResult<Vec<u8>, NexusCliError> {
-    hex::decode(value.trim_start_matches("0x"))
-        .map_err(|e| NexusCliError::Any(anyhow!("invalid {name} hex: {e}")))
-}
-
-pub(crate) fn agent_execute_options_from_cli(
-    payment_source_hex: String,
-    payment_max_budget_mist: u64,
-) -> AnyResult<AgentDagExecuteOptions, NexusCliError> {
-    Ok(AgentDagExecuteOptions {
-        payment_source: decode_hex_arg(&payment_source_hex, "payment-source")?,
-        payment_coin: None,
-        payment_coin_balance: None,
-        payment_max_budget_mist,
-    })
-}
-
 pub(crate) fn schedule_policy_from_cli(
     recurrence_kind: &str,
     min_interval_ms: u64,
     max_occurrences: u64,
-    allow_recursive: bool,
 ) -> AnyResult<SkillSchedulePolicy, NexusCliError> {
-    let recurrence = match recurrence_kind {
-        "once" => SkillRecurrenceKind::Once,
-        "recursive" => SkillRecurrenceKind::Recursive {
+    match recurrence_kind {
+        "once" => Ok(SkillSchedulePolicy::Once),
+        "recurring" => Ok(SkillSchedulePolicy::Recurring {
             min_interval_ms,
             max_occurrences: nexus_sdk::move_bindings::move_std::option::Option::from_option(
                 (max_occurrences != 0).then_some(max_occurrences),
             ),
-        },
-        other => {
-            return Err(NexusCliError::Any(anyhow!(
-                "invalid recurrence-kind '{other}': expected 'once' or 'recursive'"
-            )));
-        }
-    };
-
-    Ok(SkillSchedulePolicy {
-        recurrence,
-        allow_recursive,
-    })
+        }),
+        other => Err(NexusCliError::Any(anyhow!(
+            "invalid recurrence-kind '{other}': expected 'once' or 'recurring'"
+        ))),
+    }
 }
 
 pub(crate) fn agent_id_from_alias_or_arg(
@@ -145,44 +117,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decode_hex_helpers_report_named_argument_errors() {
-        let error = decode_hex_arg("0xnot-hex", "payment-source").expect_err("invalid hex");
-        assert!(
-            error.to_string().contains("invalid payment-source hex"),
-            "unexpected error: {error}"
-        );
-    }
-
-    #[test]
     fn schedule_policy_from_cli_accepts_supported_recurrence_values() {
         assert_eq!(
-            schedule_policy_from_cli("once", 50, 3, false).unwrap(),
-            SkillSchedulePolicy {
-                recurrence: SkillRecurrenceKind::Once,
-                allow_recursive: false,
-            }
+            schedule_policy_from_cli("once", 50, 3).unwrap(),
+            SkillSchedulePolicy::Once,
         );
         assert_eq!(
-            schedule_policy_from_cli("recursive", 50, 0, true).unwrap(),
-            SkillSchedulePolicy {
-                recurrence: SkillRecurrenceKind::Recursive {
-                    min_interval_ms: 50,
-                    max_occurrences:
-                        nexus_sdk::move_bindings::move_std::option::Option::from_option(None),
-                },
-                allow_recursive: true,
+            schedule_policy_from_cli("recurring", 50, 0).unwrap(),
+            SkillSchedulePolicy::Recurring {
+                min_interval_ms: 50,
+                max_occurrences: nexus_sdk::move_bindings::move_std::option::Option::from_option(
+                    None
+                ),
             }
         );
     }
 
     #[test]
     fn schedule_policy_from_cli_rejects_unknown_recurrence_values() {
-        let error = schedule_policy_from_cli("Recursive", 50, 3, false)
+        let error = schedule_policy_from_cli("Recurring", 50, 3)
             .expect_err("unknown recurrence kind should fail");
         assert!(
             error
                 .to_string()
-                .contains("invalid recurrence-kind 'Recursive'"),
+                .contains("invalid recurrence-kind 'Recurring'"),
             "unexpected error: {error}"
         );
     }

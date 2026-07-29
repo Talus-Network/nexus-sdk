@@ -19,8 +19,8 @@ pub struct RequestWalkContext {
     pub agent_id: AgentId,
     pub skill_id: SkillId,
     pub interface_revision: InterfaceVersion,
-    pub scheduled_task_id: Option<sui::types::Address>,
-    pub scheduled_occurrence_index: Option<u64>,
+    pub task_id: sui::types::Address,
+    pub occurrence_id: u64,
 }
 
 impl RequestWalkContext {

@@ -10,11 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added one composable Task creation model covering default execution, Agent skill execution, address funding, Agent vault funding, manual occurrences, recurrence, and failure behavior.
+- Task creation now returns and transfers an owned `TaskPointer` containing the shared Task ID, and `Scheduler::task_pointers` lists those pointers through exact type filtered gRPC pagination.
 - Added `NexusClient::clone_grpc_client` for independently owned gRPC transports that do not acquire the crawler-owned client mutex.
 - Added an atomic PTB builder for registering multiple off chain tools and their initial network authorization keys from one address balance withdrawal.
-- Move binding regeneration now accepts an optional matching Move source root for restoring
-  function parameter names. Network package metadata remains authoritative, and regeneration
-  without source keeps deterministic `argN` names.
+- Move binding regeneration now accepts an optional matching Move source root for restoring function parameter names. Network package metadata remains authoritative, and regeneration without source keeps deterministic `argN` names.
 - Added support for new priority fee system.
 - Added SDK models and transaction builders for per-vertex `None`, RegisteredKey, and External Tool verification, including verifier-first PTB construction and `VerificationVerdict` consumption.
 - Added canonical RegisteredKey Tool-input hashing, auxiliary BCS encoding, leader-signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
@@ -24,30 +24,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
+- Workflow and scheduler models now expose Task and occurrence provenance for every `DAGExecution`, and all execution requests are submitted through the scheduler.
+- Scheduler transaction builders create the Task, attach its keyed authorization and payment reserve children, add initial scheduling state, and share it in one PTB.
+- Generated scheduler Move event structs now use the `Event` suffix consistently while SDK event variants keep concise names.
 - `NexusClientBuilder` now supports keyless query-only clients, while owner, gas, signing, and submission operations return a typed missing-private-key error when no signer is configured.
 - `NexusClientBuilder` can now build clients without gas for read-only use, while `NexusClient::set_gas_source` supports shared write-once transaction gas attachment after construction.
-- Replaced the Nexus specific event poller with typed Sui event queries and a
-  generic ingestor that shares filters and read masks across replay and live
-  subscriptions.
-- Tool registration PTBs now withdraw and refund address balance collateral in
-  the configured `$US` type.
-- Leader registration PTBs now preserve any `$US` balance above the chosen
-  stake instead of requiring the input coin to reach zero.
-- Move binding regeneration now preserves the reduced Move standard library and Sui framework IR,
-  limiting deployment refreshes to Nexus packages.
-- Move binding regeneration now commits canonical SDK package identities, preventing package ID
-  churn when the same Move ABI is rebound from another deployment.
+- Replaced the Nexus specific event poller with typed Sui event queries and a generic ingestor that shares filters and read masks across replay and live subscriptions.
+- Tool registration PTBs now withdraw and refund address balance collateral in the configured `$US` type.
+- Leader registration PTBs now preserve any `$US` balance above the chosen stake instead of requiring the input coin to reach zero.
+- Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
+- Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
 - Offchain submission builders now invoke `verify_none`, the built-in RegisteredKey verifier, or the registered External verifier before committing the returned verdict.
 - Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
 
 #### Fixed
 
-- Replaced the custom Testcontainers module fork with maintained releases and a local Sui container definition, removing
-  vulnerable test utility dependencies.
+- Replaced the custom Testcontainers module fork with maintained releases and a local Sui container definition, removing vulnerable test utility dependencies.
 
 #### Removed
 
+- Removed direct DAG and TAP execution helpers, the separate scheduled TAP facade, scheduler metadata, and the queue and periodic command surfaces.
 - Removed signed-HTTP v1 engine, wire, claim, and transcript APIs in favor of the minimal v2 input-hash and response-signature protocol.
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
@@ -57,14 +55,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- `nexus task list` discovers the configured signer's Tasks by listing owned `TaskPointer` objects with opaque cursor pagination.
 - `nexus gas priority-fee-vault` commands for configuring the priority-fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority-fee shares.
 - Added support for new priority fee system in commands.
 - Added `tool configure-verifier` commands for configuring built-in RegisteredKey verification or registering an External verifier with its package, module, function, witness, and immutable shared objects.
 
 #### Changed
 
+- Onchain Tool registration now derives workflow authorization from the normalized `execute` signature instead of accepting a manual mode.
+- `scheduler task create` is now the single execution entry. A caller schedules for the current Clock timestamp when work should be eligible now.
+- Task creation accepts its initial manual occurrence and optional recurrence, so no follow up scheduling transaction is required.
 - CLI read commands now leave gas unattached, while transaction commands attach explicit coin-object gas or address-balance gas when `--sui-gas-coin` is omitted; `dag execute` fetches only its required payment coin by default.
 - Tool registration, inspection, validation, and unregistration now expose and maintain the simplified Tool verifier configuration and nested onchain Tool reference shape.
+
+#### Removed
+
+- Removed `dag execute`, `tap execute`, `tap schedule-task`, scheduler metadata, and separate periodic commands.
 
 ### `nexus-toolkit`
 

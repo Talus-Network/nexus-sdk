@@ -254,28 +254,44 @@ mod tests {
 
     const READ_ONLY_NEXUS_COMMANDS: &[ReadOnlyCommandCallSite] = &[
         ReadOnlyCommandCallSite {
-            command: "nexus dag execution-cost",
-            source: include_str!("dag/dag_execution_cost.rs"),
-            function_signature: "pub(crate) async fn execution_cost(",
+            command: "nexus task list",
+            source: include_str!("task/list.rs"),
+            function_signature: "pub(crate) async fn run(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/mod.rs"),
+            boundary_test_signature:
+                "async fn task_pointer_discovery_reaches_grpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        ReadOnlyCommandCallSite {
+            command: "nexus task inspect",
+            source: include_str!("task/state.rs"),
+            function_signature: "pub(crate) async fn inspect(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        ReadOnlyCommandCallSite {
+            command: "nexus task occurrence list",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn list(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        ReadOnlyCommandCallSite {
+            command: "nexus task occurrence inspect",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn inspect(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        ReadOnlyCommandCallSite {
+            command: "nexus task occurrence cost",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn cost(",
             boundary_test_source: include_str!("../../sdk/src/nexus/workflow.rs"),
             boundary_test_signature: "async fn test_workflow_actions_execution_cost(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
-        },
-        ReadOnlyCommandCallSite {
-            command: "nexus dag inspect-execution",
-            source: include_str!("dag/dag_inspect_execution.rs"),
-            function_signature: "pub(crate) async fn inspect_dag_execution(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/workflow.rs"),
-            boundary_test_signature:
-                "async fn test_workflow_actions_inspect_execution_until_completion(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
-        },
-        ReadOnlyCommandCallSite {
-            command: "nexus scheduler task inspect",
-            source: include_str!("scheduler/task/task_inspect.rs"),
-            function_signature: "pub(crate) async fn inspect_task(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler.rs"),
-            boundary_test_signature: "async fn fetch_task_succeeds_without_owned_coins(",
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
         ReadOnlyCommandCallSite {
@@ -313,15 +329,6 @@ mod tests {
             boundary_test_signature:
                 "async fn wait_for_payment_settled_succeeds_without_owned_coins(",
             boundary_test_marker: "coin_free_payment_client",
-        },
-        ReadOnlyCommandCallSite {
-            command: "nexus tap payments list",
-            source: include_str!("tap/tap_payments.rs"),
-            function_signature: "async fn list_payments(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
-            boundary_test_signature:
-                "async fn fetch_execution_payment_history_succeeds_without_owned_coins(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
         },
         ReadOnlyCommandCallSite {
             command: "nexus tap registry show",

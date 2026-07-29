@@ -1,4 +1,5 @@
-//! Container setup helpers built with [`testcontainers`].
+//! Module defining container setups via
+//! [`testcontainers`].
 //!
 //! The module supports Sui and Redis.
 

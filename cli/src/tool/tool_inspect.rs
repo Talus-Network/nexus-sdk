@@ -82,10 +82,10 @@ pub(crate) fn normalized_tool_ref_json(
     }
 }
 
-/// Render a human-readable inspection report. No-op in `--json` mode — the
-/// underlying `notify_success!`/`notify_error!`/`item!` macros check
-/// `JSON_MODE` themselves, mirroring how `dag inspect-execution` interleaves
-/// progress notifications with the structured JSON.
+/// Renders a human readable inspection report.
+///
+/// This does nothing in `--json` mode because the output macros inspect
+/// `JSON_MODE` before emitting progress notifications.
 fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError> {
     let Some(tool) = inspection.tool.as_ref() else {
         notify_error!(

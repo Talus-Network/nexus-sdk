@@ -39,20 +39,23 @@ rebind objects_file grpc='http://127.0.0.1:9000' source_root='': _check-cargo
     esac
 
     source_root="{{ source_root }}"
-    source_args=()
     if [ -n "$source_root" ]; then
         case "$source_root" in
         /*) ;;
         *) source_root="{{ invocation_directory() }}/$source_root" ;;
         esac
-        source_args=(--source-root "$source_root")
+        cargo +stable run \
+            --package {{ package }} \
+            --features binding_codegen \
+            --bin regenerate_bindings \
+            -- "$objects_file" "{{ grpc }}" --source-root "$source_root"
+    else
+        cargo +stable run \
+            --package {{ package }} \
+            --features binding_codegen \
+            --bin regenerate_bindings \
+            -- "$objects_file" "{{ grpc }}"
     fi
-
-    cargo +stable run \
-        --package {{ package }} \
-        --features binding_codegen \
-        --bin regenerate_bindings \
-        -- "$objects_file" "{{ grpc }}" "${source_args[@]}"
 
 # Run rustfmt on the Nexus SDK
 fmt-check: _check-cargo

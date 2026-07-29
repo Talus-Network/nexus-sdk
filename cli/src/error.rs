@@ -1,6 +1,9 @@
 use {
     crate::{display::*, prelude::*},
-    nexus_sdk::nexus::error::NexusError,
+    nexus_sdk::{
+        nexus::error::NexusError,
+        scheduler::{ScheduleError, SchedulerError},
+    },
     thiserror::Error,
 };
 
@@ -20,4 +23,8 @@ pub(crate) enum NexusCliError {
     Rpc(anyhow::Error),
     #[error("{error}{separator}\n{0}", error = "Nexus Client Error".red().bold(), separator = separator())]
     Nexus(NexusError),
+    #[error("{error}{separator}\n{0}", error = "Schedule Error".red().bold(), separator = separator())]
+    Schedule(#[from] ScheduleError),
+    #[error("{error}{separator}\n{0}", error = "Scheduler Error".red().bold(), separator = separator())]
+    Scheduler(#[from] SchedulerError),
 }

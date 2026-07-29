@@ -8,6 +8,8 @@ mod extensions;
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
+#[cfg(feature = "transactions")]
+pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {
     self::interface::graph::RuntimeVertex,
     crate::{sui, types::NexusObjects},
@@ -124,6 +126,7 @@ where
 }
 
 /// Build a generated Move struct tag with a specific package address.
+#[cfg(test)]
 pub(crate) fn struct_tag_with_package<T>(
     objects: &NexusObjects,
     package: sui::types::Address,
@@ -138,29 +141,6 @@ where
         tag.name().clone(),
         tag.type_params().to_vec(),
     )
-}
-
-/// Qualified generated Move struct name scoped to this Nexus deployment.
-pub(crate) fn struct_type_name<T>(objects: &NexusObjects) -> String
-where
-    T: sui_move::MoveStruct,
-{
-    qualified_struct_name(&struct_tag::<T>(objects))
-}
-
-/// Qualified generated Move struct name with a specific package address.
-pub(crate) fn struct_type_name_with_package<T>(
-    objects: &NexusObjects,
-    package: sui::types::Address,
-) -> String
-where
-    T: sui_move::MoveStruct,
-{
-    qualified_struct_name(&struct_tag_with_package::<T>(objects, package))
-}
-
-fn qualified_struct_name(tag: &sui::types::StructTag) -> String {
-    format!("{}::{}::{}", tag.address(), tag.module(), tag.name())
 }
 
 /// Derive the on chain [`registry::tool_registry::Tool`] object ID for a tool FQN.
@@ -232,12 +212,12 @@ pub fn derive_walk_execution_event_task_id(
     derive_object_id(runtime_task_id, &sui::types::TypeTag::U64, &iteration)
 }
 
-/// Derive the task ID associated with a scheduled occurrence event.
-pub fn derive_occurrence_scheduled_event_task_id(
+/// Derives the [`workflow::execution::DAGExecution`] ID for one [`scheduler::task::Task`] occurrence.
+pub fn derive_task_execution_id(
     task: sui::types::Address,
-    start_time_ms: &u64,
+    occurrence_id: u64,
 ) -> anyhow::Result<sui::types::Address> {
-    derive_object_id(task, &sui::types::TypeTag::U64, start_time_ms)
+    derive_object_id(task, &sui::types::TypeTag::U64, &occurrence_id)
 }
 
 pub mod interface {
@@ -331,7 +311,12 @@ pub mod workflow {
 #[cfg(test)]
 mod tests {
     use {
-        super::{derive_walk_execution_event_task_id, interface::graph::RuntimeVertex, registry},
+        super::{
+            derive_task_execution_id,
+            derive_walk_execution_event_task_id,
+            interface::graph::RuntimeVertex,
+            registry,
+        },
         crate::sui,
         sui_move::MoveType,
     };
@@ -366,5 +351,13 @@ mod tests {
 
         assert_ne!(plain, repetitive_zero);
         assert_ne!(repetitive_zero, repetitive_one);
+    }
+
+    #[test]
+    fn task_execution_id_uses_the_occurrence_identity() {
+        let task = sui::types::Address::from_static("0x51");
+        let expected = task.derive_object_id(&sui::types::TypeTag::U64, &7_u64.to_le_bytes());
+
+        assert_eq!(derive_task_execution_id(task, 7).unwrap(), expected);
     }
 }
