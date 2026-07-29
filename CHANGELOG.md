@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Renamed priority fee exchange-rate fields and CLI inputs to `exchange_rate_million_mists_us`, measured as `$US` atomic units per one million MIST.
 - Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
 - Workflow and scheduler models now expose Task and occurrence provenance for every `DAGExecution`, and all execution requests are submitted through the scheduler.
 - Scheduler transaction builders create the Task, attach its keyed authorization and payment reserve children, add initial scheduling state, and share it in one PTB.
@@ -62,6 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- The priority fee vault configure flag is now `--exchange-rate-million-mists-us`, and drain JSON reports `exchange_rate_million_mists_us`.
 - Onchain Tool registration now derives workflow authorization from the normalized `execute` signature instead of accepting a manual mode.
 - `scheduler task create` is now the single execution entry. A caller schedules for the current Clock timestamp when work should be eligible now.
 - Task creation accepts its initial manual occurrence and optional recurrence, so no follow up scheduling transaction is required.
