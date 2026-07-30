@@ -2,10 +2,9 @@
 
 use crate::{
     events::{parse_bcs, supports_event, NexusEvent},
-    move_bindings::primitives::{
-        data::NexusData as MoveNexusData,
-        distributed_event as distributed_event_move,
-        event as event_move,
+    move_bindings::{
+        interface::distributed_event as distributed_event_move,
+        primitives::{data::NexusData as MoveNexusData, event as event_move},
     },
     sui,
     types::NexusObjects,
@@ -131,6 +130,7 @@ mod tests {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
         objects.primitives_original_pkg_id = Some(address("0xa1"));
         objects.scheduler_original_pkg_id = Some(address("0xa2"));
+        objects.interface_original_pkg_id = Some(address("0xa3"));
 
         let event = TaskCreatedEvent::new(
             ID::new(address("0x41")),
@@ -156,6 +156,10 @@ mod tests {
             .expect("event is recognized");
 
         assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
+        let distributed_wrapper = crate::move_bindings::struct_tag::<
+            distributed_event_move::DistributedEventWrapper<MoveNexusData>,
+        >(&objects);
+        assert_eq!(*distributed_wrapper.address(), address("0xa3"));
     }
 
     #[test]

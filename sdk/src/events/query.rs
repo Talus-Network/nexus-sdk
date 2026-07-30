@@ -4,10 +4,9 @@ use {
     super::parsing::decode_nexus_event,
     crate::{
         events::NexusEvent,
-        move_bindings::primitives::{
-            data::NexusData as MoveNexusData,
-            distributed_event as distributed_event_move,
-            event as event_move,
+        move_bindings::{
+            interface::distributed_event as distributed_event_move,
+            primitives::{data::NexusData as MoveNexusData, event as event_move},
         },
         sui::{
             self,
