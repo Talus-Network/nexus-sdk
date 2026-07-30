@@ -6,7 +6,10 @@ use {
     crate::{
         move_bindings::{
             scheduler::scheduler as scheduler_binding,
-            workflow::{execution_entries as execution_entries_binding, gas as gas_binding},
+            workflow::{
+                execution_entries as execution_entries_binding,
+                payment_adapter as payment_adapter_binding,
+            },
         },
         move_boundary::NexusPtbBuilder,
         scheduler::{FailurePolicy, ScheduleError, SchedulerError, TaskInputs, TaskOperation},
@@ -650,7 +653,7 @@ pub(crate) fn append_dispatch_occurrence(
         .map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
-            gas_binding::snapshot_dag_tool_costs_target,
+            payment_adapter_binding::snapshot_dag_tool_costs_target,
             vec![gas_service, execution, dag],
         )
         .map_err(SchedulerError::transaction)?;
@@ -663,7 +666,7 @@ pub(crate) fn append_dispatch_occurrence(
             .map_err(SchedulerError::transaction)?;
         transaction
             .call_target(
-                gas_binding::lock_payment_state_for_tool_target,
+                payment_adapter_binding::lock_payment_state_for_tool_target,
                 vec![tool_gas, dag, execution],
             )
             .map_err(SchedulerError::transaction)?;

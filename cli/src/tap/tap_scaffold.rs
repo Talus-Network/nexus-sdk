@@ -104,9 +104,9 @@ mod tests {
     }
 
     #[test]
-    fn scaffolded_move_toml_declares_all_four_nexus_dependencies() {
-        // The scaffold ships with all four published Nexus packages
-        // (primitives, interface, registry, workflow) declared so authors
+    fn scaffolded_move_toml_declares_all_five_nexus_dependencies() {
+        // The scaffold ships with all five published Nexus packages
+        // (primitives, interface, registry, online payment, workflow) declared so authors
         // who reach for any standard-TAP surface beyond the minimal vertex
         // tool — cap-gated authorization, scheduler interactions, registry
         // lookups — don't have to discover and add deps mid-build. Authors
@@ -127,6 +127,7 @@ mod tests {
             "nexus_primitives = { local = \"deps/primitives\" }",
             "nexus_interface  = { local = \"deps/interface\" }",
             "nexus_registry   = { local = \"deps/registry\" }",
+            "nexus_online_payment = { local = \"deps/online_payment\" }",
             "nexus_workflow   = { local = \"deps/workflow\" }",
         ] {
             assert!(

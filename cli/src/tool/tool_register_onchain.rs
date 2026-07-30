@@ -12,10 +12,10 @@ use {
     },
     nexus_sdk::{
         move_bindings::{
+            online_payment::gas::OverGas,
             primitives::owner_cap::CloneableOwnerCap,
             registry::tool_registry::OverTool,
             struct_tag_matches,
-            workflow::gas::OverGas,
         },
         nexus::error::NexusError,
         sui,
@@ -245,7 +245,7 @@ fn extract_owner_caps(
         // Disambiguate by the generic type param. OverTool is defined in the
         // registry package (`nexus_registry::tool_registry::OverTool`) while
         // OverGas is defined in the workflow package
-        // (`nexus_workflow::gas::OverGas`), so the inner type's address comes
+        // (`nexus_online_payment::gas::OverGas`), so the inner type's address comes
         // from a different package depending on which cap we are looking at.
         let Some(sui::types::TypeTag::Struct(inner)) = object_type.type_params().first() else {
             continue;
@@ -1204,7 +1204,7 @@ mod tests {
         owner_cap_id: sui::types::Address,
     ) -> sui::types::Object {
         let cap_tag = sui::types::StructTag::new(
-            nexus_objects.primitives_pkg_id,
+            nexus_objects.primitives_type_origin_pkg_id(),
             cloneable_owner_cap_tag(nexus_objects).module().clone(),
             cloneable_owner_cap_tag(nexus_objects).name().clone(),
             vec![sui::types::TypeTag::Struct(Box::new(inner))],

@@ -59,11 +59,7 @@ pub(super) fn decode_nexus_event(
 }
 
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
-    address == objects.primitives_pkg_id
-        || address == objects.interface_pkg_id
-        || address == objects.registry_pkg_id
-        || objects.is_scheduler_package(address)
-        || objects.is_workflow_package(address)
+    objects.is_nexus_package(address)
 }
 
 fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
@@ -128,6 +124,38 @@ mod tests {
 
         assert!(distribution.is_none());
         assert!(matches!(event, NexusEventKind::TaskCreated(_)));
+    }
+
+    #[test]
+    fn resolves_event_type_origins_after_package_upgrades() {
+        let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
+        objects.primitives_original_pkg_id = Some(address("0xa1"));
+        objects.scheduler_original_pkg_id = Some(address("0xa2"));
+
+        let event = TaskCreatedEvent::new(
+            ID::new(address("0x41")),
+            TaskController::Address {
+                pos0: address("0x42"),
+            },
+            ID::new(address("0x43")),
+            7,
+        );
+        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+        let inner = crate::move_bindings::struct_tag::<TaskCreatedEvent>(&objects);
+        let wrapper =
+            crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(&objects);
+        let wrapper = sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
+
+        let decoded = decode_nexus_event(0, sui::types::Digest::ZERO, &bytes, &wrapper, &objects)
+            .expect("event decoding succeeds")
+            .expect("event is recognized");
+
+        assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
     }
 
     #[test]

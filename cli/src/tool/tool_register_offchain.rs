@@ -18,10 +18,10 @@ use {
     },
     nexus_sdk::{
         move_bindings::{
+            online_payment::gas::OverGas,
             primitives::owner_cap::CloneableOwnerCap,
             registry::tool_registry::OverTool,
             struct_tag_matches,
-            workflow::gas::OverGas,
         },
         nexus::{client::NexusClient, error::NexusError},
         transactions::tool,

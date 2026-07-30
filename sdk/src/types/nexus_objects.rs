@@ -2,6 +2,7 @@
 //! generated during Nexus package deployment.
 #[cfg(test)]
 use crate::move_bindings::{
+    online_payment::gas as online_payment_gas_move,
     primitives::event as event_move,
     registry::agent_registry as agent_registry_move,
     scheduler::task as scheduler_task_move,
@@ -87,6 +88,7 @@ impl UsTokenConfig {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
+    pub online_payment_pkg_id: sui::types::Address,
     pub workflow_pkg_id: sui::types::Address,
     pub scheduler_pkg_id: sui::types::Address,
     pub primitives_pkg_id: sui::types::Address,
@@ -106,6 +108,18 @@ pub struct NexusObjects {
     #[serde(default)]
     pub us_token: UsTokenConfig,
 
+    /// Original package address that defines primitive types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primitives_original_pkg_id: Option<sui::types::Address>,
+    /// Original package address that defines interface types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_original_pkg_id: Option<sui::types::Address>,
+    /// Original package address that defines registry types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_original_pkg_id: Option<sui::types::Address>,
+    /// Original package address that defines online payment types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub online_payment_original_pkg_id: Option<sui::types::Address>,
     /// Original (defining) package address for the workflow package.
     ///
     /// After a Sui Move package upgrade, on-chain types still reference the
@@ -128,6 +142,53 @@ fn default_object_reference() -> sui::types::ObjectReference {
 }
 
 impl NexusObjects {
+    /// Resolve every package origin needed for stable type identity after upgrades.
+    #[cfg(feature = "nexus")]
+    pub async fn resolve_original_pkg_ids(
+        &mut self,
+        client: &Arc<sui::grpc::Client>,
+    ) -> anyhow::Result<()> {
+        if self.primitives_original_pkg_id.is_none() {
+            self.primitives_original_pkg_id =
+                resolve_original_package_id(client, self.primitives_pkg_id, "primitives").await?;
+        }
+        if self.interface_original_pkg_id.is_none() {
+            self.interface_original_pkg_id =
+                resolve_original_package_id(client, self.interface_pkg_id, "interface").await?;
+        }
+        if self.registry_original_pkg_id.is_none() {
+            self.registry_original_pkg_id =
+                resolve_original_package_id(client, self.registry_pkg_id, "registry").await?;
+        }
+        self.resolve_online_payment_original_pkg_id(client).await?;
+        self.resolve_workflow_original_pkg_id(client).await?;
+        self.resolve_scheduler_original_pkg_id(client).await
+    }
+
+    /// Returns the package address that defines primitive types.
+    pub fn primitives_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.primitives_original_pkg_id
+            .unwrap_or(self.primitives_pkg_id)
+    }
+
+    /// Returns the package address that defines interface types.
+    pub fn interface_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.interface_original_pkg_id
+            .unwrap_or(self.interface_pkg_id)
+    }
+
+    /// Returns the package address that defines registry types.
+    pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.registry_original_pkg_id
+            .unwrap_or(self.registry_pkg_id)
+    }
+
+    /// Returns the package address that defines online payment types.
+    pub fn online_payment_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.online_payment_original_pkg_id
+            .unwrap_or(self.online_payment_pkg_id)
+    }
+
     /// Returns the original (defining) workflow package address.
     ///
     /// After a Sui package upgrade, on-chain types reference the original
@@ -149,22 +210,77 @@ impl NexusObjects {
             .unwrap_or(self.scheduler_pkg_id)
     }
 
+    /// Returns true when the address matches the current or original primitives package.
+    pub fn is_primitives_package(&self, address: sui::types::Address) -> bool {
+        package_matches(
+            address,
+            self.primitives_pkg_id,
+            self.primitives_original_pkg_id,
+        )
+    }
+
+    /// Returns true when the address matches the current or original interface package.
+    pub fn is_interface_package(&self, address: sui::types::Address) -> bool {
+        package_matches(
+            address,
+            self.interface_pkg_id,
+            self.interface_original_pkg_id,
+        )
+    }
+
+    /// Returns true when the address matches the current or original registry package.
+    pub fn is_registry_package(&self, address: sui::types::Address) -> bool {
+        package_matches(address, self.registry_pkg_id, self.registry_original_pkg_id)
+    }
+
+    /// Returns true when the given address matches a known online payment package.
+    pub fn is_online_payment_package(&self, address: sui::types::Address) -> bool {
+        package_matches(
+            address,
+            self.online_payment_pkg_id,
+            self.online_payment_original_pkg_id,
+        )
+    }
+
     /// Returns true when the given address matches any known workflow
     /// package address (current or original).
     pub fn is_workflow_package(&self, address: sui::types::Address) -> bool {
-        address == self.workflow_pkg_id
-            || self
-                .workflow_original_pkg_id
-                .is_some_and(|orig| address == orig)
+        package_matches(address, self.workflow_pkg_id, self.workflow_original_pkg_id)
     }
 
     /// Returns true when the given address matches any known scheduler package
     /// address (current or original).
     pub fn is_scheduler_package(&self, address: sui::types::Address) -> bool {
-        address == self.scheduler_pkg_id
-            || self
-                .scheduler_original_pkg_id
-                .is_some_and(|orig| address == orig)
+        package_matches(
+            address,
+            self.scheduler_pkg_id,
+            self.scheduler_original_pkg_id,
+        )
+    }
+
+    /// Returns true when the address matches any configured Nexus package.
+    pub fn is_nexus_package(&self, address: sui::types::Address) -> bool {
+        self.is_primitives_package(address)
+            || self.is_interface_package(address)
+            || self.is_registry_package(address)
+            || self.is_online_payment_package(address)
+            || self.is_workflow_package(address)
+            || self.is_scheduler_package(address)
+    }
+
+    /// Resolve and store the package address that defines online payment types.
+    #[cfg(feature = "nexus")]
+    pub async fn resolve_online_payment_original_pkg_id(
+        &mut self,
+        client: &Arc<sui::grpc::Client>,
+    ) -> anyhow::Result<()> {
+        if self.online_payment_original_pkg_id.is_some() {
+            return Ok(());
+        }
+        self.online_payment_original_pkg_id =
+            resolve_original_package_id(client, self.online_payment_pkg_id, "online payment")
+                .await?;
+        Ok(())
     }
 
     /// Resolve the original workflow package address from the on-chain
@@ -181,45 +297,11 @@ impl NexusObjects {
         &mut self,
         client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
-        use sui::traits::FieldMaskUtil;
-
-        let field_mask = sui::grpc::FieldMask::from_paths(["package"]);
-
-        let request = sui::grpc::GetObjectRequest::default()
-            .with_object_id(self.workflow_pkg_id)
-            .with_read_mask(field_mask);
-
-        let response = client
-            .as_ref()
-            .clone()
-            .ledger_client()
-            .get_object(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow::anyhow!("Failed to fetch workflow package object: {e}"))?;
-
-        let object = response
-            .object
-            .ok_or_else(|| anyhow::anyhow!("Workflow package object not found"))?;
-
-        let package = object
-            .package
-            .ok_or_else(|| anyhow::anyhow!("Object is not a package"))?;
-
-        // Find the first type origin entry that references a different package.
-        // All workflow types should originate from the same package.
-        let original = package.type_origins.iter().find_map(|origin| {
-            let pkg_id_str = origin.package_id.as_deref()?;
-            let addr = pkg_id_str.parse::<sui::types::Address>().ok()?;
-            if addr != self.workflow_pkg_id {
-                Some(addr)
-            } else {
-                None
-            }
-        });
-
-        self.workflow_original_pkg_id = original;
-
+        if self.workflow_original_pkg_id.is_some() {
+            return Ok(());
+        }
+        self.workflow_original_pkg_id =
+            resolve_original_package_id(client, self.workflow_pkg_id, "workflow").await?;
         Ok(())
     }
 
@@ -232,45 +314,67 @@ impl NexusObjects {
         &mut self,
         client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
-        use sui::traits::FieldMaskUtil;
-
-        let field_mask = sui::grpc::FieldMask::from_paths(["package"]);
-
-        let request = sui::grpc::GetObjectRequest::default()
-            .with_object_id(self.scheduler_pkg_id)
-            .with_read_mask(field_mask);
-
-        let response = client
-            .as_ref()
-            .clone()
-            .ledger_client()
-            .get_object(request)
-            .await
-            .map(|r| r.into_inner())
-            .map_err(|e| anyhow::anyhow!("Failed to fetch scheduler package object: {e}"))?;
-
-        let object = response
-            .object
-            .ok_or_else(|| anyhow::anyhow!("Scheduler package object not found"))?;
-
-        let package = object
-            .package
-            .ok_or_else(|| anyhow::anyhow!("Object is not a package"))?;
-
-        let original = package.type_origins.iter().find_map(|origin| {
-            let pkg_id_str = origin.package_id.as_deref()?;
-            let addr = pkg_id_str.parse::<sui::types::Address>().ok()?;
-            if addr != self.scheduler_pkg_id {
-                Some(addr)
-            } else {
-                None
-            }
-        });
-
-        self.scheduler_original_pkg_id = original;
-
+        if self.scheduler_original_pkg_id.is_some() {
+            return Ok(());
+        }
+        self.scheduler_original_pkg_id =
+            resolve_original_package_id(client, self.scheduler_pkg_id, "scheduler").await?;
         Ok(())
     }
+}
+
+fn package_matches(
+    address: sui::types::Address,
+    current: sui::types::Address,
+    original: Option<sui::types::Address>,
+) -> bool {
+    address == current || original.is_some_and(|original| address == original)
+}
+
+#[cfg(feature = "nexus")]
+async fn resolve_original_package_id(
+    client: &Arc<sui::grpc::Client>,
+    current: sui::types::Address,
+    package_name: &str,
+) -> anyhow::Result<Option<sui::types::Address>> {
+    use sui::traits::FieldMaskUtil;
+
+    let request = sui::grpc::GetObjectRequest::default()
+        .with_object_id(current)
+        .with_read_mask(sui::grpc::FieldMask::from_paths(["package"]));
+    let response = client
+        .as_ref()
+        .clone()
+        .ledger_client()
+        .get_object(request)
+        .await
+        .map(|response| response.into_inner())
+        .map_err(|error| anyhow::anyhow!("Failed to fetch {package_name} package: {error}"))?;
+    let package = response
+        .object
+        .ok_or_else(|| anyhow::anyhow!("{package_name} package not found"))?
+        .package
+        .ok_or_else(|| anyhow::anyhow!("{package_name} object is not a package"))?;
+
+    let mut original = None;
+    for origin in &package.type_origins {
+        let Some(package_id) = origin.package_id.as_deref() else {
+            continue;
+        };
+        let package_id = package_id
+            .parse::<sui::types::Address>()
+            .map_err(|error| anyhow::anyhow!("Invalid {package_name} type origin: {error}"))?;
+        if package_id == current {
+            continue;
+        }
+        if original.is_some_and(|original| original != package_id) {
+            anyhow::bail!(
+                "{package_name} has multiple type origins; configure its original package ID"
+            );
+        }
+        original = Some(package_id);
+    }
+    Ok(original)
 }
 
 impl NexusObjects {
@@ -280,7 +384,9 @@ impl NexusObjects {
             return false;
         };
 
-        if self.is_workflow_package(*inner_tag.address()) {
+        if self.is_online_payment_package(*inner_tag.address())
+            || self.is_workflow_package(*inner_tag.address())
+        {
             return true;
         }
 
@@ -288,11 +394,11 @@ impl NexusObjects {
             return true;
         }
 
-        if *inner_tag.address() == self.registry_pkg_id {
+        if self.is_registry_package(*inner_tag.address()) {
             return true;
         }
 
-        if *inner_tag.address() == self.interface_pkg_id
+        if self.is_interface_package(*inner_tag.address())
             && (self.interface_module_matches::<agent_move::Agent>(inner_tag.module())
                 || self.interface_module_matches::<authorization_move::AgentVertexAuthorization>(
                     inner_tag.module(),
@@ -326,6 +432,7 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         NexusObjects {
+            online_payment_pkg_id: sui::types::Address::generate(&mut rng),
             workflow_pkg_id: sui::types::Address::generate(&mut rng),
             scheduler_pkg_id: sui::types::Address::generate(&mut rng),
             primitives_pkg_id: sui::types::Address::generate(&mut rng),
@@ -377,6 +484,10 @@ mod tests {
                 sui::types::Digest::generate(&mut rng),
             ),
             us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
+            primitives_original_pkg_id: None,
+            interface_original_pkg_id: None,
+            registry_original_pkg_id: None,
+            online_payment_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -530,6 +641,22 @@ mod tests {
         objects
     }
 
+    fn sample_objects_with_foundation_upgrades() -> NexusObjects {
+        let mut objects = sample_objects();
+        let mut rng = rand::thread_rng();
+        objects.primitives_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects.interface_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects.registry_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects
+    }
+
+    fn sample_objects_with_online_payment_upgrade() -> NexusObjects {
+        let mut objects = sample_objects();
+        let mut rng = rand::thread_rng();
+        objects.online_payment_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects
+    }
+
     fn sample_objects_with_scheduler_upgrade() -> NexusObjects {
         let mut objects = sample_objects();
         let mut rng = rand::thread_rng();
@@ -544,6 +671,81 @@ mod tests {
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id
         );
+    }
+
+    #[test]
+    fn foundation_type_origins_and_events_remain_stable_after_upgrades() {
+        let objects = sample_objects_with_foundation_upgrades();
+
+        assert_eq!(
+            objects.primitives_type_origin_pkg_id(),
+            objects.primitives_original_pkg_id.unwrap()
+        );
+        assert_eq!(
+            objects.interface_type_origin_pkg_id(),
+            objects.interface_original_pkg_id.unwrap()
+        );
+        assert_eq!(
+            objects.registry_type_origin_pkg_id(),
+            objects.registry_original_pkg_id.unwrap()
+        );
+
+        for package in [
+            objects.primitives_original_pkg_id.unwrap(),
+            objects.interface_original_pkg_id.unwrap(),
+            objects.registry_original_pkg_id.unwrap(),
+        ] {
+            assert!(objects.is_nexus_package(package));
+        }
+
+        let event = wrap_event(
+            &objects,
+            struct_tag_with_package::<agent_move::AgentCreatedEvent>(
+                &objects,
+                objects.interface_original_pkg_id.unwrap(),
+            ),
+        );
+        assert!(objects.is_event_from_nexus(&event));
+    }
+
+    #[test]
+    fn online_payment_type_origin_uses_current_package_without_upgrade() {
+        let objects = sample_objects();
+        assert_eq!(
+            objects.online_payment_type_origin_pkg_id(),
+            objects.online_payment_pkg_id
+        );
+    }
+
+    #[test]
+    fn online_payment_type_origin_uses_original_package_after_upgrade() {
+        let objects = sample_objects_with_online_payment_upgrade();
+        assert_eq!(
+            objects.online_payment_type_origin_pkg_id(),
+            objects.online_payment_original_pkg_id.unwrap()
+        );
+    }
+
+    #[test]
+    fn online_payment_events_match_current_and_original_packages() {
+        let objects = sample_objects_with_online_payment_upgrade();
+        let current = wrap_event(
+            &objects,
+            struct_tag_with_package::<online_payment_gas_move::PaymentLockUpdateEvent>(
+                &objects,
+                objects.online_payment_pkg_id,
+            ),
+        );
+        let original = wrap_event(
+            &objects,
+            struct_tag_with_package::<online_payment_gas_move::PaymentLockUpdateEvent>(
+                &objects,
+                objects.online_payment_original_pkg_id.unwrap(),
+            ),
+        );
+
+        assert!(objects.is_event_from_nexus(&current));
+        assert!(objects.is_event_from_nexus(&original));
     }
 
     #[test]

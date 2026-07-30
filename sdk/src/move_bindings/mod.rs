@@ -42,25 +42,32 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                         || {
                             primitives::with_packages(
                                 objects.primitives_pkg_id,
-                                objects.primitives_pkg_id,
+                                objects.primitives_type_origin_pkg_id(),
                                 || {
                                     interface::with_packages(
                                         objects.interface_pkg_id,
-                                        objects.interface_pkg_id,
+                                        objects.interface_type_origin_pkg_id(),
                                         || {
                                             registry::with_packages(
                                                 objects.registry_pkg_id,
-                                                objects.registry_pkg_id,
+                                                objects.registry_type_origin_pkg_id(),
                                                 || {
-                                                    workflow::with_packages(
-                                                        objects.workflow_pkg_id,
-                                                        objects.workflow_type_origin_pkg_id(),
+                                                    online_payment::with_packages(
+                                                        objects.online_payment_pkg_id,
+                                                        objects.online_payment_type_origin_pkg_id(),
                                                         || {
-                                                            scheduler::with_packages(
-                                                                objects.scheduler_pkg_id,
+                                                            workflow::with_packages(
+                                                                objects.workflow_pkg_id,
                                                                 objects
-                                                                    .scheduler_type_origin_pkg_id(),
-                                                                f,
+                                                                    .workflow_type_origin_pkg_id(),
+                                                                || {
+                                                                    scheduler::with_packages(
+                                                                        objects.scheduler_pkg_id,
+                                                                        objects
+                                                                            .scheduler_type_origin_pkg_id(),
+                                                                        f,
+                                                                    )
+                                                                },
                                                             )
                                                         },
                                                     )
@@ -87,11 +94,15 @@ where
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
-fn registry_type_tag<T>(registry_pkg_id: sui::types::Address) -> sui::types::TypeTag
+fn registry_type_tag<T>(registry_type_origin_pkg_id: sui::types::Address) -> sui::types::TypeTag
 where
     T: sui_move::MoveType,
 {
-    registry::with_packages(registry_pkg_id, registry_pkg_id, T::type_tag_static)
+    registry::with_packages(
+        registry_type_origin_pkg_id,
+        registry_type_origin_pkg_id,
+        T::type_tag_static,
+    )
 }
 
 /// Build a generated Move struct tag scoped to this Nexus deployment.
@@ -157,7 +168,7 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the on chain [`workflow::gas::ToolGas`] object ID for a tool FQN.
+/// Derive the on chain [`online_payment::gas::ToolGas`] object ID for a tool FQN.
 pub fn derive_tool_gas_id(
     gas_service: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -173,17 +184,20 @@ pub fn derive_tool_gas_id(
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 pub(crate) fn derive_network_auth_binding_id(
-    registry_pkg_id: sui::types::Address,
+    registry_type_origin_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
     identity: &IdentityKey,
 ) -> anyhow::Result<sui::types::Address> {
-    let key_type = registry_type_tag::<IdentityKey>(registry_pkg_id);
+    let key_type = registry_type_tag::<IdentityKey>(registry_type_origin_pkg_id);
     derive_object_id(network_auth_object_id, &key_type, identity)
 }
 
 /// Derive the task ID associated with a walk execution request event.
+///
+/// Pass [`NexusObjects::interface_type_origin_pkg_id`] so the derived ID
+/// remains stable after an interface package upgrade.
 pub fn derive_walk_execution_event_task_id(
-    interface_pkg_id: sui::types::Address,
+    interface_type_origin_pkg_id: sui::types::Address,
     execution: sui::types::Address,
     vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Address> {
@@ -197,7 +211,7 @@ pub fn derive_walk_execution_event_task_id(
     };
     let vertex_shape = interface::graph::Vertex::struct_tag_static();
     let vertex_tag = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        interface_pkg_id,
+        interface_type_origin_pkg_id,
         vertex_shape.module().clone(),
         vertex_shape.name().clone(),
         vec![],
@@ -240,6 +254,17 @@ pub mod move_std {
         unused_imports
     )]
     include!(concat!(env!("OUT_DIR"), "/move_std_types.rs"));
+}
+
+pub mod online_payment {
+    #![allow(
+        clippy::all,
+        dead_code,
+        non_camel_case_types,
+        private_interfaces,
+        unused_imports
+    )]
+    include!(concat!(env!("OUT_DIR"), "/online_payment_types.rs"));
 }
 
 pub mod primitives {

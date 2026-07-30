@@ -25,7 +25,7 @@ use {
             workflow::{
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
-                gas as gas_binding,
+                payment_adapter as payment_adapter_binding,
             },
         },
         move_boundary,
@@ -1728,7 +1728,7 @@ fn lock_payment_state_for_tools(
 ) -> anyhow::Result<()> {
     for tool_gas in tools_gas {
         tx.call_target(
-            gas_binding::lock_payment_state_for_tool_target,
+            payment_adapter_binding::lock_payment_state_for_tool_target,
             vec![tool_gas, dag, execution],
         )?;
     }
@@ -1765,6 +1765,7 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
+            online_payment_pkg_id: addr("0x13"),
             workflow_pkg_id: addr("0x1"),
             scheduler_pkg_id: addr("0x11"),
             primitives_pkg_id: addr("0x2"),
@@ -1784,6 +1785,10 @@ mod tests {
             priority_fee_vault: object_ref("0xf", 1, 15),
             priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
             us_token: UsTokenConfig::new(addr("0x12")),
+            primitives_original_pkg_id: None,
+            interface_original_pkg_id: None,
+            registry_original_pkg_id: None,
+            online_payment_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -2019,7 +2024,8 @@ mod tests {
         )
         .unwrap();
 
-        let lock_payment = move_call_index(&ptb, None, "gas", "lock_payment_state_for_tool");
+        let lock_payment =
+            move_call_index(&ptb, None, "payment_adapter", "lock_payment_state_for_tool");
         let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
 
         assert!(lock_payment < execute);

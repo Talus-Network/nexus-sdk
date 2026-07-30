@@ -1,12 +1,12 @@
 use {
     crate::{
         move_bindings::{
+            online_payment::gas as gas_binding,
             registry::{
                 registered_key_verifier as registered_key_verifier_binding,
                 tool_registry as tool_registry_binding,
             },
             sui_framework::transfer as transfer_binding,
-            workflow::gas as gas_binding,
         },
         move_boundary,
         sui,
@@ -667,6 +667,7 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
+            online_payment_pkg_id: addr("0x13"),
             workflow_pkg_id: addr("0x1"),
             scheduler_pkg_id: addr("0x11"),
             primitives_pkg_id: addr("0x2"),
@@ -691,6 +692,10 @@ mod tests {
                 protected_treasury: None,
                 metadata: None,
             },
+            primitives_original_pkg_id: None,
+            interface_original_pkg_id: None,
+            registry_original_pkg_id: None,
+            online_payment_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

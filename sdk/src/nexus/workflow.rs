@@ -1625,7 +1625,7 @@ impl WorkflowActions {
     }
 
     /// Return ToolGas refs that can be passed to
-    /// `gas_extension::abort_expired_execution_with_tool_gas` for the current
+    /// `payment_adapter::abort_expired_execution_with_tool_gas` for the current
     /// execution state. This is an advisory snapshot; Move still verifies
     /// timeout and lock state on chain.
     pub async fn abort_expired_execution_tool_gas_candidates(
@@ -1673,7 +1673,7 @@ impl WorkflowActions {
         Ok(refs)
     }
 
-    /// Submit `gas_extension::abort_expired_execution_with_tool_gas` for one
+    /// Submit `payment_adapter::abort_expired_execution_with_tool_gas` for one
     /// eligible ToolGas candidate. Candidate discovery is advisory; Move still
     /// verifies timeout and lock state on chain.
     pub async fn abort_expired_execution_with_tool_gas(
@@ -2351,15 +2351,24 @@ mod tests {
         nexus_events
             .into_iter()
             .map(|event| {
-                let module = if matches!(event, NexusEventKind::DAGCreated(_)) {
-                    "dag"
-                } else {
-                    "execution"
-                };
+                let (event_pkg_id, event_type_origin, module) =
+                    if matches!(event, NexusEventKind::DAGCreated(_)) {
+                        (
+                            objects.interface_pkg_id,
+                            objects.interface_type_origin_pkg_id(),
+                            "dag",
+                        )
+                    } else {
+                        (
+                            objects.workflow_pkg_id,
+                            objects.workflow_type_origin_pkg_id(),
+                            "execution",
+                        )
+                    };
                 let event_type = format!(
                     "{}::event::EventWrapper<{}::{module}::{}>",
-                    objects.primitives_pkg_id,
-                    objects.workflow_pkg_id,
+                    objects.primitives_type_origin_pkg_id(),
+                    event_type_origin,
                     event.name()
                 );
                 let contents = match event {
@@ -2380,7 +2389,7 @@ mod tests {
                 };
 
                 let mut grpc_event = sui::grpc::Event::default();
-                grpc_event.set_package_id(objects.workflow_pkg_id);
+                grpc_event.set_package_id(event_pkg_id);
                 grpc_event.set_module(module.to_string());
                 grpc_event.set_sender(sui::types::Address::ZERO);
                 grpc_event.set_event_type(event_type);

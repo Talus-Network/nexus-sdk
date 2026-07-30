@@ -54,7 +54,7 @@ pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
     let identity = IdentityKey::leader(leader_id);
     let derivation_reader = NetworkAuthReader::from_rpc_url(
         "http://127.0.0.1:1",
-        nexus_objects.registry_pkg_id,
+        nexus_objects.registry_type_origin_pkg_id(),
         network_auth_id,
     )
     .expect("derivation-only network-auth reader");
@@ -114,6 +114,10 @@ pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
         ..Default::default()
     });
 
-    NetworkAuthReader::from_rpc_url(&rpc_url, nexus_objects.registry_pkg_id, network_auth_id)
-        .expect("mock network-auth reader")
+    NetworkAuthReader::from_rpc_url(
+        &rpc_url,
+        nexus_objects.registry_type_origin_pkg_id(),
+        network_auth_id,
+    )
+    .expect("mock network-auth reader")
 }

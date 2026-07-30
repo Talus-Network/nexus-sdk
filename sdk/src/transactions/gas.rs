@@ -1,8 +1,9 @@
 use {
     crate::{
         move_bindings::{
+            online_payment::gas_extension as gas_extension_binding,
             registry::priority_fee_vault as priority_fee_vault_binding,
-            workflow::{gas as gas_binding, gas_extension as gas_extension_binding},
+            workflow::payment_adapter as payment_adapter_binding,
         },
         move_boundary,
         sui,
@@ -99,7 +100,7 @@ pub(crate) fn settle_payment_state_for_vertex(
     expected_vertex: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
     tx.call_target(
-        gas_binding::settle_payment_state_for_vertex_target,
+        payment_adapter_binding::settle_payment_state_for_vertex_target,
         vec![tool_gas, dag, execution, expected_vertex],
     )
 }
@@ -120,7 +121,7 @@ pub fn abort_expired_execution_with_tool_gas_ptb(
         let clock = tx.clock()?;
 
         tx.call_target(
-            gas_extension_binding::abort_expired_execution_with_tool_gas_target,
+            payment_adapter_binding::abort_expired_execution_with_tool_gas_target,
             vec![tool_gas, dag, execution, clock],
         )?;
         Ok(())
@@ -279,6 +280,7 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
+            online_payment_pkg_id: addr("0x13"),
             workflow_pkg_id: addr("0x1"),
             scheduler_pkg_id: addr("0x11"),
             primitives_pkg_id: addr("0x2"),
@@ -298,6 +300,10 @@ mod tests {
             priority_fee_vault: object_ref("0xf", 1, 15),
             priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
             us_token: UsTokenConfig::new(addr("0x12")),
+            primitives_original_pkg_id: None,
+            interface_original_pkg_id: None,
+            registry_original_pkg_id: None,
+            online_payment_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -353,7 +359,7 @@ mod tests {
 
         let call = move_call(ptb.commands.last().unwrap());
         assert_eq!(call.package, objects.workflow_pkg_id);
-        assert_eq!(call.module.as_str(), "gas_extension");
+        assert_eq!(call.module.as_str(), "payment_adapter");
         assert_eq!(
             call.function.as_str(),
             "abort_expired_execution_with_tool_gas"

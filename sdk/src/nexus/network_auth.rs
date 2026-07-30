@@ -108,8 +108,11 @@ impl NetworkAuthActions {
         identity: &IdentityKey,
     ) -> Result<sui::types::Address, NexusError> {
         let objects = &self.client.nexus_objects;
-        NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id())
-            .binding_object_id(identity)
+        NetworkAuthCodec::new(
+            objects.registry_type_origin_pkg_id(),
+            *objects.network_auth.object_id(),
+        )
+        .binding_object_id(identity)
     }
 
     /// Register (or rotate) a ToolId message-signing key under `network_auth`.
@@ -129,8 +132,10 @@ impl NetworkAuthActions {
         let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
 
-        let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
+        let codec = NetworkAuthCodec::new(
+            objects.registry_type_origin_pkg_id(),
+            *objects.network_auth.object_id(),
+        );
 
         let tool_id =
             Tool::derive_id(*objects.tool_registry.object_id(), &tool_fqn).map_err(|e| {
@@ -217,8 +222,10 @@ impl NetworkAuthActions {
         tool_fqn: &ToolFqn,
     ) -> Result<Option<ToolKeyList>, NexusError> {
         let objects = &self.client.nexus_objects;
-        let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
+        let codec = NetworkAuthCodec::new(
+            objects.registry_type_origin_pkg_id(),
+            *objects.network_auth.object_id(),
+        );
 
         let tool_id =
             Tool::derive_id(*objects.tool_registry.object_id(), tool_fqn).map_err(|e| {
@@ -279,8 +286,10 @@ impl NetworkAuthActions {
         leader_cap_ids: &[sui::types::Address],
     ) -> Result<AllowedLeadersFileV1, NexusError> {
         let objects = &self.client.nexus_objects;
-        let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
+        let codec = NetworkAuthCodec::new(
+            objects.registry_type_origin_pkg_id(),
+            *objects.network_auth.object_id(),
+        );
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -399,8 +408,10 @@ impl NetworkAuthActions {
         }
 
         let objects = &self.client.nexus_objects;
-        let codec =
-            NetworkAuthCodec::new(objects.registry_pkg_id, *objects.network_auth.object_id());
+        let codec = NetworkAuthCodec::new(
+            objects.registry_type_origin_pkg_id(),
+            *objects.network_auth.object_id(),
+        );
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -505,19 +516,21 @@ impl NetworkAuthActions {
 #[derive(Clone)]
 pub struct NetworkAuthReader {
     crawler: Crawler,
-    registry_pkg_id: sui::types::Address,
+    registry_type_origin_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
 }
 
 impl NetworkAuthReader {
+    /// `registry_type_origin_pkg_id` is the package that first defined
+    /// `network_auth::IdentityKey`.
     pub fn new(
         crawler: Crawler,
-        registry_pkg_id: sui::types::Address,
+        registry_type_origin_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Self {
         Self {
             crawler,
-            registry_pkg_id,
+            registry_type_origin_pkg_id,
             network_auth_object_id,
         }
     }
@@ -525,12 +538,16 @@ impl NetworkAuthReader {
     /// Construct a reader by creating a Sui gRPC client for `rpc_url`.
     pub fn from_rpc_url(
         rpc_url: &str,
-        registry_pkg_id: sui::types::Address,
+        registry_type_origin_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Result<Self, NexusError> {
         let client = sui::grpc::client(rpc_url).map_err(NexusError::Rpc)?;
         let crawler = Crawler::new(Arc::new(client));
-        Ok(Self::new(crawler, registry_pkg_id, network_auth_object_id))
+        Ok(Self::new(
+            crawler,
+            registry_type_origin_pkg_id,
+            network_auth_object_id,
+        ))
     }
 
     /// Derive the deterministic `KeyBinding` object id for `identity`.
@@ -538,8 +555,11 @@ impl NetworkAuthReader {
         &self,
         identity: &IdentityKey,
     ) -> Result<sui::types::Address, NexusError> {
-        NetworkAuthCodec::new(self.registry_pkg_id, self.network_auth_object_id)
-            .binding_object_id(identity)
+        NetworkAuthCodec::new(
+            self.registry_type_origin_pkg_id,
+            self.network_auth_object_id,
+        )
+        .binding_object_id(identity)
     }
 
     /// Fetch the `KeyBinding` for `identity` if it exists.
@@ -611,7 +631,10 @@ impl NetworkAuthReader {
             )));
         }
 
-        let codec = NetworkAuthCodec::new(self.registry_pkg_id, self.network_auth_object_id);
+        let codec = NetworkAuthCodec::new(
+            self.registry_type_origin_pkg_id,
+            self.network_auth_object_id,
+        );
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
@@ -731,24 +754,24 @@ async fn try_get_active_ed25519_key(
 
 /// Internal helper that knows how to compute binding IDs.
 struct NetworkAuthCodec {
-    registry_pkg_id: sui::types::Address,
+    registry_type_origin_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
 }
 
 impl NetworkAuthCodec {
     fn new(
-        registry_pkg_id: sui::types::Address,
+        registry_type_origin_pkg_id: sui::types::Address,
         network_auth_object_id: sui::types::Address,
     ) -> Self {
         Self {
-            registry_pkg_id,
+            registry_type_origin_pkg_id,
             network_auth_object_id,
         }
     }
 
     fn binding_object_id(&self, identity: &IdentityKey) -> Result<sui::types::Address, NexusError> {
         crate::move_bindings::derive_network_auth_binding_id(
-            self.registry_pkg_id,
+            self.registry_type_origin_pkg_id,
             self.network_auth_object_id,
             identity,
         )

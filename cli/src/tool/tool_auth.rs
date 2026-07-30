@@ -392,7 +392,7 @@ async fn sync_allowed_leaders(
 
     let reader = NetworkAuthReader::from_rpc_url(
         &rpc_url,
-        objects.registry_pkg_id,
+        objects.registry_type_origin_pkg_id(),
         *objects.network_auth.object_id(),
     )
     .map_err(NexusCliError::Nexus)?;

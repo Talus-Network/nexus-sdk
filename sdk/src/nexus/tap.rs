@@ -1613,7 +1613,7 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.interface_pkg_id,
+                nexus_objects.interface_type_origin_pkg_id(),
                 "tap",
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
@@ -1703,7 +1703,7 @@ mod tests {
             vec![
                 wrapped_event(
                     &nexus_objects,
-                    nexus_objects.interface_pkg_id,
+                    nexus_objects.interface_type_origin_pkg_id(),
                     "tap",
                     "AgentCreatedEvent",
                     bcs::to_bytes(&Wrapper {
@@ -1716,7 +1716,7 @@ mod tests {
                 ),
                 wrapped_event(
                     &nexus_objects,
-                    nexus_objects.registry_pkg_id,
+                    nexus_objects.registry_type_origin_pkg_id(),
                     "agent_registry",
                     "SkillRegisteredEvent",
                     bcs::to_bytes(&Wrapper {
@@ -1802,7 +1802,7 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.registry_pkg_id,
+                nexus_objects.registry_type_origin_pkg_id(),
                 "agent_registry",
                 "SkillRegisteredEvent",
                 bcs::to_bytes(&Wrapper {
@@ -1900,7 +1900,7 @@ mod tests {
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.registry_pkg_id,
+                nexus_objects.registry_type_origin_pkg_id(),
                 "agent_registry",
                 "SkillContractRevisionedEvent",
                 bcs::to_bytes(&Wrapper {

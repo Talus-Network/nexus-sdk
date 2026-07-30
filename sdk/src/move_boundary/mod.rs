@@ -478,7 +478,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::agent::FixedTool,
-                workflow::gas::{deescalate_target, GasService},
+                online_payment::gas::{deescalate_target, GasService},
             },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
@@ -558,6 +558,7 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
+            online_payment_pkg_id: addr(0x88),
             workflow_pkg_id: addr(0x44),
             scheduler_pkg_id: addr(0x55),
             primitives_pkg_id: addr(0x11),
@@ -577,6 +578,10 @@ mod tests {
             priority_fee_vault: obj(8),
             priority_fee_vault_owner_cap: obj(9),
             us_token: UsTokenConfig::new(addr(0x66)),
+            primitives_original_pkg_id: Some(addr(0x10)),
+            interface_original_pkg_id: Some(addr(0x20)),
+            registry_original_pkg_id: Some(addr(0x30)),
+            online_payment_original_pkg_id: Some(addr(0x80)),
             workflow_original_pkg_id: Some(addr(0x40)),
             scheduler_original_pkg_id: Some(addr(0x50)),
         }
@@ -593,8 +598,8 @@ mod tests {
             )
         });
 
-        assert_eq!(target.package, objects.workflow_pkg_id);
-        assert_eq!(*tag.address(), objects.workflow_type_origin_pkg_id());
+        assert_eq!(target.package, objects.online_payment_pkg_id);
+        assert_eq!(*tag.address(), objects.online_payment_type_origin_pkg_id());
     }
 
     #[test]
@@ -613,7 +618,10 @@ mod tests {
             panic!("expected a generated struct element type");
         };
 
-        assert_eq!(*element_type.address(), objects.interface_pkg_id);
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
 
         let sui::types::Command::MoveCall(option) = &transaction.commands[1] else {
             panic!("expected an Option constructor call");
@@ -622,7 +630,10 @@ mod tests {
             panic!("expected a generated Option element type");
         };
 
-        assert_eq!(*element_type.address(), objects.interface_pkg_id);
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
     }
 
     #[test]

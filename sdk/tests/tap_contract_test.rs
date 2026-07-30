@@ -218,6 +218,7 @@ fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version
 
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
+        online_payment_pkg_id: addr("0x13"),
         workflow_pkg_id: addr("0x1"),
         scheduler_pkg_id: addr("0x11"),
         primitives_pkg_id: addr("0x2"),
@@ -237,6 +238,10 @@ fn nexus_objects() -> NexusObjects {
         priority_fee_vault: object_ref("0xf", 1, 15),
         priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
         us_token: UsTokenConfig::new(addr("0x12")),
+        primitives_original_pkg_id: None,
+        interface_original_pkg_id: None,
+        registry_original_pkg_id: None,
+        online_payment_original_pkg_id: None,
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }

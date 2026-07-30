@@ -40,6 +40,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
     NexusObjects {
+        online_payment_pkg_id: sui::types::Address::generate(&mut rng),
         workflow_pkg_id: sui::types::Address::generate(&mut rng),
         scheduler_pkg_id: sui::types::Address::generate(&mut rng),
         primitives_pkg_id: sui::types::Address::generate(&mut rng),
@@ -59,6 +60,10 @@ pub fn mock_nexus_objects() -> NexusObjects {
         priority_fee_vault: mock_sui_object_ref(),
         priority_fee_vault_owner_cap: mock_sui_object_ref(),
         us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
+        primitives_original_pkg_id: None,
+        interface_original_pkg_id: None,
+        registry_original_pkg_id: None,
+        online_payment_original_pkg_id: None,
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }
@@ -1005,16 +1010,22 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
-                    let (event_pkg_id, event_module, event_name) = match event {
-                        NexusEventKind::DAGCreated(_) => {
-                            (objects.interface_pkg_id, "dag", event.name())
-                        }
+                    let (event_pkg_id, event_type_origin, event_module, event_name) = match event {
+                        NexusEventKind::DAGCreated(_) => (
+                            objects.interface_pkg_id,
+                            objects.interface_type_origin_pkg_id(),
+                            "dag",
+                            event.name(),
+                        ),
                         NexusEventKind::WalkAdvanced(_)
                         | NexusEventKind::EndStateReached(_)
                         | NexusEventKind::ExecutionFinished(_)
-                        | NexusEventKind::TerminalErrEvalRecorded(_) => {
-                            (objects.workflow_pkg_id, "execution_events", event.name())
-                        }
+                        | NexusEventKind::TerminalErrEvalRecorded(_) => (
+                            objects.workflow_pkg_id,
+                            objects.workflow_type_origin_pkg_id(),
+                            "execution_events",
+                            event.name(),
+                        ),
                         _ => panic!("Unsupported event type for mock event serialization"),
                     };
                     let wrapper_tag = crate::move_bindings::struct_tag::<
@@ -1022,10 +1033,10 @@ pub mod grpc {
                     >(&objects);
                     let t = format!(
                         "{}::{}::{}<{}::{}::{}>",
-                        objects.primitives_pkg_id,
+                        objects.primitives_type_origin_pkg_id(),
                         wrapper_tag.module(),
                         wrapper_tag.name(),
-                        event_pkg_id,
+                        event_type_origin,
                         event_module,
                         event_name
                     );

@@ -299,7 +299,7 @@ fn validate_external_verifier_function(
     require_reference(worksheet, Reference::Mutable, "worksheet")?;
     require_struct(
         worksheet,
-        objects.primitives_pkg_id,
+        objects.primitives_type_origin_pkg_id(),
         "proof_of_uid",
         "ProofOfUID",
         "worksheet",
@@ -328,7 +328,7 @@ fn validate_external_verifier_function(
     require_reference(verdict, Reference::Unknown, "return value")?;
     require_struct(
         verdict,
-        objects.interface_pkg_id,
+        objects.interface_type_origin_pkg_id(),
         "verifier",
         "VerificationVerdict",
         "return value",
@@ -1093,11 +1093,19 @@ mod tests {
     }
 
     fn valid_external_function(objects: &NexusObjects) -> sui::grpc::FunctionDescriptor {
-        let worksheet = datatype(objects.primitives_pkg_id, "proof_of_uid", "ProofOfUID")
-            .with_reference(Reference::Mutable);
+        let worksheet = datatype(
+            objects.primitives_type_origin_pkg_id(),
+            "proof_of_uid",
+            "ProofOfUID",
+        )
+        .with_reference(Reference::Mutable);
         let witness = datatype(sui::types::Address::from_static("0x42"), "state", "Witness")
             .with_reference(Reference::Immutable);
-        let verdict = datatype(objects.interface_pkg_id, "verifier", "VerificationVerdict");
+        let verdict = datatype(
+            objects.interface_type_origin_pkg_id(),
+            "verifier",
+            "VerificationVerdict",
+        );
         sui::grpc::FunctionDescriptor::default()
             .with_name("verify")
             .with_visibility(Visibility::Public)
@@ -1178,9 +1186,12 @@ mod tests {
         );
 
         let mut wrong_worksheet_type = valid_external_function(&objects);
-        wrong_worksheet_type.parameters[0] =
-            datatype(objects.primitives_pkg_id, "proof_of_uid", "Other")
-                .with_reference(Reference::Mutable);
+        wrong_worksheet_type.parameters[0] = datatype(
+            objects.primitives_type_origin_pkg_id(),
+            "proof_of_uid",
+            "Other",
+        )
+        .with_reference(Reference::Mutable);
         assert!(
             validate_external_verifier_function(&wrong_worksheet_type, &objects)
                 .unwrap_err()
