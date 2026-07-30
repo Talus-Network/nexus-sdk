@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
+- Generated `TaggedOutput` bindings now map payload names directly to encoded `NexusData` values, with no type hint wrapper or deferred formatting API.
 - Offchain submission builders now invoke `verify_none`, the built-in RegisteredKey verifier, or the registered External verifier before committing the returned verdict.
 - Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
 
@@ -70,6 +71,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Task creation accepts its initial manual occurrence and optional recurrence, so no follow up scheduling transaction is required.
 - CLI read commands now leave gas unattached, while transaction commands attach explicit coin-object gas or address-balance gas when `--sui-gas-coin` is omitted; `dag execute` fetches only its required payment coin by default.
 - Tool registration, inspection, validation, and unregistration now expose and maintain the simplified Tool verifier configuration and nested onchain Tool reference shape.
+- Generated Move Tool templates now place encoded JSON directly in `NexusData`.
 
 #### Removed
 
@@ -85,6 +87,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - `/invoke` now returns exact BCS `TaggedOutput` result bytes instead of JSON output enums; only canonical result bodies are signed, while local HTTP and authentication errors remain unsigned JSON.
+- Tool output encoding now serializes every JSON value directly into `NexusData`, with array elements stored as `many` values.
 - `AuthContext` now exposes the v2 authenticated leader identity, key id, canonical input hash, leader signature, and nonce.
 - Replaced Warp TLS with a maintained Rustls listener, removing the vulnerable legacy TLS dependency and bounding TLS handshake duration while preserving direct TLS termination.
 - Enabled the SDK `types` feature required for canonical Tool output encoding.

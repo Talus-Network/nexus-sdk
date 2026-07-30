@@ -4299,7 +4299,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "data",
-                        "name": "TypedNexusData"
+                        "name": "NexusData"
                       },
                       "type_arguments": []
                     }

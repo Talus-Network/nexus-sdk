@@ -1541,52 +1541,6 @@
           "type_name": {
             "address": "0xa1",
             "module": "data",
-            "name": "DataTypeHint"
-          },
-          "module": "data",
-          "name": "DataTypeHint",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "Raw",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "Number",
-                  "position": 1,
-                  "fields": []
-                },
-                {
-                  "name": "String",
-                  "position": 2,
-                  "fields": []
-                },
-                {
-                  "name": "Bool",
-                  "position": 3,
-                  "fields": []
-                },
-                {
-                  "name": "Address",
-                  "position": 4,
-                  "fields": []
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa1",
-            "module": "data",
             "name": "NexusData"
           },
           "module": "data",
@@ -1626,223 +1580,9 @@
               ]
             }
           }
-        },
-        {
-          "type_name": {
-            "address": "0xa1",
-            "module": "data",
-            "name": "TypedNexusData"
-          },
-          "module": "data",
-          "name": "TypedNexusData",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "type_hint",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "data",
-                        "name": "DataTypeHint"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "data",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "data",
-                        "name": "NexusData"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
         }
       ],
       "functions": [
-        {
-          "name": "as_address",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "as_bool",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "as_number",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "as_raw",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "as_string",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
         {
           "name": "collect_ones",
           "visibility": "Public",
@@ -1875,134 +1615,6 @@
                 },
                 "type_arguments": []
               }
-            }
-          ]
-        },
-        {
-          "name": "format_json_address",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "value",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": "U8"
-            }
-          ]
-        },
-        {
-          "name": "format_json_string",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "value",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": "U8"
-            }
-          ]
-        },
-        {
-          "name": "format_typed_data",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "typed",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "data",
-                        "name": "TypedNexusData"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "NexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "format_value_with_hint",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "value",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
-                }
-              }
-            },
-            {
-              "name": "type_hint",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "data",
-                        "name": "DataTypeHint"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": "U8"
             }
           ]
         },
@@ -2220,149 +1832,6 @@
           ]
         },
         {
-          "name": "type_hint_address",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "DataTypeHint"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "type_hint_bool",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "DataTypeHint"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "type_hint_number",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "DataTypeHint"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "type_hint_raw",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "DataTypeHint"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "type_hint_string",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "DataTypeHint"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "typed_from_bcs_parts",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "type_hint",
-              "ty": "U8"
-            },
-            {
-              "name": "data",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "data",
-                        "name": "TypedNexusData"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "walrus_many",
           "visibility": "Public",
           "is_entry": false,
@@ -2410,52 +1879,6 @@
                   "address": "0xa1",
                   "module": "data",
                   "name": "NexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "with_type_hint",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "type_hint",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "DataTypeHint"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "TypedNexusData"
                 },
                 "type_arguments": []
               }
@@ -3087,7 +2510,7 @@
                                   "type_name": {
                                     "address": "0xa1",
                                     "module": "data",
-                                    "name": "TypedNexusData"
+                                    "name": "NexusData"
                                   },
                                   "type_arguments": []
                                 }
@@ -3221,7 +2644,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "data",
-                        "name": "TypedNexusData"
+                        "name": "NexusData"
                       },
                       "type_arguments": []
                     }
@@ -5295,7 +4718,7 @@
                             "type_name": {
                               "address": "0xa1",
                               "module": "data",
-                              "name": "TypedNexusData"
+                              "name": "NexusData"
                             },
                             "type_arguments": []
                           }
@@ -5392,7 +4815,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "data",
-                        "name": "TypedNexusData"
+                        "name": "NexusData"
                       },
                       "type_arguments": []
                     }
@@ -5442,7 +4865,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "data",
-                        "name": "TypedNexusData"
+                        "name": "NexusData"
                       },
                       "type_arguments": []
                     }
@@ -5556,7 +4979,7 @@
                   "type_name": {
                     "address": "0xa1",
                     "module": "data",
-                    "name": "TypedNexusData"
+                    "name": "NexusData"
                   },
                   "type_arguments": []
                 }

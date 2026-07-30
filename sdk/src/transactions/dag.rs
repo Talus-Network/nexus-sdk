@@ -12,7 +12,7 @@ use {
                 verifier::{FailureEvidenceKind, RegisteredKeyAuxiliary, ToolVerifierMode},
             },
             primitives::{
-                data::{self as data_binding, NexusData},
+                data::NexusData,
                 onchain_tool_result as onchain_tool_result_binding,
                 tagged_output::{self as tagged_output_binding, TaggedOutput},
             },
@@ -1194,10 +1194,9 @@ fn prepare_tagged_tool_output(
     for (output_port, dag_data) in &prepared.output_ports_data {
         let port = tx.arg(&output_port.as_bytes().to_vec())?;
         let value = tx.nexus_data(dag_data)?;
-        let typed_value = tx.call_target(data_binding::as_raw_target, vec![value])?;
         tagged_output = tx.call_target(
             tagged_output_binding::with_named_payload_target,
-            vec![tagged_output, port, typed_value],
+            vec![tagged_output, port, value],
         )?;
     }
 
