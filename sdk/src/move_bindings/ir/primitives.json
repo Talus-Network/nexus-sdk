@@ -1324,46 +1324,6 @@
           ]
         },
         {
-          "name": "from_bcs_parts",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "storage",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "one",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "many",
-              "ty": {
-                "Vector": {
-                  "Vector": "U8"
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "data",
-                  "name": "NexusData"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
           "name": "inline_many",
           "visibility": "Public",
           "is_entry": false,
@@ -1418,42 +1378,7 @@
           ]
         },
         {
-          "name": "split_many",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "data",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Vector": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "data",
-                    "name": "NexusData"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "try_inline_one_bytes",
+          "name": "inline_one_bytes",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -1495,43 +1420,36 @@
           ]
         },
         {
-          "name": "try_json_string_to_ascii_string",
+          "name": "split_many",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "reason_bytes",
+              "name": "data",
               "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Vector": "U8"
-                  }
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "data",
+                    "name": "NexusData"
+                  },
+                  "type_arguments": []
                 }
               }
             }
           ],
           "return_types": [
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
+              "Vector": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "data",
+                    "name": "NexusData"
+                  },
+                  "type_arguments": []
+                }
               }
             }
           ]

@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
 - Generated `TaggedOutput` bindings now map payload names directly to encoded `NexusData` values, with no type hint wrapper or deferred formatting API.
+- Regenerated primitive Move bindings for the narrowed `NexusData` function surface and `inline_one_bytes` name.
 - Offchain submission builders now invoke `verify_none`, the built-in RegisteredKey verifier, or the registered External verifier before committing the returned verdict.
 - Offchain submission builders now construct `TaggedOutput` and `RegisteredKeyAuxiliary` through Move constructors, and External verifier preflight requires typed `TaggedOutput`.
 - Generated bindings now define `OnchainToolResult` in `nexus_interface`, matching its Move package boundary.
