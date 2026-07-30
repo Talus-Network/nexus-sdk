@@ -9,11 +9,16 @@ use {
                     RuntimeVertex,
                     Vertex as GraphVertex,
                 },
-                verifier::{FailureEvidenceKind, RegisteredKeyAuxiliary, ToolVerifierMode},
+                onchain_tool_result as onchain_tool_result_binding,
+                verifier::{
+                    self as verifier_binding,
+                    FailureEvidenceKind,
+                    RegisteredKeyAuxiliary,
+                    ToolVerifierMode,
+                },
             },
             primitives::{
                 data::NexusData,
-                onchain_tool_result as onchain_tool_result_binding,
                 tagged_output::{self as tagged_output_binding, TaggedOutput},
             },
             registry::{
@@ -145,6 +150,7 @@ pub enum PreparedOffchainToolResultSubmission {
         result: TaggedOutput,
     },
     RegisteredKeyVerifier {
+        tool_id: sui::types::Address,
         result: TaggedOutput,
         auxiliary: RegisteredKeyAuxiliary,
         bindings: OffchainVerifierKeyBindings,
@@ -639,6 +645,7 @@ fn commit_prepared_onchain_tool_execution(
         tx,
         dag,
         execution,
+        tool_registry,
         worksheet,
         leader_cap,
         leader_registry,
@@ -662,8 +669,6 @@ fn commit_prepared_onchain_tool_execution(
         "execute",
         tool_args,
     )?;
-    let _ = tool_registry;
-
     Ok(())
 }
 
@@ -714,20 +719,22 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
 
         let verdict = match submission {
             PreparedOffchainToolResultSubmission::NoVerifier { result } => {
-                let result = prepare_offchain_tool_result_bytes(tx, result)?;
+                let result = prepare_offchain_tagged_output(tx, result)?;
                 tx.call_target(
                     verifier_registry_binding::verify_none_target,
                     vec![verifier_registry, result],
                 )?
             }
             PreparedOffchainToolResultSubmission::RegisteredKeyVerifier {
+                tool_id,
                 result,
                 auxiliary,
                 bindings,
             } => {
                 let verifier_objects = offchain_verifier_ptb_objects(tx, bindings)?;
-                let result = prepare_offchain_tool_result_bytes(tx, result)?;
-                let auxiliary = tx.arg(&bcs::to_bytes(auxiliary)?)?;
+                let result = prepare_offchain_tagged_output(tx, result)?;
+                let auxiliary = prepare_registered_key_auxiliary(tx, auxiliary)?;
+                let tool_id = tx.object_id(*tool_id)?;
                 tx.call_target(
                     registered_key_verifier_binding::verify_target,
                     vec![
@@ -736,9 +743,11 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
                         auxiliary,
                         verifier_registry,
                         leader_registry,
+                        leader_cap,
                         verifier_objects.network_auth,
                         verifier_objects.leader_key_binding,
                         verifier_objects.tool_key_binding,
+                        tool_id,
                     ],
                 )?
             }
@@ -855,6 +864,7 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
                     tx,
                     dag_arg,
                     execution_arg,
+                    tool_registry,
                     worksheet,
                     leader_cap,
                     leader_registry,
@@ -1008,11 +1018,34 @@ pub(crate) fn refill_tap_execution_payment_from_agent_vault_for_self_ptb(
     })
 }
 
-fn prepare_offchain_tool_result_bytes(
+fn prepare_offchain_tagged_output(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     result: &TaggedOutput,
 ) -> anyhow::Result<sui::types::Argument> {
-    Ok(tx.arg(&bcs::to_bytes(result)?)?)
+    prepare_tagged_output(
+        tx,
+        &result.tag,
+        result
+            .named_payload
+            .contents
+            .iter()
+            .map(|entry| (entry.key.as_slice(), &entry.value)),
+    )
+}
+
+fn prepare_registered_key_auxiliary(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    auxiliary: &RegisteredKeyAuxiliary,
+) -> anyhow::Result<sui::types::Argument> {
+    crate::nexus::registered_key::validate_registered_key_auxiliary(auxiliary)?;
+    let input_hash = tx.arg(&auxiliary.input_hash)?;
+    let nonce = tx.arg(&auxiliary.nonce)?;
+    let leader_signature = tx.arg(&auxiliary.leader_signature)?;
+    let tool_signature = tx.arg(&auxiliary.tool_signature)?;
+    tx.call_target(
+        verifier_binding::registered_key_auxiliary_target,
+        vec![input_hash, nonce, leader_signature, tool_signature],
+    )
 }
 
 fn call_external_verifier(
@@ -1022,7 +1055,7 @@ fn call_external_verifier(
     auxiliary: &[u8],
     runtime_call: &ExternalVerifierRuntimeCall,
 ) -> anyhow::Result<sui::types::Argument> {
-    let result = prepare_offchain_tool_result_bytes(tx, result)?;
+    let result = prepare_offchain_tagged_output(tx, result)?;
     let auxiliary = tx.arg(&auxiliary.to_vec())?;
     let verifier_objects = runtime_call
         .immutable_shared_objects
@@ -1097,6 +1130,7 @@ pub fn create_on_chain_tool_result_for_walk(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
+    tool_registry: sui::types::Argument,
     worksheet: sui::types::Argument,
     leader_cap: sui::types::Argument,
     leader_registry: sui::types::Argument,
@@ -1110,6 +1144,7 @@ pub fn create_on_chain_tool_result_for_walk(
         vec![
             dag,
             execution,
+            tool_registry,
             worksheet,
             leader_cap,
             leader_registry,
@@ -1176,7 +1211,7 @@ fn finalize_onchain_tool_result_output(
     worksheet: sui::types::Argument,
     output: &PreparedOnchainToolOutput,
 ) -> anyhow::Result<()> {
-    let output = prepare_tagged_tool_output(tx, output)?;
+    let output = prepare_onchain_tagged_output(tx, output)?;
     tx.call_target(
         onchain_tool_result_binding::finalize_and_share_target,
         vec![result, worksheet, output],
@@ -1184,23 +1219,36 @@ fn finalize_onchain_tool_result_output(
     Ok(())
 }
 
-fn prepare_tagged_tool_output(
+fn prepare_onchain_tagged_output(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
     prepared: &PreparedOnchainToolOutput,
 ) -> anyhow::Result<sui::types::Argument> {
-    let variant = tx.arg(&prepared.output_variant.as_bytes().to_vec())?;
-    let mut tagged_output = tx.call_target(tagged_output_binding::new_target, vec![variant])?;
+    prepare_tagged_output(
+        tx,
+        prepared.output_variant.as_bytes(),
+        prepared
+            .output_ports_data
+            .iter()
+            .map(|(name, value)| (name.as_bytes(), value)),
+    )
+}
 
-    for (output_port, dag_data) in &prepared.output_ports_data {
-        let port = tx.arg(&output_port.as_bytes().to_vec())?;
-        let value = tx.nexus_data(dag_data)?;
-        tagged_output = tx.call_target(
+fn prepare_tagged_output<'a>(
+    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tag: &[u8],
+    named_payload: impl IntoIterator<Item = (&'a [u8], &'a NexusData)>,
+) -> anyhow::Result<sui::types::Argument> {
+    let tag = tx.arg(&tag.to_vec())?;
+    let mut output = tx.call_target(tagged_output_binding::new_target, vec![tag])?;
+    for (name, data) in named_payload {
+        let name = tx.arg(&name.to_vec())?;
+        let data = tx.nexus_data(data)?;
+        output = tx.call_target(
             tagged_output_binding::with_named_payload_target,
-            vec![tagged_output, port, value],
+            vec![output, name, data],
         )?;
     }
-
-    Ok(tagged_output)
+    Ok(output)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1914,6 +1962,7 @@ mod tests {
     fn offchain_registered_key_uses_current_auxiliary_and_unified_submission() {
         let ptb = offchain_ptb(
             &PreparedOffchainToolResultSubmission::RegisteredKeyVerifier {
+                tool_id: addr("0x42"),
                 result: tagged_output(),
                 auxiliary: RegisteredKeyAuxiliary {
                     input_hash: vec![1; 32],
@@ -1938,7 +1987,7 @@ mod tests {
         let Command::MoveCall(verify_call) = &ptb.commands[verify] else {
             unreachable!()
         };
-        assert_eq!(verify_call.arguments.len(), 8);
+        assert_eq!(verify_call.arguments.len(), 10);
     }
 
     #[test]

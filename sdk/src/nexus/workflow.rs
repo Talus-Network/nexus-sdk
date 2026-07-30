@@ -22,11 +22,12 @@ use {
             interface::{
                 dag as dag_move,
                 graph::{self as graph_move, RuntimeVertex},
+                onchain_tool_result::OnchainToolResult,
                 payment::{ExecutionPayment, ExecutionPaymentVertexLock},
                 verifier::{FailureEvidenceKind, ToolVerifierMode},
             },
             move_std::type_name::TypeName,
-            primitives::{data::NexusData, onchain_tool_result::OnchainToolResult},
+            primitives::data::NexusData,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},

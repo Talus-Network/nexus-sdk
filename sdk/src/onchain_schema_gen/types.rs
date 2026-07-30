@@ -3,8 +3,11 @@
 use {
     crate::{
         move_bindings::{
-            interface::authorization::AgentVertexAuthorization,
-            primitives::{authorization::ProvenValue, onchain_tool_result::OnchainToolResult},
+            interface::{
+                authorization::AgentVertexAuthorization,
+                onchain_tool_result::OnchainToolResult,
+            },
+            primitives::authorization::ProvenValue,
             struct_shape_matches,
         },
         sui,

@@ -304,7 +304,15 @@ fn validate_external_verifier_function(
         "ProofOfUID",
         "worksheet",
     )?;
-    require_bytes(&function.parameters()[1], "result")?;
+    let result = &function.parameters()[1];
+    require_reference(result, Reference::Unknown, "result")?;
+    require_struct(
+        result,
+        objects.primitives_type_origin_pkg_id(),
+        "tagged_output",
+        "TaggedOutput",
+        "result",
+    )?;
     require_bytes(&function.parameters()[2], "auxiliary")?;
 
     let mut object_types = Vec::with_capacity(function.parameters().len() - 3);
@@ -1106,10 +1114,15 @@ mod tests {
             "verifier",
             "VerificationVerdict",
         );
+        let result = datatype(
+            objects.primitives_type_origin_pkg_id(),
+            "tagged_output",
+            "TaggedOutput",
+        );
         sui::grpc::FunctionDescriptor::default()
             .with_name("verify")
             .with_visibility(Visibility::Public)
-            .with_parameters(vec![worksheet, bytes(), bytes(), witness])
+            .with_parameters(vec![worksheet, result, bytes(), witness])
             .with_returns(vec![verdict])
     }
 
@@ -1205,7 +1218,7 @@ mod tests {
         assert!(validate_external_verifier_function(&wrong_result, &objects)
             .unwrap_err()
             .to_string()
-            .contains("result must be vector<u8>"));
+            .contains("result has the wrong type"));
 
         let mut missing_auxiliary_type = valid_external_function(&objects);
         missing_auxiliary_type.parameters[2] = sui::grpc::OpenSignature::default();

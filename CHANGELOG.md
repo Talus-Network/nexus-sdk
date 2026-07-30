@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Move binding regeneration now accepts an optional matching Move source root for restoring function parameter names. Network package metadata remains authoritative, and regeneration without source keeps deterministic `argN` names.
 - Added support for new priority fee system.
 - Added SDK models and transaction builders for per-vertex `None`, RegisteredKey, and External Tool verification, including verifier-first PTB construction and `VerificationVerdict` consumption.
-- Added canonical RegisteredKey Tool-input hashing, auxiliary BCS encoding, leader-signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
+- Added canonical RegisteredKey Tool input hashing, typed auxiliary construction, leader signature validation data, and Tool signature messages over `leader_signature || SHA-256(result)`.
 - Added Tool registry queries and External verifier registration preflight that validate the public Move ABI, Tool binding, witness-first ordering, and immutable shared-object arguments.
 - Added signed-HTTP v2 request and response helpers for leader signatures over canonical input hashes and Tool signatures over exact BCS result bytes.
 - Execution inspection will use object history instead of checkpoint list.
@@ -41,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
 - Generated `TaggedOutput` bindings now map payload names directly to encoded `NexusData` values, with no type hint wrapper or deferred formatting API.
 - Offchain submission builders now invoke `verify_none`, the built-in RegisteredKey verifier, or the registered External verifier before committing the returned verdict.
+- Offchain submission builders now construct `TaggedOutput` and `RegisteredKeyAuxiliary` through Move constructors, and External verifier preflight requires typed `TaggedOutput`.
+- Generated bindings now define `OnchainToolResult` in `nexus_interface`, matching its Move package boundary.
 - Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
 
 #### Fixed
@@ -53,6 +55,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed signed-HTTP v1 engine, wire, claim, and transcript APIs in favor of the minimal v2 input-hash and response-signature protocol.
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
+- Removed the unused RegisteredKey auxiliary byte encoder and decoder.
 - Migrate to use US token for staking and support vault swap.
 
 ### `nexus-cli`
@@ -129,7 +132,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- `WorkflowActions`/crawler support for fetching on-chain tool result state by execution and walk, returning finalized state through the generated `nexus_primitives::onchain_tool_result::OnchainToolResult` type plus the shared object reference.
+- `WorkflowActions` and crawler support for fetching onchain Tool result state by execution and walk, returning finalized state through the generated `nexus_interface::onchain_tool_result::OnchainToolResult` type and the shared object reference.
 - `DagExecution` walk decoding plus `WorkflowActions::abort_expired_execution_tool_gas_candidates` and `abort_expired_execution_with_tool_gas`, which derive the DAG from execution state, compare active walks against the on-chain Clock, find matching TAP vertex locks, and submit the ToolGas-assisted Move abort wrapper.
 - `DagExecution` now decodes the on-chain `dag` field so execution recovery paths can use the DAG selected when the execution was created.
 - Low-level and high-level helpers for current committed-result settlement, record-only leader gas-charge submission, expired execution abort, and execution-payment refill flows.
