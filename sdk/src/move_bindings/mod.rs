@@ -52,9 +52,9 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                                                 objects.registry_pkg_id,
                                                 objects.registry_type_origin_pkg_id(),
                                                 || {
-                                                    online_payment::with_packages(
-                                                        objects.online_payment_pkg_id,
-                                                        objects.online_payment_type_origin_pkg_id(),
+                                                    gas::with_packages(
+                                                        objects.gas_pkg_id,
+                                                        objects.gas_type_origin_pkg_id(),
                                                         || {
                                                             workflow::with_packages(
                                                                 objects.workflow_pkg_id,
@@ -168,7 +168,7 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the on chain [`online_payment::gas::ToolGas`] object ID for a tool FQN.
+/// Derive the onchain [`gas::gas::ToolGas`] object ID for a tool FQN.
 pub fn derive_tool_gas_id(
     gas_service: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -256,7 +256,7 @@ pub mod move_std {
     include!(concat!(env!("OUT_DIR"), "/move_std_types.rs"));
 }
 
-pub mod online_payment {
+pub mod gas {
     #![allow(
         clippy::all,
         dead_code,
@@ -264,7 +264,7 @@ pub mod online_payment {
         private_interfaces,
         unused_imports
     )]
-    include!(concat!(env!("OUT_DIR"), "/online_payment_types.rs"));
+    include!(concat!(env!("OUT_DIR"), "/gas_types.rs"));
 }
 
 pub mod primitives {

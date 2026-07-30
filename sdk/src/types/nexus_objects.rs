@@ -2,7 +2,7 @@
 //! generated during Nexus package deployment.
 #[cfg(test)]
 use crate::move_bindings::{
-    online_payment::gas as online_payment_gas_move,
+    gas::gas as gas_move,
     primitives::event as event_move,
     registry::agent_registry as agent_registry_move,
     scheduler::task as scheduler_task_move,
@@ -88,7 +88,7 @@ impl UsTokenConfig {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
-    pub online_payment_pkg_id: sui::types::Address,
+    pub gas_pkg_id: sui::types::Address,
     pub workflow_pkg_id: sui::types::Address,
     pub scheduler_pkg_id: sui::types::Address,
     pub primitives_pkg_id: sui::types::Address,
@@ -117,9 +117,9 @@ pub struct NexusObjects {
     /// Original package address that defines registry types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub registry_original_pkg_id: Option<sui::types::Address>,
-    /// Original package address that defines online payment types.
+    /// Original package address that defines gas types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub online_payment_original_pkg_id: Option<sui::types::Address>,
+    pub gas_original_pkg_id: Option<sui::types::Address>,
     /// Original (defining) package address for the workflow package.
     ///
     /// After a Sui Move package upgrade, on-chain types still reference the
@@ -160,7 +160,7 @@ impl NexusObjects {
             self.registry_original_pkg_id =
                 resolve_original_package_id(client, self.registry_pkg_id, "registry").await?;
         }
-        self.resolve_online_payment_original_pkg_id(client).await?;
+        self.resolve_gas_original_pkg_id(client).await?;
         self.resolve_workflow_original_pkg_id(client).await?;
         self.resolve_scheduler_original_pkg_id(client).await
     }
@@ -183,10 +183,9 @@ impl NexusObjects {
             .unwrap_or(self.registry_pkg_id)
     }
 
-    /// Returns the package address that defines online payment types.
-    pub fn online_payment_type_origin_pkg_id(&self) -> sui::types::Address {
-        self.online_payment_original_pkg_id
-            .unwrap_or(self.online_payment_pkg_id)
+    /// Returns the package address that defines gas types.
+    pub fn gas_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.gas_original_pkg_id.unwrap_or(self.gas_pkg_id)
     }
 
     /// Returns the original (defining) workflow package address.
@@ -233,13 +232,9 @@ impl NexusObjects {
         package_matches(address, self.registry_pkg_id, self.registry_original_pkg_id)
     }
 
-    /// Returns true when the given address matches a known online payment package.
-    pub fn is_online_payment_package(&self, address: sui::types::Address) -> bool {
-        package_matches(
-            address,
-            self.online_payment_pkg_id,
-            self.online_payment_original_pkg_id,
-        )
+    /// Returns true when the given address matches a known gas package.
+    pub fn is_gas_package(&self, address: sui::types::Address) -> bool {
+        package_matches(address, self.gas_pkg_id, self.gas_original_pkg_id)
     }
 
     /// Returns true when the given address matches any known workflow
@@ -263,23 +258,22 @@ impl NexusObjects {
         self.is_primitives_package(address)
             || self.is_interface_package(address)
             || self.is_registry_package(address)
-            || self.is_online_payment_package(address)
+            || self.is_gas_package(address)
             || self.is_workflow_package(address)
             || self.is_scheduler_package(address)
     }
 
-    /// Resolve and store the package address that defines online payment types.
+    /// Resolve and store the package address that defines gas types.
     #[cfg(feature = "nexus")]
-    pub async fn resolve_online_payment_original_pkg_id(
+    pub async fn resolve_gas_original_pkg_id(
         &mut self,
         client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
-        if self.online_payment_original_pkg_id.is_some() {
+        if self.gas_original_pkg_id.is_some() {
             return Ok(());
         }
-        self.online_payment_original_pkg_id =
-            resolve_original_package_id(client, self.online_payment_pkg_id, "online payment")
-                .await?;
+        self.gas_original_pkg_id =
+            resolve_original_package_id(client, self.gas_pkg_id, "gas").await?;
         Ok(())
     }
 
@@ -384,7 +378,7 @@ impl NexusObjects {
             return false;
         };
 
-        if self.is_online_payment_package(*inner_tag.address())
+        if self.is_gas_package(*inner_tag.address())
             || self.is_workflow_package(*inner_tag.address())
         {
             return true;
@@ -432,7 +426,7 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         NexusObjects {
-            online_payment_pkg_id: sui::types::Address::generate(&mut rng),
+            gas_pkg_id: sui::types::Address::generate(&mut rng),
             workflow_pkg_id: sui::types::Address::generate(&mut rng),
             scheduler_pkg_id: sui::types::Address::generate(&mut rng),
             primitives_pkg_id: sui::types::Address::generate(&mut rng),
@@ -487,7 +481,7 @@ mod tests {
             primitives_original_pkg_id: None,
             interface_original_pkg_id: None,
             registry_original_pkg_id: None,
-            online_payment_original_pkg_id: None,
+            gas_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }
@@ -650,10 +644,10 @@ mod tests {
         objects
     }
 
-    fn sample_objects_with_online_payment_upgrade() -> NexusObjects {
+    fn sample_objects_with_gas_upgrade() -> NexusObjects {
         let mut objects = sample_objects();
         let mut rng = rand::thread_rng();
-        objects.online_payment_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
+        objects.gas_original_pkg_id = Some(sui::types::Address::generate(&mut rng));
         objects
     }
 
@@ -709,38 +703,35 @@ mod tests {
     }
 
     #[test]
-    fn online_payment_type_origin_uses_current_package_without_upgrade() {
+    fn gas_type_origin_uses_current_package_without_upgrade() {
         let objects = sample_objects();
+        assert_eq!(objects.gas_type_origin_pkg_id(), objects.gas_pkg_id);
+    }
+
+    #[test]
+    fn gas_type_origin_uses_original_package_after_upgrade() {
+        let objects = sample_objects_with_gas_upgrade();
         assert_eq!(
-            objects.online_payment_type_origin_pkg_id(),
-            objects.online_payment_pkg_id
+            objects.gas_type_origin_pkg_id(),
+            objects.gas_original_pkg_id.unwrap()
         );
     }
 
     #[test]
-    fn online_payment_type_origin_uses_original_package_after_upgrade() {
-        let objects = sample_objects_with_online_payment_upgrade();
-        assert_eq!(
-            objects.online_payment_type_origin_pkg_id(),
-            objects.online_payment_original_pkg_id.unwrap()
-        );
-    }
-
-    #[test]
-    fn online_payment_events_match_current_and_original_packages() {
-        let objects = sample_objects_with_online_payment_upgrade();
+    fn gas_events_match_current_and_original_packages() {
+        let objects = sample_objects_with_gas_upgrade();
         let current = wrap_event(
             &objects,
-            struct_tag_with_package::<online_payment_gas_move::PaymentLockUpdateEvent>(
+            struct_tag_with_package::<gas_move::PaymentLockUpdateEvent>(
                 &objects,
-                objects.online_payment_pkg_id,
+                objects.gas_pkg_id,
             ),
         );
         let original = wrap_event(
             &objects,
-            struct_tag_with_package::<online_payment_gas_move::PaymentLockUpdateEvent>(
+            struct_tag_with_package::<gas_move::PaymentLockUpdateEvent>(
                 &objects,
-                objects.online_payment_original_pkg_id.unwrap(),
+                objects.gas_original_pkg_id.unwrap(),
             ),
         );
 

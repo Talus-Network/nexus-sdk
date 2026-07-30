@@ -24,7 +24,7 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("primitives", "0xa1"),
     ("interface", "0xa2"),
     ("registry", "0xa3"),
-    ("online_payment", "0xa7"),
+    ("gas", "0xa7"),
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
@@ -231,7 +231,7 @@ mod tests {
             r#"registry_pkg_id = "0x13""#,
             r#"workflow_pkg_id = "0x14""#,
             r#"scheduler_pkg_id = "0x15""#,
-            r#"online_payment_pkg_id = "0x17""#,
+            r#"gas_pkg_id = "0x17""#,
             r#"[us_token]"#,
             r#"package_id = "0x16""#,
         ]
@@ -245,10 +245,7 @@ mod tests {
                 ("primitives".to_string(), Address::from_str("0x11").unwrap()),
                 ("interface".to_string(), Address::from_str("0x12").unwrap()),
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
-                (
-                    "online_payment".to_string(),
-                    Address::from_str("0x17").unwrap()
-                ),
+                ("gas".to_string(), Address::from_str("0x17").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
@@ -264,7 +261,7 @@ mod tests {
             r#"registry_pkg_id = "0x13""#,
             r#"workflow_pkg_id = "0x14""#,
             r#"scheduler_pkg_id = "0x15""#,
-            r#"online_payment_pkg_id = "0x17""#,
+            r#"gas_pkg_id = "0x17""#,
         ]
         .join("\n");
 

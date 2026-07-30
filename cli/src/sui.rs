@@ -522,8 +522,8 @@ mod tests {
         let response_body = r#"
                 primitives_pkg_id = "0x1"
                 primitives_original_pkg_id = "0x1"
-                online_payment_pkg_id = "0x15"
-                online_payment_original_pkg_id = "0x15"
+                gas_pkg_id = "0x15"
+                gas_original_pkg_id = "0x15"
                 workflow_pkg_id = "0x2"
                 workflow_original_pkg_id = "0x2"
                 interface_pkg_id = "0x3"
@@ -595,7 +595,7 @@ mod tests {
         let objects = res.expect("mock object document should match NexusObjects");
 
         assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
-        assert_eq!(objects.online_payment_pkg_id, "0x15".parse().unwrap());
+        assert_eq!(objects.gas_pkg_id, "0x15".parse().unwrap());
         assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
         assert_eq!(objects.scheduler_pkg_id, "0x13".parse().unwrap());
@@ -612,10 +612,7 @@ mod tests {
             objects.registry_type_origin_pkg_id(),
             objects.registry_pkg_id
         );
-        assert_eq!(
-            objects.online_payment_type_origin_pkg_id(),
-            objects.online_payment_pkg_id
-        );
+        assert_eq!(objects.gas_type_origin_pkg_id(), objects.gas_pkg_id);
         assert_eq!(
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id

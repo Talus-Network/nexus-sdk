@@ -218,7 +218,7 @@ fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version
 
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
-        online_payment_pkg_id: addr("0x13"),
+        gas_pkg_id: addr("0x13"),
         workflow_pkg_id: addr("0x1"),
         scheduler_pkg_id: addr("0x11"),
         primitives_pkg_id: addr("0x2"),
@@ -241,7 +241,7 @@ fn nexus_objects() -> NexusObjects {
         primitives_original_pkg_id: None,
         interface_original_pkg_id: None,
         registry_original_pkg_id: None,
-        online_payment_original_pkg_id: None,
+        gas_original_pkg_id: None,
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }

@@ -477,8 +477,8 @@ mod tests {
         super::*,
         crate::{
             move_bindings::{
+                gas::gas::{deescalate_target, GasService},
                 interface::agent::FixedTool,
-                online_payment::gas::{deescalate_target, GasService},
             },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
@@ -558,7 +558,7 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
-            online_payment_pkg_id: addr(0x88),
+            gas_pkg_id: addr(0x88),
             workflow_pkg_id: addr(0x44),
             scheduler_pkg_id: addr(0x55),
             primitives_pkg_id: addr(0x11),
@@ -581,7 +581,7 @@ mod tests {
             primitives_original_pkg_id: Some(addr(0x10)),
             interface_original_pkg_id: Some(addr(0x20)),
             registry_original_pkg_id: Some(addr(0x30)),
-            online_payment_original_pkg_id: Some(addr(0x80)),
+            gas_original_pkg_id: Some(addr(0x80)),
             workflow_original_pkg_id: Some(addr(0x40)),
             scheduler_original_pkg_id: Some(addr(0x50)),
         }
@@ -598,8 +598,8 @@ mod tests {
             )
         });
 
-        assert_eq!(target.package, objects.online_payment_pkg_id);
-        assert_eq!(*tag.address(), objects.online_payment_type_origin_pkg_id());
+        assert_eq!(target.package, objects.gas_pkg_id);
+        assert_eq!(*tag.address(), objects.gas_type_origin_pkg_id());
     }
 
     #[test]

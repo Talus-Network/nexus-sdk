@@ -1,7 +1,7 @@
 use {
     crate::{
         move_bindings::{
-            online_payment::gas_extension as gas_extension_binding,
+            gas::gas_extension as gas_extension_binding,
             registry::priority_fee_vault as priority_fee_vault_binding,
             workflow::payment_adapter as payment_adapter_binding,
         },
@@ -280,7 +280,7 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
-            online_payment_pkg_id: addr("0x13"),
+            gas_pkg_id: addr("0x13"),
             workflow_pkg_id: addr("0x1"),
             scheduler_pkg_id: addr("0x11"),
             primitives_pkg_id: addr("0x2"),
@@ -303,7 +303,7 @@ mod tests {
             primitives_original_pkg_id: None,
             interface_original_pkg_id: None,
             registry_original_pkg_id: None,
-            online_payment_original_pkg_id: None,
+            gas_original_pkg_id: None,
             workflow_original_pkg_id: None,
             scheduler_original_pkg_id: None,
         }

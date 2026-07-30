@@ -40,7 +40,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
     NexusObjects {
-        online_payment_pkg_id: sui::types::Address::generate(&mut rng),
+        gas_pkg_id: sui::types::Address::generate(&mut rng),
         workflow_pkg_id: sui::types::Address::generate(&mut rng),
         scheduler_pkg_id: sui::types::Address::generate(&mut rng),
         primitives_pkg_id: sui::types::Address::generate(&mut rng),
@@ -63,7 +63,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
         primitives_original_pkg_id: None,
         interface_original_pkg_id: None,
         registry_original_pkg_id: None,
-        online_payment_original_pkg_id: None,
+        gas_original_pkg_id: None,
         workflow_original_pkg_id: None,
         scheduler_original_pkg_id: None,
     }

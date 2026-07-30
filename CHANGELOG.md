@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added generated bindings and package metadata for the Nexus online payment package.
+- Added generated bindings and package metadata for the Nexus gas package.
 - Added one composable Task creation model covering default execution, Agent skill execution, address funding, Agent vault funding, manual occurrences, recurrence, and failure behavior.
 - Task creation now returns and transfers an owned `TaskPointer` containing the shared Task ID, and `Scheduler::task_pointers` lists those pointers through exact type filtered gRPC pagination.
 - Added `NexusClient::clone_grpc_client` for independently owned gRPC transports that do not acquire the crawler-owned client mutex.
@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
-- Gas types, ticket calls, and payment events now use the online payment package, while execution settlement calls use the workflow payment adapter.
+- Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow payment adapter.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
 - Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
 - Workflow and scheduler models now expose Task and occurrence provenance for every `DAGExecution`, and all execution requests are submitted through the scheduler.
