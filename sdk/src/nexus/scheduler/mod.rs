@@ -298,6 +298,7 @@ mod tests {
     fn event(index: u64, data: NexusEventKind) -> NexusEvent {
         NexusEvent {
             id: (sui::types::Digest::new([9; 32]), index),
+            emitting_package: address("0x1"),
             generics: Vec::new(),
             data,
             distribution: None,

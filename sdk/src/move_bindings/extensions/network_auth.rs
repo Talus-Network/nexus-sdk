@@ -14,7 +14,14 @@ use crate::move_bindings::{
 };
 use crate::{
     move_bindings::{
-        registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth},
+        registry::network_auth::{
+            IdentityKey,
+            KeyBinding,
+            KeyBindingStateV1,
+            KeyRecord,
+            NetworkAuth,
+            NetworkAuthStateV1,
+        },
         sui_framework::object::ID,
     },
     sui,
@@ -58,7 +65,9 @@ impl KeyBinding {
     pub fn object_id(&self) -> sui::types::Address {
         self.id.id.bytes
     }
+}
 
+impl KeyBindingStateV1 {
     pub fn description(&self) -> Option<&[u8]> {
         self.description.as_option().map(Vec::as_slice)
     }
@@ -77,7 +86,6 @@ impl KeyBinding {
 
     #[cfg(test)]
     pub(crate) fn new_for_test(
-        id: sui::types::Address,
         identity: IdentityKey,
         description: Option<Vec<u8>>,
         next_key_id: u64,
@@ -85,7 +93,7 @@ impl KeyBinding {
         keys: MoveTable<u64, KeyRecord>,
     ) -> Self {
         Self {
-            id: crate::move_bindings::sui_framework::object::UID::new(id),
+            release_floor: 1,
             identity,
             description: MoveOption::from_option(description),
             next_key_id,
@@ -120,7 +128,9 @@ impl NetworkAuth {
     pub fn object_id(&self) -> sui::types::Address {
         self.id.id.bytes
     }
+}
 
+impl NetworkAuthStateV1 {
     pub fn leader_cap_ids(&self) -> impl Iterator<Item = sui::types::Address> + '_ {
         self.identities
             .contents
@@ -129,9 +139,10 @@ impl NetworkAuth {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_for_test(id: sui::types::Address, identities: Vec<IdentityKey>) -> Self {
+    pub(crate) fn new_for_test(identities: Vec<IdentityKey>) -> Self {
         Self {
-            id: crate::move_bindings::sui_framework::object::UID::new(id),
+            protocol_id: ID::new(sui::types::Address::ZERO),
+            release_floor: 1,
             identities: VecSet {
                 contents: identities,
             },
@@ -172,8 +183,7 @@ mod tests {
     fn key_binding_bcs_roundtrip() {
         let mut rng = rand::thread_rng();
         let active_key_id = Some(4);
-        let binding = KeyBinding::new_for_test(
-            sui::types::Address::generate(&mut rng),
+        let binding = KeyBindingStateV1::new_for_test(
             IdentityKey::leader(sui::types::Address::generate(&mut rng)),
             Some(b"nexus".to_vec()),
             7,
@@ -182,8 +192,7 @@ mod tests {
         );
 
         let bytes = bcs::to_bytes(&binding).unwrap();
-        let decoded: KeyBinding = bcs::from_bytes(&bytes).unwrap();
-        assert_eq!(decoded.object_id(), binding.object_id());
+        let decoded: KeyBindingStateV1 = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(decoded.key_table_id(), binding.key_table_id());
         assert_eq!(decoded.key_table_size(), 2);
         assert_eq!(decoded.next_key_id, binding.next_key_id);
@@ -201,18 +210,18 @@ mod tests {
 
         assert_eq!(record.revoked_at_ms(), Some(20));
         assert_eq!(
-            NetworkAuth::new_for_test(
-                id,
-                vec![
-                    IdentityKey::leader(first_leader),
-                    IdentityKey::tool(id),
-                    IdentityKey::leader(second_leader),
-                ],
-            )
+            NetworkAuthStateV1::new_for_test(vec![
+                IdentityKey::leader(first_leader),
+                IdentityKey::tool(id),
+                IdentityKey::leader(second_leader),
+            ],)
             .leader_cap_ids()
             .collect::<Vec<_>>(),
             vec![first_leader, second_leader]
         );
-        assert_eq!(NetworkAuth::new_for_test(id, vec![]).object_id(), id);
+        assert!(NetworkAuthStateV1::new_for_test(vec![])
+            .leader_cap_ids()
+            .next()
+            .is_none());
     }
 }

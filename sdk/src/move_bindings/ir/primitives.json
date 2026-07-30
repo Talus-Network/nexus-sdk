@@ -3209,6 +3209,1871 @@
         }
       ]
     },
+    "protocol": {
+      "name": "protocol",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "PackageInfo"
+          },
+          "module": "protocol",
+          "name": "PackageInfo",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "initial_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "storage_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "version",
+                  "position": 2,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "Protocol"
+          },
+          "module": "protocol",
+          "name": "Protocol",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "state",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "versioned",
+                        "name": "Versioned"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ProtocolAdminCap"
+          },
+          "module": "protocol",
+          "name": "ProtocolAdminCap",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "protocol_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ProtocolStateV1"
+          },
+          "module": "protocol",
+          "name": "ProtocolStateV1",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "release_floor",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "active_release",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "releases",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        "U64",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "ReleaseRecordV1"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ReleaseActivatedEvent"
+          },
+          "module": "protocol",
+          "name": "ReleaseActivatedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "protocol_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "release",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "manifest_hash",
+                  "position": 2,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ReleaseManifestV1"
+          },
+          "module": "protocol",
+          "name": "ReleaseManifestV1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "release",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "primitives",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "interface",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "registry",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "gas",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "workflow",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "scheduler",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "objects",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SystemObjectsV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "sdk_api_version",
+                  "position": 8,
+                  "ty": "U64"
+                },
+                {
+                  "name": "leader_api_version",
+                  "position": 9,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ReleaseRecordV1"
+          },
+          "module": "protocol",
+          "name": "ReleaseRecordV1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "release",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "primitives",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "interface",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "registry",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "gas",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "workflow",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "scheduler",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "objects",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SystemObjectsV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "sdk_api_version",
+                  "position": 8,
+                  "ty": "U64"
+                },
+                {
+                  "name": "leader_api_version",
+                  "position": 9,
+                  "ty": "U64"
+                },
+                {
+                  "name": "manifest_hash",
+                  "position": 10,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "SharedObjectInfo"
+          },
+          "module": "protocol",
+          "name": "SharedObjectInfo",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "initial_shared_version",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "SystemObjectsV1"
+          },
+          "module": "protocol",
+          "name": "SystemObjectsV1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "network",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "tool_registry",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "verifier_registry",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "network_auth",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "agent_registry",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "gas_service",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "leader_registry",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "priority_fee_vault",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "activate_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            },
+            {
+              "name": "expected_manifest_hash",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "activated_manifest_hash",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "event",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseActivatedEvent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Vector": "U8"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "activated_protocol_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "event",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseActivatedEvent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "activated_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "event",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseActivatedEvent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "active_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "admin_protocol_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert_admin",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_initial_package",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "package",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_package_identities",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "release",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseRecordV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_package_progression",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "previous",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "next",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "has_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "init",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "load_v1",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "protocol",
+                      "name": "ProtocolStateV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_v1_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "protocol",
+                      "name": "ProtocolStateV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "manifest_hash",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "release",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseRecordV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Vector": "U8"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "new",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "Protocol"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "ProtocolAdminCap"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "package_info",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "initial_id",
+              "ty": "Address"
+            },
+            {
+              "name": "storage_id",
+              "ty": "Address"
+            },
+            {
+              "name": "version",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "PackageInfo"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "register_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "ReleaseRecordV1"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "protocol",
+                      "name": "ReleaseRecordV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "release_floor",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "release_manifest_hash",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "release",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseRecordV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "release_number",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "release",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseRecordV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "release_record_v1",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "release",
+              "ty": "U64"
+            },
+            {
+              "name": "primitives",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "interface",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "gas",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "workflow",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "scheduler",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "objects",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SystemObjectsV1"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "sdk_api_version",
+              "ty": "U64"
+            },
+            {
+              "name": "leader_api_version",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "ReleaseRecordV1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "shared_object_info",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "object_id",
+              "ty": "Address"
+            },
+            {
+              "name": "initial_shared_version",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "SharedObjectInfo"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "state_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "system_objects_v1",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "network",
+              "ty": "Address"
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "verifier_registry",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "network_auth",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "agent_registry",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "gas_service",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "priority_fee_vault",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "SystemObjectsV1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
     "shared_object": {
       "name": "shared_object",
       "datatypes": [

@@ -1,7 +1,7 @@
 use {
     crate::{
         sui,
-        types::{DefaultDagExecutorTarget, NexusObjects, UsTokenConfig},
+        types::{DefaultDagExecutorTarget, NexusObjects, NexusPackages, UsTokenConfig},
     },
     sui_transaction_builder as tx,
 };
@@ -40,13 +40,18 @@ pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
     NexusObjects {
-        gas_pkg_id: sui::types::Address::generate(&mut rng),
-        workflow_pkg_id: sui::types::Address::generate(&mut rng),
-        scheduler_pkg_id: sui::types::Address::generate(&mut rng),
-        primitives_pkg_id: sui::types::Address::generate(&mut rng),
-        interface_pkg_id: sui::types::Address::generate(&mut rng),
+        release: 1,
+        protocol: mock_sui_object_ref(),
+        packages: NexusPackages::first_publication(
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+        ),
+        manifest_hash: vec![0; 32],
         network_id: sui::types::Address::generate(&mut rng),
-        registry_pkg_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
         verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
@@ -60,12 +65,6 @@ pub fn mock_nexus_objects() -> NexusObjects {
         priority_fee_vault: mock_sui_object_ref(),
         priority_fee_vault_owner_cap: mock_sui_object_ref(),
         us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
-        primitives_original_pkg_id: None,
-        interface_original_pkg_id: None,
-        registry_original_pkg_id: None,
-        gas_original_pkg_id: None,
-        workflow_original_pkg_id: None,
-        scheduler_original_pkg_id: None,
     }
 }
 
@@ -655,8 +654,12 @@ pub mod grpc {
         owner: sui::types::Owner,
         contents: Vec<u8>,
     ) {
+        let expected_id = object_ref.object_id().to_string();
         ledger_service
             .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
@@ -680,8 +683,12 @@ pub mod grpc {
         contents: Vec<u8>,
         object_type: sui::types::StructTag,
     ) {
+        let expected_id = object_ref.object_id().to_string();
         ledger_service
             .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
@@ -713,6 +720,39 @@ pub mod grpc {
             owner,
             bcs::to_bytes(value).expect("mock object value serializes as BCS"),
             object_type,
+        );
+    }
+
+    /// Mock the dynamic field selected by a `sui::versioned::Versioned` value.
+    pub fn mock_versioned_payload<T>(
+        ledger_service: &mut MockLedgerService,
+        state_id: sui::types::Address,
+        state_version: u64,
+        value: T,
+    ) where
+        T: Serialize + Clone + Send + 'static,
+    {
+        #[derive(Clone, Serialize)]
+        struct VersionedField<T> {
+            id: sui::types::Address,
+            name: u64,
+            value: T,
+        }
+
+        let field_id = state_id.derive_dynamic_child_id(
+            &sui::types::TypeTag::U64,
+            &bcs::to_bytes(&state_version).expect("version key serializes"),
+        );
+        let field = VersionedField {
+            id: field_id,
+            name: state_version,
+            value,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            super::object_ref_for_id(field_id),
+            sui::types::Owner::Object(state_id),
+            bcs::to_bytes(&field).expect("versioned payload serializes"),
         );
     }
 
@@ -1012,7 +1052,7 @@ pub mod grpc {
                 for event in nexus_events.clone() {
                     let (event_pkg_id, event_type_origin, event_module, event_name) = match event {
                         NexusEventKind::DAGCreated(_) => (
-                            objects.interface_pkg_id,
+                            objects.interface_pkg_id(),
                             objects.interface_type_origin_pkg_id(),
                             "dag",
                             event.name(),
@@ -1021,7 +1061,7 @@ pub mod grpc {
                         | NexusEventKind::EndStateReached(_)
                         | NexusEventKind::ExecutionFinished(_)
                         | NexusEventKind::TerminalErrEvalRecorded(_) => (
-                            objects.workflow_pkg_id,
+                            objects.workflow_pkg_id(),
                             objects.workflow_type_origin_pkg_id(),
                             "execution_events",
                             event.name(),

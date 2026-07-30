@@ -558,13 +558,48 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
-            gas_pkg_id: addr(0x88),
-            workflow_pkg_id: addr(0x44),
-            scheduler_pkg_id: addr(0x55),
-            primitives_pkg_id: addr(0x11),
-            interface_pkg_id: addr(0x22),
+            release: 1,
+            protocol: obj(10),
+            packages: crate::types::NexusPackages {
+                primitives: crate::types::PackageRelease::new(
+                    addr(0x10),
+                    addr(0x11),
+                    2,
+                    Default::default(),
+                ),
+                interface: crate::types::PackageRelease::new(
+                    addr(0x20),
+                    addr(0x22),
+                    2,
+                    Default::default(),
+                ),
+                registry: crate::types::PackageRelease::new(
+                    addr(0x30),
+                    addr(0x33),
+                    2,
+                    Default::default(),
+                ),
+                gas: crate::types::PackageRelease::new(
+                    addr(0x80),
+                    addr(0x88),
+                    2,
+                    Default::default(),
+                ),
+                workflow: crate::types::PackageRelease::new(
+                    addr(0x40),
+                    addr(0x44),
+                    2,
+                    Default::default(),
+                ),
+                scheduler: crate::types::PackageRelease::new(
+                    addr(0x50),
+                    addr(0x55),
+                    2,
+                    Default::default(),
+                ),
+            },
+            manifest_hash: vec![0; 32],
             network_id: addr(0x77),
-            registry_pkg_id: addr(0x33),
             tool_registry: obj(1),
             verifier_registry: obj(2),
             network_auth: obj(3),
@@ -578,12 +613,6 @@ mod tests {
             priority_fee_vault: obj(8),
             priority_fee_vault_owner_cap: obj(9),
             us_token: UsTokenConfig::new(addr(0x66)),
-            primitives_original_pkg_id: Some(addr(0x10)),
-            interface_original_pkg_id: Some(addr(0x20)),
-            registry_original_pkg_id: Some(addr(0x30)),
-            gas_original_pkg_id: Some(addr(0x80)),
-            workflow_original_pkg_id: Some(addr(0x40)),
-            scheduler_original_pkg_id: Some(addr(0x50)),
         }
     }
 
@@ -598,7 +627,7 @@ mod tests {
             )
         });
 
-        assert_eq!(target.package, objects.gas_pkg_id);
+        assert_eq!(target.package, objects.gas_pkg_id());
         assert_eq!(*tag.address(), objects.gas_type_origin_pkg_id());
     }
 

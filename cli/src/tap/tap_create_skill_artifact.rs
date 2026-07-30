@@ -111,11 +111,14 @@ async fn fetch_input_commitment_with_client(
     dag_id: sui::types::Address,
 ) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
-    let dag = crawler.get_object::<DAG>(dag_id).await.map_err(|error| {
-        NexusCliError::Any(anyhow!(
-            "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
-        ))
-    })?;
+    let dag = crawler
+        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGStateV1>(dag_id)
+        .await
+        .map_err(|error| {
+            NexusCliError::Any(anyhow!(
+                "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
+            ))
+        })?;
     let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
         .await
         .map_err(|error| {
@@ -187,13 +190,14 @@ mod tests {
         super::*,
         nexus_sdk::{
             move_bindings::{
-                interface::graph,
+                interface::{dag::DAGStateV1, graph},
                 move_std::option::Option as MoveOption,
                 sui_framework::{
                     linked_table::LinkedTable,
                     object::UID,
                     table::Table,
                     vec_map::VecMap,
+                    versioned::Versioned,
                 },
             },
             test_utils::{nexus_mocks, sui_mocks},
@@ -302,15 +306,17 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_id = sui::types::Address::from_static("0xd");
         let dag_ref = sui_mocks::object_ref_for_id(dag_id);
-        let dag = DAG {
-            id: UID::new(dag_id),
-            vertices: LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
-            entry_groups: VecMap { contents: vec![] },
-            edges: Table::new(sui::types::Address::from_static("0x11"), 0),
-            outputs: Table::new(sui::types::Address::from_static("0x12"), 0),
-            defaults_to_input_ports: Table::new(sui::types::Address::from_static("0x13"), 0),
-            post_failure_action: MoveOption::from_option(None::<graph::PostFailureAction>),
-        };
+        let state_id = sui::types::Address::from_static("0xe");
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
+        let state = DAGStateV1::new(
+            1,
+            LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
+            VecMap { contents: vec![] },
+            Table::new(sui::types::Address::from_static("0x11"), 0),
+            Table::new(sui::types::Address::from_static("0x12"), 0),
+            Table::new(sui::types::Address::from_static("0x13"), 0),
+            MoveOption::from_option(None::<graph::PostFailureAction>),
+        );
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         sui_mocks::grpc::mock_get_object_value_bcs_for(
@@ -320,6 +326,7 @@ mod tests {
             &dag,
             nexus_sdk::move_bindings::struct_tag::<DAG>(&nexus_objects),
         );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, state);
         sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
         sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 1);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {

@@ -24,4 +24,18 @@ pub enum NexusError {
     Channel(anyhow::Error),
     #[error("Storage error: {0}")]
     Storage(anyhow::Error),
+    #[error("Release validation error: {0}")]
+    ReleaseValidation(anyhow::Error),
+    #[error("Release {release} requires SDK API {required}, but this SDK supports {supported}")]
+    UnsupportedSdkApi {
+        release: u64,
+        required: u64,
+        supported: u64,
+    },
+    #[error("Object '{object}' requires migration from release {current} to release {required}")]
+    MigrationRequired {
+        object: crate::sui::types::Address,
+        current: u64,
+        required: u64,
+    },
 }

@@ -1,7 +1,7 @@
 use {
     crate::{
         move_bindings::{
-            scheduler::task::{Task, TaskController},
+            scheduler::task::{Task, TaskController, TaskStateV1},
             sui_framework::clock::Clock,
         },
         move_boundary,
@@ -30,7 +30,7 @@ use {
 };
 
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<Task>,
+    pub(super) object: Response<TaskStateV1>,
     pub(super) authority: ResolvedAuthority,
 }
 
@@ -126,13 +126,18 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<Task>, SchedulerError> {
-    client
+) -> Result<Response<TaskStateV1>, SchedulerError> {
+    let anchor = client
         .crawler()
         .get_optional_object::<Task>(task_id)
         .await
         .map_err(SchedulerError::transport)?
-        .ok_or(SchedulerError::TaskNotFound { task_id })
+        .ok_or(SchedulerError::TaskNotFound { task_id })?;
+    client
+        .crawler()
+        .load_versioned_payload(anchor)
+        .await
+        .map_err(SchedulerError::transport)
 }
 
 pub(super) async fn resolve_task(
@@ -146,7 +151,7 @@ pub(super) async fn resolve_task(
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<Task>,
+    task: &Response<TaskStateV1>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {

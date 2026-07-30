@@ -570,7 +570,7 @@ pub fn register_external_verifier_ptb(
         let function_name = tx.ascii_string(&input.function_name)?;
         let witness_arg = tx.shared_object(&witness.object_ref, false)?;
         let registration = tx.call_function_with_type_args(
-            objects.registry_pkg_id,
+            objects.registry_pkg_id(),
             "verifier_registry",
             "new_external_registration",
             vec![witness.object_type.clone()],
@@ -580,7 +580,7 @@ pub fn register_external_verifier_ptb(
         for object in input.verifier_objects.iter().skip(1) {
             let object_arg = tx.shared_object(&object.object_ref, false)?;
             tx.call_function_with_type_args(
-                objects.registry_pkg_id,
+                objects.registry_pkg_id(),
                 "verifier_registry",
                 "add_obj",
                 vec![object.object_type.clone()],
@@ -667,13 +667,18 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
-            gas_pkg_id: addr("0x13"),
-            workflow_pkg_id: addr("0x1"),
-            scheduler_pkg_id: addr("0x11"),
-            primitives_pkg_id: addr("0x2"),
-            interface_pkg_id: addr("0x3"),
+            release: 1,
+            protocol: object_ref("0x18", 1, 18),
+            packages: crate::types::NexusPackages::first_publication(
+                addr("0x2"),
+                addr("0x3"),
+                addr("0x5"),
+                addr("0x13"),
+                addr("0x1"),
+                addr("0x11"),
+            ),
+            manifest_hash: vec![0; 32],
             network_id: addr("0x4"),
-            registry_pkg_id: addr("0x5"),
             tool_registry: object_ref("0x6", 1, 6),
             verifier_registry: object_ref("0x7", 1, 7),
             network_auth: object_ref("0x8", 1, 8),
@@ -692,12 +697,6 @@ mod tests {
                 protected_treasury: None,
                 metadata: None,
             },
-            primitives_original_pkg_id: None,
-            interface_original_pkg_id: None,
-            registry_original_pkg_id: None,
-            gas_original_pkg_id: None,
-            workflow_original_pkg_id: None,
-            scheduler_original_pkg_id: None,
         }
     }
 
@@ -1177,7 +1176,7 @@ mod tests {
                         && call.function.as_str() == expected_function
                 })
                 .expect("on chain registration call");
-            assert_eq!(registration.package, objects.registry_pkg_id);
+            assert_eq!(registration.package, objects.registry_pkg_id());
         }
     }
 

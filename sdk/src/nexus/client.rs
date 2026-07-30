@@ -9,6 +9,7 @@ use {
             crawler::Crawler,
             error::NexusError,
             gas::GasActions,
+            release::{ReleaseExtras, ReleaseResolver},
             scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
             transaction::NexusTransaction,
@@ -147,6 +148,8 @@ pub struct NexusClientBuilder {
     gas_budget: Option<u64>,
     address_balance_gas: Option<AddressBalanceGas>,
     nexus_objects: Option<NexusObjects>,
+    protocol: Option<sui::types::ObjectReference>,
+    release_extras: Option<ReleaseExtras>,
     transaction_timeout: Option<Duration>,
 }
 
@@ -198,6 +201,18 @@ impl NexusClientBuilder {
         self
     }
 
+    /// Resolve the active Nexus release from one stable protocol root.
+    pub fn with_protocol(mut self, protocol: sui::types::ObjectReference) -> Self {
+        self.protocol = Some(protocol);
+        self
+    }
+
+    /// Supply external token and optional operator authority configuration.
+    pub fn with_release_extras(mut self, extras: ReleaseExtras) -> Self {
+        self.release_extras = Some(extras);
+        self
+    }
+
     /// Set transaction timeout duration.
     pub fn with_transaction_timeout(mut self, timeout: Duration) -> Self {
         self.transaction_timeout = Some(timeout);
@@ -223,10 +238,26 @@ impl NexusClientBuilder {
             .rpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
-        let nexus_objects = Arc::new(
-            self.nexus_objects
-                .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?,
-        );
+        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
+        let nexus_objects = match (self.nexus_objects, self.protocol) {
+            (Some(_), Some(_)) => {
+                return Err(NexusError::Configuration(
+                    "configure either Nexus objects or a protocol root, not both".into(),
+                ));
+            }
+            (Some(objects), None) => objects,
+            (None, Some(protocol)) => {
+                let resolver = ReleaseResolver::new(protocol, Arc::clone(&client))
+                    .with_extras(self.release_extras.unwrap_or_default());
+                Box::pin(resolver.resolve_active()).await?
+            }
+            (None, None) => {
+                return Err(NexusError::Configuration(
+                    "Nexus objects or a protocol root are required".into(),
+                ));
+            }
+        };
+        let nexus_objects = Arc::new(nexus_objects);
         let coin_gas_requested = self.gas_budget.is_some() || !self.gas_coins.is_empty();
         let gas_source = match (coin_gas_requested, self.address_balance_gas) {
             (true, Some(_)) => {
@@ -242,7 +273,6 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
         let crawler = Crawler::new(Arc::clone(&client));
 
         let signer = self.pk.map(|pk| {

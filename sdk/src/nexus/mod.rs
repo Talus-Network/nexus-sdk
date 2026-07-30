@@ -12,6 +12,7 @@ pub mod gas;
 pub mod network_auth;
 pub mod registered_key;
 pub mod registry;
+pub mod release;
 pub mod scheduler;
 pub mod signer;
 pub mod tap;

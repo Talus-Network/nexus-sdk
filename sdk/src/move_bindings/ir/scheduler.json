@@ -3585,6 +3585,207 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "protocol",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "expected_occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa4",
+                  "module": "execution",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "dispatch_next_",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "protocol_release",
+              "ty": "U64"
+            },
+            {
               "name": "task",
               "ty": {
                 "Ref": {
@@ -4499,6 +4700,104 @@
               }
             }
           ]
+        },
+        {
+          "name": "raise_task_release_floor",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "task",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "raise_task_release_floor_as_agent",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "task",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "agent",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "refill",
@@ -6330,6 +6629,144 @@
                   }
                 },
                 {
+                  "name": "state",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "versioned",
+                        "name": "Versioned"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "task",
+            "name": "TaskController"
+          },
+          "module": "task",
+          "name": "TaskController",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "Address",
+                  "position": 0,
+                  "fields": [
+                    {
+                      "name": "pos0",
+                      "position": 0,
+                      "ty": "Address"
+                    }
+                  ]
+                },
+                {
+                  "name": "Agent",
+                  "position": 1,
+                  "fields": [
+                    {
+                      "name": "pos0",
+                      "position": 0,
+                      "ty": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x2",
+                            "module": "object",
+                            "name": "ID"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "task",
+            "name": "TaskPointer"
+          },
+          "module": "task",
+          "name": "TaskPointer",
+          "abilities": [
+            "Store",
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "task_id",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "task",
+            "name": "TaskStateV1"
+          },
+          "module": "task",
+          "name": "TaskStateV1",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "release_floor",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
                   "name": "controller",
                   "position": 1,
                   "ty": {
@@ -6461,106 +6898,6 @@
                           }
                         }
                       ]
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa5",
-            "module": "task",
-            "name": "TaskController"
-          },
-          "module": "task",
-          "name": "TaskController",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "Address",
-                  "position": 0,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": "Address"
-                    }
-                  ]
-                },
-                {
-                  "name": "Agent",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa5",
-            "module": "task",
-            "name": "TaskPointer"
-          },
-          "module": "task",
-          "name": "TaskPointer",
-          "abilities": [
-            "Store",
-            "Key"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "id",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "task_id",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
                     }
                   }
                 }
@@ -7782,6 +8119,92 @@
           ]
         },
         {
+          "name": "load_v1",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa5",
+                      "module": "task",
+                      "name": "TaskStateV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_v1_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa5",
+                      "module": "task",
+                      "name": "TaskStateV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "missed_at_ms",
           "visibility": "Public",
           "is_entry": false,
@@ -8345,6 +8768,37 @@
           ]
         },
         {
+          "name": "raise_release_floor",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "record_advertisement",
           "visibility": "Friend",
           "is_entry": false,
@@ -8599,6 +9053,35 @@
           "return_types": []
         },
         {
+          "name": "release_floor",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "remove_components",
           "visibility": "Friend",
           "is_entry": false,
@@ -8851,6 +9334,35 @@
           ]
         },
         {
+          "name": "state_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "status",
           "visibility": "Public",
           "is_entry": false,
@@ -8886,6 +9398,30 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "status_is_paused",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "status",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "TaskStatus"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         },
         {

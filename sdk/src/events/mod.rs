@@ -76,6 +76,11 @@ pub struct DistributedEventMetadata {
 pub struct NexusEvent {
     /// The event transaction digest and event sequence.
     pub id: (sui::types::Digest, u64),
+    /// Package containing the top level Move function that emitted the event.
+    ///
+    /// This identifies runtime code and is intentionally distinct from the
+    /// event datatype origin encoded in its type tag.
+    pub emitting_package: sui::types::Address,
     /// If the `T in NexusEvent<T>` is also a generic, this field holds the
     /// generic type. Note that this can be nested indefinitely.
     pub generics: Vec<sui::types::TypeTag>,
@@ -84,6 +89,17 @@ pub struct NexusEvent {
     /// If the event is a distributed event, this field holds the distribution
     /// metadata.
     pub distribution: Option<DistributedEventMetadata>,
+}
+
+impl NexusEvent {
+    /// Whether this event was emitted by code in `objects`' activated release.
+    ///
+    /// A release pinned operation should use the snapshot it captured at its
+    /// boundary. This permits compatible in flight work to finish on its old
+    /// release without accepting an old package for newly created work.
+    pub fn was_emitted_by(&self, objects: &crate::types::NexusObjects) -> bool {
+        objects.is_active_emitter(self.emitting_package)
+    }
 }
 
 macro_rules! events {

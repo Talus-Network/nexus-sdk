@@ -218,13 +218,18 @@ fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version
 
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
-        gas_pkg_id: addr("0x13"),
-        workflow_pkg_id: addr("0x1"),
-        scheduler_pkg_id: addr("0x11"),
-        primitives_pkg_id: addr("0x2"),
-        interface_pkg_id: addr("0x3"),
+        release: 1,
+        protocol: object_ref("0x18", 1, 18),
+        packages: nexus_sdk::types::NexusPackages::first_publication(
+            addr("0x2"),
+            addr("0x3"),
+            addr("0x5"),
+            addr("0x13"),
+            addr("0x1"),
+            addr("0x11"),
+        ),
+        manifest_hash: vec![0; 32],
         network_id: addr("0x4"),
-        registry_pkg_id: addr("0x5"),
         tool_registry: object_ref("0x6", 1, 6),
         verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
@@ -238,12 +243,6 @@ fn nexus_objects() -> NexusObjects {
         priority_fee_vault: object_ref("0xf", 1, 15),
         priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
         us_token: UsTokenConfig::new(addr("0x12")),
-        primitives_original_pkg_id: None,
-        interface_original_pkg_id: None,
-        registry_original_pkg_id: None,
-        gas_original_pkg_id: None,
-        workflow_original_pkg_id: None,
-        scheduler_original_pkg_id: None,
     }
 }
 
@@ -294,10 +293,10 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
         }],
         skills: vec![skill(agent_id, skill_id, active_revision)],
         default_executor: Some(DefaultDagExecutor {
-            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_ids(
+            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_anchor(
                 agent_id,
+                addr("0xa2"),
                 1,
-                Some(addr("0x91")),
             ),
             skill_id,
         }),
@@ -334,7 +333,7 @@ fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::type
         vec![sui::types::TypeTag::Struct(Box::new(inner))],
     );
     sui::types::Event {
-        package_id: objects.primitives_pkg_id,
+        package_id: objects.primitives_pkg_id(),
         module: wrapper.module().clone(),
         sender: addr("0xf3"),
         type_: wrapper,
@@ -563,7 +562,7 @@ fn standard_tap_events_are_nexus_events() {
     let revisioned_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.registry_pkg_id,
+            objects.registry_pkg_id(),
             struct_tag::<AgentRecord>(&objects).module().clone(),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -575,7 +574,7 @@ fn standard_tap_events_are_nexus_events() {
     let execution_requested_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.workflow_pkg_id(),
             sui::types::Identifier::from_static("dag"),
             sui::types::Identifier::from_static("AgentSkillExecutionRequestedEvent"),
             vec![],
@@ -587,7 +586,7 @@ fn standard_tap_events_are_nexus_events() {
     let unrelated_interface_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.interface_pkg_id,
+            objects.interface_pkg_id(),
             sui::types::Identifier::from_static("unrelated"),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -833,8 +832,8 @@ fn agent_payment_vault_builders_target_tap_functions() {
         })
         .expect("withdraw vault call");
 
-    assert_eq!(deposit.package, objects.interface_pkg_id);
-    assert_eq!(withdraw.package, objects.registry_pkg_id);
+    assert_eq!(deposit.package, objects.interface_pkg_id());
+    assert_eq!(withdraw.package, objects.registry_pkg_id());
     assert_eq!(
         deposit.arguments,
         vec![

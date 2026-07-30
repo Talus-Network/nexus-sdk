@@ -40,6 +40,7 @@ impl<'a> NexusEventType<'a> {
 pub(super) fn decode_nexus_event(
     index: u64,
     digest: sui::types::Digest,
+    emitting_package: sui::types::Address,
     contents: &[u8],
     wrapper_type: &sui::types::StructTag,
     objects: &NexusObjects,
@@ -51,6 +52,7 @@ pub(super) fn decode_nexus_event(
 
     Ok(Some(NexusEvent {
         id: (digest, index),
+        emitting_package,
         generics: event_type.tag.type_params().to_vec(),
         data,
         distribution,
@@ -128,9 +130,30 @@ mod tests {
     #[test]
     fn resolves_event_type_origins_after_package_upgrades() {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
-        objects.primitives_original_pkg_id = Some(address("0xa1"));
-        objects.scheduler_original_pkg_id = Some(address("0xa2"));
-        objects.interface_original_pkg_id = Some(address("0xa3"));
+        objects
+            .packages
+            .primitives
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("event", "EventWrapper"),
+                address("0xa1"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .scheduler
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("scheduler", "TaskCreatedEvent"),
+                address("0xa2"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .interface
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("distributed_event", "DistributedEventWrapper"),
+                address("0xa3"),
+            )
+            .unwrap();
 
         let event = TaskCreatedEvent::new(
             ID::new(address("0x41")),
@@ -151,11 +174,24 @@ mod tests {
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
         );
 
-        let decoded = decode_nexus_event(0, sui::types::Digest::ZERO, &bytes, &wrapper, &objects)
-            .expect("event decoding succeeds")
-            .expect("event is recognized");
+        let emitter = objects.packages.scheduler.storage_id;
+        let decoded = decode_nexus_event(
+            0,
+            sui::types::Digest::ZERO,
+            emitter,
+            &bytes,
+            &wrapper,
+            &objects,
+        )
+        .expect("event decoding succeeds")
+        .expect("event is recognized");
 
         assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
+        assert!(decoded.was_emitted_by(&objects));
+        let mut stale = decoded.clone();
+        stale.emitting_package = objects.packages.scheduler.initial_id;
+        objects.packages.scheduler.storage_id = address("0xb2");
+        assert!(!stale.was_emitted_by(&objects));
         let distributed_wrapper = crate::move_bindings::struct_tag::<
             distributed_event_move::DistributedEventWrapper<MoveNexusData>,
         >(&objects);

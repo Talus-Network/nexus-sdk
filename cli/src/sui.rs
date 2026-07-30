@@ -4,7 +4,10 @@ use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
     nexus_sdk::{
-        nexus::client::{AddressBalanceGas, GasSource, NexusClient},
+        nexus::{
+            client::{AddressBalanceGas, GasSource, NexusClient},
+            release::ReleaseExtras,
+        },
         sui,
     },
 };
@@ -205,17 +208,23 @@ async fn build_nexus_client_context() -> Result<NexusClient, NexusCliError> {
     let client = build_sui_grpc_client(&conf).await?;
     let pk = get_signing_key(&conf).await?;
     let mut nexus_objects = get_nexus_objects(&mut conf).await?;
-
-    nexus_objects
-        .resolve_original_pkg_ids(&client)
-        .await
-        .map_err(|e| NexusCliError::Any(anyhow!("Failed to resolve package origin IDs: {e}")))?;
     let rpc_url = client.uri().to_string();
 
     let builder = NexusClient::builder()
         .with_private_key(pk)
-        .with_nexus_objects(nexus_objects.clone())
         .with_rpc_url(&rpc_url);
+    let builder = if *nexus_objects.protocol.object_id() != sui::types::Address::ZERO {
+        let extras = ReleaseExtras::from(&nexus_objects);
+        builder
+            .with_protocol(nexus_objects.protocol.clone())
+            .with_release_extras(extras)
+    } else {
+        nexus_objects
+            .resolve_package_metadata(&client)
+            .await
+            .map_err(|e| NexusCliError::Any(anyhow!("Failed to resolve package metadata: {e}")))?;
+        builder.with_nexus_objects(nexus_objects)
+    };
     builder.build().await.map_err(NexusCliError::Nexus)
 }
 
@@ -594,32 +603,32 @@ mod tests {
 
         let objects = res.expect("mock object document should match NexusObjects");
 
-        assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
-        assert_eq!(objects.gas_pkg_id, "0x15".parse().unwrap());
-        assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
-        assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
-        assert_eq!(objects.scheduler_pkg_id, "0x13".parse().unwrap());
-        assert_eq!(objects.registry_pkg_id, "0x11".parse().unwrap());
+        assert_eq!(objects.primitives_pkg_id(), "0x1".parse().unwrap());
+        assert_eq!(objects.gas_pkg_id(), "0x15".parse().unwrap());
+        assert_eq!(objects.workflow_pkg_id(), "0x2".parse().unwrap());
+        assert_eq!(objects.interface_pkg_id(), "0x3".parse().unwrap());
+        assert_eq!(objects.scheduler_pkg_id(), "0x13".parse().unwrap());
+        assert_eq!(objects.registry_pkg_id(), "0x11".parse().unwrap());
         assert_eq!(
             objects.primitives_type_origin_pkg_id(),
-            objects.primitives_pkg_id
+            objects.primitives_pkg_id()
         );
         assert_eq!(
             objects.interface_type_origin_pkg_id(),
-            objects.interface_pkg_id
+            objects.interface_pkg_id()
         );
         assert_eq!(
             objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id
+            objects.registry_pkg_id()
         );
-        assert_eq!(objects.gas_type_origin_pkg_id(), objects.gas_pkg_id);
+        assert_eq!(objects.gas_type_origin_pkg_id(), objects.gas_pkg_id());
         assert_eq!(
             objects.workflow_type_origin_pkg_id(),
-            objects.workflow_pkg_id
+            objects.workflow_pkg_id()
         );
         assert_eq!(
             objects.scheduler_type_origin_pkg_id(),
-            objects.scheduler_pkg_id
+            objects.scheduler_pkg_id()
         );
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(

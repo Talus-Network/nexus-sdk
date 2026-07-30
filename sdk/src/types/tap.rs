@@ -636,7 +636,7 @@ mod tests {
                 agent::{Agent, SkillSchedulePolicy},
                 payment::{ExecutionPaymentFinalState, VertexExecutionPaymentSettlementKind},
             },
-            registry::agent_registry::AgentRegistry,
+            registry::agent_registry::AgentRegistryStateV1,
             sui_framework::table::Table as MoveTable,
         },
         std::str::FromStr,
@@ -741,15 +741,15 @@ mod tests {
     #[cfg(feature = "bcs")]
     #[test]
     fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
-        let raw = AgentRegistry {
-            id: crate::move_bindings::sui_framework::object::UID::new(addr("0xf")),
+        let raw = AgentRegistryStateV1 {
+            protocol_id: crate::move_bindings::sui_framework::object::ID::new(addr("0xe")),
+            release_floor: 1,
             agents: MoveTable::new(addr("0x90"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
-        let decoded: AgentRegistry =
+        let decoded: AgentRegistryStateV1 =
             bcs::from_bytes(&bytes).expect("raw Move registry BCS should decode");
 
-        assert_eq!(sui::types::Address::from(decoded.id), addr("0xf"));
         assert_eq!(decoded.agents.id(), addr("0x90"));
     }
 
@@ -1101,7 +1101,7 @@ mod tests {
     fn default_dag_executor_requires_runtime_selected_skill() {
         let mut registry = registry_with_active_skill();
         registry.default_executor = Some(DefaultDagExecutor {
-            agent: Agent::from_ids(addr("0xa"), 1, Some(registry.id)),
+            agent: Agent::from_anchor(addr("0xa"), addr("0xb"), 1),
             skill_id: 11,
         });
 

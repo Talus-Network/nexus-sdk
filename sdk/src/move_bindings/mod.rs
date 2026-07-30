@@ -5,9 +5,9 @@
 //! selected modules, but they should not duplicate Move ABI logic.
 
 mod extensions;
-
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
+pub use extensions::VersionedAnchor;
 #[cfg(feature = "transactions")]
 pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {
@@ -25,8 +25,8 @@ fn derive_object_id<T: sui::traits::ToBcs>(
 
 /// Run `f` with all Nexus generated bindings scoped to the package IDs in `objects`.
 ///
-/// Current package IDs are used for Move call targets. Original package IDs are used for type
-/// identity where Sui package upgrades keep type tags pinned to the defining package.
+/// Storage IDs are used for Move call targets. Exact datatype origins are
+/// used for type identity, including types introduced by later upgrades.
 pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R) -> R {
     move_std::with_packages(
         sui::types::Address::from_static("0x1"),
@@ -40,31 +40,53 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                         objects.us_token.package_id,
                         objects.us_token.package_id,
                         || {
-                            primitives::with_packages(
-                                objects.primitives_pkg_id,
-                                objects.primitives_type_origin_pkg_id(),
+                            primitives::with_package_context(
+                                objects.packages.primitives.storage_id,
+                                objects.packages.primitives.initial_id,
+                                &objects.packages.primitives.type_origins,
                                 || {
-                                    interface::with_packages(
-                                        objects.interface_pkg_id,
-                                        objects.interface_type_origin_pkg_id(),
+                                    interface::with_package_context(
+                                        objects.packages.interface.storage_id,
+                                        objects.packages.interface.initial_id,
+                                        &objects.packages.interface.type_origins,
                                         || {
-                                            registry::with_packages(
-                                                objects.registry_pkg_id,
-                                                objects.registry_type_origin_pkg_id(),
+                                            registry::with_package_context(
+                                                objects.packages.registry.storage_id,
+                                                objects.packages.registry.initial_id,
+                                                &objects.packages.registry.type_origins,
                                                 || {
-                                                    gas::with_packages(
-                                                        objects.gas_pkg_id,
-                                                        objects.gas_type_origin_pkg_id(),
+                                                    gas::with_package_context(
+                                                        objects.packages.gas.storage_id,
+                                                        objects.packages.gas.initial_id,
+                                                        &objects.packages.gas.type_origins,
                                                         || {
-                                                            workflow::with_packages(
-                                                                objects.workflow_pkg_id,
+                                                            workflow::with_package_context(
                                                                 objects
-                                                                    .workflow_type_origin_pkg_id(),
+                                                                    .packages
+                                                                    .workflow
+                                                                    .storage_id,
+                                                                objects
+                                                                    .packages
+                                                                    .workflow
+                                                                    .initial_id,
+                                                                &objects
+                                                                    .packages
+                                                                    .workflow
+                                                                    .type_origins,
                                                                 || {
-                                                                    scheduler::with_packages(
-                                                                        objects.scheduler_pkg_id,
+                                                                    scheduler::with_package_context(
                                                                         objects
-                                                                            .scheduler_type_origin_pkg_id(),
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .storage_id,
+                                                                        objects
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .initial_id,
+                                                                        &objects
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .type_origins,
                                                                         f,
                                                                     )
                                                                 },
@@ -134,24 +156,6 @@ where
 {
     let expected = T::struct_tag_static();
     tag.module() == expected.module() && tag.name() == expected.name()
-}
-
-/// Build a generated Move struct tag with a specific package address.
-#[cfg(test)]
-pub(crate) fn struct_tag_with_package<T>(
-    objects: &NexusObjects,
-    package: sui::types::Address,
-) -> sui::types::StructTag
-where
-    T: sui_move::MoveStruct,
-{
-    let tag = struct_tag::<T>(objects);
-    sui::types::StructTag::new(
-        package,
-        tag.module().clone(),
-        tag.name().clone(),
-        tag.type_params().to_vec(),
-    )
 }
 
 /// Derive the on chain [`registry::tool_registry::Tool`] object ID for a tool FQN.

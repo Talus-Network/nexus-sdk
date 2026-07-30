@@ -1,12 +1,15 @@
 //! SDK projections for the generated registry-owned priority-fee vault.
 
 use crate::{
-    move_bindings::{registry::priority_fee_vault::PriorityFeeVault, sui_framework::object::ID},
+    move_bindings::{
+        registry::priority_fee_vault::PriorityFeeVaultStateV1,
+        sui_framework::object::ID,
+    },
     sui,
     types::{PriorityFeeSuiDrainQuote, PriorityFeeWithdrawalQuote},
 };
 
-impl PriorityFeeVault {
+impl PriorityFeeVaultStateV1 {
     pub fn leader_share(&self, leader_cap_id: sui::types::Address) -> Option<u64> {
         self.leader_accounts
             .get(&ID::new(leader_cap_id))
@@ -73,7 +76,6 @@ mod tests {
             registry::priority_fee_vault::PriorityFeeAccount,
             sui_framework::{
                 balance::Balance,
-                object::UID,
                 sui::SUI,
                 vec_map::{Entry, VecMap},
             },
@@ -86,9 +88,10 @@ mod tests {
         us_balance: u64,
         exchange_rate_sui_us: u64,
         total_share: u64,
-    ) -> PriorityFeeVault {
-        PriorityFeeVault::new(
-            UID::new(sui::types::Address::from_static("0x1")),
+    ) -> PriorityFeeVaultStateV1 {
+        PriorityFeeVaultStateV1::new(
+            ID::new(sui::types::Address::from_static("0x1")),
+            1,
             Balance::<SUI>::new(sui_balance),
             Balance::<US>::new(us_balance),
             exchange_rate_sui_us,

@@ -7,7 +7,7 @@ use {
                 OccurrenceRecord,
                 OccurrenceRecordKey,
                 OccurrenceState,
-                Task as MoveTask,
+                TaskStateV1 as MoveTaskStateV1,
             },
             workflow::execution::DAGExecution,
         },
@@ -266,21 +266,12 @@ impl OccurrenceHandle {
 
 pub(super) fn snapshot_from_record(
     task_id: sui::types::Address,
-    task: &MoveTask,
+    task: &MoveTaskStateV1,
     occurrence_id: u64,
     record: &OccurrenceRecord,
     execution: Option<&DAGExecution>,
     task_version: sui::types::Version,
 ) -> Result<OccurrenceSnapshot, SchedulerError> {
-    let stored_task_id = task.id.id.bytes;
-    if stored_task_id != task_id {
-        return Err(SchedulerError::InconsistentChainState {
-            message: format!(
-                "Task object '{}' was decoded for requested Task '{task_id}'",
-                stored_task_id
-            ),
-        });
-    }
     if record.occurrence.id != occurrence_id {
         return Err(SchedulerError::InconsistentChainState {
             message: format!(

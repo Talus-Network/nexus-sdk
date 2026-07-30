@@ -380,8 +380,13 @@
                   }
                 },
                 {
-                  "name": "dag",
+                  "name": "protocol_release",
                   "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "dag",
+                  "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -395,7 +400,7 @@
                 },
                 {
                   "name": "entry_group",
-                  "position": 2,
+                  "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -409,22 +414,22 @@
                 },
                 {
                   "name": "invoker",
-                  "position": 3,
+                  "position": 4,
                   "ty": "Address"
                 },
                 {
                   "name": "created_at",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "priority_fee_percentage",
                   "position": 5,
                   "ty": "U64"
                 },
                 {
-                  "name": "agent_id",
+                  "name": "priority_fee_percentage",
                   "position": 6,
+                  "ty": "U64"
+                },
+                {
+                  "name": "agent_id",
+                  "position": 7,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -438,12 +443,12 @@
                 },
                 {
                   "name": "skill_id",
-                  "position": 7,
+                  "position": 8,
                   "ty": "U64"
                 },
                 {
                   "name": "interface_version",
-                  "position": 8,
+                  "position": 9,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -457,7 +462,7 @@
                 },
                 {
                   "name": "task_id",
-                  "position": 9,
+                  "position": 10,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -471,19 +476,19 @@
                 },
                 {
                   "name": "occurrence_id",
-                  "position": 10,
+                  "position": 11,
                   "ty": "U64"
                 },
                 {
                   "name": "last_request_for_execution_emitted_at_digest",
-                  "position": 11,
+                  "position": 12,
                   "ty": {
                     "Vector": "U8"
                   }
                 },
                 {
                   "name": "last_request_for_execution_leaders",
-                  "position": 12,
+                  "position": 13,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -499,7 +504,7 @@
                 },
                 {
                   "name": "network",
-                  "position": 13,
+                  "position": 14,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -513,7 +518,7 @@
                 },
                 {
                   "name": "evaluations",
-                  "position": 14,
+                  "position": 15,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -548,7 +553,7 @@
                 },
                 {
                   "name": "terminal_records",
-                  "position": 15,
+                  "position": 16,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -574,7 +579,7 @@
                 },
                 {
                   "name": "submission_failure_records",
-                  "position": 16,
+                  "position": 17,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -602,7 +607,7 @@
                 },
                 {
                   "name": "pending_retry_handoff_cap_ids",
-                  "position": 17,
+                  "position": 18,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -628,7 +633,7 @@
                 },
                 {
                   "name": "walk_request_authorities",
-                  "position": 18,
+                  "position": 19,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -654,7 +659,7 @@
                 },
                 {
                   "name": "pending_gas_settlements",
-                  "position": 19,
+                  "position": 20,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -689,7 +694,7 @@
                 },
                 {
                   "name": "walks",
-                  "position": 20,
+                  "position": 21,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -705,42 +710,42 @@
                 },
                 {
                   "name": "active_walks",
-                  "position": 21,
-                  "ty": "U64"
-                },
-                {
-                  "name": "pending_abort_walks",
                   "position": 22,
                   "ty": "U64"
                 },
                 {
-                  "name": "pending_settlement_walks",
+                  "name": "pending_abort_walks",
                   "position": 23,
                   "ty": "U64"
                 },
                 {
-                  "name": "successful_walks",
+                  "name": "pending_settlement_walks",
                   "position": 24,
                   "ty": "U64"
                 },
                 {
-                  "name": "failed_walks",
+                  "name": "successful_walks",
                   "position": 25,
                   "ty": "U64"
                 },
                 {
-                  "name": "aborted_walks",
+                  "name": "failed_walks",
                   "position": 26,
                   "ty": "U64"
                 },
                 {
-                  "name": "consumed_walks",
+                  "name": "aborted_walks",
                   "position": 27,
                   "ty": "U64"
                 },
                 {
-                  "name": "cancelled_walks",
+                  "name": "consumed_walks",
                   "position": 28,
+                  "ty": "U64"
+                },
+                {
+                  "name": "cancelled_walks",
+                  "position": 29,
                   "ty": "U64"
                 }
               ]
@@ -3863,6 +3868,10 @@
             },
             {
               "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "protocol_release",
               "ty": "U64"
             },
             {
@@ -7026,6 +7035,10 @@
               "ty": "U64"
             },
             {
+              "name": "protocol_release",
+              "ty": "U64"
+            },
+            {
               "name": "network",
               "ty": {
                 "Datatype": {
@@ -7608,6 +7621,35 @@
           ]
         },
         {
+          "name": "payment_protocol_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "payment_ready_active_walks",
           "visibility": "Friend",
           "is_entry": false,
@@ -7962,6 +8004,35 @@
           ],
           "return_types": [
             "Bool"
+          ]
+        },
+        {
+          "name": "protocol_release",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
           ]
         },
         {
@@ -11037,6 +11108,10 @@
             },
             {
               "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "protocol_release",
               "ty": "U64"
             },
             {
@@ -14189,6 +14264,85 @@
         }
       ],
       "functions": [
+        {
+          "name": "decode_json_reason",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "reason_bytes",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "decode_reason",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "reason_bytes",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "terminal_err_eval_hash",
           "visibility": "Friend",

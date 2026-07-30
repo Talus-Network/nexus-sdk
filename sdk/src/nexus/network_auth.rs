@@ -25,7 +25,14 @@ use crate::signed_http::v2::wire::{
 };
 use {
     crate::{
-        move_bindings::registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth},
+        move_bindings::registry::network_auth::{
+            IdentityKey,
+            KeyBinding,
+            KeyBindingStateV1,
+            KeyRecord,
+            NetworkAuth,
+            NetworkAuthStateV1,
+        },
         nexus::{
             client::NexusClient,
             crawler::{Crawler, Response},
@@ -93,7 +100,7 @@ pub struct ActiveEd25519Key {
 
 /// A `KeyBinding` plus its validated active Ed25519 key, if one exists.
 pub struct ResolvedKeyBinding {
-    pub binding: Response<KeyBinding>,
+    pub binding: Response<KeyBindingStateV1>,
     pub active_key: Option<ActiveEd25519Key>,
 }
 
@@ -299,7 +306,7 @@ impl NetworkAuthActions {
             let binding = self
                 .client
                 .crawler()
-                .get_object::<KeyBinding>(binding_object_id)
+                .get_versioned_object::<KeyBinding, KeyBindingStateV1>(binding_object_id)
                 .await
                 .map_err(|e| {
                     NexusError::Rpc(anyhow::anyhow!(
@@ -370,7 +377,7 @@ impl NetworkAuthActions {
         let registry = self
             .client
             .crawler()
-            .get_object::<NetworkAuth>(network_auth_object_id)
+            .get_versioned_object::<NetworkAuth, NetworkAuthStateV1>(network_auth_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -438,7 +445,7 @@ impl NetworkAuthActions {
     async fn try_get_key_binding(
         &self,
         binding_object_id: sui::types::Address,
-    ) -> Result<Option<crate::nexus::crawler::Response<KeyBinding>>, NexusError> {
+    ) -> Result<Option<crate::nexus::crawler::Response<KeyBindingStateV1>>, NexusError> {
         try_get_key_binding_by_object_id(self.client.crawler(), binding_object_id).await
     }
 
@@ -454,7 +461,7 @@ impl NetworkAuthActions {
         let binding = self
             .client
             .crawler()
-            .get_object::<KeyBinding>(binding_object_id)
+            .get_versioned_object::<KeyBinding, KeyBindingStateV1>(binding_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -566,7 +573,7 @@ impl NetworkAuthReader {
     pub async fn try_get_key_binding(
         &self,
         identity: &IdentityKey,
-    ) -> Result<Option<Response<KeyBinding>>, NexusError> {
+    ) -> Result<Option<Response<KeyBindingStateV1>>, NexusError> {
         let binding_object_id = self.binding_object_id(identity)?;
         try_get_key_binding_by_object_id(&self.crawler, binding_object_id).await
     }
@@ -593,7 +600,7 @@ impl NetworkAuthReader {
     ) -> Result<Vec<sui::types::Address>, NexusError> {
         let registry = self
             .crawler
-            .get_object::<NetworkAuth>(self.network_auth_object_id)
+            .get_versioned_object::<NetworkAuth, NetworkAuthStateV1>(self.network_auth_object_id)
             .await
             .map_err(|e| {
                 NexusError::Rpc(anyhow::anyhow!(
@@ -689,8 +696,11 @@ impl NetworkAuthReader {
 async fn try_get_key_binding_by_object_id(
     crawler: &Crawler,
     binding_object_id: sui::types::Address,
-) -> Result<Option<Response<KeyBinding>>, NexusError> {
-    match crawler.get_object::<KeyBinding>(binding_object_id).await {
+) -> Result<Option<Response<KeyBindingStateV1>>, NexusError> {
+    match crawler
+        .get_versioned_object::<KeyBinding, KeyBindingStateV1>(binding_object_id)
+        .await
+    {
         Ok(binding) => Ok(Some(binding)),
         Err(e) if e.to_string().contains("not found") => Ok(None),
         Err(e) => Err(NexusError::Rpc(e)),
@@ -699,7 +709,7 @@ async fn try_get_key_binding_by_object_id(
 
 async fn try_get_active_ed25519_key(
     crawler: &Crawler,
-    binding: &Response<KeyBinding>,
+    binding: &Response<KeyBindingStateV1>,
 ) -> Result<Option<ActiveEd25519Key>, NexusError> {
     let Some(active_kid) = binding.data.active_key_id() else {
         return Ok(None);
@@ -958,12 +968,17 @@ mod tests {
             crate::{
                 move_bindings::{
                     registry::network_auth::KeyRecord,
-                    sui_framework::table::Table as MoveTable,
+                    sui_framework::{
+                        object::{ID, UID},
+                        table::Table as MoveTable,
+                        vec_set::VecSet,
+                        versioned::Versioned,
+                    },
                 },
                 test_utils::{nexus_mocks, sui_mocks},
             },
             serde::Serialize,
-            tonic::{Response, Status},
+            tonic::Response,
         };
 
         #[derive(Clone, Debug, Serialize)]
@@ -973,11 +988,44 @@ mod tests {
             value: V,
         }
 
+        fn state_id_for(anchor_id: sui::types::Address) -> sui::types::Address {
+            anchor_id.derive_dynamic_child_id(
+                &sui::types::TypeTag::U64,
+                &bcs::to_bytes(&u64::MAX).unwrap(),
+            )
+        }
+
         fn raw_network_auth_for_test(
             id: sui::types::Address,
             identities: Vec<IdentityKey>,
-        ) -> NetworkAuth {
-            NetworkAuth::new_for_test(id, identities)
+        ) -> (NetworkAuth, NetworkAuthStateV1, sui::types::Address) {
+            let state_id = state_id_for(id);
+            (
+                NetworkAuth::new(UID::new(id), Versioned::new(UID::new(state_id), 1)),
+                NetworkAuthStateV1::new(
+                    ID::new(sui::types::Address::ZERO),
+                    1,
+                    VecSet {
+                        contents: identities,
+                    },
+                ),
+                state_id,
+            )
+        }
+
+        fn raw_key_binding_for_test(
+            id: sui::types::Address,
+            identity: IdentityKey,
+            next_key_id: u64,
+            active_key_id: Option<u64>,
+            keys: MoveTable<u64, KeyRecord>,
+        ) -> (KeyBinding, KeyBindingStateV1, sui::types::Address) {
+            let state_id = state_id_for(id);
+            (
+                KeyBinding::new(UID::new(id), Versioned::new(UID::new(state_id), 1)),
+                KeyBindingStateV1::new_for_test(identity, None, next_key_id, active_key_id, keys),
+                state_id,
+            )
         }
 
         fn owner_immutable() -> sui::grpc::Owner {
@@ -1015,15 +1063,13 @@ mod tests {
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding::new_for_test(
-                sui::types::Address::from_static("0x222"),
+            let (binding, binding_state, binding_state_id) = raw_key_binding_for_test(
+                binding_object_id,
                 identity,
-                None,
                 active_kid + 1,
                 Some(active_kid),
                 MoveTable::new(key_table_id, 1),
             );
-            let binding_bytes = bcs::to_bytes(&binding).unwrap();
 
             let field_object_id = sui::types::Address::from_static("0x333");
             let field_value = DynamicFieldValueBcs {
@@ -1036,23 +1082,18 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            let binding_object_id_str = binding_object_id.to_string();
-            ledger_service
-                .expect_get_object()
-                .times(1)
-                .returning(move |request| {
-                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
-                    if requested_id != binding_object_id_str {
-                        return Err(Status::not_found(format!(
-                            "unexpected object id {requested_id}"
-                        )));
-                    }
-
-                    let object = object_with_contents(None, binding_bytes.clone());
-                    let mut response = sui::grpc::GetObjectResponse::default();
-                    response.object = Some(object);
-                    Ok(Response::new(response))
-                });
+            sui_mocks::grpc::mock_get_object_bcs(
+                &mut ledger_service,
+                sui_mocks::object_ref_for_id(binding_object_id),
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&binding).unwrap(),
+            );
+            sui_mocks::grpc::mock_versioned_payload(
+                &mut ledger_service,
+                binding_state_id,
+                1,
+                binding_state,
+            );
 
             sui_mocks::grpc::mock_list_dynamic_fields(
                 &mut state_service,
@@ -1095,25 +1136,22 @@ mod tests {
             let binding_object_id = codec.binding_object_id(&identity).unwrap();
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding::new_for_test(
-                sui::types::Address::from_static("0x222"),
+            let (binding, binding_state, binding_state_id) = raw_key_binding_for_test(
+                binding_object_id,
                 identity.clone(),
-                None,
                 active_kid + 1,
                 Some(active_kid),
                 MoveTable::new(key_table_id, 1),
             );
 
-            let network_auth = raw_network_auth_for_test(
-                network_auth_object_id,
-                vec![
-                    identity.clone(),
-                    IdentityKey::tool(sui::types::Address::from_static("0x42")),
-                ],
-            );
-
-            let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
-            let binding_bytes = bcs::to_bytes(&binding).unwrap();
+            let (network_auth, network_auth_state, network_auth_state_id) =
+                raw_network_auth_for_test(
+                    network_auth_object_id,
+                    vec![
+                        identity.clone(),
+                        IdentityKey::tool(sui::types::Address::from_static("0x42")),
+                    ],
+                );
 
             let field_object_id = sui::types::Address::from_static("0x333");
             let field_value = DynamicFieldValueBcs {
@@ -1126,27 +1164,30 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            let network_auth_object_id_str = network_auth_object_id.to_string();
-            let binding_object_id_str = binding_object_id.to_string();
-            ledger_service
-                .expect_get_object()
-                .times(2)
-                .returning(move |request| {
-                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
-                    let object = if requested_id == network_auth_object_id_str {
-                        object_with_contents(None, network_auth_bytes.clone())
-                    } else if requested_id == binding_object_id_str {
-                        object_with_contents(None, binding_bytes.clone())
-                    } else {
-                        return Err(Status::not_found(format!(
-                            "unexpected object id {requested_id}"
-                        )));
-                    };
-
-                    let mut response = sui::grpc::GetObjectResponse::default();
-                    response.object = Some(object);
-                    Ok(Response::new(response))
-                });
+            sui_mocks::grpc::mock_get_object_bcs(
+                &mut ledger_service,
+                sui_mocks::object_ref_for_id(network_auth_object_id),
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&network_auth).unwrap(),
+            );
+            sui_mocks::grpc::mock_versioned_payload(
+                &mut ledger_service,
+                network_auth_state_id,
+                1,
+                network_auth_state,
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                &mut ledger_service,
+                sui_mocks::object_ref_for_id(binding_object_id),
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&binding).unwrap(),
+            );
+            sui_mocks::grpc::mock_versioned_payload(
+                &mut ledger_service,
+                binding_state_id,
+                1,
+                binding_state,
+            );
 
             sui_mocks::grpc::mock_list_dynamic_fields(
                 &mut state_service,
@@ -1230,25 +1271,22 @@ mod tests {
             let record = KeyRecord::new_for_test(0, public_key.to_vec(), 0, None);
 
             let key_table_id = sui::types::Address::from_static("0x111");
-            let binding = KeyBinding::new_for_test(
-                sui::types::Address::from_static("0x222"),
+            let (binding, binding_state, binding_state_id) = raw_key_binding_for_test(
+                binding_object_id,
                 identity.clone(),
-                None,
                 active_kid + 1,
                 Some(active_kid),
                 MoveTable::new(key_table_id, 1),
             );
 
-            let network_auth = raw_network_auth_for_test(
-                network_auth_object_id,
-                vec![
-                    identity.clone(),
-                    IdentityKey::tool(sui::types::Address::from_static("0x42")),
-                ],
-            );
-
-            let network_auth_bytes = bcs::to_bytes(&network_auth).unwrap();
-            let binding_bytes = bcs::to_bytes(&binding).unwrap();
+            let (network_auth, network_auth_state, network_auth_state_id) =
+                raw_network_auth_for_test(
+                    network_auth_object_id,
+                    vec![
+                        identity.clone(),
+                        IdentityKey::tool(sui::types::Address::from_static("0x42")),
+                    ],
+                );
 
             let field_object_id = sui::types::Address::from_static("0x333");
             let field_value = DynamicFieldValueBcs {
@@ -1261,27 +1299,32 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            let network_auth_object_id_str = network_auth_object_id.to_string();
-            let binding_object_id_str = binding_object_id.to_string();
-            ledger_service
-                .expect_get_object()
-                .times(4)
-                .returning(move |request| {
-                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
-                    let object = if requested_id == network_auth_object_id_str {
-                        object_with_contents(None, network_auth_bytes.clone())
-                    } else if requested_id == binding_object_id_str {
-                        object_with_contents(None, binding_bytes.clone())
-                    } else {
-                        return Err(Status::not_found(format!(
-                            "unexpected object id {requested_id}"
-                        )));
-                    };
-
-                    let mut response = sui::grpc::GetObjectResponse::default();
-                    response.object = Some(object);
-                    Ok(Response::new(response))
-                });
+            for _ in 0..2 {
+                sui_mocks::grpc::mock_get_object_bcs(
+                    &mut ledger_service,
+                    sui_mocks::object_ref_for_id(network_auth_object_id),
+                    sui::types::Owner::Shared(1),
+                    bcs::to_bytes(&network_auth).unwrap(),
+                );
+                sui_mocks::grpc::mock_versioned_payload(
+                    &mut ledger_service,
+                    network_auth_state_id,
+                    1,
+                    network_auth_state.clone(),
+                );
+                sui_mocks::grpc::mock_get_object_bcs(
+                    &mut ledger_service,
+                    sui_mocks::object_ref_for_id(binding_object_id),
+                    sui::types::Owner::Shared(1),
+                    bcs::to_bytes(&binding).unwrap(),
+                );
+                sui_mocks::grpc::mock_versioned_payload(
+                    &mut ledger_service,
+                    binding_state_id,
+                    1,
+                    binding_state.clone(),
+                );
+            }
 
             state_service
                 .expect_list_dynamic_fields()
@@ -1324,7 +1367,8 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             );
-            nexus_objects.registry_pkg_id = registry_pkg_id;
+            nexus_objects.packages.registry.initial_id = registry_pkg_id;
+            nexus_objects.packages.registry.storage_id = registry_pkg_id;
 
             let client =
                 nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
@@ -1428,16 +1472,13 @@ mod tests {
             let record_0 = KeyRecord::new_for_test(0, vec![0xaau8; 32], 1000, Some(2000));
             let record_1 = KeyRecord::new_for_test(0, vec![0xbbu8; 32], 3000, None);
 
-            let binding = KeyBinding::new_for_test(
-                sui::types::Address::from_static("0x222"),
+            let (binding, binding_state, binding_state_id) = raw_key_binding_for_test(
+                binding_object_id,
                 identity.clone(),
-                None,
                 2,
                 Some(1),
                 MoveTable::new(key_table_id, 2),
             );
-
-            let binding_bytes = bcs::to_bytes(&binding).unwrap();
 
             let field_0_id = sui::types::Address::from_static("0x333");
             let field_1_id = sui::types::Address::from_static("0x444");
@@ -1458,24 +1499,19 @@ mod tests {
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
             let mut state_service = sui_mocks::grpc::MockStateService::new();
 
-            // get_object: returns the binding (called by try_get_key_binding).
-            let binding_object_id_str = binding_object_id.to_string();
-            ledger_service
-                .expect_get_object()
-                .times(1)
-                .returning(move |request| {
-                    let requested_id = request.get_ref().object_id.as_deref().unwrap_or_default();
-                    if requested_id == binding_object_id_str {
-                        let object = object_with_contents(None, binding_bytes.clone());
-                        let mut response = sui::grpc::GetObjectResponse::default();
-                        response.object = Some(object);
-                        Ok(Response::new(response))
-                    } else {
-                        Err(Status::not_found(format!(
-                            "unexpected object id {requested_id}"
-                        )))
-                    }
-                });
+            // get_object: returns the stable binding anchor and its versioned payload.
+            sui_mocks::grpc::mock_get_object_bcs(
+                &mut ledger_service,
+                sui_mocks::object_ref_for_id(binding_object_id),
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&binding).unwrap(),
+            );
+            sui_mocks::grpc::mock_versioned_payload(
+                &mut ledger_service,
+                binding_state_id,
+                1,
+                binding_state,
+            );
 
             // list_dynamic_fields: returns two field entries (kid=0 and kid=1).
             // Return kid=1 first to verify the sort.
@@ -1533,7 +1569,8 @@ mod tests {
                 1,
                 sui::types::Digest::generate(&mut rng),
             );
-            nexus_objects.registry_pkg_id = registry_pkg_id;
+            nexus_objects.packages.registry.initial_id = registry_pkg_id;
+            nexus_objects.packages.registry.storage_id = registry_pkg_id;
             nexus_objects.tool_registry = sui::types::ObjectReference::new(
                 tool_registry_id,
                 1,

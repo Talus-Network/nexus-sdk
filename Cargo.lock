@@ -9244,7 +9244,7 @@ dependencies = [
 [[package]]
 name = "sui-move"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#692805456ca5ef16afaf7ec3eae7d315bd84a1bb"
 dependencies = [
  "bcs",
  "ethnum",
@@ -9283,7 +9283,7 @@ dependencies = [
 [[package]]
 name = "sui-move-call"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#692805456ca5ef16afaf7ec3eae7d315bd84a1bb"
 dependencies = [
  "bcs",
  "serde",
@@ -9295,7 +9295,7 @@ dependencies = [
 [[package]]
 name = "sui-move-codegen"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#692805456ca5ef16afaf7ec3eae7d315bd84a1bb"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -9311,7 +9311,7 @@ dependencies = [
 [[package]]
 name = "sui-move-derive"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#692805456ca5ef16afaf7ec3eae7d315bd84a1bb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -9428,7 +9428,7 @@ dependencies = [
 [[package]]
 name = "sui-move-ptb"
 version = "0.1.0"
-source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#52b9f599a730d5c0a005b2ab1c8b788c14dfb001"
+source = "git+https://github.com/Talus-Network/move-binding?branch=chore%2Fupdate_sdk_version#692805456ca5ef16afaf7ec3eae7d315bd84a1bb"
 dependencies = [
  "sui-move",
  "sui-move-call",

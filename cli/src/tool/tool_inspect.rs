@@ -10,7 +10,7 @@ use {
     },
     nexus_sdk::{
         nexus::tool::ToolInspection,
-        types::{Tool, ToolRef},
+        types::{ToolRef, ToolStateV1},
     },
 };
 
@@ -36,7 +36,7 @@ pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
 pub(crate) fn inspect_tool_result_json(
     inspection: &ToolInspection,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
-    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(Tool::reference))?;
+    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolStateV1::reference))?;
 
     Ok(json!({
         "tool_id": inspection.tool_id,
@@ -183,7 +183,7 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
     Ok(())
 }
 
-fn print_tool_reference(tool: &Tool) -> AnyResult<(), NexusCliError> {
+fn print_tool_reference(tool: &ToolStateV1) -> AnyResult<(), NexusCliError> {
     match &tool.r#ref {
         ToolRef::Http { .. } => {
             let url = tool

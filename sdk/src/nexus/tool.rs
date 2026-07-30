@@ -19,7 +19,7 @@ use {
         },
         sui,
         transactions::tool,
-        types::{Tool, ToolRef},
+        types::{Tool, ToolRef, ToolStateV1},
         ToolFqn,
     },
     std::time::Duration,
@@ -44,7 +44,7 @@ pub struct ToolInspection {
     pub tool_id: sui::types::Address,
     pub tool_gas_id: sui::types::Address,
     pub exists: bool,
-    pub tool: Option<Tool>,
+    pub tool: Option<ToolStateV1>,
     pub verifier_support: Option<ToolVerifierSupport>,
     pub external_verifier: Option<ExternalVerifierRecord>,
 }
@@ -237,7 +237,7 @@ impl ToolActions {
         }
 
         let tool = crawler
-            .get_object::<Tool>(tool_id)
+            .get_versioned_object::<Tool, ToolStateV1>(tool_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -296,10 +296,20 @@ mod tests {
             move_bindings::{
                 move_std::{ascii, option::Option as MoveOption},
                 registry::{
-                    tool_registry::ToolRegistry,
-                    verifier_registry::{ExternalVerifierRecord, VerifierRegistry},
+                    tool_registry::{ToolRegistry, ToolRegistryStateV1},
+                    verifier_registry::{
+                        ExternalVerifierRecord,
+                        VerifierRegistry,
+                        VerifierRegistryStateV1,
+                    },
                 },
-                sui_framework::{self, linked_table::LinkedTable, table::Table},
+                sui_framework::{
+                    self,
+                    linked_table::LinkedTable,
+                    object::{ID, UID},
+                    table::Table,
+                    versioned::Versioned,
+                },
             },
             test_utils::{nexus_mocks, sui_mocks},
         },
@@ -359,9 +369,9 @@ mod tests {
         fixture: &InspectionFixture,
         reference: ToolRef,
         workflow_authorization_cap_first: bool,
-    ) -> Tool {
-        Tool {
-            id: crate::move_bindings::sui_framework::object::UID::new(fixture.tool_id),
+    ) -> ToolStateV1 {
+        ToolStateV1 {
+            release_floor: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 *fixture.nexus_objects.tool_registry.object_id(),
             ),
@@ -386,14 +396,17 @@ mod tests {
         ledger_service: &mut sui_mocks::grpc::MockLedgerService,
         fixture: &InspectionFixture,
     ) {
-        use crate::move_bindings::{
-            interface::verifier::ToolVerifierSupport,
-            sui_framework::object::ID,
-        };
+        use crate::move_bindings::interface::verifier::ToolVerifierSupport;
 
         let id = sui::types::Address::from_static;
+        let tool_registry_state_id = id("0x109");
         let tool_registry = ToolRegistry::new(
-            sui_framework::object::UID::new(*fixture.nexus_objects.tool_registry.object_id()),
+            UID::new(*fixture.nexus_objects.tool_registry.object_id()),
+            Versioned::new(UID::new(tool_registry_state_id), 1),
+        );
+        let tool_registry_state = ToolRegistryStateV1::new(
+            ID::new(sui::types::Address::ZERO),
+            1,
             LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
             Table::<ID, bool>::new(id("0x102"), 0),
             LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
@@ -403,9 +416,15 @@ mod tests {
             0,
             0,
         );
+        let verifier_registry_state_id = id("0x10a");
         let verifier_registry = VerifierRegistry::new(
-            sui_framework::object::UID::new(*fixture.nexus_objects.verifier_registry.object_id()),
-            sui_framework::object::UID::new(id("0x107")),
+            UID::new(*fixture.nexus_objects.verifier_registry.object_id()),
+            Versioned::new(UID::new(verifier_registry_state_id), 1),
+        );
+        let verifier_registry_state = VerifierRegistryStateV1::new(
+            ID::new(sui::types::Address::ZERO),
+            1,
+            UID::new(id("0x107")),
             Table::<ID, ExternalVerifierRecord>::new(id("0x108"), 0),
         );
         sui_mocks::grpc::mock_get_object_bcs(
@@ -414,11 +433,23 @@ mod tests {
             sui::types::Owner::Shared(fixture.nexus_objects.tool_registry.version()),
             bcs::to_bytes(&tool_registry).unwrap(),
         );
+        sui_mocks::grpc::mock_versioned_payload(
+            ledger_service,
+            tool_registry_state_id,
+            1,
+            tool_registry_state,
+        );
         sui_mocks::grpc::mock_get_object_bcs(
             ledger_service,
             fixture.nexus_objects.verifier_registry.clone(),
             sui::types::Owner::Shared(fixture.nexus_objects.verifier_registry.version()),
             bcs::to_bytes(&verifier_registry).unwrap(),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            ledger_service,
+            verifier_registry_state_id,
+            1,
+            verifier_registry_state,
         );
     }
 
@@ -519,12 +550,16 @@ mod tests {
             7,
             sui::types::Digest::from([4u8; 32]),
         );
-        let tool = fixture_tool(
+        let tool_state = fixture_tool(
             &fixture,
             sui_tool_ref(package_address, module_name.clone(), tool_witness_id),
             true,
         );
-        let tool_bcs = bcs::to_bytes(&tool).expect("Tool serializes to BCS");
+        let tool_state_id = sui::types::Address::from_static("0x2010");
+        let tool = Tool::new(
+            UID::new(fixture.tool_id),
+            Versioned::new(UID::new(tool_state_id), 1),
+        );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -544,7 +579,13 @@ mod tests {
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_bcs,
+            bcs::to_bytes(&tool).expect("Tool anchor serializes to BCS"),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            &mut ledger_service_mock,
+            tool_state_id,
+            1,
+            tool_state,
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
@@ -632,7 +673,7 @@ mod tests {
             11,
             sui::types::Digest::from([8u8; 32]),
         );
-        let http_tool = fixture_tool(
+        let http_tool_state = fixture_tool(
             &fixture,
             ToolRef::Http {
                 _variant_name: ascii("Http"),
@@ -640,7 +681,11 @@ mod tests {
             },
             false,
         );
-        let tool_bcs = bcs::to_bytes(&http_tool).expect("Tool serializes to BCS");
+        let tool_state_id = sui::types::Address::from_static("0x2020");
+        let http_tool = Tool::new(
+            UID::new(fixture.tool_id),
+            Versioned::new(UID::new(tool_state_id), 1),
+        );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -660,7 +705,13 @@ mod tests {
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_bcs,
+            bcs::to_bytes(&http_tool).expect("Tool anchor serializes to BCS"),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            &mut ledger_service_mock,
+            tool_state_id,
+            1,
+            http_tool_state,
         );
         mock_empty_verifier_state(&mut ledger_service_mock, &fixture);
 

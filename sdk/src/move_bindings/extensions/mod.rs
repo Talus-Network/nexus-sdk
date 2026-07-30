@@ -15,4 +15,7 @@ mod runtime_vertex;
 mod shared_object_ref;
 mod support;
 mod tap;
+mod versioned;
 mod workflow;
+
+pub use versioned::VersionedAnchor;

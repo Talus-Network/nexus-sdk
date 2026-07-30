@@ -1,6 +1,7 @@
 mod dag;
-mod nexus_objects;
+pub(crate) mod nexus_objects;
 mod priority_fee;
+mod release;
 mod secret;
 mod secret_value;
 mod tap;
@@ -12,10 +13,11 @@ pub use {
     dag::*,
     nexus_objects::{NexusObjects, UsTokenConfig},
     priority_fee::{PriorityFeeSuiDrainQuote, PriorityFeeWithdrawalQuote},
+    release::{DatatypeKey, NexusPackages, PackageRelease, TypeOrigins},
     secret::Secret,
     secret_value::SecretValue,
     tap::*,
-    tool::{OnchainToolMode, Tool, ToolRef},
+    tool::{OnchainToolMode, Tool, ToolRef, ToolStateV1},
     tool_meta::ToolMeta,
     workflow_models::{ExecutionTerminalRecord, ExternalVerifierRuntimeCall, RequestWalkContext},
 };

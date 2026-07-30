@@ -1,8 +1,20 @@
 use crate::{
     move_bindings::{
         move_std::option::Option as MoveOption,
-        registry::network_auth::{IdentityKey, KeyBinding, KeyRecord, NetworkAuth},
-        sui_framework::{object::UID, table::Table as MoveTable, vec_set::VecSet},
+        registry::network_auth::{
+            IdentityKey,
+            KeyBinding,
+            KeyBindingStateV1,
+            KeyRecord,
+            NetworkAuth,
+            NetworkAuthStateV1,
+        },
+        sui_framework::{
+            object::{ID, UID},
+            table::Table as MoveTable,
+            vec_set::VecSet,
+            versioned::Versioned,
+        },
     },
     nexus::{client::NexusClient, network_auth::NetworkAuthReader},
     sui,
@@ -62,15 +74,26 @@ pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
         .binding_object_id(&identity)
         .expect("leader binding id");
     let key_table_id = sui::types::Address::from_static("0x72");
+    let network_auth_state_id = sui::types::Address::from_static("0x73");
+    let binding_state_id = sui::types::Address::from_static("0x74");
     let active_kid = 0;
     let network_auth = NetworkAuth::new(
         UID::new(network_auth_id),
+        Versioned::new(UID::new(network_auth_state_id), 1),
+    );
+    let network_auth_state = NetworkAuthStateV1::new(
+        ID::new(sui::types::Address::ZERO),
+        1,
         VecSet {
             contents: vec![identity.clone()],
         },
     );
     let binding = KeyBinding::new(
         UID::new(binding_id),
+        Versioned::new(UID::new(binding_state_id), 1),
+    );
+    let binding_state = KeyBindingStateV1::new(
+        1,
         identity,
         MoveOption::from_option(None::<Vec<u8>>),
         1,
@@ -88,12 +111,24 @@ pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
         &network_auth,
         crate::move_bindings::struct_tag::<NetworkAuth>(&nexus_objects),
     );
+    sui_mocks::grpc::mock_versioned_payload(
+        &mut ledger_service,
+        network_auth_state_id,
+        1,
+        network_auth_state,
+    );
     sui_mocks::grpc::mock_get_object_value_bcs_for(
         &mut ledger_service,
         sui_mocks::object_ref_for_id(binding_id),
         sui::types::Owner::Shared(1),
         &binding,
         crate::move_bindings::struct_tag::<KeyBinding>(&nexus_objects),
+    );
+    sui_mocks::grpc::mock_versioned_payload(
+        &mut ledger_service,
+        binding_state_id,
+        1,
+        binding_state,
     );
     sui_mocks::grpc::mock_list_dynamic_fields(
         &mut state_service,

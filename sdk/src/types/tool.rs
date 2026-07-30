@@ -5,7 +5,7 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool, ToolRef};
+pub use tool_registry::{Tool, ToolRef, ToolStateV1};
 use {
     crate::{
         move_bindings::{move_std::ascii, registry::tool_registry},
@@ -37,7 +37,9 @@ impl Tool {
     pub fn object_id(&self) -> sui::types::Address {
         self.id.address()
     }
+}
 
+impl ToolStateV1 {
     pub fn registry_id(&self) -> sui::types::Address {
         self.registry.address()
     }
@@ -202,9 +204,13 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool(reference: ToolRef, input_schema: Vec<u8>, output_schema: Vec<u8>) -> Tool {
-        Tool {
-            id: crate::move_bindings::sui_framework::object::UID::new(sui_mocks::mock_sui_address()),
+    fn fixture_tool(
+        reference: ToolRef,
+        input_schema: Vec<u8>,
+        output_schema: Vec<u8>,
+    ) -> ToolStateV1 {
+        ToolStateV1 {
+            release_floor: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 sui_mocks::mock_sui_address(),
             ),
@@ -256,7 +262,8 @@ mod tests {
         );
 
         let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
-        let decoded: Tool = bcs::from_bytes(&bytes).expect("generated Tool deserializes as BCS");
+        let decoded: ToolStateV1 =
+            bcs::from_bytes(&bytes).expect("generated Tool state deserializes as BCS");
 
         assert_eq!(
             decoded.fqn_string().unwrap(),

@@ -2,7 +2,7 @@
 
 use crate::{
     events::NexusEventKind,
-    move_bindings::registry::priority_fee_vault::PriorityFeeVault,
+    move_bindings::registry::priority_fee_vault::{PriorityFeeVault, PriorityFeeVaultStateV1},
     nexus::{client::NexusClient, error::NexusError},
     sui,
     transactions::gas,
@@ -62,10 +62,12 @@ pub struct GasActions {
 
 impl GasActions {
     /// Fetch and decode the priority fee vault state.
-    pub async fn fetch_priority_fee_vault_state(&self) -> Result<PriorityFeeVault, NexusError> {
+    pub async fn fetch_priority_fee_vault_state(
+        &self,
+    ) -> Result<PriorityFeeVaultStateV1, NexusError> {
         self.client
             .crawler()
-            .get_object::<PriorityFeeVault>(
+            .get_versioned_object::<PriorityFeeVault, PriorityFeeVaultStateV1>(
                 *self.client.nexus_objects.priority_fee_vault.object_id(),
             )
             .await
@@ -455,12 +457,17 @@ mod tests {
             fqn,
             move_bindings::{
                 primitives::{data::NexusData, event::EventWrapper},
-                registry::priority_fee_vault::{PriorityFeeSwapEvent, PriorityFeeVault},
+                registry::priority_fee_vault::{
+                    PriorityFeeSwapEvent,
+                    PriorityFeeVault,
+                    PriorityFeeVaultStateV1,
+                },
                 sui_framework::{
                     balance::Balance,
                     object::{ID, UID},
                     sui::SUI,
                     vec_map::VecMap,
+                    versioned::Versioned,
                 },
                 talus::us::US,
             },
@@ -489,7 +496,7 @@ mod tests {
         );
 
         sui_mocks::mock_sui_event(
-            objects.registry_pkg_id,
+            objects.registry_pkg_id(),
             wrapper,
             bcs::to_bytes(&Wrapper { event }).expect("serialize priority fee swap event"),
         )
@@ -984,8 +991,14 @@ mod tests {
     async fn test_gas_actions_drain_priority_fee_vault_sui_rejects_empty_vault() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let state_id = sui::types::Address::from_static("0x98");
         let vault = PriorityFeeVault::new(
             UID::new(*nexus_objects.priority_fee_vault.object_id()),
+            Versioned::new(UID::new(state_id), 1),
+        );
+        let vault_state = PriorityFeeVaultStateV1::new(
+            ID::new(sui::types::Address::ZERO),
+            1,
             Balance::<SUI>::new(0),
             Balance::<US>::new(0),
             10,
@@ -1000,6 +1013,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&vault).expect("serialize generated empty priority fee vault"),
         );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, vault_state);
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),

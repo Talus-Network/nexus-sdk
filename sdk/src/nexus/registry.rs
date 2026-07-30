@@ -7,9 +7,13 @@ use {
             primitives,
             registry::{
                 self,
-                leader::LeaderRegistry,
-                tool_registry::ToolRegistry,
-                verifier_registry::{ExternalVerifierRecord, VerifierRegistry},
+                leader::LeaderRegistryStateV1,
+                tool_registry::{ToolRegistry, ToolRegistryStateV1},
+                verifier_registry::{
+                    ExternalVerifierRecord,
+                    VerifierRegistry,
+                    VerifierRegistryStateV1,
+                },
             },
             sui_framework::object::ID,
         },
@@ -25,11 +29,11 @@ use {
 type AnyCloneableOwnerCap =
     primitives::owner_cap::CloneableOwnerCap<registry::leader_cap::OverNetwork>;
 
-/// Decode the registry network ID from a published `LeaderRegistry` Move object.
+/// Decode the registry network ID from a loaded leader registry payload.
 pub fn extract_network_id_from_leader_registry(
-    leader_registry_object: &sui::types::Object,
-) -> anyhow::Result<sui::types::Address> {
-    LeaderRegistry::from_object(leader_registry_object).map(|registry| registry.network_id())
+    state: &LeaderRegistryStateV1,
+) -> sui::types::Address {
+    state.network_id()
 }
 
 pub async fn find_owned_capability_by_what_for(
@@ -98,7 +102,7 @@ pub async fn fetch_current_tool_registration(
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<CurrentToolRegistration>> {
     let registry = crawler
-        .get_object::<ToolRegistry>(*registry_ref.object_id())
+        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id())
         .await?;
 
     if registry.data.registered_tools.size() == 0 {
@@ -135,7 +139,9 @@ pub async fn fetch_external_verifier_record(
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<ExternalVerifierRecord>> {
     let registry = crawler
-        .get_object::<VerifierRegistry>(*registry_ref.object_id())
+        .get_versioned_object::<VerifierRegistry, VerifierRegistryStateV1>(
+            *registry_ref.object_id(),
+        )
         .await?;
     if registry.data.external_methods.size() == 0 {
         return Ok(None);
@@ -490,7 +496,12 @@ mod tests {
         crate::{
             move_bindings::{
                 move_std::ascii,
-                sui_framework::{linked_table::LinkedTable, object::UID, table::Table},
+                sui_framework::{
+                    linked_table::LinkedTable,
+                    object::UID,
+                    table::Table,
+                    versioned::Versioned,
+                },
             },
             test_utils::sui_mocks,
         },
@@ -505,30 +516,7 @@ mod tests {
 
     fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
         let object_id = sui::types::Address::generate(rand::thread_rng());
-        bcs::to_bytes(&LeaderRegistry::new_for_test(object_id, network)).unwrap()
-    }
-
-    fn leader_registry_object(network: sui::types::Address) -> sui::types::Object {
-        let contents = sample_leader_registry_bytes(network);
-        let move_struct = sui::types::MoveStruct::new(
-            sui::types::StructTag::new(
-                sui::types::Address::from_static("0x1"),
-                sui::types::Identifier::from_static("leader"),
-                sui::types::Identifier::from_static("LeaderRegistry"),
-                vec![],
-            ),
-            true,
-            0,
-            contents,
-        )
-        .expect("leader registry contents should include an object id");
-
-        sui::types::Object::new(
-            sui::types::ObjectData::Struct(move_struct),
-            sui::types::Owner::Address(sui::types::Address::ZERO),
-            sui::types::Digest::generate(rand::thread_rng()),
-            0,
-        )
+        bcs::to_bytes(&LeaderRegistryStateV1::new_for_test(object_id, network)).unwrap()
     }
 
     fn owned_capability_object(
@@ -691,9 +679,10 @@ mod tests {
     #[test]
     fn extracts_network_id_from_leader_registry_object_contents() {
         let network = sui::types::Address::generate(rand::thread_rng());
-        let object = leader_registry_object(network);
+        let state: LeaderRegistryStateV1 =
+            bcs::from_bytes(&sample_leader_registry_bytes(network)).unwrap();
 
-        let decoded = extract_network_id_from_leader_registry(&object).unwrap();
+        let decoded = extract_network_id_from_leader_registry(&state);
 
         assert_eq!(decoded, network);
     }
@@ -702,10 +691,11 @@ mod tests {
         registry_id: sui::types::Address,
         registered_tools_id: sui::types::Address,
         registered_tools_size: u64,
-    ) -> ToolRegistry {
+    ) -> ToolRegistryStateV1 {
         let id = sui::types::Address::from_static;
-        ToolRegistry::new(
-            UID::new(registry_id),
+        ToolRegistryStateV1::new(
+            ID::new(registry_id),
+            1,
             LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
             Table::<ID, bool>::new(registered_tools_id, registered_tools_size),
             LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
@@ -728,10 +718,15 @@ mod tests {
         let registry_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x201"));
         let registered_tools_id = sui::types::Address::from_static("0x202");
         let tool_id = sui::types::Address::from_static("0x203");
-        let registry = tool_registry_fixture(
+        let registry_state = tool_registry_fixture(
             *registry_ref.object_id(),
             registered_tools_id,
             u64::from(registered),
+        );
+        let state_id = sui::types::Address::from_static("0x205");
+        let registry = ToolRegistry::new(
+            UID::new(*registry_ref.object_id()),
+            Versioned::new(UID::new(state_id), 1),
         );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -740,6 +735,12 @@ mod tests {
             registry_ref.clone(),
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&registry).unwrap(),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            &mut ledger_service_mock,
+            state_id,
+            1,
+            registry_state,
         );
 
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
@@ -797,8 +798,14 @@ mod tests {
         let tool_id = sui::types::Address::from_static("0x304");
         let witness = sui::types::Address::from_static("0x305");
         let config = sui::types::Address::from_static("0x306");
+        let state_id = sui::types::Address::from_static("0x308");
         let registry = VerifierRegistry::new(
             UID::new(*registry_ref.object_id()),
+            Versioned::new(UID::new(state_id), 1),
+        );
+        let registry_state = VerifierRegistryStateV1::new(
+            ID::new(sui::types::Address::ZERO),
+            1,
             UID::new(sui::types::Address::from_static("0x307")),
             Table::<ID, ExternalVerifierRecord>::new(methods_table_id, 1),
         );
@@ -811,6 +818,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&registry).unwrap(),
         );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 1, registry_state);
         sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
             &mut ledger_service,
             vec![(

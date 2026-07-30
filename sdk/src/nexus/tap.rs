@@ -9,13 +9,20 @@ use {
         events::NexusEventKind,
         move_bindings::{
             interface::{
-                agent::{Agent, AgentPaymentVault, AgentVaultFieldKey, SkillRequirement},
+                agent::{
+                    Agent,
+                    AgentPaymentVault,
+                    AgentPaymentVaultStateV1,
+                    AgentVaultFieldKey,
+                    SkillRequirement,
+                },
                 payment::{ExecutionPayment, ExecutionPaymentFinalState},
                 version::InterfaceVersion,
             },
             registry::agent_registry::{
                 AgentRecord,
                 AgentRegistry,
+                AgentRegistryStateV1,
                 DefaultDagExecutor,
                 DefaultDagExecutorFieldKey,
                 SkillRecord,
@@ -731,7 +738,9 @@ async fn fetch_agent_registry_tables(
     crawler: &Crawler,
     registry_id: sui::types::Address,
 ) -> anyhow::Result<Response<AgentRegistrySnapshot>> {
-    let raw = crawler.get_object::<AgentRegistry>(registry_id).await?;
+    let raw = crawler
+        .get_versioned_object::<AgentRegistry, AgentRegistryStateV1>(registry_id)
+        .await?;
     let agent_records = crawler
         .get_dynamic_fields::<sui::types::Address, AgentRecord>(
             raw.data.agents.id(),
@@ -762,7 +771,7 @@ async fn fetch_agent_registry_tables(
         digest: raw.digest,
         balance: raw.balance,
         data: AgentRegistrySnapshot {
-            id: raw.data.id.into(),
+            id: raw.object_id,
             agents,
             skills,
             default_executor: None,
@@ -770,7 +779,7 @@ async fn fetch_agent_registry_tables(
     })
 }
 
-async fn fetch_default_dag_executor(
+pub(crate) async fn fetch_default_dag_executor(
     crawler: &Crawler,
     registry_id: sui::types::Address,
 ) -> anyhow::Result<Option<DefaultDagExecutor>> {
@@ -974,21 +983,24 @@ pub async fn fetch_execution_payment_for_execution(
 pub async fn fetch_agent_payment_vault(
     crawler: &Crawler,
     vault_id: sui::types::Address,
-) -> anyhow::Result<Response<AgentPaymentVault>> {
-    crawler.get_object::<AgentPaymentVault>(vault_id).await
+) -> anyhow::Result<Response<AgentPaymentVaultStateV1>> {
+    crawler
+        .get_versioned_object::<AgentPaymentVault, AgentPaymentVaultStateV1>(vault_id)
+        .await
 }
 
 /// Fetch the standard Talus agent payment vault stored as a child of the agent object.
 pub async fn fetch_agent_payment_vault_for_agent(
     crawler: &Crawler,
     agent_id: AgentId,
-) -> anyhow::Result<Response<AgentPaymentVault>> {
-    crawler
+) -> anyhow::Result<Response<AgentPaymentVaultStateV1>> {
+    let anchor = crawler
         .get_dynamic_object_field::<AgentVaultFieldKey, AgentPaymentVault>(
             agent_id,
             AgentVaultFieldKey::default(),
         )
-        .await
+        .await?;
+    crawler.load_versioned_payload(anchor).await
 }
 
 /// Resolve a fresh execution skill revision from already fetched records.
@@ -1025,6 +1037,7 @@ mod tests {
                     agent::{
                         self as agent_binding,
                         Agent,
+                        AgentPaymentVaultStateV1,
                         SkillDagBinding,
                         SkillRequirement,
                         SkillSchedulePolicy,
@@ -1037,11 +1050,16 @@ mod tests {
                     self as agent_registry_binding,
                     AgentRecord,
                     AgentRegistry,
+                    AgentRegistryStateV1,
                     DefaultDagExecutor,
                     DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
-                sui_framework::{table::Table as MoveTable, transfer as transfer_binding},
+                sui_framework::{
+                    table::Table as MoveTable,
+                    transfer as transfer_binding,
+                    versioned::Versioned,
+                },
             },
             test_utils::{nexus_mocks, sui_mocks},
             types::{
@@ -1182,7 +1200,7 @@ mod tests {
                 },
             }],
             default_executor: Some(DefaultDagExecutor {
-                agent: Agent::from_ids(agent, 1, Some(sui::types::Address::from_static("0xf"))),
+                agent: Agent::from_anchor(agent, sui::types::Address::from_static("0xe"), 1),
                 skill_id,
             }),
         }
@@ -1191,6 +1209,8 @@ mod tests {
     #[derive(Clone)]
     struct RegistryObjectMock {
         registry_object: AgentRegistry,
+        registry_state: AgentRegistryStateV1,
+        registry_state_id: sui::types::Address,
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
         default_executor_field_ref: Option<sui::types::ObjectReference>,
@@ -1200,7 +1220,10 @@ mod tests {
         skill_revision_record: SkillRevisionContext,
     }
 
-    fn registry_object_mock(registry: &AgentRegistrySnapshot) -> RegistryObjectMock {
+    fn registry_object_mock(
+        registry: &AgentRegistrySnapshot,
+        registry_id: sui::types::Address,
+    ) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
         let agent = registry.agents[0].clone();
@@ -1216,12 +1239,22 @@ mod tests {
             .as_ref()
             .map(|_| sui_mocks::mock_sui_object_ref());
         let default_executor_value = registry.default_executor.clone();
+        let registry_state_id = sui::types::Address::from_static("0x9001");
 
         RegistryObjectMock {
-            registry_object: AgentRegistry {
-                id: crate::move_bindings::sui_framework::object::UID::new(registry.id),
-                agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-            },
+            registry_object: AgentRegistry::new(
+                crate::move_bindings::sui_framework::object::UID::new(registry_id),
+                Versioned::new(
+                    crate::move_bindings::sui_framework::object::UID::new(registry_state_id),
+                    1,
+                ),
+            ),
+            registry_state: AgentRegistryStateV1::new(
+                crate::move_bindings::sui_framework::object::ID::new(sui::types::Address::ZERO),
+                1,
+                MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
+            ),
+            registry_state_id,
             agent_field_ref,
             skill_field_ref,
             default_executor_field_ref,
@@ -1239,13 +1272,19 @@ mod tests {
         registry_ref: sui::types::ObjectReference,
         registry: &AgentRegistrySnapshot,
     ) -> RegistryObjectMock {
-        let mock = registry_object_mock(registry);
+        let mock = registry_object_mock(registry, *registry_ref.object_id());
         sui_mocks::grpc::mock_get_object_bcs_for(
             ledger_service_mock,
             registry_ref,
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
             crate::move_bindings::struct_tag::<AgentRegistry>(nexus_objects),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            ledger_service_mock,
+            mock.registry_state_id,
+            1,
+            mock.registry_state.clone(),
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
@@ -1550,7 +1589,7 @@ mod tests {
         );
 
         sui_mocks::mock_sui_event(
-            objects.primitives_pkg_id,
+            objects.primitives_pkg_id(),
             event_wrapper_tag(objects, inner),
             bytes,
         )
@@ -2087,6 +2126,7 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
+            protocol_release: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xa"),
@@ -2174,8 +2214,16 @@ mod tests {
         let vault_id = sui::types::Address::from_static("0xb");
         let field_id = sui::types::Address::from_static("0xc");
         let vault_ref = sui_mocks::object_ref_for_id(vault_id);
-        let vault = AgentPaymentVault {
-            id: crate::move_bindings::sui_framework::object::UID::new(vault_id),
+        let state_id = sui::types::Address::from_static("0xd");
+        let vault = AgentPaymentVault::new(
+            crate::move_bindings::sui_framework::object::UID::new(vault_id),
+            Versioned::new(
+                crate::move_bindings::sui_framework::object::UID::new(state_id),
+                1,
+            ),
+        );
+        let vault_state = AgentPaymentVaultStateV1 {
+            release_floor: 1,
             agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
             available_balance: crate::move_bindings::sui_framework::balance::Balance {
                 value: 10,
@@ -2198,6 +2246,7 @@ mod tests {
                 crate::move_bindings::struct_tag::<AgentPaymentVault>(&nexus_objects),
             )],
         );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, vault_state);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             state_service_mock: Some(state_service_mock),
@@ -2219,6 +2268,7 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
+            protocol_release: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
             skill_id: 11,

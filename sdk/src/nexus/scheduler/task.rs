@@ -6,8 +6,8 @@ use {
                 FailureMode as MoveFailureMode,
                 OccurrenceRecord,
                 OccurrenceRecordKey,
-                Task as MoveTask,
                 TaskController as MoveTaskController,
+                TaskStateV1 as MoveTaskStateV1,
                 TaskStatus as MoveTaskStatus,
             },
             workflow::execution::DAGExecution,
@@ -301,17 +301,9 @@ impl TaskHandle {
 }
 
 fn task_snapshot(
-    task: &crate::nexus::crawler::Response<MoveTask>,
+    task: &crate::nexus::crawler::Response<MoveTaskStateV1>,
 ) -> Result<TaskSnapshot, SchedulerError> {
-    let task_id = task.data.id.id.bytes;
-    if task_id != task.object_id {
-        return Err(SchedulerError::InconsistentChainState {
-            message: format!(
-                "Task object '{}' contains embedded identity '{task_id}'",
-                task.object_id
-            ),
-        });
-    }
+    let task_id = task.object_id;
     let controller = match task.data.controller {
         MoveTaskController::Address { pos0 } => TaskController::Address { address: pos0 },
         MoveTaskController::Agent { pos0 } => TaskController::Agent {
