@@ -58,11 +58,11 @@ impl PriorityFeeVaultStateV1 {
     }
 
     pub fn quote_sui_drain(&self) -> Option<PriorityFeeSuiDrainQuote> {
-        if self.exchange_rate_sui_us == 0 || self.sui_balance.value == 0 {
+        if self.exchange_rate_million_mists_us == 0 || self.sui_balance.value == 0 {
             return None;
         }
         Some(PriorityFeeSuiDrainQuote {
-            exchange_rate_sui_us: self.exchange_rate_sui_us,
+            exchange_rate_million_mists_us: self.exchange_rate_million_mists_us,
             sui_out: self.sui_balance.value,
         })
     }
@@ -86,7 +86,7 @@ mod tests {
     fn vault(
         sui_balance: u64,
         us_balance: u64,
-        exchange_rate_sui_us: u64,
+        exchange_rate_million_mists_us: u64,
         total_share: u64,
     ) -> PriorityFeeVaultStateV1 {
         PriorityFeeVaultStateV1::new(
@@ -94,7 +94,7 @@ mod tests {
             1,
             Balance::<SUI>::new(sui_balance),
             Balance::<US>::new(us_balance),
-            exchange_rate_sui_us,
+            exchange_rate_million_mists_us,
             total_share,
             VecMap::new(vec![Entry::new(
                 ID::new(sui::types::Address::from_static("0x42")),
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(
             vault(123, 0, 10, 123).quote_sui_drain(),
             Some(PriorityFeeSuiDrainQuote {
-                exchange_rate_sui_us: 10,
+                exchange_rate_million_mists_us: 10,
                 sui_out: 123,
             })
         );

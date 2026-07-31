@@ -11491,7 +11491,7 @@
                   }
                 },
                 {
-                  "name": "exchange_rate_sui_us",
+                  "name": "exchange_rate_million_mists_us",
                   "position": 1,
                   "ty": "U64"
                 }
@@ -11632,7 +11632,7 @@
                   }
                 },
                 {
-                  "name": "exchange_rate_sui_us",
+                  "name": "exchange_rate_million_mists_us",
                   "position": 4,
                   "ty": "U64"
                 },
@@ -11832,7 +11832,7 @@
               }
             },
             {
-              "name": "exchange_rate_sui_us",
+              "name": "exchange_rate_million_mists_us",
               "ty": "U64"
             }
           ],
@@ -11983,7 +11983,7 @@
           "return_types": []
         },
         {
-          "name": "exchange_rate_sui_us",
+          "name": "exchange_rate_million_mists_us",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

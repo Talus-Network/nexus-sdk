@@ -47,7 +47,7 @@ pub struct SwapUsForSuiResult {
 #[derive(Debug)]
 pub struct DrainPriorityFeeVaultSuiResult {
     pub tx_digest: sui::types::Digest,
-    pub exchange_rate_sui_us: u64,
+    pub exchange_rate_million_mists_us: u64,
     pub sui_balance_before: u64,
     pub min_sui_out: u64,
 }
@@ -111,11 +111,11 @@ impl GasActions {
     /// Configure the priority fee vault exchange rate.
     pub async fn configure_priority_fee_vault(
         &self,
-        exchange_rate_sui_us: u64,
+        exchange_rate_million_mists_us: u64,
     ) -> Result<ConfigurePriorityFeeVaultResult, NexusError> {
         let address = self.client.owner()?;
         let nexus_objects = &self.client.nexus_objects;
-        let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate_sui_us)
+        let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate_million_mists_us)
             .map_err(NexusError::TransactionBuilding)?;
 
         let response = self.client.submit_transaction(tx, address).await?;
@@ -191,7 +191,7 @@ impl GasActions {
 
         Ok(DrainPriorityFeeVaultSuiResult {
             tx_digest: result.tx_digest,
-            exchange_rate_sui_us: quote.exchange_rate_sui_us,
+            exchange_rate_million_mists_us: quote.exchange_rate_million_mists_us,
             sui_balance_before: quote.sui_out,
             min_sui_out,
         })

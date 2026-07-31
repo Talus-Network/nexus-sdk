@@ -17,6 +17,7 @@ use {
                     ToolVerifierMode,
                 },
             },
+            move_std::option::Option as MoveOption,
             primitives::{
                 data::NexusData,
                 tagged_output::{self as tagged_output_binding, TaggedOutput},
@@ -1267,14 +1268,21 @@ fn prepare_tagged_output<'a>(
 #[allow(clippy::too_many_arguments)]
 fn record_committed_tool_result_gas_charge_by_leader(
     tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    dag: sui::types::Argument,
     execution: sui::types::Argument,
     leader_cap: sui::types::Argument,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
+    clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
+    let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+    let failed_onchain_tool_reason =
+        tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
     let commit_tx_digest = tx.arg(&commit_tx_digest)?;
     let commit_gas_charge = tx.arg(&commit_gas_charge)?;
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
@@ -1282,12 +1290,16 @@ fn record_committed_tool_result_gas_charge_by_leader(
     tx.call_target(
         execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_target,
         vec![
+            dag,
             execution,
             leader_cap,
             walk_index,
+            expected_vertex,
+            failed_onchain_tool_reason,
             commit_tx_digest,
             commit_gas_charge,
             settlement_gas_charge,
+            clock,
         ],
     )?;
     Ok(())
@@ -1296,25 +1308,34 @@ fn record_committed_tool_result_gas_charge_by_leader(
 #[allow(clippy::too_many_arguments)]
 pub fn record_committed_tool_result_gas_charge_by_leader_ptb(
     objects: &NexusObjects,
+    dag: (sui::types::Address, sui::types::Version),
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
+        let dag = tx.shared_object_by_id(dag.0, dag.1, false)?;
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
         let leader_cap = tx.shared_object(leader_cap, false)?;
+        let clock = tx.clock()?;
 
         record_committed_tool_result_gas_charge_by_leader(
             tx,
+            dag,
             execution,
             leader_cap,
             walk_index,
+            expected_vertex,
+            failed_onchain_tool_reason,
             commit_tx_digest,
             commit_gas_charge,
             settlement_gas_charge,
+            clock,
         )
     })
 }
@@ -1329,12 +1350,17 @@ fn settle_committed_tool_result_for_walk_by_leader(
     priority_fee_vault: sui::types::Argument,
     leader_cap: sui::types::Argument,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
     clock: sui::types::Argument,
 ) -> anyhow::Result<()> {
     let walk_index = tx.arg(&walk_index)?;
+    let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+    let failed_onchain_tool_reason =
+        tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
     let commit_tx_digest = tx.arg(&commit_tx_digest)?;
     let commit_gas_charge = tx.arg(&commit_gas_charge)?;
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
@@ -1349,6 +1375,8 @@ fn settle_committed_tool_result_for_walk_by_leader(
             priority_fee_vault,
             leader_cap,
             walk_index,
+            expected_vertex,
+            failed_onchain_tool_reason,
             commit_tx_digest,
             commit_gas_charge,
             settlement_gas_charge,
@@ -1366,6 +1394,8 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     leader_cap: &sui::types::ObjectReference,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
@@ -1389,6 +1419,8 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
             priority_fee_vault,
             leader_cap,
             walk_index,
+            expected_vertex,
+            failed_onchain_tool_reason,
             commit_tx_digest,
             commit_gas_charge,
             settlement_gas_charge,
@@ -1598,6 +1630,8 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
     leader_cap: &sui::types::ObjectReference,
     leader_cap_owner: &sui::types::Owner,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
@@ -1610,6 +1644,9 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
         let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
+        let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+        let failed_onchain_tool_reason =
+            tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
         let commit_tx_digest = tx.arg(&commit_tx_digest)?;
         let commit_gas_charge = tx.arg(&commit_gas_charge)?;
         let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
@@ -1625,6 +1662,8 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
                 priority_fee_vault,
                 leader_cap,
                 walk_index,
+                expected_vertex,
+                failed_onchain_tool_reason,
                 commit_tx_digest,
                 commit_gas_charge,
                 settlement_gas_charge,
@@ -1639,32 +1678,44 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
     objects: &NexusObjects,
+    dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     execution_owner: &sui::types::Owner,
     leader_cap: &sui::types::ObjectReference,
     leader_cap_owner: &sui::types::Owner,
     walk_index: u64,
+    expected_vertex: &RuntimeVertex,
+    failed_onchain_tool_reason: Option<Vec<u8>>,
     commit_tx_digest: Vec<u8>,
     commit_gas_charge: u64,
     settlement_gas_charge: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
+        let dag = tx.shared_object(dag, false)?;
         let execution = tx.object_from_owner(execution, execution_owner, true)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
+        let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
+        let failed_onchain_tool_reason =
+            tx.arg(&MoveOption::from_option(failed_onchain_tool_reason))?;
         let commit_tx_digest = tx.arg(&commit_tx_digest)?;
         let commit_gas_charge = tx.arg(&commit_gas_charge)?;
         let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
+        let clock = tx.clock()?;
 
         tx.call_target(
             execution_settlement_binding::record_committed_tool_result_gas_charge_by_leader_target,
             vec![
+                dag,
                 execution,
                 leader_cap,
                 walk_index,
+                expected_vertex,
+                failed_onchain_tool_reason,
                 commit_tx_digest,
                 commit_gas_charge,
                 settlement_gas_charge,
+                clock,
             ],
         )?;
         Ok(())
@@ -2142,6 +2193,8 @@ mod tests {
             &object_ref("0x20", 1, 20),
             &HashSet::new(),
             11,
+            &RuntimeVertex::plain(""),
+            None,
             vec![9, 8, 7],
             123,
             45,
@@ -2159,12 +2212,110 @@ mod tests {
             panic!("expected settlement call");
         };
 
-        assert_eq!(call.arguments.len(), 11);
+        assert_eq!(call.arguments.len(), 13);
         expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
         expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, true);
         expect_u64_arg(&ptb, &call.arguments[6], 11);
-        expect_u64_arg(&ptb, &call.arguments[8], 123);
-        expect_u64_arg(&ptb, &call.arguments[9], 45);
+        expect_u64_arg(&ptb, &call.arguments[10], 123);
+        expect_u64_arg(&ptb, &call.arguments[11], 45);
+    }
+
+    #[test]
+    fn failed_onchain_tool_gas_record_stays_state_only() {
+        let objects = nexus_objects();
+        let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
+        let ptb = record_committed_tool_result_gas_charge_by_leader_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            11,
+            &expected_vertex,
+            Some(b"tool failed".to_vec()),
+            vec![9, 8, 7],
+            123,
+            45,
+        )
+        .expect("failed on-chain result record PTB should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id()),
+            "execution_settlement",
+            "record_committed_tool_result_gas_charge_by_leader",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected failed on-chain result record call");
+        };
+
+        assert_eq!(call.arguments.len(), 10);
+        expect_u64_arg(&ptb, &call.arguments[3], 11);
+        expect_u64_arg(&ptb, &call.arguments[7], 123);
+        expect_u64_arg(&ptb, &call.arguments[8], 45);
+        assert!(!ptb.commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == "payment_adapter"
+                        && call.function.as_str() == "lock_payment_state_for_tool"
+            )
+        }));
+        assert!(!ptb.commands.iter().any(|command| {
+            matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == "execution_settlement"
+                        && call.function.as_str() == "emit_payment_ready_walk_requests"
+            )
+        }));
+    }
+
+    #[test]
+    fn failed_onchain_tool_secondary_uses_settlement_boundary() {
+        let objects = nexus_objects();
+        let expected_vertex = RuntimeVertex::with_iterator("counter_increment", 2, 3);
+        let ptb = settle_committed_tool_result_for_walk_by_leader_ptb(
+            &objects,
+            (addr("0x50"), 7),
+            (addr("0x60"), 8),
+            &object_ref("0x20", 1, 20),
+            &HashSet::from([(addr("0x30"), 9)]),
+            11,
+            &expected_vertex,
+            Some(b"tool failed".to_vec()),
+            vec![9, 8, 7],
+            123,
+            45,
+            None,
+        )
+        .expect("failed on-chain secondary settlement PTB should build");
+
+        let call_index = move_call_index(
+            &ptb,
+            Some(objects.workflow_pkg_id()),
+            "execution_settlement",
+            "settle_committed_tool_result_for_walk_by_leader",
+        );
+        let Command::MoveCall(call) = &ptb.commands[call_index] else {
+            panic!("expected failed on-chain settlement call");
+        };
+
+        assert_eq!(call.arguments.len(), 13);
+        expect_u64_arg(&ptb, &call.arguments[6], 11);
+        expect_u64_arg(&ptb, &call.arguments[10], 123);
+        expect_u64_arg(&ptb, &call.arguments[11], 45);
+        assert!(
+            move_call_index(&ptb, None, "payment_adapter", "lock_payment_state_for_tool",)
+                > call_index
+        );
+        assert!(
+            move_call_index(
+                &ptb,
+                Some(objects.workflow_pkg_id()),
+                "execution_settlement",
+                "emit_payment_ready_walk_requests",
+            ) > call_index
+        );
     }
 
     #[test]
