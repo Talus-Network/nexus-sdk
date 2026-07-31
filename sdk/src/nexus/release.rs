@@ -155,23 +155,7 @@ impl ReleaseResolver {
             .get_object::<Protocol>(protocol_id)
             .await
             .map_err(NexusError::Rpc)?;
-        if protocol.data.id.id.bytes != protocol_id {
-            return Err(release_error(format!(
-                "Protocol '{protocol_id}' contains embedded identity '{}'",
-                protocol.data.id.id.bytes
-            )));
-        }
-        if protocol.data.state.version != 1 {
-            return Err(release_error(format!(
-                "Protocol '{protocol_id}' uses unsupported state schema '{}'",
-                protocol.data.state.version
-            )));
-        }
-        if !protocol.is_shared() {
-            return Err(release_error(format!(
-                "Protocol '{protocol_id}' is not shared"
-            )));
-        }
+        validate_protocol_root(protocol_id, &protocol)?;
         let state = crawler
             .get_versioned_state::<ProtocolStateV1>(&protocol.data.state)
             .await
@@ -327,6 +311,30 @@ impl ReleaseResolver {
     }
 }
 
+fn validate_protocol_root(
+    protocol_id: sui::types::Address,
+    protocol: &Response<Protocol>,
+) -> Result<(), NexusError> {
+    if protocol.data.id.id.bytes != protocol_id {
+        return Err(release_error(format!(
+            "Protocol '{protocol_id}' contains embedded identity '{}'",
+            protocol.data.id.id.bytes
+        )));
+    }
+    if protocol.data.state.version != 1 {
+        return Err(release_error(format!(
+            "Protocol '{protocol_id}' uses unsupported state schema '{}'",
+            protocol.data.state.version
+        )));
+    }
+    if !protocol.is_shared() {
+        return Err(release_error(format!(
+            "Protocol '{protocol_id}' is not shared"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_package_linkage(
     package_name: &str,
     package: &ResolvedPackageRelease,
@@ -432,6 +440,17 @@ async fn validate_type_origin_lineages(
     client: &Arc<sui::grpc::Client>,
     packages: &NexusPackages,
 ) -> Result<(), NexusError> {
+    let origins = collect_type_origin_lineages(packages)?;
+    try_join_all(origins.into_iter().map(|(storage_id, initial_id)| {
+        validate_origin_lineage(Arc::clone(client), storage_id, initial_id)
+    }))
+    .await?;
+    Ok(())
+}
+
+fn collect_type_origin_lineages(
+    packages: &NexusPackages,
+) -> Result<BTreeMap<sui::types::Address, sui::types::Address>, NexusError> {
     let mut origins = BTreeMap::new();
     for package in packages.all() {
         for origin in package
@@ -451,12 +470,7 @@ async fn validate_type_origin_lineages(
             }
         }
     }
-
-    try_join_all(origins.into_iter().map(|(storage_id, initial_id)| {
-        validate_origin_lineage(Arc::clone(client), storage_id, initial_id)
-    }))
-    .await?;
-    Ok(())
+    Ok(origins)
 }
 
 async fn validate_origin_lineage(
@@ -483,6 +497,14 @@ async fn validate_origin_lineage(
                 "Datatype origin package '{storage_id}' was not returned"
             ))
         })?;
+    validate_origin_package(&package, storage_id, expected_initial_id)
+}
+
+fn validate_origin_package(
+    package: &sui::grpc::Package,
+    storage_id: sui::types::Address,
+    expected_initial_id: sui::types::Address,
+) -> Result<(), NexusError> {
     let observed_storage: sui::types::Address = package
         .storage_id
         .as_deref()
@@ -556,40 +578,63 @@ async fn resolve_shared_objects(
         .map(|response| (response.object_id, response))
         .collect::<HashMap<_, _>>();
 
-    let resolve =
-        |name: &str, info: &SharedObjectInfo| -> Result<sui::types::ObjectReference, NexusError> {
-            let response = by_id.get(&info.id.bytes).ok_or_else(|| {
-                release_error(format!(
-                    "{name} object '{}' was not returned",
-                    info.id.bytes
-                ))
-            })?;
-            if !response.is_shared() {
-                return Err(release_error(format!(
-                    "{name} object '{}' is not shared",
-                    info.id.bytes
-                )));
-            }
-            if response.get_initial_version() != info.initial_shared_version {
-                return Err(release_error(format!(
-                    "{name} object '{}' has initial version '{}', expected '{}'",
-                    info.id.bytes,
-                    response.get_initial_version(),
-                    info.initial_shared_version
-                )));
-            }
-            Ok(response.object_ref())
-        };
-
     Ok(SharedReferences {
-        tool_registry: resolve("ToolRegistry", &record.objects.tool_registry)?,
-        verifier_registry: resolve("VerifierRegistry", &record.objects.verifier_registry)?,
-        network_auth: resolve("NetworkAuth", &record.objects.network_auth)?,
-        agent_registry: resolve("AgentRegistry", &record.objects.agent_registry)?,
-        gas_service: resolve("GasService", &record.objects.gas_service)?,
-        leader_registry: resolve("LeaderRegistry", &record.objects.leader_registry)?,
-        priority_fee_vault: resolve("PriorityFeeVault", &record.objects.priority_fee_vault)?,
+        tool_registry: resolve_shared_object(
+            &by_id,
+            "ToolRegistry",
+            &record.objects.tool_registry,
+        )?,
+        verifier_registry: resolve_shared_object(
+            &by_id,
+            "VerifierRegistry",
+            &record.objects.verifier_registry,
+        )?,
+        network_auth: resolve_shared_object(&by_id, "NetworkAuth", &record.objects.network_auth)?,
+        agent_registry: resolve_shared_object(
+            &by_id,
+            "AgentRegistry",
+            &record.objects.agent_registry,
+        )?,
+        gas_service: resolve_shared_object(&by_id, "GasService", &record.objects.gas_service)?,
+        leader_registry: resolve_shared_object(
+            &by_id,
+            "LeaderRegistry",
+            &record.objects.leader_registry,
+        )?,
+        priority_fee_vault: resolve_shared_object(
+            &by_id,
+            "PriorityFeeVault",
+            &record.objects.priority_fee_vault,
+        )?,
     })
+}
+
+fn resolve_shared_object(
+    by_id: &HashMap<sui::types::Address, Response<()>>,
+    name: &str,
+    info: &SharedObjectInfo,
+) -> Result<sui::types::ObjectReference, NexusError> {
+    let response = by_id.get(&info.id.bytes).ok_or_else(|| {
+        release_error(format!(
+            "{name} object '{}' was not returned",
+            info.id.bytes
+        ))
+    })?;
+    if !response.is_shared() {
+        return Err(release_error(format!(
+            "{name} object '{}' is not shared",
+            info.id.bytes
+        )));
+    }
+    if response.get_initial_version() != info.initial_shared_version {
+        return Err(release_error(format!(
+            "{name} object '{}' has initial version '{}', expected '{}'",
+            info.id.bytes,
+            response.get_initial_version(),
+            info.initial_shared_version
+        )));
+    }
+    Ok(response.object_ref())
 }
 
 async fn refresh_optional_authority(
@@ -615,7 +660,14 @@ mod tests {
     use {
         super::*,
         crate::{
-            move_bindings::{primitives::protocol::SystemObjectsV1, sui_framework::object::ID},
+            move_bindings::{
+                move_std::option::Option as MoveOption,
+                primitives::protocol::SystemObjectsV1,
+                sui_framework::{
+                    object::{ID, UID},
+                    versioned::Versioned,
+                },
+            },
             types::nexus_objects::PackageLink,
         },
     };
@@ -678,6 +730,48 @@ mod tests {
         )
     }
 
+    fn protocol_response(
+        protocol_id: sui::types::Address,
+        owner: sui::types::Owner,
+        state_version: u64,
+    ) -> Response<Protocol> {
+        Response {
+            object_id: protocol_id,
+            owner,
+            version: 9,
+            data: Protocol::new(
+                UID::new(protocol_id),
+                Versioned::new(UID::new(address("0x31")), state_version),
+            ),
+            digest: sui::types::Digest::ZERO,
+            balance: None,
+        }
+    }
+
+    fn protocol_state(records: Vec<ReleaseRecordV1>) -> ProtocolStateV1 {
+        let mut active = MoveOption::from_option(None::<ReleaseRecordV1>);
+        active.vec = records;
+        ProtocolStateV1::new(active)
+    }
+
+    fn origin_package(storage_id: Option<&str>, original_id: Option<&str>) -> sui::grpc::Package {
+        let mut package = sui::grpc::Package::default();
+        package.storage_id = storage_id.map(ToOwned::to_owned);
+        package.original_id = original_id.map(ToOwned::to_owned);
+        package
+    }
+
+    fn shared_response(object_id: sui::types::Address, owner: sui::types::Owner) -> Response<()> {
+        Response {
+            object_id,
+            owner,
+            version: 9,
+            data: (),
+            digest: sui::types::Digest::ZERO,
+            balance: None,
+        }
+    }
+
     #[test]
     fn manifest_hash_covers_every_release_field() {
         let record = record();
@@ -687,6 +781,213 @@ mod tests {
         tampered.leader_api_version += 1;
         let error = validate_record(&tampered).unwrap_err();
         assert!(error.to_string().contains("manifest hash"));
+    }
+
+    #[test]
+    fn manifest_and_active_state_reject_invalid_release_shapes() {
+        let mut release_zero = record();
+        release_zero.release = 0;
+        assert!(validate_record(&release_zero)
+            .unwrap_err()
+            .to_string()
+            .contains("Release zero"));
+
+        let mut short_hash = record();
+        short_hash.manifest_hash.pop();
+        assert!(validate_record(&short_hash)
+            .unwrap_err()
+            .to_string()
+            .contains("expected 32"));
+
+        assert!(active_record(protocol_state(vec![]))
+            .unwrap_err()
+            .to_string()
+            .contains("no active release"));
+        assert_eq!(
+            active_record(protocol_state(vec![record()]))
+                .unwrap()
+                .release,
+            1
+        );
+        assert!(active_record(protocol_state(vec![record(), record()]))
+            .unwrap_err()
+            .to_string()
+            .contains("contains '2' records"));
+    }
+
+    #[test]
+    fn protocol_root_requires_embedded_identity_schema_and_shared_ownership() {
+        let protocol_id = address("0x30");
+        let valid = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
+        validate_protocol_root(protocol_id, &valid).unwrap();
+
+        let wrong_identity = protocol_response(address("0x32"), sui::types::Owner::Shared(1), 1);
+        assert!(validate_protocol_root(protocol_id, &wrong_identity)
+            .unwrap_err()
+            .to_string()
+            .contains("embedded identity"));
+        let wrong_schema = protocol_response(protocol_id, sui::types::Owner::Shared(1), 2);
+        assert!(validate_protocol_root(protocol_id, &wrong_schema)
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported state schema"));
+        let owned = protocol_response(protocol_id, sui::types::Owner::Address(address("0x33")), 1);
+        assert!(validate_protocol_root(protocol_id, &owned)
+            .unwrap_err()
+            .to_string()
+            .contains("not shared"));
+    }
+
+    #[test]
+    fn datatype_origin_package_must_match_the_claimed_lineage() {
+        let storage_id = address("0x41");
+        let initial_id = address("0x42");
+        validate_origin_package(
+            &origin_package(Some(&storage_id.to_string()), Some(&initial_id.to_string())),
+            storage_id,
+            initial_id,
+        )
+        .unwrap();
+
+        for (package, expected) in [
+            (origin_package(None, Some("0x42")), "no storage ID"),
+            (
+                origin_package(Some("not-an-id"), Some("0x42")),
+                "invalid storage ID",
+            ),
+            (origin_package(Some("0x41"), None), "no original ID"),
+            (
+                origin_package(Some("0x41"), Some("not-an-id")),
+                "invalid original ID",
+            ),
+            (
+                origin_package(Some("0x43"), Some("0x42")),
+                "belongs to lineage",
+            ),
+            (
+                origin_package(Some("0x41"), Some("0x44")),
+                "belongs to lineage",
+            ),
+        ] {
+            assert!(validate_origin_package(&package, storage_id, initial_id)
+                .unwrap_err()
+                .to_string()
+                .contains(expected));
+        }
+    }
+
+    #[test]
+    fn datatype_origins_cannot_be_claimed_by_two_package_families() {
+        let mut packages = NexusPackages::first_publication(
+            address("0x51"),
+            address("0x52"),
+            address("0x53"),
+            address("0x54"),
+            address("0x55"),
+            address("0x56"),
+        );
+        let origins = collect_type_origin_lineages(&packages).unwrap();
+        assert_eq!(origins.len(), 6);
+
+        let primitives_initial_id = packages.primitives.initial_id;
+        packages
+            .interface
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("graph", "Vertex"),
+                primitives_initial_id,
+            )
+            .unwrap();
+        assert!(collect_type_origin_lineages(&packages)
+            .unwrap_err()
+            .to_string()
+            .contains("claimed by lineages"));
+    }
+
+    #[test]
+    fn shared_release_objects_require_exact_initial_versions() {
+        let object_id = address("0x61");
+        let info = SharedObjectInfo::new(ID::new(object_id), 3);
+        let empty = HashMap::new();
+        assert!(resolve_shared_object(&empty, "Registry", &info)
+            .unwrap_err()
+            .to_string()
+            .contains("was not returned"));
+
+        let owned = HashMap::from([(
+            object_id,
+            shared_response(object_id, sui::types::Owner::Address(address("0x62"))),
+        )]);
+        assert!(resolve_shared_object(&owned, "Registry", &info)
+            .unwrap_err()
+            .to_string()
+            .contains("not shared"));
+
+        let wrong_version = HashMap::from([(
+            object_id,
+            shared_response(object_id, sui::types::Owner::Shared(2)),
+        )]);
+        assert!(resolve_shared_object(&wrong_version, "Registry", &info)
+            .unwrap_err()
+            .to_string()
+            .contains("expected '3'"));
+
+        let valid = HashMap::from([(
+            object_id,
+            shared_response(object_id, sui::types::Owner::Shared(3)),
+        )]);
+        let object = resolve_shared_object(&valid, "Registry", &info).unwrap();
+        assert_eq!(*object.object_id(), object_id);
+        assert_eq!(object.version(), 3);
+    }
+
+    #[tokio::test]
+    async fn resolver_rejects_unsupported_sdk_api_before_network_resolution() {
+        let protocol_id = address("0x70");
+        let protocol = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
+        let client = Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let protocol_ref = protocol.object_ref();
+        let extras = ReleaseExtras {
+            priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
+                address("0x71"),
+                1,
+                sui::types::Digest::ZERO,
+            ),
+            us_token: UsTokenConfig::new(address("0x72")),
+        };
+        let resolver = ReleaseResolver::new(protocol_ref.clone(), client).with_extras(extras);
+        assert_eq!(resolver.protocol(), &protocol_ref);
+
+        let mut unsupported = record();
+        unsupported.sdk_api_version = SUPPORTED_SDK_API_VERSION + 1;
+        let manifest = ReleaseManifestV1::new(
+            unsupported.release,
+            unsupported.primitives.clone(),
+            unsupported.interface.clone(),
+            unsupported.registry.clone(),
+            unsupported.gas.clone(),
+            unsupported.workflow.clone(),
+            unsupported.scheduler.clone(),
+            unsupported.objects.clone(),
+            unsupported.sdk_api_version,
+            unsupported.leader_api_version,
+        );
+        unsupported.manifest_hash =
+            sui::types::hash::Hasher::digest(bcs::to_bytes(&manifest).unwrap())
+                .as_bytes()
+                .to_vec();
+
+        let error = resolver
+            .resolve_record_inner(protocol, &unsupported)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            NexusError::UnsupportedSdkApi {
+                release: 1,
+                required: 2,
+                supported: 1
+            }
+        ));
     }
 
     #[test]
@@ -701,19 +1002,19 @@ mod tests {
                 version: dependency.version,
             },
         );
-        let package = ResolvedPackageRelease {
+        let resolved_package = ResolvedPackageRelease {
             release: PackageRelease::first_publication(address("0x30")),
             linkage,
         };
         validate_package_linkage(
             "interface",
-            &package,
+            &resolved_package,
             &[("primitives", &dependency)],
             &[("primitives", &dependency)],
         )
         .unwrap();
 
-        let mut stale = package;
+        let mut stale = resolved_package;
         stale
             .linkage
             .get_mut(&dependency.initial_id)
@@ -727,5 +1028,45 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("expected version '2'"));
+
+        let missing = ResolvedPackageRelease {
+            release: PackageRelease::first_publication(address("0x31")),
+            linkage: BTreeMap::new(),
+        };
+        assert!(validate_package_linkage(
+            "interface",
+            &missing,
+            &[("primitives", &dependency)],
+            &[("primitives", &dependency)],
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("no linkage"));
+
+        let mut wrong_storage = stale;
+        let link = wrong_storage
+            .linkage
+            .get_mut(&dependency.initial_id)
+            .unwrap();
+        link.version = dependency.version;
+        link.storage_id = address("0xff");
+        assert!(validate_package_linkage(
+            "interface",
+            &wrong_storage,
+            &[],
+            &[("primitives", &dependency)],
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("expected version"));
+
+        assert_eq!(
+            package_release(&package("0x80")),
+            PackageRelease::first_publication(address("0x80"))
+        );
+        assert_eq!(
+            ReleaseExtras::default().priority_fee_vault_owner_cap,
+            default_object_reference()
+        );
     }
 }

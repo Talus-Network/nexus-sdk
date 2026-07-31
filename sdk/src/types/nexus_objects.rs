@@ -453,6 +453,46 @@ pub(crate) async fn resolve_package_release_metadata(
         .package
         .ok_or_else(|| anyhow::anyhow!("{package_name} package was not returned"))?;
 
+    let (storage_id, initial_id, version) =
+        validate_package_header(expected, package_name, &package)?;
+
+    // The ABI service does not guarantee that it returns package linkage and
+    // type origins. Read those immutable tables from the package object itself.
+    let request = sui::grpc::GetObjectRequest::default()
+        .with_object_id(storage_id)
+        .with_read_mask(sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "version",
+            "object_type",
+            "package",
+        ]));
+    let package_object = client
+        .as_ref()
+        .clone()
+        .ledger_client()
+        .get_object(request)
+        .await
+        .map_err(|error| anyhow::anyhow!("Failed to fetch {package_name} package object: {error}"))?
+        .into_inner()
+        .object
+        .ok_or_else(|| anyhow::anyhow!("{package_name} package object was not returned"))?;
+
+    validate_package_object(
+        package,
+        package_object,
+        package_name,
+        storage_id,
+        initial_id,
+        version,
+    )
+}
+
+#[cfg(feature = "nexus")]
+fn validate_package_header(
+    expected: &PackageRelease,
+    package_name: &str,
+    package: &sui::grpc::Package,
+) -> anyhow::Result<(sui::types::Address, sui::types::Address, u64)> {
     let storage_id =
         parse_package_address(package.storage_id.as_deref(), package_name, "storage_id")?;
     if storage_id != expected.storage_id {
@@ -481,27 +521,18 @@ pub(crate) async fn resolve_package_release_metadata(
             expected.version
         );
     }
+    Ok((storage_id, initial_id, version))
+}
 
-    // The ABI service does not guarantee that it returns package linkage and
-    // type origins. Read those immutable tables from the package object itself.
-    let request = sui::grpc::GetObjectRequest::default()
-        .with_object_id(storage_id)
-        .with_read_mask(sui::grpc::FieldMask::from_paths([
-            "object_id",
-            "version",
-            "object_type",
-            "package",
-        ]));
-    let package_object = client
-        .as_ref()
-        .clone()
-        .ledger_client()
-        .get_object(request)
-        .await
-        .map_err(|error| anyhow::anyhow!("Failed to fetch {package_name} package object: {error}"))?
-        .into_inner()
-        .object
-        .ok_or_else(|| anyhow::anyhow!("{package_name} package object was not returned"))?;
+#[cfg(feature = "nexus")]
+fn validate_package_object(
+    package: sui::grpc::Package,
+    package_object: sui::grpc::Object,
+    package_name: &str,
+    storage_id: sui::types::Address,
+    initial_id: sui::types::Address,
+    version: u64,
+) -> anyhow::Result<ResolvedPackageRelease> {
     let object_id = parse_package_address(
         package_object.object_id.as_deref(),
         package_name,
@@ -696,6 +727,92 @@ mod tests {
         sui::types::ObjectReference::new(address(value), 1, sui::types::Digest::ZERO)
     }
 
+    fn type_origin(
+        module: &str,
+        datatype: &str,
+        package_id: sui::types::Address,
+    ) -> sui::grpc::TypeOrigin {
+        let mut origin = sui::grpc::TypeOrigin::default();
+        origin.module_name = Some(module.to_owned());
+        origin.datatype_name = Some(datatype.to_owned());
+        origin.package_id = Some(package_id.to_string());
+        origin
+    }
+
+    fn package_metadata_fixture() -> (PackageRelease, sui::grpc::Package, sui::grpc::Object) {
+        let initial_id = address("0xa1");
+        let storage_id = address("0xa2");
+        let expected = PackageRelease::new(initial_id, storage_id, 2, Default::default());
+        let origin = type_origin("sample", "Thing", initial_id);
+
+        let mut datatype = sui::grpc::DatatypeDescriptor::default();
+        datatype.type_name = Some(format!("{storage_id}::sample::Thing"));
+        datatype.defining_id = Some(initial_id.to_string());
+        datatype.module = Some("sample".to_owned());
+        datatype.name = Some("Thing".to_owned());
+        let mut module = sui::grpc::Module::default();
+        module.name = Some("sample".to_owned());
+        module.datatypes = vec![datatype];
+
+        let mut package = sui::grpc::Package::default();
+        package.storage_id = Some(storage_id.to_string());
+        package.original_id = Some(initial_id.to_string());
+        package.version = Some(2);
+        package.modules = vec![module];
+        package.type_origins = vec![origin.clone()];
+
+        let mut linkage = sui::grpc::Linkage::default();
+        linkage.original_id = Some(address("0xb1").to_string());
+        linkage.upgraded_id = Some(address("0xb2").to_string());
+        linkage.upgraded_version = Some(3);
+        let mut exact_package = sui::grpc::Package::default();
+        exact_package.type_origins = vec![origin];
+        exact_package.linkage = vec![linkage];
+
+        let mut package_object = sui::grpc::Object::default();
+        package_object.object_id = Some(storage_id.to_string());
+        package_object.version = Some(2);
+        package_object.object_type = Some("package".to_owned());
+        package_object.package = Some(exact_package);
+
+        (expected, package, package_object)
+    }
+
+    fn validate_package_fixture(
+        expected: &PackageRelease,
+        package: sui::grpc::Package,
+        package_object: sui::grpc::Object,
+    ) -> anyhow::Result<ResolvedPackageRelease> {
+        let (storage_id, initial_id, version) =
+            validate_package_header(expected, "sample", &package)?;
+        validate_package_object(
+            package,
+            package_object,
+            "sample",
+            storage_id,
+            initial_id,
+            version,
+        )
+    }
+
+    fn package_header_error(modify: impl FnOnce(&mut sui::grpc::Package)) -> String {
+        let (expected, mut package, _) = package_metadata_fixture();
+        modify(&mut package);
+        validate_package_header(&expected, "sample", &package)
+            .unwrap_err()
+            .to_string()
+    }
+
+    fn package_object_error(
+        modify: impl FnOnce(&mut sui::grpc::Package, &mut sui::grpc::Object),
+    ) -> String {
+        let (expected, mut package, mut package_object) = package_metadata_fixture();
+        modify(&mut package, &mut package_object);
+        validate_package_fixture(&expected, package, package_object)
+            .unwrap_err()
+            .to_string()
+    }
+
     fn sample_objects() -> NexusObjects {
         NexusObjects {
             release: 1,
@@ -772,6 +889,157 @@ mod tests {
     }
 
     #[test]
+    fn package_metadata_accepts_one_exact_upgrade_snapshot() {
+        let (expected, package, package_object) = package_metadata_fixture();
+        let resolved = validate_package_fixture(&expected, package, package_object).unwrap();
+
+        assert_eq!(resolved.release.initial_id, address("0xa1"));
+        assert_eq!(resolved.release.storage_id, address("0xa2"));
+        assert_eq!(resolved.release.version, 2);
+        assert_eq!(
+            resolved.release.type_origin("sample", "Thing"),
+            address("0xa1")
+        );
+        let link = resolved.linkage.get(&address("0xb1")).unwrap();
+        assert_eq!(link.storage_id, address("0xb2"));
+        assert_eq!(link.version, 3);
+    }
+
+    #[test]
+    fn package_header_rejects_incomplete_or_inconsistent_identity() {
+        assert!(package_header_error(|package| package.storage_id = None).contains("is missing"));
+        assert!(
+            package_header_error(|package| package.storage_id = Some("not-an-id".to_owned()))
+                .contains("is invalid")
+        );
+        assert!(package_header_error(
+            |package| package.storage_id = Some(address("0xff").to_string())
+        )
+        .contains("expected"));
+        assert!(package_header_error(|package| package.original_id = None).contains("is missing"));
+        assert!(
+            package_header_error(|package| package.original_id = Some("not-an-id".to_owned()))
+                .contains("is invalid")
+        );
+        assert!(package_header_error(
+            |package| package.original_id = Some(address("0xfe").to_string())
+        )
+        .contains("belongs to lineage"));
+        assert!(package_header_error(|package| package.version = None).contains("is missing"));
+        assert!(package_header_error(|package| package.version = Some(3)).contains("expected '2'"));
+
+        let (mut legacy, mut package, _) = package_metadata_fixture();
+        legacy.initial_id = legacy.storage_id;
+        legacy.version = 0;
+        package.original_id = Some(address("0xfd").to_string());
+        package.version = Some(9);
+        let (_, initial_id, version) =
+            validate_package_header(&legacy, "sample", &package).unwrap();
+        assert_eq!(initial_id, address("0xfd"));
+        assert_eq!(version, 9);
+    }
+
+    #[test]
+    fn package_object_rejects_inconsistent_object_metadata() {
+        assert!(package_object_error(|_, object| object.object_id = None).contains("is missing"));
+        assert!(package_object_error(
+            |_, object| object.object_id = Some(address("0xff").to_string())
+        )
+        .contains("expected"));
+        assert!(package_object_error(|_, object| object.version = None).contains("is missing"));
+        assert!(package_object_error(|_, object| object.version = Some(3)).contains("ABI reports"));
+        assert!(package_object_error(|_, object| object.object_type = None)
+            .contains("expected 'package'"));
+        assert!(
+            package_object_error(|_, object| object.package = None).contains("metadata is missing")
+        );
+    }
+
+    #[test]
+    fn package_object_rejects_untrusted_type_metadata() {
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().type_origins[0].module_name = None;
+        })
+        .contains("without a module"));
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().type_origins[0].datatype_name = None;
+        })
+        .contains("without a datatype"));
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().type_origins[0].package_id = None;
+        })
+        .contains("is missing"));
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().type_origins[0].package_id =
+                Some("not-an-id".to_owned());
+        })
+        .contains("is invalid"));
+        assert!(package_object_error(|_, object| {
+            object
+                .package
+                .as_mut()
+                .unwrap()
+                .type_origins
+                .push(type_origin("sample", "Thing", address("0xff")));
+        })
+        .contains("conflicting package origins"));
+        assert!(package_object_error(|package, _| {
+            package.type_origins[0].package_id = Some(address("0xff").to_string());
+        })
+        .contains("expected"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].name = None;
+        })
+        .contains("module without a name"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].name = None;
+        })
+        .contains("unnamed datatype"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].module = Some("other".to_owned());
+        })
+        .contains("declares module"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].defining_id = None;
+        })
+        .contains("is missing"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].type_name = None;
+        })
+        .contains("has no type name"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].type_name = Some("invalid".to_owned());
+        })
+        .contains("invalid type name"));
+        assert!(package_object_error(|package, _| {
+            package.modules[0].datatypes[0].type_name =
+                Some(format!("{}::other::Thing", address("0xa2")));
+        })
+        .contains("inconsistent runtime type name"));
+    }
+
+    #[test]
+    fn package_object_rejects_incomplete_or_duplicate_linkage() {
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().linkage[0].original_id = None;
+        })
+        .contains("is missing"));
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().linkage[0].upgraded_id = None;
+        })
+        .contains("is missing"));
+        assert!(package_object_error(|_, object| {
+            object.package.as_mut().unwrap().linkage[0].upgraded_version = None;
+        })
+        .contains("no upgraded version"));
+        assert!(package_object_error(|_, object| {
+            let duplicate = object.package.as_ref().unwrap().linkage[0].clone();
+            object.package.as_mut().unwrap().linkage.push(duplicate);
+        })
+        .contains("duplicate linkage"));
+    }
+
+    #[test]
     fn package_scope_recognizes_each_nexus_family() {
         let objects = sample_objects();
         let cases = [
@@ -784,6 +1052,102 @@ mod tests {
         for tag in cases {
             assert!(objects.is_event_from_nexus(&wrap_event(&objects, tag)));
         }
+    }
+
+    #[test]
+    fn release_accessors_use_storage_ids_and_exact_type_origins() {
+        let mut objects = sample_objects();
+        for (package, origin) in [
+            (&mut objects.packages.primitives, address("0xa1")),
+            (&mut objects.packages.interface, address("0xa2")),
+            (&mut objects.packages.registry, address("0xa3")),
+            (&mut objects.packages.gas, address("0xa4")),
+            (&mut objects.packages.workflow, address("0xa5")),
+            (&mut objects.packages.scheduler, address("0xa6")),
+        ] {
+            package.storage_id = origin;
+        }
+        objects
+            .packages
+            .primitives
+            .insert_type_origin(DatatypeKey::new("event", "EventWrapper"), address("0xb1"))
+            .unwrap();
+        objects
+            .packages
+            .interface
+            .insert_type_origin(DatatypeKey::new("graph", "Vertex"), address("0xb2"))
+            .unwrap();
+        objects
+            .packages
+            .registry
+            .insert_type_origin(
+                DatatypeKey::new("network_auth", "IdentityKey"),
+                address("0xb3"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .gas
+            .insert_type_origin(DatatypeKey::new("gas", "ToolGas"), address("0xb4"))
+            .unwrap();
+        objects
+            .packages
+            .workflow
+            .insert_type_origin(
+                DatatypeKey::new("execution", "DAGExecution"),
+                address("0xb5"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .scheduler
+            .insert_type_origin(DatatypeKey::new("task", "Task"), address("0xb6"))
+            .unwrap();
+
+        assert_eq!(objects.primitives_pkg_id(), address("0xa1"));
+        assert_eq!(objects.interface_pkg_id(), address("0xa2"));
+        assert_eq!(objects.registry_pkg_id(), address("0xa3"));
+        assert_eq!(objects.gas_pkg_id(), address("0xa4"));
+        assert_eq!(objects.workflow_pkg_id(), address("0xa5"));
+        assert_eq!(objects.scheduler_pkg_id(), address("0xa6"));
+        assert_eq!(objects.primitives_type_origin_pkg_id(), address("0xb1"));
+        assert_eq!(objects.interface_type_origin_pkg_id(), address("0xb2"));
+        assert_eq!(objects.registry_type_origin_pkg_id(), address("0xb3"));
+        assert_eq!(objects.gas_type_origin_pkg_id(), address("0xb4"));
+        assert_eq!(objects.workflow_type_origin_pkg_id(), address("0xb5"));
+        assert_eq!(objects.scheduler_type_origin_pkg_id(), address("0xb6"));
+
+        assert!(objects.is_primitives_package(address("0xb1")));
+        assert!(objects.is_interface_package(address("0xb2")));
+        assert!(objects.is_registry_package(address("0xb3")));
+        assert!(objects.is_gas_package(address("0xb4")));
+        assert!(objects.is_workflow_package(address("0xb5")));
+        assert!(objects.is_scheduler_package(address("0xb6")));
+        assert!(objects.is_nexus_package(address("0xb6")));
+        assert!(objects.is_active_emitter(address("0xa6")));
+        assert!(!objects.is_active_emitter(address("0xb6")));
+        assert!(!objects.is_nexus_package(address("0xff")));
+    }
+
+    #[test]
+    fn token_type_helpers_use_the_configured_package() {
+        let token = UsTokenConfig::new(address("0xc1"));
+        let type_tag = token.type_tag();
+        let sui::types::TypeTag::Struct(type_tag) = type_tag else {
+            panic!("expected US struct tag");
+        };
+        assert_eq!(*type_tag.address(), address("0xc1"));
+        assert_eq!(
+            token.coin_type_tag().type_params().first(),
+            Some(&sui::types::TypeTag::Struct(type_tag))
+        );
+        assert!(token
+            .qualified_type()
+            .starts_with(&address("0xc1").to_string()));
+        assert_eq!(
+            UsTokenConfig::default().package_id,
+            sui::types::Address::ZERO
+        );
     }
 
     #[test]
@@ -825,5 +1189,40 @@ mod tests {
         );
         assert_eq!(decoded.packages.primitives.version, 0);
         assert!(decoded.packages.primitives.type_origins.is_empty());
+    }
+
+    #[test]
+    fn legacy_shape_defaults_release_and_rejects_missing_package_ids() {
+        let objects = sample_objects();
+        let mut value = toml::Value::try_from(&objects).unwrap();
+        let table = value.as_table_mut().unwrap();
+        table.remove("packages");
+        table.remove("release");
+        table.remove("protocol");
+        table.insert(
+            "active_release".to_owned(),
+            toml::Value::Integer(objects.release as i64),
+        );
+        for (name, package) in [
+            ("primitives", &objects.packages.primitives),
+            ("interface", &objects.packages.interface),
+            ("registry", &objects.packages.registry),
+            ("gas", &objects.packages.gas),
+            ("workflow", &objects.packages.workflow),
+            ("scheduler", &objects.packages.scheduler),
+        ] {
+            table.insert(
+                format!("{name}_pkg_id"),
+                toml::Value::String(package.storage_id.to_string()),
+            );
+        }
+        let decoded: NexusObjects = value.clone().try_into().unwrap();
+        assert_eq!(decoded.release, objects.release);
+        assert_eq!(*decoded.protocol.object_id(), sui::types::Address::ZERO);
+
+        value.as_table_mut().unwrap().remove("scheduler_pkg_id");
+        let decoded: Result<NexusObjects, _> = value.try_into();
+        let error = decoded.unwrap_err().to_string();
+        assert!(error.contains("missing field `scheduler_pkg_id`"));
     }
 }
