@@ -19,7 +19,7 @@ use {
         },
         sui,
         transactions::tool,
-        types::{Tool, ToolRef, ToolStateV1},
+        types::{Tool, ToolAnchor, ToolRef, ToolStateV1},
         ToolFqn,
     },
     std::time::Duration,
@@ -237,7 +237,7 @@ impl ToolActions {
         }
 
         let tool = crawler
-            .get_versioned_object::<Tool, ToolStateV1>(tool_id)
+            .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -556,7 +556,7 @@ mod tests {
             true,
         );
         let tool_state_id = sui::types::Address::from_static("0x2010");
-        let tool = Tool::new(
+        let tool = ToolAnchor::new(
             UID::new(fixture.tool_id),
             Versioned::new(UID::new(tool_state_id), 1),
         );
@@ -682,7 +682,7 @@ mod tests {
             false,
         );
         let tool_state_id = sui::types::Address::from_static("0x2020");
-        let http_tool = Tool::new(
+        let http_tool = ToolAnchor::new(
             UID::new(fixture.tool_id),
             Versioned::new(UID::new(tool_state_id), 1),
         );

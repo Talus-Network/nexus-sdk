@@ -48,7 +48,7 @@ use {
         },
         sui,
         transactions::{dag, gas},
-        types::{DagSpec, NexusObjects, Tool, ToolRef, ToolStateV1},
+        types::{DagSpec, NexusObjects, ToolAnchor, ToolRef, ToolStateV1},
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
@@ -819,7 +819,7 @@ async fn finalized_onchain_result_resolution_kind(
     let tool_id =
         crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)?;
     let tool = crawler
-        .get_versioned_object::<Tool, ToolStateV1>(tool_id)
+        .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id)
         .await?
         .data;
     let ToolRef::Sui {

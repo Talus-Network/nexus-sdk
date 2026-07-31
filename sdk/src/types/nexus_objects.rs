@@ -577,13 +577,13 @@ pub(crate) async fn resolve_package_release_metadata(
                      name '{type_name}': {error}"
                 )
             })?;
-            if *tag.address() != defining_id
+            if *tag.address() != storage_id
                 || tag.module().as_str() != module_name
                 || tag.name().as_str() != datatype_name
             {
                 anyhow::bail!(
                     "{package_name} datatype '{module_name}::{datatype_name}' has inconsistent \
-                     type name '{type_name}' and defining ID '{defining_id}'"
+                     runtime type name '{type_name}' for storage ID '{storage_id}'"
                 );
             }
             let key = DatatypeKey::new(module_name.clone(), datatype_name.clone());

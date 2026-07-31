@@ -5,7 +5,12 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool, ToolRef, ToolStateV1};
+pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV1};
+/// Current logical Tool state.
+///
+/// [`ToolAnchor`] is the stable object shell. Most callers operate on the
+/// selected state payload, so this alias preserves the public Tool model.
+pub type Tool = ToolStateV1;
 use {
     crate::{
         move_bindings::{move_std::ascii, registry::tool_registry},
@@ -25,8 +30,14 @@ pub enum OnchainToolMode {
     WorkflowAuthorization,
 }
 
-impl Tool {
-    /// Derive a `Tool` object ID from the `ToolRegistry` ID and tool FQN.
+impl ToolAnchor {
+    pub fn object_id(&self) -> sui::types::Address {
+        self.id.address()
+    }
+}
+
+impl ToolStateV1 {
+    /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
         fqn: &ToolFqn,
@@ -34,12 +45,6 @@ impl Tool {
         crate::move_bindings::derive_tool_id(registry_id, fqn)
     }
 
-    pub fn object_id(&self) -> sui::types::Address {
-        self.id.address()
-    }
-}
-
-impl ToolStateV1 {
     pub fn registry_id(&self) -> sui::types::Address {
         self.registry.address()
     }

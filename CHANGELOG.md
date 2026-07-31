@@ -56,6 +56,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Release activation queries now decode the canonical Nexus event wrapper and
+  reject wrappers for unrelated events.
+- Package metadata validation now distinguishes the runtime package address in
+  RPC type names from immutable datatype defining origins.
 - Replaced the custom Testcontainers module fork with maintained releases and a local Sui container definition, removing vulnerable test utility dependencies.
 
 #### Removed
@@ -71,6 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
+- Added `NEXUS_CLI_CONF` for selecting an isolated CLI configuration file.
 - `nexus task list` discovers the configured signer's Tasks by listing owned `TaskPointer` objects with opaque cursor pagination.
 - `nexus gas priority-fee-vault` commands for configuring the priority-fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority-fee shares.
 - Added support for new priority fee system in commands.
@@ -78,6 +83,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Read only commands no longer require a configured private key.
 - Onchain Tool registration now derives workflow authorization from the normalized `execute` signature instead of accepting a manual mode.
 - `scheduler task create` is now the single execution entry. A caller schedules for the current Clock timestamp when work should be eligible now.
 - Task creation accepts its initial manual occurrence and optional recurrence, so no follow up scheduling transaction is required.

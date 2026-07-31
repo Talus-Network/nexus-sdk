@@ -202,17 +202,24 @@ async fn configure_nexus_client_gas(
         .map_err(NexusCliError::Nexus)
 }
 
-async fn build_nexus_client_context() -> Result<NexusClient, NexusCliError> {
+#[derive(Clone, Copy)]
+enum ClientAccess {
+    ReadOnly,
+    Signing,
+}
+
+async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient, NexusCliError> {
     let mut conf = CliConf::load().await.unwrap_or_default();
 
     let client = build_sui_grpc_client(&conf).await?;
-    let pk = get_signing_key(&conf).await?;
     let mut nexus_objects = get_nexus_objects(&mut conf).await?;
     let rpc_url = client.uri().to_string();
 
-    let builder = NexusClient::builder()
-        .with_private_key(pk)
-        .with_rpc_url(&rpc_url);
+    let builder = NexusClient::builder().with_rpc_url(&rpc_url);
+    let builder = match access {
+        ClientAccess::ReadOnly => builder,
+        ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
+    };
     let builder = if *nexus_objects.protocol.object_id() != sui::types::Address::ZERO {
         let extras = ReleaseExtras::from(&nexus_objects);
         builder
@@ -230,7 +237,7 @@ async fn build_nexus_client_context() -> Result<NexusClient, NexusCliError> {
 
 /// Creates a Nexus client without attaching a gas source.
 pub(crate) async fn get_read_only_nexus_client() -> Result<NexusClient, NexusCliError> {
-    build_nexus_client_context().await
+    build_nexus_client_context(ClientAccess::ReadOnly).await
 }
 
 /// Creates a Nexus client and attaches the selected transaction gas source.
@@ -238,7 +245,7 @@ pub(crate) async fn get_nexus_client(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> Result<NexusClient, NexusCliError> {
-    let nexus_client = build_nexus_client_context().await?;
+    let nexus_client = build_nexus_client_context(ClientAccess::Signing).await?;
     configure_nexus_client_gas(&nexus_client, sui_gas_coin, sui_gas_budget).await?;
 
     Ok(nexus_client)
@@ -437,7 +444,6 @@ mod tests {
     }
 
     async fn assert_coin_free_client_supports_read(command: &str) {
-        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let object = nexus_sdk::test_utils::sui_mocks::mock_sui_object_ref();
         let mut ledger_service_mock =
             nexus_sdk::test_utils::sui_mocks::grpc::MockLedgerService::new();
@@ -454,7 +460,6 @@ mod tests {
             },
         );
         let client = NexusClient::builder()
-            .with_private_key(pk)
             .with_rpc_url(&rpc_url)
             .with_nexus_objects(nexus_sdk::test_utils::sui_mocks::mock_nexus_objects())
             .build()

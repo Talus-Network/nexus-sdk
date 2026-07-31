@@ -17,7 +17,7 @@ pub use {
     secret::Secret,
     secret_value::SecretValue,
     tap::*,
-    tool::{OnchainToolMode, Tool, ToolRef, ToolStateV1},
+    tool::{OnchainToolMode, Tool, ToolAnchor, ToolRef, ToolStateV1},
     tool_meta::ToolMeta,
     workflow_models::{ExecutionTerminalRecord, ExternalVerifierRuntimeCall, RequestWalkContext},
 };

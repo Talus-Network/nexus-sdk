@@ -22,6 +22,13 @@ async fn resolves_active_snapshot_from_fresh_publication() {
         env::var("NEXUS_LOCAL_RELEASE_OBJECTS").expect("NEXUS_LOCAL_RELEASE_OBJECTS is required");
     let rpc =
         env::var("NEXUS_LOCAL_SUI_RPC").unwrap_or_else(|_| "http://127.0.0.1:9000".to_owned());
+    let expected_release = env::var("NEXUS_LOCAL_EXPECTED_RELEASE")
+        .ok()
+        .map(|release| {
+            release
+                .parse::<u64>()
+                .expect("NEXUS_LOCAL_EXPECTED_RELEASE must be an integer")
+        });
     let configured: NexusObjects = toml::from_str(
         &fs::read_to_string(&objects_path)
             .unwrap_or_else(|error| panic!("could not read '{objects_path}': {error}")),
@@ -37,7 +44,8 @@ async fn resolves_active_snapshot_from_fresh_publication() {
         .expect("active release should resolve");
     let resolved = client.get_nexus_objects();
 
-    assert_eq!(resolved.release, configured.release);
+    let expected_release = expected_release.unwrap_or(configured.release);
+    assert_eq!(resolved.release, expected_release);
     assert_eq!(
         resolved.protocol.object_id(),
         configured.protocol.object_id()
@@ -49,7 +57,13 @@ async fn resolves_active_snapshot_from_fresh_publication() {
         .zip(configured.packages.all())
     {
         assert_eq!(resolved_package.initial_id, configured_package.initial_id);
-        assert_eq!(resolved_package.storage_id, configured_package.storage_id);
+        if expected_release == configured.release {
+            assert_eq!(resolved_package.storage_id, configured_package.storage_id);
+        }
+        assert_ne!(
+            resolved_package.storage_id,
+            nexus_sdk::sui::types::Address::ZERO
+        );
         assert!(resolved_package.version > 0);
         assert!(!resolved_package.type_origins.is_empty());
     }

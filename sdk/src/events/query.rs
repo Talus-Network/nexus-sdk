@@ -205,19 +205,19 @@ impl ReleaseActivationQuery {
         event_type: &sui::types::StructTag,
         contents: &[u8],
     ) -> Result<Option<ReleaseActivation>, NexusEventDecodeError> {
-        if !crate::move_bindings::struct_tag_matches::<ReleaseActivatedEventV1>(
-            &self.objects,
-            event_type,
-        ) {
+        type ActivationWrapper = event_move::EventWrapper<ReleaseActivatedEventV1>;
+
+        let expected = crate::move_bindings::struct_tag::<ActivationWrapper>(&self.objects);
+        if event_type != &expected {
             return Ok(None);
         }
-        let event = bcs::from_bytes(contents)
+        let wrapper: ActivationWrapper = bcs::from_bytes(contents)
             .map_err(anyhow::Error::from)
             .map_err(NexusEventDecodeError::Contents)?;
         Ok(Some(ReleaseActivation {
             id: (digest, index),
             emitting_package,
-            event,
+            event: wrapper.event,
         }))
     }
 }
@@ -227,8 +227,15 @@ impl EventQuery for ReleaseActivationQuery {
     type Output = ReleaseActivation;
 
     fn filter(&self) -> sui::grpc::EventFilter {
-        let event_type = crate::move_bindings::struct_tag::<ReleaseActivatedEventV1>(&self.objects);
-        sui::grpc::EventFilter::any([event_filter::event_type(event_type.to_string())])
+        let wrapper = crate::move_bindings::struct_tag::<
+            event_move::EventWrapper<ReleaseActivatedEventV1>,
+        >(&self.objects);
+        sui::grpc::EventFilter::any([event_filter::event_type(format!(
+            "{}::{}::{}",
+            wrapper.address(),
+            wrapper.module(),
+            wrapper.name()
+        ))])
     }
 
     fn read_mask(&self) -> sui::grpc::FieldMask {
@@ -283,18 +290,15 @@ mod tests {
     use {
         super::*,
         crate::move_bindings::{
-            primitives::protocol::{
-                PackageInfo,
-                ReleaseRecordV1,
-                SharedObjectInfo,
-                SystemObjectsV1,
+            primitives::{
+                event::EventWrapper,
+                protocol::{PackageInfo, ReleaseRecordV1, SharedObjectInfo, SystemObjectsV1},
             },
             sui_framework::object::ID,
         },
     };
 
-    #[test]
-    fn activation_requires_candidate_protocol_manifest_and_emitter() {
+    fn activation_fixture() -> (NexusObjects, ReleaseActivation) {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
         objects.release = 2;
         objects.manifest_hash = vec![7; 32];
@@ -332,10 +336,59 @@ mod tests {
             emitting_package: objects.primitives_pkg_id(),
             event: ReleaseActivatedEventV1::new(ID::new(*objects.protocol.object_id()), record),
         };
+
+        (objects, activation)
+    }
+
+    #[test]
+    fn activation_requires_candidate_protocol_manifest_and_emitter() {
+        let (objects, activation) = activation_fixture();
         assert!(activation.matches_candidate(&objects));
 
         let mut spoofed = activation.clone();
         spoofed.emitting_package = sui::types::Address::ZERO;
         assert!(!spoofed.matches_candidate(&objects));
+    }
+
+    #[test]
+    fn activation_query_decodes_the_nexus_event_wrapper() {
+        let (objects, activation) = activation_fixture();
+        let objects = Arc::new(objects);
+        let wrapper: EventWrapper<ReleaseActivatedEventV1> =
+            EventWrapper::new(activation.event.clone());
+        let wrapper_type =
+            crate::move_bindings::struct_tag::<EventWrapper<ReleaseActivatedEventV1>>(&objects);
+        let decoded = ReleaseActivationQuery::new(Arc::clone(&objects))
+            .decode_parts(
+                activation.id.1,
+                activation.id.0,
+                activation.emitting_package,
+                &wrapper_type,
+                &bcs::to_bytes(&wrapper).expect("wrapper should serialize"),
+            )
+            .expect("wrapper should decode")
+            .expect("activation wrapper should match");
+
+        assert_eq!(decoded, activation);
+        assert!(decoded.matches_candidate(&objects));
+    }
+
+    #[test]
+    fn activation_query_ignores_other_nexus_event_wrappers() {
+        let (objects, activation) = activation_fixture();
+        let objects = Arc::new(objects);
+        let other_wrapper =
+            crate::move_bindings::struct_tag::<EventWrapper<MoveNexusData>>(&objects);
+        let decoded = ReleaseActivationQuery::new(objects)
+            .decode_parts(
+                activation.id.1,
+                activation.id.0,
+                activation.emitting_package,
+                &other_wrapper,
+                &[],
+            )
+            .expect("unrelated wrapper should be ignored");
+
+        assert!(decoded.is_none());
     }
 }

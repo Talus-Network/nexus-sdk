@@ -6,7 +6,7 @@ use {
             registry::tool_registry::{ToolRegistry, ToolRegistryStateV1},
             sui_framework::linked_table::Node as LinkedTableNode,
         },
-        types::{Tool, ToolStateV1},
+        types::{Tool, ToolAnchor, ToolStateV1},
     },
     prettytable::{row, Table},
 };
@@ -110,7 +110,7 @@ async fn fetch_tools_with_client(
     for tool_id in tool_ids {
         tools.push(
             crawler
-                .get_versioned_object::<Tool, ToolStateV1>(tool_id)
+                .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id)
                 .await
                 .map_err(NexusCliError::Any)?
                 .data,

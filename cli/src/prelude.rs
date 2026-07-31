@@ -18,6 +18,15 @@ pub(crate) use {
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+pub(crate) const CLI_CONF_PATH_ENV: &str = "NEXUS_CLI_CONF";
+
+pub(crate) fn cli_conf_path() -> AnyResult<PathBuf> {
+    match std::env::var(CLI_CONF_PATH_ENV) {
+        Ok(path) => Ok(PathBuf::from(path)),
+        Err(std::env::VarError::NotPresent) => expand_tilde(CLI_CONF_PATH),
+        Err(error) => Err(anyhow!("Could not read {CLI_CONF_PATH_ENV}: {error}")),
+    }
+}
 
 /// Various Nexus RPC URLs.
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev/";
