@@ -58,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Scheduler dispatch transactions now pass the active protocol root required by the release aware scheduler ABI.
 - Release activation queries now decode the canonical Nexus event wrapper and
   reject wrappers for unrelated events.
 - Package metadata validation now distinguishes the runtime package address in

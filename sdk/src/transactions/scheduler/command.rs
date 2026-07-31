@@ -608,6 +608,10 @@ pub(crate) fn append_dispatch_occurrence(
     occurrence_id: u64,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
+    let protocol_ref = transaction.objects().protocol.clone();
+    let protocol = transaction
+        .shared_object(&protocol_ref, false)
+        .map_err(SchedulerError::transaction)?;
     let task = shared_task_arg(transaction, task)?;
     let dag = transaction
         .shared_object(dag, false)
@@ -635,6 +639,7 @@ pub(crate) fn append_dispatch_occurrence(
         .call_target(
             scheduler_binding::dispatch_next_target,
             vec![
+                protocol,
                 task,
                 dag,
                 agent_registry,
@@ -724,7 +729,7 @@ mod tests {
             transactions::scheduler::compose::TaskDraftCompiler,
         },
         std::collections::BTreeMap,
-        sui_sdk_types::{Argument, Command, MoveCall},
+        sui_sdk_types::{Argument, Command, Input, MoveCall},
     };
 
     fn address(value: &'static str) -> sui::types::Address {
@@ -910,5 +915,32 @@ mod tests {
             )]
         );
         assert!(matches!(recipient, Argument::Input(_)));
+    }
+
+    #[test]
+    fn dispatch_uses_the_protocol_as_its_first_argument() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let dag = object_ref_for_id(address("0x51"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+        let mut builder = NexusPtbBuilder::new(&objects);
+
+        append_dispatch_occurrence(&mut builder, &task, &dag, &leader_cap, 7, &HashSet::new())
+            .expect("dispatch compiles");
+        let transaction = builder.finish();
+        let dispatch = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "dispatch_next")
+            .expect("dispatch call");
+
+        assert_eq!(dispatch.arguments.len(), 9);
+        let Argument::Input(protocol_index) = dispatch.arguments[0] else {
+            panic!("expected protocol input argument");
+        };
+        let Input::Shared(protocol) = &transaction.inputs[usize::from(protocol_index)] else {
+            panic!("expected shared protocol input");
+        };
+        assert_eq!(protocol.object_id(), *objects.protocol.object_id());
+        assert_eq!(protocol.version(), objects.protocol.version());
+        assert!(!protocol.mutability().is_mutable());
     }
 }
