@@ -24,13 +24,14 @@ pub enum NexusError {
     Channel(anyhow::Error),
     #[error("Storage error: {0}")]
     Storage(anyhow::Error),
-    #[error("Release validation error: {0}")]
-    ReleaseValidation(anyhow::Error),
+    #[error("Protocol validation error: {0}")]
+    ProtocolValidation(anyhow::Error),
     #[error(
-        "Protocol release {release} exceeds the newest release {maximum} supported by this SDK"
+        "Protocol version {protocol_version} exceeds the newest version {maximum} supported by \
+         this SDK"
     )]
-    UnsupportedProtocolRelease { release: u64, maximum: u64 },
-    #[error("Object '{object}' requires migration from release {current} to release {required}")]
+    UnsupportedProtocolVersion { protocol_version: u64, maximum: u64 },
+    #[error("Object '{object}' requires protocol version {required}, active version is {current}")]
     MigrationRequired {
         object: crate::sui::types::Address,
         current: u64,

@@ -1,30 +1,35 @@
-//! Canonical Nexus protocol release resolution.
+//! Canonical Nexus protocol configuration resolution.
 
 use {
     crate::{
-        move_bindings::primitives::protocol::{
-            PackageInfo,
-            Protocol,
-            ProtocolStateV1,
-            ReleaseManifestV1,
-            ReleaseRecordV1,
-            SharedObjectInfo,
+        move_bindings::{
+            primitives::protocol::{
+                PackageInfo,
+                Protocol,
+                ProtocolConfigHashInputV1,
+                ProtocolConfigV1,
+                ProtocolStateV1,
+                ProtocolVersionActivatedV1,
+                SharedObjectInfo,
+            },
+            registry::leader::{LeaderRegistry, LeaderRegistryStateV1},
         },
         nexus::{
             crawler::{Crawler, Response},
             error::NexusError,
+            registry::extract_network_id_from_leader_registry,
             tap,
         },
         sui,
         types::{
             nexus_objects::{
                 default_object_reference,
-                resolve_package_release_metadata,
-                ResolvedPackageRelease,
+                resolve_package_version_metadata,
+                ResolvedPackageVersion,
             },
             NexusObjects,
             NexusPackages,
-            PackageRelease,
+            PackageVersion,
             UsTokenConfig,
         },
     },
@@ -36,21 +41,42 @@ use {
     },
 };
 
-/// Newest Nexus protocol release whose behavior this SDK understands.
-pub const MAX_SUPPORTED_PROTOCOL_RELEASE: u64 = 2;
+/// Newest Nexus protocol version whose behavior this SDK understands.
+pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 2;
 
-/// Configuration that is intentionally outside the six package release.
+const PACKAGE_ROLES: [(u8, &str); 6] = [
+    (0, "primitives"),
+    (1, "interface"),
+    (2, "registry"),
+    (3, "gas"),
+    (4, "workflow"),
+    (5, "scheduler"),
+];
+
+const SHARED_OBJECT_ROLES: [(u8, &str); 7] = [
+    (0, "ToolRegistry"),
+    (1, "VerifierRegistry"),
+    (2, "NetworkAuth"),
+    (3, "AgentRegistry"),
+    (4, "GasService"),
+    (5, "LeaderRegistry"),
+    (6, "PriorityFeeVault"),
+];
+
+/// Runtime configuration that is intentionally outside [`ProtocolConfigV1`].
 ///
 /// The default DAG executor is refreshed from [`crate::types::AgentRegistrySnapshot`].
-/// The US token is an external dependency, and the priority fee capability is
+/// The US token is an external dependency and the priority fee capability is
 /// optional operator authority.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReleaseExtras {
+pub struct ProtocolExtras {
+    /// Optional authority used to administer the configured priority fee vault.
     pub priority_fee_vault_owner_cap: sui::types::ObjectReference,
+    /// External US token package and object configuration.
     pub us_token: UsTokenConfig,
 }
 
-impl Default for ReleaseExtras {
+impl Default for ProtocolExtras {
     fn default() -> Self {
         Self {
             priority_fee_vault_owner_cap: default_object_reference(),
@@ -59,7 +85,7 @@ impl Default for ReleaseExtras {
     }
 }
 
-impl From<&NexusObjects> for ReleaseExtras {
+impl From<&NexusObjects> for ProtocolExtras {
     fn from(objects: &NexusObjects) -> Self {
         Self {
             priority_fee_vault_owner_cap: objects.priority_fee_vault_owner_cap.clone(),
@@ -68,59 +94,64 @@ impl From<&NexusObjects> for ReleaseExtras {
     }
 }
 
-/// Resolves and validates the exact snapshot selected by one stable [`Protocol`].
+/// Resolves and validates the configuration selected by one stable [`Protocol`].
 #[derive(Clone)]
-pub struct ReleaseResolver {
+pub struct ProtocolResolver {
     protocol: sui::types::ObjectReference,
     client: Arc<sui::grpc::Client>,
-    extras: ReleaseExtras,
+    extras: ProtocolExtras,
 }
 
-impl ReleaseResolver {
+impl ProtocolResolver {
+    /// Creates a resolver for one stable protocol root and Sui client.
     pub fn new(protocol: sui::types::ObjectReference, client: Arc<sui::grpc::Client>) -> Self {
         Self {
             protocol,
             client,
-            extras: ReleaseExtras::default(),
+            extras: ProtocolExtras::default(),
         }
     }
 
-    pub fn with_extras(mut self, extras: ReleaseExtras) -> Self {
+    /// Supplies runtime configuration that is outside the onchain protocol config.
+    pub fn with_extras(mut self, extras: ProtocolExtras) -> Self {
         self.extras = extras;
         self
     }
 
+    /// Returns the configured stable protocol root.
     pub fn protocol(&self) -> &sui::types::ObjectReference {
         &self.protocol
     }
 
-    /// Resolve the release selected by the canonical protocol root.
+    /// Resolve the configuration selected by the canonical protocol root.
     pub async fn resolve_active(&self) -> Result<NexusObjects, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
-        let record = active_record(state)?;
-        self.resolve_record_inner(protocol, &record).await
+        let config = active_config(state)?;
+        self.resolve_config_inner(protocol, &config).await
     }
 
-    /// Resolve an event snapshot after confirming it is still canonical.
-    pub async fn resolve_record(
+    /// Resolve an activation after confirming it still names the active configuration.
+    pub async fn resolve_activation(
         &self,
-        record: &ReleaseRecordV1,
+        activation: &ProtocolVersionActivatedV1,
     ) -> Result<NexusObjects, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
-        let active = active_record(state)?;
-        validate_record(record)?;
-        validate_record(&active)?;
-        if record != &active {
-            return Err(release_error(format!(
-                "Release event '{}' with manifest '{}' is not the active snapshot '{}' with \
-                 manifest '{}'",
-                record.release,
-                hex::encode(&record.manifest_hash),
-                active.release,
-                hex::encode(&active.manifest_hash),
+        let active = active_config(state)?;
+        validate_config(&active)?;
+        if activation.protocol_id.bytes != *protocol.object_ref().object_id()
+            || activation.protocol_version != active.protocol_version
+            || activation.config_hash != active.config_hash
+        {
+            return Err(protocol_error(format!(
+                "Protocol activation version '{}' with configuration hash '{}' does not match \
+                 active version '{}' with configuration hash '{}'",
+                activation.protocol_version,
+                hex::encode(&activation.config_hash),
+                active.protocol_version,
+                hex::encode(&active.config_hash),
             )));
         }
-        self.resolve_record_inner(protocol, record).await
+        self.resolve_config_inner(protocol, &active).await
     }
 
     async fn protocol_state(&self) -> Result<(Response<Protocol>, ProtocolStateV1), NexusError> {
@@ -136,50 +167,58 @@ impl ReleaseResolver {
             .await
             .map_err(NexusError::Rpc)?;
         if state.active.vec.len() > 1 {
-            return Err(release_error(format!(
-                "Protocol active option contains '{}' records",
+            return Err(protocol_error(format!(
+                "Protocol active option contains '{}' configurations",
                 state.active.vec.len()
             )));
         }
         Ok((protocol, state))
     }
 
-    async fn resolve_record_inner(
+    async fn resolve_config_inner(
         &self,
         protocol: Response<Protocol>,
-        record: &ReleaseRecordV1,
+        config: &ProtocolConfigV1,
     ) -> Result<NexusObjects, NexusError> {
         let crawler = Crawler::new(Arc::clone(&self.client));
-        validate_record(record)?;
-        let release = record.release;
+        validate_config(config)?;
+        let protocol_version = config.protocol_version;
 
-        if release > MAX_SUPPORTED_PROTOCOL_RELEASE {
-            return Err(NexusError::UnsupportedProtocolRelease {
-                release,
-                maximum: MAX_SUPPORTED_PROTOCOL_RELEASE,
+        if protocol_version > MAX_SUPPORTED_PROTOCOL_VERSION {
+            return Err(NexusError::UnsupportedProtocolVersion {
+                protocol_version,
+                maximum: MAX_SUPPORTED_PROTOCOL_VERSION,
             });
         }
 
-        let packages = self.resolve_packages(record).await?;
+        let packages = self.resolve_packages(config).await?;
         validate_type_origin_lineages(&self.client, &packages).await?;
-        let refs = resolve_shared_objects(&crawler, record).await?;
+        let mut refs = resolve_shared_objects(&crawler, config).await?;
+        let network_id = resolve_network_id(
+            &crawler,
+            &mut refs,
+            *protocol.object_ref().object_id(),
+            protocol_version,
+            &config.shared_objects.contents[5].value,
+        )
+        .await?;
         let default_dag_executor =
             tap::fetch_default_dag_executor(&crawler, *refs.agent_registry.object_id())
                 .await
                 .map_err(NexusError::Rpc)?
                 .ok_or_else(|| {
-                    release_error("Activated AgentRegistry has no default DAG executor")
+                    protocol_error("Configured AgentRegistry has no default DAG executor")
                 })?
                 .target();
         let priority_fee_vault_owner_cap =
             refresh_optional_authority(&crawler, &self.extras.priority_fee_vault_owner_cap).await?;
 
         Ok(NexusObjects {
-            release,
+            protocol_version,
             protocol: protocol.object_ref(),
             packages,
-            manifest_hash: record.manifest_hash.clone(),
-            network_id: record.objects.network.bytes,
+            config_hash: config.config_hash.clone(),
+            network_id,
             tool_registry: refs.tool_registry,
             verifier_registry: refs.verifier_registry,
             network_auth: refs.network_auth,
@@ -195,45 +234,46 @@ impl ReleaseResolver {
 
     async fn resolve_packages(
         &self,
-        record: &ReleaseRecordV1,
+        config: &ProtocolConfigV1,
     ) -> Result<NexusPackages, NexusError> {
-        let primitives = package_release(&record.primitives);
-        let interface = package_release(&record.interface);
-        let registry = package_release(&record.registry);
-        let gas = package_release(&record.gas);
-        let workflow = package_release(&record.workflow);
-        let scheduler = package_release(&record.scheduler);
+        let bindings = &config.packages.contents;
+        let primitives = package_version(&bindings[0].value);
+        let interface = package_version(&bindings[1].value);
+        let registry = package_version(&bindings[2].value);
+        let gas = package_version(&bindings[3].value);
+        let workflow = package_version(&bindings[4].value);
+        let scheduler = package_version(&bindings[5].value);
         let (primitives, interface, registry, gas, workflow, scheduler) = tokio::try_join!(
-            resolve_package_release_metadata(&self.client, &primitives, "primitives"),
-            resolve_package_release_metadata(&self.client, &interface, "interface"),
-            resolve_package_release_metadata(&self.client, &registry, "registry"),
-            resolve_package_release_metadata(&self.client, &gas, "gas"),
-            resolve_package_release_metadata(&self.client, &workflow, "workflow"),
-            resolve_package_release_metadata(&self.client, &scheduler, "scheduler"),
+            resolve_package_version_metadata(&self.client, &primitives, "primitives"),
+            resolve_package_version_metadata(&self.client, &interface, "interface"),
+            resolve_package_version_metadata(&self.client, &registry, "registry"),
+            resolve_package_version_metadata(&self.client, &gas, "gas"),
+            resolve_package_version_metadata(&self.client, &workflow, "workflow"),
+            resolve_package_version_metadata(&self.client, &scheduler, "scheduler"),
         )
-        .map_err(NexusError::ReleaseValidation)?;
+        .map_err(NexusError::ProtocolValidation)?;
 
         let families = [
-            ("primitives", &primitives.release),
-            ("interface", &interface.release),
-            ("registry", &registry.release),
-            ("gas", &gas.release),
-            ("workflow", &workflow.release),
-            ("scheduler", &scheduler.release),
+            ("primitives", &primitives.package),
+            ("interface", &interface.package),
+            ("registry", &registry.package),
+            ("gas", &gas.package),
+            ("workflow", &workflow.package),
+            ("scheduler", &scheduler.package),
         ];
         validate_package_linkage("primitives", &primitives, &[], &families)?;
         validate_package_linkage(
             "interface",
             &interface,
-            &[("primitives", &primitives.release)],
+            &[("primitives", &primitives.package)],
             &families,
         )?;
         validate_package_linkage(
             "registry",
             &registry,
             &[
-                ("primitives", &primitives.release),
-                ("interface", &interface.release),
+                ("primitives", &primitives.package),
+                ("interface", &interface.package),
             ],
             &families,
         )?;
@@ -241,9 +281,9 @@ impl ReleaseResolver {
             "gas",
             &gas,
             &[
-                ("primitives", &primitives.release),
-                ("interface", &interface.release),
-                ("registry", &registry.release),
+                ("primitives", &primitives.package),
+                ("interface", &interface.package),
+                ("registry", &registry.package),
             ],
             &families,
         )?;
@@ -251,10 +291,10 @@ impl ReleaseResolver {
             "workflow",
             &workflow,
             &[
-                ("primitives", &primitives.release),
-                ("interface", &interface.release),
-                ("registry", &registry.release),
-                ("gas", &gas.release),
+                ("primitives", &primitives.package),
+                ("interface", &interface.package),
+                ("registry", &registry.package),
+                ("gas", &gas.package),
             ],
             &families,
         )?;
@@ -262,21 +302,21 @@ impl ReleaseResolver {
             "scheduler",
             &scheduler,
             &[
-                ("primitives", &primitives.release),
-                ("interface", &interface.release),
-                ("registry", &registry.release),
-                ("workflow", &workflow.release),
+                ("primitives", &primitives.package),
+                ("interface", &interface.package),
+                ("registry", &registry.package),
+                ("workflow", &workflow.package),
             ],
             &families,
         )?;
 
         Ok(NexusPackages {
-            primitives: primitives.release,
-            interface: interface.release,
-            registry: registry.release,
-            gas: gas.release,
-            workflow: workflow.release,
-            scheduler: scheduler.release,
+            primitives: primitives.package,
+            interface: interface.package,
+            registry: registry.package,
+            gas: gas.package,
+            workflow: workflow.package,
+            scheduler: scheduler.package,
         })
     }
 }
@@ -286,19 +326,19 @@ fn validate_protocol_root(
     protocol: &Response<Protocol>,
 ) -> Result<(), NexusError> {
     if protocol.data.id.id.bytes != protocol_id {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "Protocol '{protocol_id}' contains embedded identity '{}'",
             protocol.data.id.id.bytes
         )));
     }
     if protocol.data.state.version != 1 {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "Protocol '{protocol_id}' uses unsupported state schema '{}'",
             protocol.data.state.version
         )));
     }
     if !protocol.is_shared() {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "Protocol '{protocol_id}' is not shared"
         )));
     }
@@ -307,13 +347,13 @@ fn validate_protocol_root(
 
 fn validate_package_linkage(
     package_name: &str,
-    package: &ResolvedPackageRelease,
-    required: &[(&str, &PackageRelease)],
-    families: &[(&str, &PackageRelease)],
+    package: &ResolvedPackageVersion,
+    required: &[(&str, &PackageVersion)],
+    families: &[(&str, &PackageVersion)],
 ) -> Result<(), NexusError> {
     for (dependency_name, dependency) in required {
         let link = package.linkage.get(&dependency.initial_id).ok_or_else(|| {
-            release_error(format!(
+            protocol_error(format!(
                 "{package_name} has no linkage for required {dependency_name} \
                      lineage '{}'",
                 dependency.initial_id
@@ -334,10 +374,10 @@ fn validate_link(
     package_name: &str,
     dependency_name: &str,
     link: &crate::types::nexus_objects::PackageLink,
-    expected: &PackageRelease,
+    expected: &PackageVersion,
 ) -> Result<(), NexusError> {
     if link.storage_id != expected.storage_id || link.version != expected.version {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "{package_name} links {dependency_name} lineage '{}' to version '{}' \
              at '{}', expected version '{}' at '{}'",
             expected.initial_id,
@@ -350,8 +390,8 @@ fn validate_link(
     Ok(())
 }
 
-fn package_release(info: &PackageInfo) -> PackageRelease {
-    PackageRelease::new(
+fn package_version(info: &PackageInfo) -> PackageVersion {
+    PackageVersion::new(
         info.initial_id.bytes,
         info.storage_id.bytes,
         info.version,
@@ -359,46 +399,136 @@ fn package_release(info: &PackageInfo) -> PackageRelease {
     )
 }
 
-fn active_record(state: ProtocolStateV1) -> Result<ReleaseRecordV1, NexusError> {
+fn active_config(state: ProtocolStateV1) -> Result<ProtocolConfigV1, NexusError> {
     match state.active.vec.as_slice() {
-        [] => Err(release_error("Protocol has no active release")),
-        [record] => Ok(record.clone()),
-        records => Err(release_error(format!(
-            "Protocol active option contains '{}' records",
-            records.len()
+        [] => Err(protocol_error("Protocol has no active configuration")),
+        [config] => Ok(config.clone()),
+        configs => Err(protocol_error(format!(
+            "Protocol active option contains '{}' configurations",
+            configs.len()
         ))),
     }
 }
 
-fn validate_record(record: &ReleaseRecordV1) -> Result<(), NexusError> {
-    if record.release == 0 {
-        return Err(release_error("Release zero is not a published release"));
+fn validate_config(config: &ProtocolConfigV1) -> Result<(), NexusError> {
+    if config.protocol_version == 0 {
+        return Err(protocol_error("Protocol version zero is invalid"));
     }
-    if record.manifest_hash.len() != sui::types::Digest::LENGTH {
-        return Err(release_error(format!(
-            "Release '{}' manifest is {} bytes, expected 32",
-            record.release,
-            record.manifest_hash.len()
+    validate_package_bindings(config)?;
+    validate_shared_object_bindings(config)?;
+    if config.config_hash.len() != sui::types::Digest::LENGTH {
+        return Err(protocol_error(format!(
+            "Protocol version '{}' configuration hash is {} bytes, expected 32",
+            config.protocol_version,
+            config.config_hash.len()
         )));
     }
-    let manifest = ReleaseManifestV1 {
-        release: record.release,
-        primitives: record.primitives.clone(),
-        interface: record.interface.clone(),
-        registry: record.registry.clone(),
-        gas: record.gas.clone(),
-        workflow: record.workflow.clone(),
-        scheduler: record.scheduler.clone(),
-        objects: record.objects.clone(),
-    };
-    let bytes = bcs::to_bytes(&manifest)
-        .context("Could not encode release manifest")
-        .map_err(NexusError::ReleaseValidation)?;
+    let input = ProtocolConfigHashInputV1::new(
+        config.protocol_version,
+        config.packages.clone(),
+        config.shared_objects.clone(),
+    );
+    let bytes = bcs::to_bytes(&input)
+        .context("Could not encode protocol configuration hash input")
+        .map_err(NexusError::ProtocolValidation)?;
     let digest = sui::types::hash::Hasher::digest(bytes);
-    if record.manifest_hash.as_slice() != digest.as_bytes() {
-        return Err(release_error(format!(
-            "Release '{}' manifest hash does not match its contents",
-            record.release
+    if config.config_hash.as_slice() != digest.as_bytes() {
+        return Err(protocol_error(format!(
+            "Protocol version '{}' configuration hash does not match its contents",
+            config.protocol_version
+        )));
+    }
+    Ok(())
+}
+
+fn validate_package_bindings(config: &ProtocolConfigV1) -> Result<(), NexusError> {
+    if config.packages.contents.len() != PACKAGE_ROLES.len() {
+        return Err(protocol_error(format!(
+            "Protocol package bindings contain '{}' entries, expected '{}'",
+            config.packages.contents.len(),
+            PACKAGE_ROLES.len()
+        )));
+    }
+
+    let mut initial_ids = HashMap::new();
+    let mut storage_ids = HashMap::new();
+    for (entry, (expected_role, name)) in config.packages.contents.iter().zip(PACKAGE_ROLES) {
+        if entry.key != expected_role {
+            return Err(protocol_error(format!(
+                "Protocol package binding for {name} has role '{}', expected '{expected_role}'",
+                entry.key
+            )));
+        }
+        let package = &entry.value;
+        if package.version == 0 {
+            return Err(protocol_error(format!(
+                "Protocol package binding for {name} has version zero"
+            )));
+        }
+        if package.version == 1 && package.initial_id != package.storage_id {
+            return Err(protocol_error(format!(
+                "Protocol package binding for {name} version one has different initial and \
+                 storage identities"
+            )));
+        }
+        reject_duplicate_id(
+            &mut initial_ids,
+            package.initial_id.bytes,
+            name,
+            "initial package",
+        )?;
+        reject_duplicate_id(
+            &mut storage_ids,
+            package.storage_id.bytes,
+            name,
+            "storage package",
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_shared_object_bindings(config: &ProtocolConfigV1) -> Result<(), NexusError> {
+    if config.shared_objects.contents.len() != SHARED_OBJECT_ROLES.len() {
+        return Err(protocol_error(format!(
+            "Protocol shared object bindings contain '{}' entries, expected '{}'",
+            config.shared_objects.contents.len(),
+            SHARED_OBJECT_ROLES.len()
+        )));
+    }
+
+    let mut ids = HashMap::new();
+    for (entry, (expected_role, name)) in config
+        .shared_objects
+        .contents
+        .iter()
+        .zip(SHARED_OBJECT_ROLES)
+    {
+        if entry.key != expected_role {
+            return Err(protocol_error(format!(
+                "Protocol shared object binding for {name} has role '{}', expected \
+                 '{expected_role}'",
+                entry.key
+            )));
+        }
+        if entry.value.initial_shared_version == 0 {
+            return Err(protocol_error(format!(
+                "Protocol shared object binding for {name} has initial version zero"
+            )));
+        }
+        reject_duplicate_id(&mut ids, entry.value.id.bytes, name, "shared object")?;
+    }
+    Ok(())
+}
+
+fn reject_duplicate_id<'a>(
+    ids: &mut HashMap<sui::types::Address, &'a str>,
+    id: sui::types::Address,
+    name: &'a str,
+    kind: &str,
+) -> Result<(), NexusError> {
+    if let Some(previous) = ids.insert(id, name) {
+        return Err(protocol_error(format!(
+            "Protocol {kind} identity '{id}' is bound to both {previous} and {name}"
         )));
     }
     Ok(())
@@ -430,7 +560,7 @@ fn collect_type_origin_lineages(
         {
             if let Some(previous) = origins.insert(origin, package.initial_id) {
                 if previous != package.initial_id {
-                    return Err(release_error(format!(
+                    return Err(protocol_error(format!(
                         "Package '{origin}' is claimed by lineages '{previous}' and '{}'",
                         package.initial_id
                     )));
@@ -461,7 +591,7 @@ async fn validate_origin_lineage(
         .into_inner()
         .package
         .ok_or_else(|| {
-            release_error(format!(
+            protocol_error(format!(
                 "Datatype origin package '{storage_id}' was not returned"
             ))
         })?;
@@ -477,13 +607,13 @@ fn validate_origin_package(
         .storage_id
         .as_deref()
         .ok_or_else(|| {
-            release_error(format!(
+            protocol_error(format!(
                 "Datatype origin package '{storage_id}' has no storage ID"
             ))
         })?
         .parse()
         .map_err(|error| {
-            release_error(format!(
+            protocol_error(format!(
                 "Datatype origin package '{storage_id}' has invalid storage ID: {error}"
             ))
         })?;
@@ -491,18 +621,18 @@ fn validate_origin_package(
         .original_id
         .as_deref()
         .ok_or_else(|| {
-            release_error(format!(
+            protocol_error(format!(
                 "Datatype origin package '{storage_id}' has no original ID"
             ))
         })?
         .parse()
         .map_err(|error| {
-            release_error(format!(
+            protocol_error(format!(
                 "Datatype origin package '{storage_id}' has invalid original ID: {error}"
             ))
         })?;
     if observed_storage != storage_id || observed_initial != expected_initial_id {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "Datatype origin package '{storage_id}' belongs to lineage \
              '{observed_initial}', expected '{expected_initial_id}'"
         )));
@@ -522,16 +652,17 @@ struct SharedReferences {
 
 async fn resolve_shared_objects(
     crawler: &Crawler,
-    record: &ReleaseRecordV1,
+    config: &ProtocolConfigV1,
 ) -> Result<SharedReferences, NexusError> {
+    let bindings = &config.shared_objects.contents;
     let entries = [
-        ("ToolRegistry", &record.objects.tool_registry),
-        ("VerifierRegistry", &record.objects.verifier_registry),
-        ("NetworkAuth", &record.objects.network_auth),
-        ("AgentRegistry", &record.objects.agent_registry),
-        ("GasService", &record.objects.gas_service),
-        ("LeaderRegistry", &record.objects.leader_registry),
-        ("PriorityFeeVault", &record.objects.priority_fee_vault),
+        ("ToolRegistry", &bindings[0].value),
+        ("VerifierRegistry", &bindings[1].value),
+        ("NetworkAuth", &bindings[2].value),
+        ("AgentRegistry", &bindings[3].value),
+        ("GasService", &bindings[4].value),
+        ("LeaderRegistry", &bindings[5].value),
+        ("PriorityFeeVault", &bindings[6].value),
     ];
     let ids = entries
         .iter()
@@ -547,34 +678,64 @@ async fn resolve_shared_objects(
         .collect::<HashMap<_, _>>();
 
     Ok(SharedReferences {
-        tool_registry: resolve_shared_object(
-            &by_id,
-            "ToolRegistry",
-            &record.objects.tool_registry,
-        )?,
-        verifier_registry: resolve_shared_object(
-            &by_id,
-            "VerifierRegistry",
-            &record.objects.verifier_registry,
-        )?,
-        network_auth: resolve_shared_object(&by_id, "NetworkAuth", &record.objects.network_auth)?,
-        agent_registry: resolve_shared_object(
-            &by_id,
-            "AgentRegistry",
-            &record.objects.agent_registry,
-        )?,
-        gas_service: resolve_shared_object(&by_id, "GasService", &record.objects.gas_service)?,
-        leader_registry: resolve_shared_object(
-            &by_id,
-            "LeaderRegistry",
-            &record.objects.leader_registry,
-        )?,
-        priority_fee_vault: resolve_shared_object(
-            &by_id,
-            "PriorityFeeVault",
-            &record.objects.priority_fee_vault,
-        )?,
+        tool_registry: resolve_shared_object(&by_id, "ToolRegistry", &bindings[0].value)?,
+        verifier_registry: resolve_shared_object(&by_id, "VerifierRegistry", &bindings[1].value)?,
+        network_auth: resolve_shared_object(&by_id, "NetworkAuth", &bindings[2].value)?,
+        agent_registry: resolve_shared_object(&by_id, "AgentRegistry", &bindings[3].value)?,
+        gas_service: resolve_shared_object(&by_id, "GasService", &bindings[4].value)?,
+        leader_registry: resolve_shared_object(&by_id, "LeaderRegistry", &bindings[5].value)?,
+        priority_fee_vault: resolve_shared_object(&by_id, "PriorityFeeVault", &bindings[6].value)?,
     })
+}
+
+async fn resolve_network_id(
+    crawler: &Crawler,
+    refs: &mut SharedReferences,
+    protocol_id: sui::types::Address,
+    protocol_version: u64,
+    expected: &SharedObjectInfo,
+) -> Result<sui::types::Address, NexusError> {
+    let registry = crawler
+        .get_object::<LeaderRegistry>(expected.id.bytes)
+        .await
+        .map_err(NexusError::Rpc)?;
+    if registry.data.id.id.bytes != expected.id.bytes {
+        return Err(protocol_error(format!(
+            "LeaderRegistry '{}' contains embedded identity '{}'",
+            expected.id.bytes, registry.data.id.id.bytes
+        )));
+    }
+    if !registry.is_shared() || registry.get_initial_version() != expected.initial_shared_version {
+        return Err(protocol_error(format!(
+            "LeaderRegistry '{}' does not match its protocol binding",
+            expected.id.bytes
+        )));
+    }
+    if registry.data.state.version != 1 {
+        return Err(protocol_error(format!(
+            "LeaderRegistry '{}' uses unsupported state schema '{}'",
+            expected.id.bytes, registry.data.state.version
+        )));
+    }
+    let state = crawler
+        .get_versioned_state::<LeaderRegistryStateV1>(&registry.data.state)
+        .await
+        .map_err(NexusError::Rpc)?;
+    if state.protocol_id.bytes != protocol_id {
+        return Err(protocol_error(format!(
+            "LeaderRegistry '{}' belongs to protocol '{}', expected '{protocol_id}'",
+            expected.id.bytes, state.protocol_id.bytes
+        )));
+    }
+    if state.minimum_protocol_version > protocol_version {
+        return Err(protocol_error(format!(
+            "LeaderRegistry '{}' requires protocol version '{}', active version is \
+             '{protocol_version}'",
+            expected.id.bytes, state.minimum_protocol_version
+        )));
+    }
+    refs.leader_registry = registry.object_ref();
+    Ok(extract_network_id_from_leader_registry(&state))
 }
 
 fn resolve_shared_object(
@@ -583,19 +744,19 @@ fn resolve_shared_object(
     info: &SharedObjectInfo,
 ) -> Result<sui::types::ObjectReference, NexusError> {
     let response = by_id.get(&info.id.bytes).ok_or_else(|| {
-        release_error(format!(
+        protocol_error(format!(
             "{name} object '{}' was not returned",
             info.id.bytes
         ))
     })?;
     if !response.is_shared() {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "{name} object '{}' is not shared",
             info.id.bytes
         )));
     }
     if response.get_initial_version() != info.initial_shared_version {
-        return Err(release_error(format!(
+        return Err(protocol_error(format!(
             "{name} object '{}' has initial version '{}', expected '{}'",
             info.id.bytes,
             response.get_initial_version(),
@@ -619,8 +780,8 @@ async fn refresh_optional_authority(
         .map_err(NexusError::Rpc)
 }
 
-fn release_error(error: impl std::fmt::Display) -> NexusError {
-    NexusError::ReleaseValidation(anyhow!("{error}"))
+fn protocol_error(error: impl std::fmt::Display) -> NexusError {
+    NexusError::ProtocolValidation(anyhow!("{error}"))
 }
 
 #[cfg(test)]
@@ -630,9 +791,9 @@ mod tests {
         crate::{
             move_bindings::{
                 move_std::option::Option as MoveOption,
-                primitives::protocol::SystemObjectsV1,
                 sui_framework::{
                     object::{ID, UID},
+                    vec_map::{Entry, VecMap},
                     versioned::Versioned,
                 },
             },
@@ -653,45 +814,35 @@ mod tests {
         SharedObjectInfo::new(ID::new(address(value)), 1)
     }
 
-    fn record() -> ReleaseRecordV1 {
-        let primitives = package("0x11");
-        let interface = package("0x12");
-        let registry = package("0x13");
-        let gas = package("0x14");
-        let workflow = package("0x15");
-        let scheduler = package("0x16");
-        let objects = SystemObjectsV1::new(
-            ID::new(address("0x20")),
-            shared("0x21"),
-            shared("0x22"),
-            shared("0x23"),
-            shared("0x24"),
-            shared("0x25"),
-            shared("0x26"),
-            shared("0x27"),
+    fn config(protocol_version: u64) -> ProtocolConfigV1 {
+        let packages = VecMap::new(
+            ["0x11", "0x12", "0x13", "0x14", "0x15", "0x16"]
+                .into_iter()
+                .zip(PACKAGE_ROLES)
+                .map(|(id, (role, _))| Entry::new(role, package(id)))
+                .collect(),
         );
-        let manifest = ReleaseManifestV1::new(
-            1,
-            primitives.clone(),
-            interface.clone(),
-            registry.clone(),
-            gas.clone(),
-            workflow.clone(),
-            scheduler.clone(),
-            objects.clone(),
+        let shared_objects = VecMap::new(
+            ["0x21", "0x22", "0x23", "0x24", "0x25", "0x26", "0x27"]
+                .into_iter()
+                .zip(SHARED_OBJECT_ROLES)
+                .map(|(id, (role, _))| Entry::new(role, shared(id)))
+                .collect(),
         );
-        let hash = sui::types::hash::Hasher::digest(bcs::to_bytes(&manifest).unwrap());
-        ReleaseRecordV1::new(
-            1,
-            primitives,
-            interface,
-            registry,
-            gas,
-            workflow,
-            scheduler,
-            objects,
-            hash.as_bytes().to_vec(),
-        )
+        let mut config = ProtocolConfigV1::new(protocol_version, packages, shared_objects, vec![]);
+        set_config_hash(&mut config);
+        config
+    }
+
+    fn set_config_hash(config: &mut ProtocolConfigV1) {
+        let input = ProtocolConfigHashInputV1::new(
+            config.protocol_version,
+            config.packages.clone(),
+            config.shared_objects.clone(),
+        );
+        config.config_hash = sui::types::hash::Hasher::digest(bcs::to_bytes(&input).unwrap())
+            .as_bytes()
+            .to_vec();
     }
 
     fn protocol_response(
@@ -712,9 +863,9 @@ mod tests {
         }
     }
 
-    fn protocol_state(records: Vec<ReleaseRecordV1>) -> ProtocolStateV1 {
-        let mut active = MoveOption::from_option(None::<ReleaseRecordV1>);
-        active.vec = records;
+    fn protocol_state(configs: Vec<ProtocolConfigV1>) -> ProtocolStateV1 {
+        let mut active = MoveOption::from_option(None::<ProtocolConfigV1>);
+        active.vec = configs;
         ProtocolStateV1::new(active)
     }
 
@@ -737,46 +888,83 @@ mod tests {
     }
 
     #[test]
-    fn manifest_hash_covers_every_release_field() {
-        let record = record();
-        validate_record(&record).unwrap();
+    fn config_hash_covers_every_protocol_binding() {
+        let config = config(1);
+        validate_config(&config).unwrap();
 
-        let mut tampered = record;
-        tampered.scheduler.version += 1;
-        let error = validate_record(&tampered).unwrap_err();
-        assert!(error.to_string().contains("manifest hash"));
+        let mut tampered = config;
+        tampered.packages.contents[5].value.version += 1;
+        let error = validate_config(&tampered).unwrap_err();
+        assert!(error.to_string().contains("configuration hash"));
     }
 
     #[test]
-    fn manifest_and_active_state_reject_invalid_release_shapes() {
-        let mut release_zero = record();
-        release_zero.release = 0;
-        assert!(validate_record(&release_zero)
+    fn config_and_active_state_reject_invalid_shapes() {
+        let mut version_zero = config(1);
+        version_zero.protocol_version = 0;
+        assert!(validate_config(&version_zero)
             .unwrap_err()
             .to_string()
-            .contains("Release zero"));
+            .contains("version zero"));
 
-        let mut short_hash = record();
-        short_hash.manifest_hash.pop();
-        assert!(validate_record(&short_hash)
+        let mut short_hash = config(1);
+        short_hash.config_hash.pop();
+        assert!(validate_config(&short_hash)
             .unwrap_err()
             .to_string()
             .contains("expected 32"));
 
-        assert!(active_record(protocol_state(vec![]))
+        assert!(active_config(protocol_state(vec![]))
             .unwrap_err()
             .to_string()
-            .contains("no active release"));
+            .contains("no active configuration"));
         assert_eq!(
-            active_record(protocol_state(vec![record()]))
+            active_config(protocol_state(vec![config(1)]))
                 .unwrap()
-                .release,
+                .protocol_version,
             1
         );
-        assert!(active_record(protocol_state(vec![record(), record()]))
+        assert!(active_config(protocol_state(vec![config(1), config(2)]))
             .unwrap_err()
             .to_string()
-            .contains("contains '2' records"));
+            .contains("contains '2' configurations"));
+    }
+
+    #[test]
+    fn role_bindings_require_canonical_order_and_unique_identities() {
+        let mut wrong_role = config(1);
+        wrong_role.packages.contents.swap(0, 1);
+        set_config_hash(&mut wrong_role);
+        assert!(validate_config(&wrong_role)
+            .unwrap_err()
+            .to_string()
+            .contains("expected '0'"));
+
+        let mut duplicate_package = config(1);
+        duplicate_package.packages.contents[1].value.initial_id =
+            duplicate_package.packages.contents[0]
+                .value
+                .initial_id
+                .clone();
+        duplicate_package.packages.contents[1].value.storage_id =
+            duplicate_package.packages.contents[0]
+                .value
+                .storage_id
+                .clone();
+        set_config_hash(&mut duplicate_package);
+        assert!(validate_config(&duplicate_package)
+            .unwrap_err()
+            .to_string()
+            .contains("bound to both"));
+
+        let mut duplicate_object = config(1);
+        duplicate_object.shared_objects.contents[1].value.id =
+            duplicate_object.shared_objects.contents[0].value.id.clone();
+        set_config_hash(&mut duplicate_object);
+        assert!(validate_config(&duplicate_object)
+            .unwrap_err()
+            .to_string()
+            .contains("bound to both"));
     }
 
     #[test]
@@ -868,7 +1056,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_release_objects_require_exact_initial_versions() {
+    fn configured_shared_objects_require_exact_initial_versions() {
         let object_id = address("0x61");
         let info = SharedObjectInfo::new(ID::new(object_id), 3);
         let empty = HashMap::new();
@@ -905,12 +1093,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_rejects_unsupported_protocol_release_before_network_resolution() {
+    async fn resolver_rejects_unsupported_protocol_version_before_network_resolution() {
         let protocol_id = address("0x70");
         let protocol = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
         let client = Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
         let protocol_ref = protocol.object_ref();
-        let extras = ReleaseExtras {
+        let extras = ProtocolExtras {
             priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
                 address("0x71"),
                 1,
@@ -918,34 +1106,19 @@ mod tests {
             ),
             us_token: UsTokenConfig::new(address("0x72")),
         };
-        let resolver = ReleaseResolver::new(protocol_ref.clone(), client).with_extras(extras);
+        let resolver = ProtocolResolver::new(protocol_ref.clone(), client).with_extras(extras);
         assert_eq!(resolver.protocol(), &protocol_ref);
 
-        let mut unsupported = record();
-        unsupported.release = MAX_SUPPORTED_PROTOCOL_RELEASE + 1;
-        let manifest = ReleaseManifestV1::new(
-            unsupported.release,
-            unsupported.primitives.clone(),
-            unsupported.interface.clone(),
-            unsupported.registry.clone(),
-            unsupported.gas.clone(),
-            unsupported.workflow.clone(),
-            unsupported.scheduler.clone(),
-            unsupported.objects.clone(),
-        );
-        unsupported.manifest_hash =
-            sui::types::hash::Hasher::digest(bcs::to_bytes(&manifest).unwrap())
-                .as_bytes()
-                .to_vec();
+        let unsupported = config(MAX_SUPPORTED_PROTOCOL_VERSION + 1);
 
         let error = resolver
-            .resolve_record_inner(protocol, &unsupported)
+            .resolve_config_inner(protocol, &unsupported)
             .await
             .unwrap_err();
         assert!(matches!(
             error,
-            NexusError::UnsupportedProtocolRelease {
-                release: 3,
+            NexusError::UnsupportedProtocolVersion {
+                protocol_version: 3,
                 maximum: 2,
             }
         ));
@@ -954,7 +1127,7 @@ mod tests {
     #[test]
     fn dependency_linkage_must_select_the_exact_storage_version() {
         let dependency =
-            PackageRelease::new(address("0x11"), address("0x21"), 2, Default::default());
+            PackageVersion::new(address("0x11"), address("0x21"), 2, Default::default());
         let mut linkage = BTreeMap::new();
         linkage.insert(
             dependency.initial_id,
@@ -963,8 +1136,8 @@ mod tests {
                 version: dependency.version,
             },
         );
-        let resolved_package = ResolvedPackageRelease {
-            release: PackageRelease::first_publication(address("0x30")),
+        let resolved_package = ResolvedPackageVersion {
+            package: PackageVersion::first_publication(address("0x30")),
             linkage,
         };
         validate_package_linkage(
@@ -990,8 +1163,8 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("expected version '2'"));
 
-        let missing = ResolvedPackageRelease {
-            release: PackageRelease::first_publication(address("0x31")),
+        let missing = ResolvedPackageVersion {
+            package: PackageVersion::first_publication(address("0x31")),
             linkage: BTreeMap::new(),
         };
         assert!(validate_package_linkage(
@@ -1022,11 +1195,11 @@ mod tests {
         .contains("expected version"));
 
         assert_eq!(
-            package_release(&package("0x80")),
-            PackageRelease::first_publication(address("0x80"))
+            package_version(&package("0x80")),
+            PackageVersion::first_publication(address("0x80"))
         );
         assert_eq!(
-            ReleaseExtras::default().priority_fee_vault_owner_cap,
+            ProtocolExtras::default().priority_fee_vault_owner_cap,
             default_object_reference()
         );
     }

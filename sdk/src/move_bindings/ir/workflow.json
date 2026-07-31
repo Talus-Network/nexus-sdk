@@ -380,7 +380,7 @@
                   }
                 },
                 {
-                  "name": "protocol_release",
+                  "name": "protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -4136,7 +4136,7 @@
               "ty": "U64"
             },
             {
-              "name": "protocol_release",
+              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -7313,7 +7313,7 @@
               "ty": "U64"
             },
             {
-              "name": "protocol_release",
+              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -7899,7 +7899,7 @@
           ]
         },
         {
-          "name": "payment_protocol_release",
+          "name": "payment_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -8285,7 +8285,7 @@
           ]
         },
         {
-          "name": "protocol_release",
+          "name": "protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -11389,7 +11389,7 @@
               "ty": "U64"
             },
             {
-              "name": "protocol_release",
+              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -11659,7 +11659,7 @@
               "ty": "U64"
             },
             {
-              "name": "protocol_release",
+              "name": "protocol_version",
               "ty": "U64"
             },
             {

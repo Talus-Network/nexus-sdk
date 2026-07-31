@@ -1,6 +1,6 @@
 use {
     nexus_sdk::{
-        nexus::{client::NexusClient, release::ReleaseExtras},
+        nexus::{client::NexusClient, protocol::ProtocolExtras},
         types::NexusObjects,
     },
     std::{env, fs},
@@ -11,24 +11,25 @@ use {
 /// Run with:
 ///
 /// ```text
-/// NEXUS_LOCAL_RELEASE_OBJECTS=/path/to/objects.localnet.toml \
+/// NEXUS_LOCAL_PROTOCOL_OBJECTS=/path/to/objects.localnet.toml \
 /// NEXUS_LOCAL_SUI_RPC=http://127.0.0.1:9000 \
-/// cargo test -p nexus-sdk --all-features --test release_resolution_test -- --ignored
+/// cargo test -p nexus-sdk --all-features --test protocol_resolution_test -- --ignored
 /// ```
 #[tokio::test]
-#[ignore = "requires a published local Nexus release"]
-async fn resolves_active_snapshot_from_fresh_publication() {
+#[ignore = "requires a published local Nexus protocol configuration"]
+async fn resolves_active_config_from_fresh_publication() {
     let objects_path =
-        env::var("NEXUS_LOCAL_RELEASE_OBJECTS").expect("NEXUS_LOCAL_RELEASE_OBJECTS is required");
+        env::var("NEXUS_LOCAL_PROTOCOL_OBJECTS").expect("NEXUS_LOCAL_PROTOCOL_OBJECTS is required");
     let rpc =
         env::var("NEXUS_LOCAL_SUI_RPC").unwrap_or_else(|_| "http://127.0.0.1:9000".to_owned());
-    let expected_release = env::var("NEXUS_LOCAL_EXPECTED_RELEASE")
-        .ok()
-        .map(|release| {
-            release
-                .parse::<u64>()
-                .expect("NEXUS_LOCAL_EXPECTED_RELEASE must be an integer")
-        });
+    let expected_protocol_version =
+        env::var("NEXUS_LOCAL_EXPECTED_PROTOCOL_VERSION")
+            .ok()
+            .map(|protocol_version| {
+                protocol_version
+                    .parse::<u64>()
+                    .expect("NEXUS_LOCAL_EXPECTED_PROTOCOL_VERSION must be an integer")
+            });
     let configured: NexusObjects = toml::from_str(
         &fs::read_to_string(&objects_path)
             .unwrap_or_else(|error| panic!("could not read '{objects_path}': {error}")),
@@ -38,14 +39,15 @@ async fn resolves_active_snapshot_from_fresh_publication() {
     let client = NexusClient::builder()
         .with_rpc_url(&rpc)
         .with_protocol(configured.protocol.clone())
-        .with_release_extras(ReleaseExtras::from(&configured))
+        .with_protocol_extras(ProtocolExtras::from(&configured))
         .build()
         .await
-        .expect("active release should resolve");
+        .expect("active protocol configuration should resolve");
     let resolved = client.get_nexus_objects();
 
-    let expected_release = expected_release.unwrap_or(configured.release);
-    assert_eq!(resolved.release, expected_release);
+    let expected_protocol_version =
+        expected_protocol_version.unwrap_or(configured.protocol_version);
+    assert_eq!(resolved.protocol_version, expected_protocol_version);
     assert_eq!(
         resolved.protocol.object_id(),
         configured.protocol.object_id()
@@ -57,7 +59,7 @@ async fn resolves_active_snapshot_from_fresh_publication() {
         .zip(configured.packages.all())
     {
         assert_eq!(resolved_package.initial_id, configured_package.initial_id);
-        if expected_release == configured.release {
+        if expected_protocol_version == configured.protocol_version {
             assert_eq!(resolved_package.storage_id, configured_package.storage_id);
         }
         assert_ne!(
@@ -67,7 +69,7 @@ async fn resolves_active_snapshot_from_fresh_publication() {
         assert!(resolved_package.version > 0);
         assert!(!resolved_package.type_origins.is_empty());
     }
-    assert_eq!(resolved.manifest_hash.len(), 32);
+    assert_eq!(resolved.config_hash.len(), 32);
     assert_eq!(
         resolved.tool_registry.object_id(),
         configured.tool_registry.object_id()

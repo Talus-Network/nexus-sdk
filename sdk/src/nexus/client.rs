@@ -9,7 +9,7 @@ use {
             crawler::Crawler,
             error::NexusError,
             gas::GasActions,
-            release::{ReleaseExtras, ReleaseResolver},
+            protocol::{ProtocolExtras, ProtocolResolver},
             scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
             transaction::NexusTransaction,
@@ -149,7 +149,7 @@ pub struct NexusClientBuilder {
     address_balance_gas: Option<AddressBalanceGas>,
     nexus_objects: Option<NexusObjects>,
     protocol: Option<sui::types::ObjectReference>,
-    release_extras: Option<ReleaseExtras>,
+    protocol_extras: Option<ProtocolExtras>,
     transaction_timeout: Option<Duration>,
 }
 
@@ -201,15 +201,15 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Resolve the active Nexus release from one stable protocol root.
+    /// Resolve the active Nexus configuration from one stable protocol root.
     pub fn with_protocol(mut self, protocol: sui::types::ObjectReference) -> Self {
         self.protocol = Some(protocol);
         self
     }
 
     /// Supply external token and optional operator authority configuration.
-    pub fn with_release_extras(mut self, extras: ReleaseExtras) -> Self {
-        self.release_extras = Some(extras);
+    pub fn with_protocol_extras(mut self, extras: ProtocolExtras) -> Self {
+        self.protocol_extras = Some(extras);
         self
     }
 
@@ -247,8 +247,8 @@ impl NexusClientBuilder {
             }
             (Some(objects), None) => objects,
             (None, Some(protocol)) => {
-                let resolver = ReleaseResolver::new(protocol, Arc::clone(&client))
-                    .with_extras(self.release_extras.unwrap_or_default());
+                let resolver = ProtocolResolver::new(protocol, Arc::clone(&client))
+                    .with_extras(self.protocol_extras.unwrap_or_default());
                 Box::pin(resolver.resolve_active()).await?
             }
             (None, None) => {

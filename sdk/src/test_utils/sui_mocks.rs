@@ -40,7 +40,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
     NexusObjects {
-        release: 1,
+        protocol_version: 1,
         protocol: mock_sui_object_ref(),
         packages: NexusPackages::first_publication(
             sui::types::Address::generate(&mut rng),
@@ -50,7 +50,7 @@ pub fn mock_nexus_objects() -> NexusObjects {
             sui::types::Address::generate(&mut rng),
             sui::types::Address::generate(&mut rng),
         ),
-        manifest_hash: vec![0; 32],
+        config_hash: vec![0; 32],
         network_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
         verifier_registry: mock_sui_object_ref(),

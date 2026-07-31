@@ -215,7 +215,7 @@ mod tests {
         output_schema: Vec<u8>,
     ) -> ToolStateV1 {
         ToolStateV1 {
-            release_floor: 1,
+            minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 sui_mocks::mock_sui_address(),
             ),

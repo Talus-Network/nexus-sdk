@@ -83,7 +83,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -643,7 +643,7 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 0,
                   "ty": "U64"
                 },
@@ -2322,7 +2322,7 @@
           ]
         },
         {
-          "name": "raise_service_release_floor",
+          "name": "raise_service_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2364,14 +2364,14 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
           "return_types": []
         },
         {
-          "name": "raise_tool_release_floor",
+          "name": "raise_tool_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2442,7 +2442,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -2659,7 +2659,7 @@
           ]
         },
         {
-          "name": "service_release_floor",
+          "name": "service_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2983,7 +2983,7 @@
           ]
         },
         {
-          "name": "tool_release_floor",
+          "name": "tool_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

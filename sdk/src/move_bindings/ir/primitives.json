@@ -3365,6 +3365,169 @@
           "type_name": {
             "address": "0xa1",
             "module": "protocol",
+            "name": "ProtocolConfigHashInputV1"
+          },
+          "module": "protocol",
+          "name": "ProtocolConfigHashInputV1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "protocol_version",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "packages",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "shared_objects",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
+            "name": "ProtocolConfigV1"
+          },
+          "module": "protocol",
+          "name": "ProtocolConfigV1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "protocol_version",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "packages",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "shared_objects",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "config_hash",
+                  "position": 3,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "protocol",
             "name": "ProtocolStateV1"
           },
           "module": "protocol",
@@ -3392,7 +3555,7 @@
                             "type_name": {
                               "address": "0xa1",
                               "module": "protocol",
-                              "name": "ReleaseRecordV1"
+                              "name": "ProtocolConfigV1"
                             },
                             "type_arguments": []
                           }
@@ -3409,10 +3572,10 @@
           "type_name": {
             "address": "0xa1",
             "module": "protocol",
-            "name": "ReleaseActivatedEventV1"
+            "name": "ProtocolVersionActivatedV1"
           },
           "module": "protocol",
-          "name": "ReleaseActivatedEventV1",
+          "name": "ProtocolVersionActivatedV1",
           "abilities": [
             "Copy",
             "Drop"
@@ -3436,270 +3599,13 @@
                   }
                 },
                 {
-                  "name": "record",
+                  "name": "protocol_version",
                   "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ReleaseRecordV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa1",
-            "module": "protocol",
-            "name": "ReleaseManifestV1"
-          },
-          "module": "protocol",
-          "name": "ReleaseManifestV1",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "release",
-                  "position": 0,
                   "ty": "U64"
                 },
                 {
-                  "name": "primitives",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "interface",
+                  "name": "config_hash",
                   "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "registry",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "gas",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "workflow",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "scheduler",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "objects",
-                  "position": 7,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SystemObjectsV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa1",
-            "module": "protocol",
-            "name": "ReleaseRecordV1"
-          },
-          "module": "protocol",
-          "name": "ReleaseRecordV1",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "release",
-                  "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "primitives",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "interface",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "registry",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "gas",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "workflow",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "scheduler",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "PackageInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "objects",
-                  "position": 7,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SystemObjectsV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "manifest_hash",
-                  "position": 8,
                   "ty": {
                     "Vector": "U8"
                   }
@@ -3743,139 +3649,6 @@
                   "name": "initial_shared_version",
                   "position": 1,
                   "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa1",
-            "module": "protocol",
-            "name": "SystemObjectsV1"
-          },
-          "module": "protocol",
-          "name": "SystemObjectsV1",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "network",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "tool_registry",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "verifier_registry",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "network_auth",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "agent_registry",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "gas_service",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "leader_registry",
-                  "position": 6,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "priority_fee_vault",
-                  "position": 7,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "SharedObjectInfo"
-                      },
-                      "type_arguments": []
-                    }
-                  }
                 }
               ]
             }
@@ -3926,20 +3699,20 @@
               }
             },
             {
-              "name": "release",
+              "name": "config",
               "ty": {
                 "Datatype": {
                   "type_name": {
                     "address": "0xa1",
                     "module": "protocol",
-                    "name": "ReleaseRecordV1"
+                    "name": "ProtocolConfigV1"
                   },
                   "type_arguments": []
                 }
               }
             },
             {
-              "name": "max_supported_release",
+              "name": "max_supported_protocol_version",
               "ty": "U64"
             }
           ],
@@ -3948,7 +3721,7 @@
           ]
         },
         {
-          "name": "activate_release_v1",
+          "name": "activate_protocol_version_v1",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3990,13 +3763,13 @@
               }
             },
             {
-              "name": "release",
+              "name": "config",
               "ty": {
                 "Datatype": {
                   "type_name": {
                     "address": "0xa1",
                     "module": "protocol",
-                    "name": "ReleaseRecordV1"
+                    "name": "ProtocolConfigV1"
                   },
                   "type_arguments": []
                 }
@@ -4008,7 +3781,7 @@
           ]
         },
         {
-          "name": "activated_manifest_hash",
+          "name": "activated_config_hash",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4023,7 +3796,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEventV1"
+                        "name": "ProtocolVersionActivatedV1"
                       },
                       "type_arguments": []
                     }
@@ -4059,7 +3832,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEventV1"
+                        "name": "ProtocolVersionActivatedV1"
                       },
                       "type_arguments": []
                     }
@@ -4082,7 +3855,7 @@
           ]
         },
         {
-          "name": "activated_record",
+          "name": "activated_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4097,50 +3870,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEventV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa1",
-                      "module": "protocol",
-                      "name": "ReleaseRecordV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "activated_release",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "event",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ReleaseActivatedEventV1"
+                        "name": "ProtocolVersionActivatedV1"
                       },
                       "type_arguments": []
                     }
@@ -4154,7 +3884,7 @@
           ]
         },
         {
-          "name": "active_record",
+          "name": "active_config",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4187,7 +3917,7 @@
                     "type_name": {
                       "address": "0xa1",
                       "module": "protocol",
-                      "name": "ReleaseRecordV1"
+                      "name": "ProtocolConfigV1"
                     },
                     "type_arguments": []
                   }
@@ -4197,7 +3927,7 @@
           ]
         },
         {
-          "name": "active_release",
+          "name": "active_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4224,6 +3954,118 @@
           "return_types": [
             "U64"
           ]
+        },
+        {
+          "name": "add_package",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "packages",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "role",
+              "ty": "U8"
+            },
+            {
+              "name": "info",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "PackageInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "add_shared_object",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "shared_objects",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "role",
+              "ty": "U8"
+            },
+            {
+              "name": "info",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "SharedObjectInfo"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "admin_protocol_id",
@@ -4261,6 +4103,16 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "agent_registry_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
           ]
         },
         {
@@ -4336,24 +4188,75 @@
           "return_types": []
         },
         {
-          "name": "assert_package_identities",
+          "name": "assert_package_bindings",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "release",
+              "name": "packages",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ReleaseRecordV1"
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
                       },
-                      "type_arguments": []
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_package_identities",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "packages",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -4364,6 +4267,75 @@
         },
         {
           "name": "assert_package_progression",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "previous",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "next",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_package_progression_for_role",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -4399,6 +4371,153 @@
                         "name": "PackageInfo"
                       },
                       "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_shared_object_bindings",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "shared_objects",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_shared_object_identities",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "shared_objects",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_shared_object_progression",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "previous",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "next",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "SharedObjectInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -4459,11 +4578,67 @@
               }
             },
             {
-              "name": "max_supported_release",
+              "name": "max_supported_protocol_version",
               "ty": "U64"
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "config_hash",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "config",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolConfigV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Vector": "U8"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "gas_package_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
+        },
+        {
+          "name": "gas_service_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
         },
         {
           "name": "id",
@@ -4529,6 +4704,26 @@
             }
           ],
           "return_types": []
+        },
+        {
+          "name": "interface_package_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
+        },
+        {
+          "name": "leader_registry_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
         },
         {
           "name": "load_v1",
@@ -4598,7 +4793,7 @@
               }
             },
             {
-              "name": "max_supported_release",
+              "name": "max_supported_protocol_version",
               "ty": "U64"
             }
           ],
@@ -4621,39 +4816,13 @@
           ]
         },
         {
-          "name": "manifest_hash",
+          "name": "network_auth_role",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
-          "parameters": [
-            {
-              "name": "release",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ReleaseRecordV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
+          "parameters": [],
           "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Vector": "U8"
-                }
-              }
-            }
+            "U8"
           ]
         },
         {
@@ -4705,6 +4874,68 @@
           ]
         },
         {
+          "name": "new_package_bindings",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  "U8",
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "PackageInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_shared_object_bindings",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  "U8",
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "SharedObjectInfo"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "package_info",
           "visibility": "Public",
           "is_entry": false,
@@ -4737,13 +4968,13 @@
           ]
         },
         {
-          "name": "release_manifest_hash",
+          "name": "packages",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "release",
+              "name": "config",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4752,7 +4983,82 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseRecordV1"
+                        "name": "ProtocolConfigV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "vec_map",
+                      "name": "VecMap"
+                    },
+                    "type_arguments": [
+                      "U8",
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "protocol",
+                            "name": "PackageInfo"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "primitives_package_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
+        },
+        {
+          "name": "priority_fee_vault_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
+        },
+        {
+          "name": "protocol_config_hash",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "config",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolConfigV1"
                       },
                       "type_arguments": []
                     }
@@ -4768,13 +5074,87 @@
           ]
         },
         {
-          "name": "release_number",
+          "name": "protocol_config_v1",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "release",
+              "name": "protocol_version",
+              "ty": "U64"
+            },
+            {
+              "name": "packages",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    "U8",
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "protocol",
+                          "name": "PackageInfo"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "shared_objects",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    "U8",
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "protocol",
+                          "name": "SharedObjectInfo"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "protocol",
+                  "name": "ProtocolConfigV1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "config",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4783,7 +5163,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseRecordV1"
+                        "name": "ProtocolConfigV1"
                       },
                       "type_arguments": []
                     }
@@ -4797,118 +5177,23 @@
           ]
         },
         {
-          "name": "release_record_v1",
+          "name": "registry_package_role",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
-          "parameters": [
-            {
-              "name": "release",
-              "ty": "U64"
-            },
-            {
-              "name": "primitives",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "interface",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "gas",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "workflow",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "scheduler",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "PackageInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "objects",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SystemObjectsV1"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
+          "parameters": [],
           "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "protocol",
-                  "name": "ReleaseRecordV1"
-                },
-                "type_arguments": []
-              }
-            }
+            "U8"
+          ]
+        },
+        {
+          "name": "scheduler_package_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
           ]
         },
         {
@@ -4935,6 +5220,61 @@
                   "name": "SharedObjectInfo"
                 },
                 "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "shared_objects",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "config",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolConfigV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "vec_map",
+                      "name": "VecMap"
+                    },
+                    "type_arguments": [
+                      "U8",
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "protocol",
+                            "name": "SharedObjectInfo"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
               }
             }
           ]
@@ -4969,118 +5309,33 @@
           ]
         },
         {
-          "name": "system_objects_v1",
+          "name": "tool_registry_role",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
-          "parameters": [
-            {
-              "name": "network",
-              "ty": "Address"
-            },
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "verifier_registry",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "network_auth",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "agent_registry",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "gas_service",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "leader_registry",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "priority_fee_vault",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "SharedObjectInfo"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
+          "parameters": [],
           "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa1",
-                  "module": "protocol",
-                  "name": "SystemObjectsV1"
-                },
-                "type_arguments": []
-              }
-            }
+            "U8"
+          ]
+        },
+        {
+          "name": "verifier_registry_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
+          ]
+        },
+        {
+          "name": "workflow_package_role",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            "U8"
           ]
         }
       ]

@@ -133,7 +133,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -1992,6 +1992,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "new_default_task_components",
           "visibility": "Public",
           "is_entry": false,
@@ -2350,7 +2379,7 @@
           ]
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2392,7 +2421,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -2638,35 +2667,6 @@
                         "address": "0x2",
                         "module": "tx_context",
                         "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "release_floor",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
                       },
                       "type_arguments": []
                     }
@@ -4220,7 +4220,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -6678,6 +6678,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "network_id",
           "visibility": "Public",
           "is_entry": false,
@@ -6897,7 +6926,7 @@
           ]
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -6939,7 +6968,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -7475,35 +7504,6 @@
                 "type_arguments": []
               }
             }
-          ]
-        },
-        {
-          "name": "release_floor",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         },
         {
@@ -9298,7 +9298,7 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 0,
                   "ty": "U64"
                 },
@@ -9648,7 +9648,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -10473,6 +10473,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "network_auth",
+                        "name": "NetworkAuth"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "new_for_protocol",
           "visibility": "Friend",
           "is_entry": false,
@@ -10802,7 +10831,7 @@
           ]
         },
         {
-          "name": "raise_key_binding_release_floor",
+          "name": "raise_key_binding_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -10844,14 +10873,14 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
           "return_types": []
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -10893,7 +10922,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -10977,35 +11006,6 @@
         },
         {
           "name": "registry_state_schema",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "NetworkAuth"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "release_floor",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -11577,7 +11577,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -12140,6 +12140,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "new_deposit",
           "visibility": "Public",
           "is_entry": false,
@@ -12357,7 +12386,7 @@
           ]
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -12399,40 +12428,11 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
           "return_types": []
-        },
-        {
-          "name": "release_floor",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "priority_fee_vault",
-                        "name": "PriorityFeeVault"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
         },
         {
           "name": "share",
@@ -13644,7 +13644,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -13914,7 +13914,7 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 0,
                   "ty": "U64"
                 },
@@ -15095,6 +15095,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "new_for_protocol",
           "visibility": "Friend",
           "is_entry": false,
@@ -15295,7 +15324,7 @@
           ]
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -15337,14 +15366,14 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
           "return_types": []
         },
         {
-          "name": "raise_tool_release_floor",
+          "name": "raise_tool_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -15397,7 +15426,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -16417,35 +16446,6 @@
         },
         {
           "name": "registry_state_schema",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "release_floor",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18254,7 +18254,7 @@
                   }
                 },
                 {
-                  "name": "release_floor",
+                  "name": "minimum_protocol_version",
                   "position": 1,
                   "ty": "U64"
                 },
@@ -18693,6 +18693,35 @@
           ]
         },
         {
+          "name": "minimum_protocol_version",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "verifier_registry",
+                        "name": "VerifierRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
           "name": "new_external_registration",
           "visibility": "Public",
           "is_entry": false,
@@ -18910,7 +18939,7 @@
           ]
         },
         {
-          "name": "raise_release_floor",
+          "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -18952,7 +18981,7 @@
               }
             },
             {
-              "name": "release",
+              "name": "protocol_version",
               "ty": "U64"
             }
           ],
@@ -19101,35 +19130,6 @@
                 }
               }
             }
-          ]
-        },
-        {
-          "name": "release_floor",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "verifier_registry",
-                        "name": "VerifierRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         },
         {

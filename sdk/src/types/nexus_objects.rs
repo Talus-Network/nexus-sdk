@@ -1,4 +1,4 @@
-//! Activated Nexus release and durable object references.
+//! Activated Nexus protocol configuration and durable object references.
 
 #[cfg(test)]
 use crate::move_bindings::{
@@ -28,7 +28,7 @@ use {
             talus::us::US,
         },
         sui,
-        types::{DatatypeKey, DefaultDagExecutorTarget, NexusPackages, PackageRelease},
+        types::{DatatypeKey, DefaultDagExecutorTarget, NexusPackages, PackageVersion},
     },
     serde::{de::Error as _, Deserialize, Deserializer, Serialize},
     sui_move::{MoveStruct, MoveType},
@@ -90,41 +90,51 @@ impl UsTokenConfig {
     }
 }
 
-/// One validated and immutable Nexus release snapshot.
+/// One validated and immutable Nexus protocol configuration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NexusObjects {
-    pub release: u64,
+    /// Monotonic Nexus protocol version selected by the active configuration.
+    pub protocol_version: u64,
+    /// Stable onchain root that owns the active protocol configuration.
     pub protocol: sui::types::ObjectReference,
+    /// Exact package versions selected by protocol package role.
     pub packages: NexusPackages,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub manifest_hash: Vec<u8>,
+    /// BCS digest of the canonical protocol configuration hash input.
+    pub config_hash: Vec<u8>,
+    /// Nexus domain identity derived from the configured `LeaderRegistry`.
     pub network_id: sui::types::Address,
+    /// Canonical shared `ToolRegistry`.
     pub tool_registry: sui::types::ObjectReference,
+    /// Canonical shared `VerifierRegistry`.
     pub verifier_registry: sui::types::ObjectReference,
+    /// Canonical shared `NetworkAuth`.
     pub network_auth: sui::types::ObjectReference,
+    /// Canonical shared `AgentRegistry`.
     pub agent_registry: sui::types::ObjectReference,
+    /// Current default DAG executor derived from the configured `AgentRegistry`.
     pub default_dag_executor: DefaultDagExecutorTarget,
+    /// Canonical shared gas service.
     pub gas_service: sui::types::ObjectReference,
+    /// Canonical shared `LeaderRegistry`.
     pub leader_registry: sui::types::ObjectReference,
+    /// Canonical shared priority fee vault.
     pub priority_fee_vault: sui::types::ObjectReference,
+    /// Optional operator authority for the configured priority fee vault.
     #[serde(default = "default_object_reference")]
     pub priority_fee_vault_owner_cap: sui::types::ObjectReference,
+    /// External US token package and object configuration.
     #[serde(default)]
     pub us_token: UsTokenConfig,
 }
 
 #[derive(Deserialize)]
 struct NexusObjectsWire {
-    #[serde(default)]
-    release: Option<u64>,
-    #[serde(default)]
-    active_release: Option<u64>,
+    protocol_version: u64,
     #[serde(default = "default_object_reference")]
     protocol: sui::types::ObjectReference,
     #[serde(default)]
     packages: Option<NexusPackages>,
-    #[serde(default)]
-    manifest_hash: Vec<u8>,
+    config_hash: Vec<u8>,
     network_id: sui::types::Address,
     tool_registry: sui::types::ObjectReference,
     verifier_registry: sui::types::ObjectReference,
@@ -174,33 +184,33 @@ impl<'de> Deserialize<'de> for NexusObjects {
         let packages = match wire.packages {
             Some(packages) => packages,
             None => NexusPackages {
-                primitives: legacy_package(
+                primitives: configured_package(
                     "primitives_pkg_id",
                     wire.primitives_pkg_id,
                     wire.primitives_original_pkg_id,
                 )
                 .map_err(D::Error::custom)?,
-                interface: legacy_package(
+                interface: configured_package(
                     "interface_pkg_id",
                     wire.interface_pkg_id,
                     wire.interface_original_pkg_id,
                 )
                 .map_err(D::Error::custom)?,
-                registry: legacy_package(
+                registry: configured_package(
                     "registry_pkg_id",
                     wire.registry_pkg_id,
                     wire.registry_original_pkg_id,
                 )
                 .map_err(D::Error::custom)?,
-                gas: legacy_package("gas_pkg_id", wire.gas_pkg_id, wire.gas_original_pkg_id)
+                gas: configured_package("gas_pkg_id", wire.gas_pkg_id, wire.gas_original_pkg_id)
                     .map_err(D::Error::custom)?,
-                workflow: legacy_package(
+                workflow: configured_package(
                     "workflow_pkg_id",
                     wire.workflow_pkg_id,
                     wire.workflow_original_pkg_id,
                 )
                 .map_err(D::Error::custom)?,
-                scheduler: legacy_package(
+                scheduler: configured_package(
                     "scheduler_pkg_id",
                     wire.scheduler_pkg_id,
                     wire.scheduler_original_pkg_id,
@@ -210,10 +220,10 @@ impl<'de> Deserialize<'de> for NexusObjects {
         };
 
         Ok(Self {
-            release: wire.release.or(wire.active_release).unwrap_or_default(),
+            protocol_version: wire.protocol_version,
             protocol: wire.protocol,
             packages,
-            manifest_hash: wire.manifest_hash,
+            config_hash: wire.config_hash,
             network_id: wire.network_id,
             tool_registry: wire.tool_registry,
             verifier_registry: wire.verifier_registry,
@@ -229,13 +239,13 @@ impl<'de> Deserialize<'de> for NexusObjects {
     }
 }
 
-fn legacy_package(
+fn configured_package(
     field: &'static str,
     storage_id: Option<sui::types::Address>,
     initial_id: Option<sui::types::Address>,
-) -> Result<PackageRelease, String> {
+) -> Result<PackageVersion, String> {
     let storage_id = storage_id.ok_or_else(|| format!("missing field `{field}`"))?;
-    Ok(PackageRelease::new(
+    Ok(PackageVersion::new(
         initial_id.unwrap_or(storage_id),
         storage_id,
         0,
@@ -256,12 +266,12 @@ impl NexusObjects {
         client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
         let (primitives, interface, registry, gas, workflow, scheduler) = tokio::try_join!(
-            resolve_package_release(client, &self.packages.primitives, "primitives"),
-            resolve_package_release(client, &self.packages.interface, "interface"),
-            resolve_package_release(client, &self.packages.registry, "registry"),
-            resolve_package_release(client, &self.packages.gas, "gas"),
-            resolve_package_release(client, &self.packages.workflow, "workflow"),
-            resolve_package_release(client, &self.packages.scheduler, "scheduler"),
+            resolve_package_version(client, &self.packages.primitives, "primitives"),
+            resolve_package_version(client, &self.packages.interface, "interface"),
+            resolve_package_version(client, &self.packages.registry, "registry"),
+            resolve_package_version(client, &self.packages.gas, "gas"),
+            resolve_package_version(client, &self.packages.workflow, "workflow"),
+            resolve_package_version(client, &self.packages.scheduler, "scheduler"),
         )?;
         self.packages = NexusPackages {
             primitives,
@@ -366,7 +376,7 @@ impl NexusObjects {
         self.packages.contains_package(address)
     }
 
-    /// Whether a Sui event was emitted by code in this activated release.
+    /// Whether a Sui event was emitted by a configured package version.
     pub fn is_active_emitter(&self, address: sui::types::Address) -> bool {
         self.packages
             .all()
@@ -375,7 +385,7 @@ impl NexusObjects {
     }
 
     /// Returns whether `package_id` is a valid top level event source for this
-    /// release.
+    /// protocol configuration.
     ///
     /// Sui records the package containing the top level Move call as an
     /// event's source. A direct Nexus call is valid only from one exact active
@@ -454,11 +464,11 @@ impl NexusObjects {
             })?
             .linkage;
 
-        self.package_uses_active_release(package_id, &package)
+        self.package_uses_active_protocol(package_id, &package)
     }
 
     #[cfg(feature = "nexus")]
-    fn package_uses_active_release(
+    fn package_uses_active_protocol(
         &self,
         package_id: sui::types::Address,
         package: &sui::grpc::Package,
@@ -568,14 +578,14 @@ impl NexusObjects {
 }
 
 #[cfg(feature = "nexus")]
-pub(crate) async fn resolve_package_release(
+pub(crate) async fn resolve_package_version(
     client: &Arc<sui::grpc::Client>,
-    expected: &PackageRelease,
+    expected: &PackageVersion,
     package_name: &str,
-) -> anyhow::Result<PackageRelease> {
-    resolve_package_release_metadata(client, expected, package_name)
+) -> anyhow::Result<PackageVersion> {
+    resolve_package_version_metadata(client, expected, package_name)
         .await
-        .map(|metadata| metadata.release)
+        .map(|metadata| metadata.package)
 }
 
 #[cfg(feature = "nexus")]
@@ -587,17 +597,17 @@ pub(crate) struct PackageLink {
 
 #[cfg(feature = "nexus")]
 #[derive(Clone, Debug)]
-pub(crate) struct ResolvedPackageRelease {
-    pub release: PackageRelease,
+pub(crate) struct ResolvedPackageVersion {
+    pub package: PackageVersion,
     pub linkage: BTreeMap<sui::types::Address, PackageLink>,
 }
 
 #[cfg(feature = "nexus")]
-pub(crate) async fn resolve_package_release_metadata(
+pub(crate) async fn resolve_package_version_metadata(
     client: &Arc<sui::grpc::Client>,
-    expected: &PackageRelease,
+    expected: &PackageVersion,
     package_name: &str,
-) -> anyhow::Result<ResolvedPackageRelease> {
+) -> anyhow::Result<ResolvedPackageVersion> {
     let request = sui::grpc::GetPackageRequest::default().with_package_id(expected.storage_id);
     let package = client
         .as_ref()
@@ -646,7 +656,7 @@ pub(crate) async fn resolve_package_release_metadata(
 
 #[cfg(feature = "nexus")]
 fn validate_package_header(
-    expected: &PackageRelease,
+    expected: &PackageVersion,
     package_name: &str,
     package: &sui::grpc::Package,
 ) -> anyhow::Result<(sui::types::Address, sui::types::Address, u64)> {
@@ -689,7 +699,7 @@ fn validate_package_object(
     storage_id: sui::types::Address,
     initial_id: sui::types::Address,
     version: u64,
-) -> anyhow::Result<ResolvedPackageRelease> {
+) -> anyhow::Result<ResolvedPackageVersion> {
     let object_id = parse_package_address(
         package_object.object_id.as_deref(),
         package_name,
@@ -719,17 +729,17 @@ fn validate_package_object(
         .package
         .ok_or_else(|| anyhow::anyhow!("{package_name} package object metadata is missing"))?;
 
-    let mut release = PackageRelease::new(initial_id, storage_id, version, Default::default());
+    let mut resolved = PackageVersion::new(initial_id, storage_id, version, Default::default());
     for origin in &exact_package.type_origins {
         let (key, package_id) = parse_type_origin(origin, package_name)?;
-        release.insert_type_origin(key, package_id)?;
+        resolved.insert_type_origin(key, package_id)?;
     }
 
     // When the ABI service also supplies an origin table, require it to agree
     // with the immutable package object rather than treating it as a fallback.
     for origin in &package.type_origins {
         let (key, package_id) = parse_type_origin(origin, package_name)?;
-        require_type_origin(&release, &key, package_id, package_name)?;
+        require_type_origin(&resolved, &key, package_id, package_name)?;
     }
 
     for module in &package.modules {
@@ -775,7 +785,7 @@ fn validate_package_object(
                 );
             }
             let key = DatatypeKey::new(module_name.clone(), datatype_name.clone());
-            require_type_origin(&release, &key, defining_id, package_name)?;
+            require_type_origin(&resolved, &key, defining_id, package_name)?;
         }
     }
 
@@ -809,7 +819,10 @@ fn validate_package_object(
         }
     }
 
-    Ok(ResolvedPackageRelease { release, linkage })
+    Ok(ResolvedPackageVersion {
+        package: resolved,
+        linkage,
+    })
 }
 
 #[cfg(feature = "nexus")]
@@ -849,12 +862,12 @@ fn parse_type_origin(
 
 #[cfg(feature = "nexus")]
 fn require_type_origin(
-    release: &PackageRelease,
+    package: &PackageVersion,
     key: &DatatypeKey,
     expected: sui::types::Address,
     package_name: &str,
 ) -> anyhow::Result<()> {
-    let observed = release
+    let observed = package
         .type_origins
         .get(&key.module)
         .and_then(|types| types.get(&key.datatype))
@@ -896,10 +909,10 @@ mod tests {
         origin
     }
 
-    fn package_metadata_fixture() -> (PackageRelease, sui::grpc::Package, sui::grpc::Object) {
+    fn package_metadata_fixture() -> (PackageVersion, sui::grpc::Package, sui::grpc::Object) {
         let initial_id = address("0xa1");
         let storage_id = address("0xa2");
-        let expected = PackageRelease::new(initial_id, storage_id, 2, Default::default());
+        let expected = PackageVersion::new(initial_id, storage_id, 2, Default::default());
         let origin = type_origin("sample", "Thing", initial_id);
 
         let mut datatype = sui::grpc::DatatypeDescriptor::default();
@@ -936,10 +949,10 @@ mod tests {
     }
 
     fn validate_package_fixture(
-        expected: &PackageRelease,
+        expected: &PackageVersion,
         package: sui::grpc::Package,
         package_object: sui::grpc::Object,
-    ) -> anyhow::Result<ResolvedPackageRelease> {
+    ) -> anyhow::Result<ResolvedPackageVersion> {
         let (storage_id, initial_id, version) =
             validate_package_header(expected, "sample", &package)?;
         validate_package_object(
@@ -972,7 +985,7 @@ mod tests {
 
     fn sample_objects() -> NexusObjects {
         NexusObjects {
-            release: 1,
+            protocol_version: 1,
             protocol: object_ref("0x10"),
             packages: NexusPackages::first_publication(
                 address("0x11"),
@@ -982,7 +995,7 @@ mod tests {
                 address("0x15"),
                 address("0x16"),
             ),
-            manifest_hash: vec![7; 32],
+            config_hash: vec![7; 32],
             network_id: address("0x20"),
             tool_registry: object_ref("0x21"),
             verifier_registry: object_ref("0x22"),
@@ -1019,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn package_release_keeps_mixed_datatype_origins() {
+    fn package_version_keeps_mixed_datatype_origins() {
         let mut objects = sample_objects();
         objects
             .packages
@@ -1050,11 +1063,11 @@ mod tests {
         let (expected, package, package_object) = package_metadata_fixture();
         let resolved = validate_package_fixture(&expected, package, package_object).unwrap();
 
-        assert_eq!(resolved.release.initial_id, address("0xa1"));
-        assert_eq!(resolved.release.storage_id, address("0xa2"));
-        assert_eq!(resolved.release.version, 2);
+        assert_eq!(resolved.package.initial_id, address("0xa1"));
+        assert_eq!(resolved.package.storage_id, address("0xa2"));
+        assert_eq!(resolved.package.version, 2);
         assert_eq!(
-            resolved.release.type_origin("sample", "Thing"),
+            resolved.package.type_origin("sample", "Thing"),
             address("0xa1")
         );
         let link = resolved.linkage.get(&address("0xb1")).unwrap();
@@ -1085,13 +1098,13 @@ mod tests {
         assert!(package_header_error(|package| package.version = None).contains("is missing"));
         assert!(package_header_error(|package| package.version = Some(3)).contains("expected '2'"));
 
-        let (mut legacy, mut package, _) = package_metadata_fixture();
-        legacy.initial_id = legacy.storage_id;
-        legacy.version = 0;
+        let (mut configured, mut package, _) = package_metadata_fixture();
+        configured.initial_id = configured.storage_id;
+        configured.version = 0;
         package.original_id = Some(address("0xfd").to_string());
         package.version = Some(9);
         let (_, initial_id, version) =
-            validate_package_header(&legacy, "sample", &package).unwrap();
+            validate_package_header(&configured, "sample", &package).unwrap();
         assert_eq!(initial_id, address("0xfd"));
         assert_eq!(version, 9);
     }
@@ -1212,7 +1225,7 @@ mod tests {
     }
 
     #[test]
-    fn release_accessors_use_storage_ids_and_exact_type_origins() {
+    fn protocol_accessors_use_storage_ids_and_exact_type_origins() {
         let mut objects = sample_objects();
         for (package, origin) in [
             (&mut objects.packages.primitives, address("0xa1")),
@@ -1324,7 +1337,7 @@ mod tests {
             &[(scheduler_origin, address("0xa6"), 2)],
         );
         assert!(objects
-            .package_uses_active_release(external_id, &active)
+            .package_uses_active_protocol(external_id, &active)
             .unwrap());
 
         let stale = event_source_package(
@@ -1333,7 +1346,7 @@ mod tests {
             &[(scheduler_origin, scheduler_origin, 1)],
         );
         assert!(!objects
-            .package_uses_active_release(external_id, &stale)
+            .package_uses_active_protocol(external_id, &stale)
             .unwrap());
 
         let mixed = event_source_package(
@@ -1345,7 +1358,7 @@ mod tests {
             ],
         );
         assert!(!objects
-            .package_uses_active_release(external_id, &mixed)
+            .package_uses_active_protocol(external_id, &mixed)
             .unwrap());
     }
 
@@ -1363,12 +1376,12 @@ mod tests {
             &[(scheduler_origin, address("0xa6"), 2)],
         );
         assert!(!objects
-            .package_uses_active_release(scheduler_origin, &stale_nexus)
+            .package_uses_active_protocol(scheduler_origin, &stale_nexus)
             .unwrap());
 
         let unrelated = event_source_package(address("0xc1"), address("0xc1"), &[]);
         assert!(!objects
-            .package_uses_active_release(address("0xc1"), &unrelated)
+            .package_uses_active_protocol(address("0xc1"), &unrelated)
             .unwrap());
     }
 
@@ -1394,7 +1407,7 @@ mod tests {
     }
 
     #[test]
-    fn new_release_shape_round_trips_through_toml() {
+    fn protocol_configuration_round_trips_through_toml() {
         let objects = sample_objects();
         let encoded = toml::to_string(&objects).unwrap();
         let decoded: NexusObjects = toml::from_str(&encoded).unwrap();
@@ -1402,7 +1415,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_flat_package_ids_remain_bootstrap_compatible() {
+    fn flat_package_ids_decode_generated_configuration() {
         let objects = sample_objects();
         let mut value = toml::Value::try_from(&objects).unwrap();
         let table = value.as_table_mut().unwrap();
@@ -1435,17 +1448,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_shape_defaults_release_and_rejects_missing_package_ids() {
+    fn flat_configuration_rejects_missing_package_ids() {
         let objects = sample_objects();
         let mut value = toml::Value::try_from(&objects).unwrap();
         let table = value.as_table_mut().unwrap();
         table.remove("packages");
-        table.remove("release");
-        table.remove("protocol");
-        table.insert(
-            "active_release".to_owned(),
-            toml::Value::Integer(objects.release as i64),
-        );
         for (name, package) in [
             ("primitives", &objects.packages.primitives),
             ("interface", &objects.packages.interface),
@@ -1460,8 +1467,8 @@ mod tests {
             );
         }
         let decoded: NexusObjects = value.clone().try_into().unwrap();
-        assert_eq!(decoded.release, objects.release);
-        assert_eq!(*decoded.protocol.object_id(), sui::types::Address::ZERO);
+        assert_eq!(decoded.protocol_version, objects.protocol_version);
+        assert_eq!(decoded.protocol, objects.protocol);
 
         value.as_table_mut().unwrap().remove("scheduler_pkg_id");
         let decoded: Result<NexusObjects, _> = value.try_into();

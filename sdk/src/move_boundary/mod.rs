@@ -558,47 +558,47 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
-            release: 1,
+            protocol_version: 1,
             protocol: obj(10),
             packages: crate::types::NexusPackages {
-                primitives: crate::types::PackageRelease::new(
+                primitives: crate::types::PackageVersion::new(
                     addr(0x10),
                     addr(0x11),
                     2,
                     Default::default(),
                 ),
-                interface: crate::types::PackageRelease::new(
+                interface: crate::types::PackageVersion::new(
                     addr(0x20),
                     addr(0x22),
                     2,
                     Default::default(),
                 ),
-                registry: crate::types::PackageRelease::new(
+                registry: crate::types::PackageVersion::new(
                     addr(0x30),
                     addr(0x33),
                     2,
                     Default::default(),
                 ),
-                gas: crate::types::PackageRelease::new(
+                gas: crate::types::PackageVersion::new(
                     addr(0x80),
                     addr(0x88),
                     2,
                     Default::default(),
                 ),
-                workflow: crate::types::PackageRelease::new(
+                workflow: crate::types::PackageVersion::new(
                     addr(0x40),
                     addr(0x44),
                     2,
                     Default::default(),
                 ),
-                scheduler: crate::types::PackageRelease::new(
+                scheduler: crate::types::PackageVersion::new(
                     addr(0x50),
                     addr(0x55),
                     2,
                     Default::default(),
                 ),
             },
-            manifest_hash: vec![0; 32],
+            config_hash: vec![0; 32],
             network_id: addr(0x77),
             tool_registry: obj(1),
             verifier_registry: obj(2),

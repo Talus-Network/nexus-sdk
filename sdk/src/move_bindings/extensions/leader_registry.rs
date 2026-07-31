@@ -56,7 +56,7 @@ impl LeaderRegistryStateV1 {
             protocol_id: crate::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::ZERO,
             ),
-            release_floor: 1,
+            minimum_protocol_version: 1,
             unbonding_duration_ms: 0,
             min_stake_us: 0,
             max_transaction_budget: 10_000_000_000,
@@ -150,7 +150,7 @@ mod tests {
             protocol_id: crate::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::ZERO,
             ),
-            release_floor: 1,
+            minimum_protocol_version: 1,
             unbonding_duration_ms: 5_000,
             min_stake_us: 1_000_000,
             max_transaction_budget: 7_500_000_000,

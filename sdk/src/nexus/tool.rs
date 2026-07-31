@@ -371,7 +371,7 @@ mod tests {
         workflow_authorization_cap_first: bool,
     ) -> ToolStateV1 {
         ToolStateV1 {
-            release_floor: 1,
+            minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 *fixture.nexus_objects.tool_registry.object_id(),
             ),

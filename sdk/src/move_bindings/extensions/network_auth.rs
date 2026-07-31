@@ -93,7 +93,7 @@ impl KeyBindingStateV1 {
         keys: MoveTable<u64, KeyRecord>,
     ) -> Self {
         Self {
-            release_floor: 1,
+            minimum_protocol_version: 1,
             identity,
             description: MoveOption::from_option(description),
             next_key_id,
@@ -142,7 +142,7 @@ impl NetworkAuthStateV1 {
     pub(crate) fn new_for_test(identities: Vec<IdentityKey>) -> Self {
         Self {
             protocol_id: ID::new(sui::types::Address::ZERO),
-            release_floor: 1,
+            minimum_protocol_version: 1,
             identities: VecSet {
                 contents: identities,
             },

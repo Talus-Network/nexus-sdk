@@ -387,7 +387,7 @@ mod tests {
             id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0xaa"),
             ),
-            protocol_release: 1,
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xcc"),

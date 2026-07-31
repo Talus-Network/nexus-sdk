@@ -92,11 +92,11 @@ pub struct NexusEvent {
 }
 
 impl NexusEvent {
-    /// Whether this event was emitted by code in `objects`' activated release.
+    /// Whether this event was emitted by a package in `objects`' protocol configuration.
     ///
-    /// A release pinned operation should use the snapshot it captured at its
-    /// boundary. This permits compatible in flight work to finish on its old
-    /// release without accepting an old package for newly created work.
+    /// An operation pinned to a protocol version should use the configuration
+    /// captured at its boundary. This permits compatible in flight work to
+    /// finish without accepting an old package for newly created work.
     pub fn was_emitted_by(&self, objects: &crate::types::NexusObjects) -> bool {
         objects.is_active_emitter(self.emitting_package)
     }

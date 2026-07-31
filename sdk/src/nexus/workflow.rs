@@ -2044,7 +2044,7 @@ mod tests {
 
     fn dag_bcs(vertices_size: u64) -> dag_move::DAGStateV1 {
         dag_move::DAGStateV1 {
-            release_floor: 1,
+            minimum_protocol_version: 1,
             vertices: linked_table::LinkedTable::new(sui_mocks::mock_sui_address(), vertices_size),
             entry_groups: crate::move_bindings::sui_framework::vec_map::VecMap { contents: vec![] },
             edges: MoveTable::new(sui_mocks::mock_sui_address(), 0),
@@ -2097,7 +2097,7 @@ mod tests {
     ) -> execution_move::DAGExecution {
         execution_move::DAGExecution {
             id: crate::move_bindings::sui_framework::object::UID::new(*execution_ref.object_id()),
-            protocol_release: 1,
+            protocol_version: 1,
             dag: object_id(*dag_ref.object_id()),
             entry_group: graph_move::EntryGroup::new("default"),
             invoker: sui::types::Address::from_static("0x1"),
@@ -3632,7 +3632,7 @@ mod tests {
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
                 id: crate::move_bindings::sui_framework::object::UID::new(payment_id),
-                protocol_release: 1,
+                protocol_version: 1,
                 execution_id,
                 agent_id: crate::move_bindings::sui_framework::object::ID::new(
                     sui::types::Address::from_static("0xa"),
@@ -3747,7 +3747,7 @@ mod tests {
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
                 id: crate::move_bindings::sui_framework::object::UID::new(*payment_ref.object_id()),
-                protocol_release: 1,
+                protocol_version: 1,
                 execution_id: *execution_ref.object_id(),
                 agent_id: crate::move_bindings::sui_framework::object::ID::new(
                     sui::types::Address::from_static("0xa"),
@@ -3885,7 +3885,7 @@ mod tests {
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&ExecutionPayment {
                 id: crate::move_bindings::sui_framework::object::UID::new(*payment_ref.object_id()),
-                protocol_release: 1,
+                protocol_version: 1,
                 execution_id: *execution_ref.object_id(),
                 agent_id: crate::move_bindings::sui_framework::object::ID::new(
                     sui::types::Address::from_static("0xa"),

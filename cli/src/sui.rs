@@ -6,7 +6,7 @@ use {
     nexus_sdk::{
         nexus::{
             client::{AddressBalanceGas, GasSource, NexusClient},
-            release::ReleaseExtras,
+            protocol::ProtocolExtras,
         },
         sui,
     },
@@ -221,10 +221,10 @@ async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient,
         ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
     };
     let builder = if *nexus_objects.protocol.object_id() != sui::types::Address::ZERO {
-        let extras = ReleaseExtras::from(&nexus_objects);
+        let extras = ProtocolExtras::from(&nexus_objects);
         builder
             .with_protocol(nexus_objects.protocol.clone())
-            .with_release_extras(extras)
+            .with_protocol_extras(extras)
     } else {
         nexus_objects
             .resolve_package_metadata(&client)

@@ -9,7 +9,7 @@ use {
             primitives::{
                 data::NexusData as MoveNexusData,
                 event as event_move,
-                protocol::ReleaseActivatedEventV1,
+                protocol::ProtocolVersionActivatedV1,
             },
         },
         sui::{
@@ -165,34 +165,38 @@ impl EventQuery for NexusEventQuery {
 /// [`EventIngestor`] configured by [`NexusEventQuery`].
 pub type NexusEventIngestor = EventIngestor<NexusEventQuery>;
 
-/// Canonical wake signal emitted after a protocol release is activated.
+/// Canonical wake signal emitted after a protocol version is activated.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReleaseActivation {
+pub struct ProtocolActivation {
+    /// Transaction digest and event index that uniquely identify this notification.
     pub id: (sui::types::Digest, u64),
+    /// Exact primitives package that emitted this notification.
     pub emitting_package: sui::types::Address,
-    pub event: ReleaseActivatedEventV1,
+    /// Decoded protocol activation payload.
+    pub event: ProtocolVersionActivatedV1,
 }
 
-impl ReleaseActivation {
+impl ProtocolActivation {
     /// Verify notification metadata against a fully resolved candidate.
     ///
     /// The candidate is independently validated by
-    /// [`crate::nexus::release::ReleaseResolver`].
+    /// [`crate::nexus::protocol::ProtocolResolver`].
     pub fn matches_candidate(&self, candidate: &NexusObjects) -> bool {
         self.event.protocol_id.bytes == *candidate.protocol.object_id()
-            && self.event.record.release == candidate.release
-            && self.event.record.manifest_hash == candidate.manifest_hash
+            && self.event.protocol_version == candidate.protocol_version
+            && self.event.config_hash == candidate.config_hash
             && self.emitting_package == candidate.primitives_pkg_id()
     }
 }
 
-/// Event query for the `protocol::ReleaseActivatedEventV1` datatype.
+/// Event query for the `protocol::ProtocolVersionActivatedV1` datatype.
 #[derive(Clone)]
-pub struct ReleaseActivationQuery {
+pub struct ProtocolActivationQuery {
     objects: Arc<NexusObjects>,
 }
 
-impl ReleaseActivationQuery {
+impl ProtocolActivationQuery {
+    /// Creates a query scoped to one resolved protocol configuration.
     pub fn new(objects: Arc<NexusObjects>) -> Self {
         Self { objects }
     }
@@ -204,8 +208,8 @@ impl ReleaseActivationQuery {
         emitting_package: sui::types::Address,
         event_type: &sui::types::StructTag,
         contents: &[u8],
-    ) -> Result<Option<ReleaseActivation>, NexusEventDecodeError> {
-        type ActivationWrapper = event_move::EventWrapper<ReleaseActivatedEventV1>;
+    ) -> Result<Option<ProtocolActivation>, NexusEventDecodeError> {
+        type ActivationWrapper = event_move::EventWrapper<ProtocolVersionActivatedV1>;
 
         let expected = crate::move_bindings::struct_tag::<ActivationWrapper>(&self.objects);
         if event_type != &expected {
@@ -214,7 +218,7 @@ impl ReleaseActivationQuery {
         let wrapper: ActivationWrapper = bcs::from_bytes(contents)
             .map_err(anyhow::Error::from)
             .map_err(NexusEventDecodeError::Contents)?;
-        Ok(Some(ReleaseActivation {
+        Ok(Some(ProtocolActivation {
             id: (digest, index),
             emitting_package,
             event: wrapper.event,
@@ -222,13 +226,13 @@ impl ReleaseActivationQuery {
     }
 }
 
-impl EventQuery for ReleaseActivationQuery {
+impl EventQuery for ProtocolActivationQuery {
     type Error = NexusEventDecodeError;
-    type Output = ReleaseActivation;
+    type Output = ProtocolActivation;
 
     fn filter(&self) -> sui::grpc::EventFilter {
         let wrapper = crate::move_bindings::struct_tag::<
-            event_move::EventWrapper<ReleaseActivatedEventV1>,
+            event_move::EventWrapper<ProtocolVersionActivatedV1>,
         >(&self.objects);
         sui::grpc::EventFilter::any([event_filter::event_type(format!(
             "{}::{}::{}",
@@ -283,63 +287,37 @@ impl EventQuery for ReleaseActivationQuery {
 }
 
 /// [`EventIngestor`] configured for protocol activation notifications.
-pub type ReleaseActivationIngestor = EventIngestor<ReleaseActivationQuery>;
+pub type ProtocolActivationIngestor = EventIngestor<ProtocolActivationQuery>;
 
 #[cfg(all(test, feature = "test_utils"))]
 mod tests {
     use {
         super::*,
         crate::move_bindings::{
-            primitives::{
-                event::EventWrapper,
-                protocol::{PackageInfo, ReleaseRecordV1, SharedObjectInfo, SystemObjectsV1},
-            },
+            primitives::{event::EventWrapper, protocol::ProtocolVersionActivatedV1},
             sui_framework::object::ID,
         },
     };
 
-    fn activation_fixture() -> (NexusObjects, ReleaseActivation) {
+    fn activation_fixture() -> (NexusObjects, ProtocolActivation) {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
-        objects.release = 2;
-        objects.manifest_hash = vec![7; 32];
-        let package = PackageInfo::new(
-            ID::new(sui::types::Address::ZERO),
-            ID::new(sui::types::Address::ZERO),
-            1,
-        );
-        let shared = SharedObjectInfo::new(ID::new(sui::types::Address::ZERO), 1);
-        let system_objects = SystemObjectsV1::new(
-            ID::new(sui::types::Address::ZERO),
-            shared.clone(),
-            shared.clone(),
-            shared.clone(),
-            shared.clone(),
-            shared.clone(),
-            shared.clone(),
-            shared,
-        );
-        let record = ReleaseRecordV1::new(
-            objects.release,
-            package.clone(),
-            package.clone(),
-            package.clone(),
-            package.clone(),
-            package.clone(),
-            package,
-            system_objects,
-            objects.manifest_hash.clone(),
-        );
-        let activation = ReleaseActivation {
+        objects.protocol_version = 2;
+        objects.config_hash = vec![7; 32];
+        let activation = ProtocolActivation {
             id: (sui::types::Digest::ZERO, 0),
             emitting_package: objects.primitives_pkg_id(),
-            event: ReleaseActivatedEventV1::new(ID::new(*objects.protocol.object_id()), record),
+            event: ProtocolVersionActivatedV1::new(
+                ID::new(*objects.protocol.object_id()),
+                objects.protocol_version,
+                objects.config_hash.clone(),
+            ),
         };
 
         (objects, activation)
     }
 
     #[test]
-    fn activation_requires_candidate_protocol_manifest_and_emitter() {
+    fn activation_requires_candidate_protocol_version_hash_and_emitter() {
         let (objects, activation) = activation_fixture();
         assert!(activation.matches_candidate(&objects));
 
@@ -352,11 +330,11 @@ mod tests {
     fn activation_query_decodes_the_nexus_event_wrapper() {
         let (objects, activation) = activation_fixture();
         let objects = Arc::new(objects);
-        let wrapper: EventWrapper<ReleaseActivatedEventV1> =
+        let wrapper: EventWrapper<ProtocolVersionActivatedV1> =
             EventWrapper::new(activation.event.clone());
         let wrapper_type =
-            crate::move_bindings::struct_tag::<EventWrapper<ReleaseActivatedEventV1>>(&objects);
-        let decoded = ReleaseActivationQuery::new(Arc::clone(&objects))
+            crate::move_bindings::struct_tag::<EventWrapper<ProtocolVersionActivatedV1>>(&objects);
+        let decoded = ProtocolActivationQuery::new(Arc::clone(&objects))
             .decode_parts(
                 activation.id.1,
                 activation.id.0,
@@ -377,7 +355,7 @@ mod tests {
         let objects = Arc::new(objects);
         let other_wrapper =
             crate::move_bindings::struct_tag::<EventWrapper<MoveNexusData>>(&objects);
-        let decoded = ReleaseActivationQuery::new(objects)
+        let decoded = ProtocolActivationQuery::new(objects)
             .decode_parts(
                 activation.id.1,
                 activation.id.0,

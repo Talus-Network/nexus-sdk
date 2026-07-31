@@ -667,7 +667,7 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
-            release: 1,
+            protocol_version: 1,
             protocol: object_ref("0x18", 1, 18),
             packages: crate::types::NexusPackages::first_publication(
                 addr("0x2"),
@@ -677,7 +677,7 @@ mod tests {
                 addr("0x1"),
                 addr("0x11"),
             ),
-            manifest_hash: vec![0; 32],
+            config_hash: vec![0; 32],
             network_id: addr("0x4"),
             tool_registry: object_ref("0x6", 1, 6),
             verifier_registry: object_ref("0x7", 1, 7),

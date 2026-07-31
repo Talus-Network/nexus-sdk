@@ -2126,7 +2126,7 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
-            protocol_release: 1,
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xa"),
@@ -2223,7 +2223,7 @@ mod tests {
             ),
         );
         let vault_state = AgentPaymentVaultStateV1 {
-            release_floor: 1,
+            minimum_protocol_version: 1,
             agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
             available_balance: crate::move_bindings::sui_framework::balance::Balance {
                 value: 10,
@@ -2268,7 +2268,7 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
-            protocol_release: 1,
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
             skill_id: 11,

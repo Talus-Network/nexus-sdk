@@ -147,7 +147,7 @@ mod tests {
             ToolRegistry::new(UID::new(registry_id), Versioned::new(UID::new(state_id), 1));
         let state = ToolRegistryStateV1::new(
             ID::new(*nexus_objects.protocol.object_id()),
-            nexus_objects.release,
+            nexus_objects.protocol_version,
             LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x101"), 0),
             MoveTable::<ID, bool>::new(sui::types::Address::from_static("0x102"), 0),
             LinkedTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x103"), 0),

@@ -1,4 +1,4 @@
-//! Immutable package metadata for one activated Nexus protocol release.
+//! Immutable package metadata for one activated Nexus protocol configuration.
 
 use {
     crate::sui,
@@ -9,11 +9,14 @@ use {
 /// Exact identity of one Move datatype within a package family.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct DatatypeKey {
+    /// Move module that declares the datatype.
     pub module: String,
+    /// Move datatype name within [`Self::module`].
     pub datatype: String,
 }
 
 impl DatatypeKey {
+    /// Creates one module and datatype lookup key.
     pub fn new(module: impl Into<String>, datatype: impl Into<String>) -> Self {
         Self {
             module: module.into(),
@@ -27,9 +30,9 @@ impl DatatypeKey {
 /// This shape is shared with generated Move binding package scopes.
 pub type TypeOrigins = BTreeMap<String, BTreeMap<String, sui::types::Address>>;
 
-/// One package family at one activated release.
+/// One selected version of a package family.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PackageRelease {
+pub struct PackageVersion {
     /// Stable ID of the first package in this upgrade lineage.
     pub initial_id: sui::types::Address,
     /// Immutable package object containing the code used for calls.
@@ -41,7 +44,7 @@ pub struct PackageRelease {
     pub type_origins: TypeOrigins,
 }
 
-impl PackageRelease {
+impl PackageVersion {
     pub fn new(
         initial_id: sui::types::Address,
         storage_id: sui::types::Address,
@@ -105,18 +108,25 @@ impl PackageRelease {
     }
 }
 
-/// The six packages that form one coherent Nexus release.
+/// The six package versions selected by one protocol configuration.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NexusPackages {
-    pub primitives: PackageRelease,
-    pub interface: PackageRelease,
-    pub registry: PackageRelease,
-    pub gas: PackageRelease,
-    pub workflow: PackageRelease,
-    pub scheduler: PackageRelease,
+    /// Package version that owns protocol state and common primitives.
+    pub primitives: PackageVersion,
+    /// Package version that defines shared Nexus interfaces.
+    pub interface: PackageVersion,
+    /// Package version that owns Nexus registries.
+    pub registry: PackageVersion,
+    /// Package version that implements gas accounting.
+    pub gas: PackageVersion,
+    /// Package version that implements workflow execution.
+    pub workflow: PackageVersion,
+    /// Package version that implements scheduled execution.
+    pub scheduler: PackageVersion,
 }
 
 impl NexusPackages {
+    /// Creates package metadata for the first publication of every family.
     pub fn first_publication(
         primitives: sui::types::Address,
         interface: sui::types::Address,
@@ -126,16 +136,17 @@ impl NexusPackages {
         scheduler: sui::types::Address,
     ) -> Self {
         Self {
-            primitives: PackageRelease::first_publication(primitives),
-            interface: PackageRelease::first_publication(interface),
-            registry: PackageRelease::first_publication(registry),
-            gas: PackageRelease::first_publication(gas),
-            workflow: PackageRelease::first_publication(workflow),
-            scheduler: PackageRelease::first_publication(scheduler),
+            primitives: PackageVersion::first_publication(primitives),
+            interface: PackageVersion::first_publication(interface),
+            registry: PackageVersion::first_publication(registry),
+            gas: PackageVersion::first_publication(gas),
+            workflow: PackageVersion::first_publication(workflow),
+            scheduler: PackageVersion::first_publication(scheduler),
         }
     }
 
-    pub fn all(&self) -> [&PackageRelease; 6] {
+    /// Returns all package families in canonical protocol role order.
+    pub fn all(&self) -> [&PackageVersion; 6] {
         [
             &self.primitives,
             &self.interface,
@@ -146,6 +157,7 @@ impl NexusPackages {
         ]
     }
 
+    /// Whether an address belongs to any configured package family.
     pub fn contains_package(&self, address: sui::types::Address) -> bool {
         self.all()
             .into_iter()

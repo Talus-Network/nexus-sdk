@@ -743,7 +743,7 @@ mod tests {
     fn agent_registry_object_bcs_decodes_without_inline_default_executor() {
         let raw = AgentRegistryStateV1 {
             protocol_id: crate::move_bindings::sui_framework::object::ID::new(addr("0xe")),
-            release_floor: 1,
+            minimum_protocol_version: 1,
             agents: MoveTable::new(addr("0x90"), 0),
         };
         let bytes = bcs::to_bytes(&raw).expect("raw Move registry BCS should encode");
