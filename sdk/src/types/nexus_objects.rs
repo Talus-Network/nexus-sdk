@@ -374,6 +374,117 @@ impl NexusObjects {
             .any(|package| package.storage_id == address)
     }
 
+    /// Returns whether `package_id` is a valid top level event source for this
+    /// release.
+    ///
+    /// Sui records the package containing the top level Move call as an
+    /// event's source. A direct Nexus call is valid only from one exact active
+    /// storage package. A composed call from an external package is valid only
+    /// when every Nexus lineage in its transitive linkage table resolves to the
+    /// exact package ID and version in [`Self::packages`].
+    #[cfg(feature = "nexus")]
+    pub async fn is_compatible_event_source(
+        &self,
+        client: &Arc<sui::grpc::Client>,
+        package_id: sui::types::Address,
+    ) -> anyhow::Result<bool> {
+        if self.is_active_emitter(package_id) {
+            return Ok(true);
+        }
+
+        let request = sui::grpc::GetPackageRequest::default().with_package_id(package_id);
+        let package = client
+            .as_ref()
+            .clone()
+            .package_client()
+            .get_package(request)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!("Failed to fetch event source package '{package_id}': {error}")
+            })?
+            .into_inner()
+            .package
+            .ok_or_else(|| {
+                anyhow::anyhow!("Event source package '{package_id}' was not returned")
+            })?;
+
+        self.package_uses_active_release(package_id, &package)
+    }
+
+    #[cfg(feature = "nexus")]
+    fn package_uses_active_release(
+        &self,
+        package_id: sui::types::Address,
+        package: &sui::grpc::Package,
+    ) -> anyhow::Result<bool> {
+        let storage_id =
+            parse_package_address(package.storage_id.as_deref(), "event source", "storage_id")?;
+        if storage_id != package_id {
+            anyhow::bail!(
+                "Event source package returned storage ID '{storage_id}', expected '{package_id}'"
+            );
+        }
+
+        let original_id = parse_package_address(
+            package.original_id.as_deref(),
+            "event source",
+            "original_id",
+        )?;
+        if self
+            .packages
+            .all()
+            .into_iter()
+            .any(|active| active.initial_id == original_id)
+        {
+            return Ok(false);
+        }
+
+        let active_by_origin = self
+            .packages
+            .all()
+            .into_iter()
+            .map(|active| (active.initial_id, active))
+            .collect::<BTreeMap<_, _>>();
+        let mut nexus_link_found = false;
+        let mut seen_origins = BTreeMap::new();
+
+        for link in &package.linkage {
+            let linked_original = parse_package_address(
+                link.original_id.as_deref(),
+                "event source",
+                "linkage original_id",
+            )?;
+            let linked_storage = parse_package_address(
+                link.upgraded_id.as_deref(),
+                "event source",
+                "linkage upgraded_id",
+            )?;
+            let linked_version = link.upgraded_version.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Event source package linkage for '{linked_original}' has no upgraded version"
+                )
+            })?;
+            if seen_origins
+                .insert(linked_original, (linked_storage, linked_version))
+                .is_some()
+            {
+                anyhow::bail!(
+                    "Event source package contains duplicate linkage for '{linked_original}'"
+                );
+            }
+
+            let Some(active) = active_by_origin.get(&linked_original) else {
+                continue;
+            };
+            nexus_link_found = true;
+            if linked_storage != active.storage_id || linked_version != active.version {
+                return Ok(false);
+            }
+        }
+
+        Ok(nexus_link_found)
+    }
+
     /// Returns true when the wrapped event datatype belongs to this Nexus
     /// package family and has a recognized interface shape.
     pub fn is_event_from_nexus(&self, event: &sui::types::Event) -> bool {
@@ -1127,6 +1238,92 @@ mod tests {
         assert!(objects.is_active_emitter(address("0xa6")));
         assert!(!objects.is_active_emitter(address("0xb6")));
         assert!(!objects.is_nexus_package(address("0xff")));
+    }
+
+    #[cfg(feature = "nexus")]
+    fn event_source_package(
+        storage_id: sui::types::Address,
+        original_id: sui::types::Address,
+        links: &[(sui::types::Address, sui::types::Address, u64)],
+    ) -> sui::grpc::Package {
+        let mut package = sui::grpc::Package::default();
+        package.storage_id = Some(storage_id.to_string());
+        package.original_id = Some(original_id.to_string());
+        package.version = Some(1);
+        package.linkage = links
+            .iter()
+            .map(|(original_id, upgraded_id, upgraded_version)| {
+                let mut linkage = sui::grpc::Linkage::default();
+                linkage.original_id = Some(original_id.to_string());
+                linkage.upgraded_id = Some(upgraded_id.to_string());
+                linkage.upgraded_version = Some(*upgraded_version);
+                linkage
+            })
+            .collect();
+        package
+    }
+
+    #[cfg(feature = "nexus")]
+    #[test]
+    fn composed_event_sources_require_exact_active_nexus_linkage() {
+        let mut objects = sample_objects();
+        objects.packages.scheduler.storage_id = address("0xa6");
+        objects.packages.scheduler.version = 2;
+        let external_id = address("0xc1");
+        let scheduler_origin = objects.packages.scheduler.initial_id;
+
+        let active = event_source_package(
+            external_id,
+            external_id,
+            &[(scheduler_origin, address("0xa6"), 2)],
+        );
+        assert!(objects
+            .package_uses_active_release(external_id, &active)
+            .unwrap());
+
+        let stale = event_source_package(
+            external_id,
+            external_id,
+            &[(scheduler_origin, scheduler_origin, 1)],
+        );
+        assert!(!objects
+            .package_uses_active_release(external_id, &stale)
+            .unwrap());
+
+        let mixed = event_source_package(
+            external_id,
+            external_id,
+            &[
+                (scheduler_origin, address("0xa6"), 2),
+                (objects.packages.workflow.initial_id, address("0xff"), 1),
+            ],
+        );
+        assert!(!objects
+            .package_uses_active_release(external_id, &mixed)
+            .unwrap());
+    }
+
+    #[cfg(feature = "nexus")]
+    #[test]
+    fn event_sources_reject_inactive_nexus_versions_and_unrelated_packages() {
+        let mut objects = sample_objects();
+        let scheduler_origin = objects.packages.scheduler.initial_id;
+        objects.packages.scheduler.storage_id = address("0xa6");
+        objects.packages.scheduler.version = 2;
+
+        let stale_nexus = event_source_package(
+            scheduler_origin,
+            scheduler_origin,
+            &[(scheduler_origin, address("0xa6"), 2)],
+        );
+        assert!(!objects
+            .package_uses_active_release(scheduler_origin, &stale_nexus)
+            .unwrap());
+
+        let unrelated = event_source_package(address("0xc1"), address("0xc1"), &[]);
+        assert!(!objects
+            .package_uses_active_release(address("0xc1"), &unrelated)
+            .unwrap());
     }
 
     #[test]
