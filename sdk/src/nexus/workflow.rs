@@ -189,6 +189,10 @@ pub struct SettleCommittedToolResultByLeaderParams {
     pub dag_execution_id: sui::types::Address,
     pub leader_cap_id: sui::types::Address,
     pub walk_index: u64,
+    /// Exact active vertex when merging failed on-chain Tool evidence.
+    pub expected_vertex: Option<RuntimeVertex>,
+    /// Sanitized failed on-chain Tool reason. Must be paired with `expected_vertex`.
+    pub failed_onchain_tool_reason: Option<Vec<u8>>,
     pub commit_tx_digest: Vec<u8>,
     pub commit_gas_charge: u64,
     pub settlement_gas_charge: u64,
@@ -199,6 +203,10 @@ pub struct RecordCommittedToolResultGasChargeParams {
     pub dag_execution_id: sui::types::Address,
     pub leader_cap_id: sui::types::Address,
     pub walk_index: u64,
+    /// Exact active vertex when creating or merging failed on-chain tool evidence.
+    pub expected_vertex: Option<RuntimeVertex>,
+    /// Sanitized failed on-chain tool reason. Must be paired with `expected_vertex`.
+    pub failed_onchain_tool_reason: Option<Vec<u8>>,
     pub commit_tx_digest: Vec<u8>,
     pub commit_gas_charge: u64,
     pub settlement_gas_charge: u64,
@@ -1440,7 +1448,16 @@ impl WorkflowActions {
             .get_object_metadata(params.leader_cap_id)
             .await
             .map_err(NexusError::Rpc)?;
-
+        let (expected_vertex, failed_onchain_tool_reason) =
+            match (params.expected_vertex, params.failed_onchain_tool_reason) {
+                (Some(expected_vertex), Some(reason)) => (expected_vertex, Some(reason)),
+                (None, None) => (RuntimeVertex::plain(""), None),
+                _ => {
+                    return Err(NexusError::TransactionBuilding(anyhow::anyhow!(
+                        "expected_vertex and failed_onchain_tool_reason must be supplied together"
+                    )));
+                }
+            };
         let address = self.client.owner()?;
         let objects = &self.client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
@@ -1451,6 +1468,8 @@ impl WorkflowActions {
             &leader_cap_ref.object_ref(),
             &leader_cap_ref.owner,
             params.walk_index,
+            &expected_vertex,
+            failed_onchain_tool_reason,
             params.commit_tx_digest,
             params.commit_gas_charge,
             params.settlement_gas_charge,
@@ -1473,6 +1492,16 @@ impl WorkflowActions {
         params: RecordCommittedToolResultGasChargeParams,
     ) -> Result<RecordCommittedToolResultGasChargeResult, NexusError> {
         let crawler = self.client.crawler();
+        let execution = crawler
+            .get_object::<DAGExecution>(params.dag_execution_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data;
+        let dag_ref = crawler
+            .get_object_metadata(execution.dag_id())
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
         let execution_ref = crawler
             .get_object_metadata(params.dag_execution_id)
             .await
@@ -1481,15 +1510,28 @@ impl WorkflowActions {
             .get_object_metadata(params.leader_cap_id)
             .await
             .map_err(NexusError::Rpc)?;
+        let (expected_vertex, failed_onchain_tool_reason) =
+            match (params.expected_vertex, params.failed_onchain_tool_reason) {
+                (Some(expected_vertex), Some(reason)) => (expected_vertex, Some(reason)),
+                (None, None) => (RuntimeVertex::plain(""), None),
+                _ => {
+                    return Err(NexusError::TransactionBuilding(anyhow::anyhow!(
+                        "expected_vertex and failed_onchain_tool_reason must be supplied together"
+                    )));
+                }
+            };
 
         let address = self.client.owner()?;
         let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
             &self.client.nexus_objects,
+            &dag_ref,
             &execution_ref.object_ref(),
             &execution_ref.owner,
             &leader_cap_ref.object_ref(),
             &leader_cap_ref.owner,
             params.walk_index,
+            &expected_vertex,
+            failed_onchain_tool_reason,
             params.commit_tx_digest,
             params.commit_gas_charge,
             params.settlement_gas_charge,
@@ -4143,6 +4185,8 @@ mod tests {
                     dag_execution_id: *execution_ref.object_id(),
                     leader_cap_id: *leader_cap_ref.object_id(),
                     walk_index: 8,
+                    expected_vertex: None,
+                    failed_onchain_tool_reason: None,
                     commit_tx_digest: vec![1, 2, 3],
                     commit_gas_charge: 11,
                     settlement_gas_charge: 13,
@@ -4160,6 +4204,19 @@ mod tests {
         let mut record_tx = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut record_sub = sui_mocks::grpc::MockSubscriptionService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut record_ledger, 1000);
+        mock_get_dag_execution_bcs(
+            &mut record_ledger,
+            &nexus_objects,
+            execution_ref.clone(),
+            &dag_ref,
+            vec![],
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut record_ledger,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut record_ledger,
             execution_ref.clone(),
@@ -4197,6 +4254,8 @@ mod tests {
                     dag_execution_id: *execution_ref.object_id(),
                     leader_cap_id: *leader_cap_ref.object_id(),
                     walk_index: 9,
+                    expected_vertex: None,
+                    failed_onchain_tool_reason: None,
                     commit_tx_digest: vec![4, 5, 6],
                     commit_gas_charge: 17,
                     settlement_gas_charge: 19,
