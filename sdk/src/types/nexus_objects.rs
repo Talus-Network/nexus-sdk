@@ -393,7 +393,7 @@ impl NexusObjects {
         }
 
         let request = sui::grpc::GetPackageRequest::default().with_package_id(package_id);
-        let package = client
+        let mut package = client
             .as_ref()
             .clone()
             .package_client()
@@ -407,6 +407,52 @@ impl NexusObjects {
             .ok_or_else(|| {
                 anyhow::anyhow!("Event source package '{package_id}' was not returned")
             })?;
+
+        let request = sui::grpc::GetObjectRequest::default()
+            .with_object_id(package_id)
+            .with_read_mask(sui::grpc::FieldMask::from_paths([
+                "object_id",
+                "object_type",
+                "package",
+            ]));
+        let package_object = client
+            .as_ref()
+            .clone()
+            .ledger_client()
+            .get_object(request)
+            .await
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "Failed to fetch exact event source package '{package_id}': {error}"
+                )
+            })?
+            .into_inner()
+            .object
+            .ok_or_else(|| {
+                anyhow::anyhow!("Exact event source package '{package_id}' was not returned")
+            })?;
+        let object_id = parse_package_address(
+            package_object.object_id.as_deref(),
+            "event source",
+            "object_id",
+        )?;
+        if object_id != package_id {
+            anyhow::bail!(
+                "Event source package object returned ID '{object_id}', expected '{package_id}'"
+            );
+        }
+        if package_object.object_type.as_deref() != Some("package") {
+            anyhow::bail!(
+                "Event source object '{package_id}' has type '{}', expected 'package'",
+                package_object.object_type.as_deref().unwrap_or("<missing>")
+            );
+        }
+        package.linkage = package_object
+            .package
+            .ok_or_else(|| {
+                anyhow::anyhow!("Event source package object '{package_id}' has no metadata")
+            })?
+            .linkage;
 
         self.package_uses_active_release(package_id, &package)
     }
