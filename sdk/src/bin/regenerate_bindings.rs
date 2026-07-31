@@ -211,11 +211,12 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
 
     let mut packages = Vec::new();
     for (package, _) in NEXUS_PACKAGES {
-        let key = format!("{package}_pkg_id");
         let id = parsed
-            .get(&key)
+            .get("packages")
+            .and_then(|value| value.get(package))
+            .and_then(|value| value.get("storage_id"))
             .and_then(toml::Value::as_str)
-            .ok_or_else(|| anyhow!("{source} is missing {key}"))?;
+            .ok_or_else(|| anyhow!("{source} is missing packages.{package}.storage_id"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
     let talus_id = parsed
@@ -264,12 +265,18 @@ mod tests {
     #[test]
     fn parses_required_nexus_packages() {
         let objects = [
-            r#"primitives_pkg_id = "0x11""#,
-            r#"interface_pkg_id = "0x12""#,
-            r#"registry_pkg_id = "0x13""#,
-            r#"workflow_pkg_id = "0x14""#,
-            r#"scheduler_pkg_id = "0x15""#,
-            r#"gas_pkg_id = "0x17""#,
+            r#"[packages.primitives]"#,
+            r#"storage_id = "0x11""#,
+            r#"[packages.interface]"#,
+            r#"storage_id = "0x12""#,
+            r#"[packages.registry]"#,
+            r#"storage_id = "0x13""#,
+            r#"[packages.workflow]"#,
+            r#"storage_id = "0x14""#,
+            r#"[packages.scheduler]"#,
+            r#"storage_id = "0x15""#,
+            r#"[packages.gas]"#,
+            r#"storage_id = "0x17""#,
             r#"[us_token]"#,
             r#"package_id = "0x16""#,
         ]
@@ -298,12 +305,18 @@ mod tests {
     #[test]
     fn rejects_objects_without_talus_package() {
         let objects = [
-            r#"primitives_pkg_id = "0x11""#,
-            r#"interface_pkg_id = "0x12""#,
-            r#"registry_pkg_id = "0x13""#,
-            r#"workflow_pkg_id = "0x14""#,
-            r#"scheduler_pkg_id = "0x15""#,
-            r#"gas_pkg_id = "0x17""#,
+            r#"[packages.primitives]"#,
+            r#"storage_id = "0x11""#,
+            r#"[packages.interface]"#,
+            r#"storage_id = "0x12""#,
+            r#"[packages.registry]"#,
+            r#"storage_id = "0x13""#,
+            r#"[packages.workflow]"#,
+            r#"storage_id = "0x14""#,
+            r#"[packages.scheduler]"#,
+            r#"storage_id = "0x15""#,
+            r#"[packages.gas]"#,
+            r#"storage_id = "0x17""#,
         ]
         .join("\n");
 

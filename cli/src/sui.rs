@@ -534,19 +534,44 @@ mod tests {
         let mut server = Server::new_async().await;
 
         let response_body = r#"
-                primitives_pkg_id = "0x1"
-                primitives_original_pkg_id = "0x1"
-                gas_pkg_id = "0x15"
-                gas_original_pkg_id = "0x15"
-                workflow_pkg_id = "0x2"
-                workflow_original_pkg_id = "0x2"
-                interface_pkg_id = "0x3"
-                interface_original_pkg_id = "0x3"
-                scheduler_pkg_id = "0x13"
-                scheduler_original_pkg_id = "0x13"
-                registry_pkg_id = "0x11"
-                registry_original_pkg_id = "0x11"
+                protocol_version = 1
+                config_hash = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
                 network_id = "0x4"
+
+                [protocol]
+                object_id = "0x16"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [packages.primitives]
+                initial_id = "0x1"
+                storage_id = "0x1"
+                version = 1
+
+                [packages.gas]
+                initial_id = "0x15"
+                storage_id = "0x15"
+                version = 1
+
+                [packages.workflow]
+                initial_id = "0x2"
+                storage_id = "0x2"
+                version = 1
+
+                [packages.interface]
+                initial_id = "0x3"
+                storage_id = "0x3"
+                version = 1
+
+                [packages.scheduler]
+                initial_id = "0x13"
+                storage_id = "0x13"
+                version = 1
+
+                [packages.registry]
+                initial_id = "0x11"
+                storage_id = "0x11"
+                version = 1
 
                 [tool_registry]
                 object_id = "0x5"

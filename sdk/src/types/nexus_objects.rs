@@ -30,7 +30,7 @@ use {
         sui,
         types::{DatatypeKey, DefaultDagExecutorTarget, NexusPackages, PackageVersion},
     },
-    serde::{de::Error as _, Deserialize, Deserializer, Serialize},
+    serde::{Deserialize, Serialize},
     sui_move::{MoveStruct, MoveType},
 };
 
@@ -91,7 +91,7 @@ impl UsTokenConfig {
 }
 
 /// One validated and immutable Nexus protocol configuration.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NexusObjects {
     /// Monotonic Nexus protocol version selected by the active configuration.
     pub protocol_version: u64,
@@ -127,132 +127,6 @@ pub struct NexusObjects {
     pub us_token: UsTokenConfig,
 }
 
-#[derive(Deserialize)]
-struct NexusObjectsWire {
-    protocol_version: u64,
-    #[serde(default = "default_object_reference")]
-    protocol: sui::types::ObjectReference,
-    #[serde(default)]
-    packages: Option<NexusPackages>,
-    config_hash: Vec<u8>,
-    network_id: sui::types::Address,
-    tool_registry: sui::types::ObjectReference,
-    verifier_registry: sui::types::ObjectReference,
-    network_auth: sui::types::ObjectReference,
-    agent_registry: sui::types::ObjectReference,
-    default_dag_executor: DefaultDagExecutorTarget,
-    gas_service: sui::types::ObjectReference,
-    leader_registry: sui::types::ObjectReference,
-    priority_fee_vault: sui::types::ObjectReference,
-    #[serde(default = "default_object_reference")]
-    priority_fee_vault_owner_cap: sui::types::ObjectReference,
-    #[serde(default)]
-    us_token: UsTokenConfig,
-
-    #[serde(default)]
-    primitives_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    interface_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    registry_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    gas_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    workflow_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    scheduler_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    primitives_original_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    interface_original_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    registry_original_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    gas_original_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    workflow_original_pkg_id: Option<sui::types::Address>,
-    #[serde(default)]
-    scheduler_original_pkg_id: Option<sui::types::Address>,
-}
-
-impl<'de> Deserialize<'de> for NexusObjects {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let wire = NexusObjectsWire::deserialize(deserializer)?;
-        let packages = match wire.packages {
-            Some(packages) => packages,
-            None => NexusPackages {
-                primitives: configured_package(
-                    "primitives_pkg_id",
-                    wire.primitives_pkg_id,
-                    wire.primitives_original_pkg_id,
-                )
-                .map_err(D::Error::custom)?,
-                interface: configured_package(
-                    "interface_pkg_id",
-                    wire.interface_pkg_id,
-                    wire.interface_original_pkg_id,
-                )
-                .map_err(D::Error::custom)?,
-                registry: configured_package(
-                    "registry_pkg_id",
-                    wire.registry_pkg_id,
-                    wire.registry_original_pkg_id,
-                )
-                .map_err(D::Error::custom)?,
-                gas: configured_package("gas_pkg_id", wire.gas_pkg_id, wire.gas_original_pkg_id)
-                    .map_err(D::Error::custom)?,
-                workflow: configured_package(
-                    "workflow_pkg_id",
-                    wire.workflow_pkg_id,
-                    wire.workflow_original_pkg_id,
-                )
-                .map_err(D::Error::custom)?,
-                scheduler: configured_package(
-                    "scheduler_pkg_id",
-                    wire.scheduler_pkg_id,
-                    wire.scheduler_original_pkg_id,
-                )
-                .map_err(D::Error::custom)?,
-            },
-        };
-
-        Ok(Self {
-            protocol_version: wire.protocol_version,
-            protocol: wire.protocol,
-            packages,
-            config_hash: wire.config_hash,
-            network_id: wire.network_id,
-            tool_registry: wire.tool_registry,
-            verifier_registry: wire.verifier_registry,
-            network_auth: wire.network_auth,
-            agent_registry: wire.agent_registry,
-            default_dag_executor: wire.default_dag_executor,
-            gas_service: wire.gas_service,
-            leader_registry: wire.leader_registry,
-            priority_fee_vault: wire.priority_fee_vault,
-            priority_fee_vault_owner_cap: wire.priority_fee_vault_owner_cap,
-            us_token: wire.us_token,
-        })
-    }
-}
-
-fn configured_package(
-    field: &'static str,
-    storage_id: Option<sui::types::Address>,
-    initial_id: Option<sui::types::Address>,
-) -> Result<PackageVersion, String> {
-    let storage_id = storage_id.ok_or_else(|| format!("missing field `{field}`"))?;
-    Ok(PackageVersion::new(
-        initial_id.unwrap_or(storage_id),
-        storage_id,
-        0,
-        Default::default(),
-    ))
-}
-
 pub(crate) fn default_object_reference() -> sui::types::ObjectReference {
     sui::types::ObjectReference::new(sui::types::Address::ZERO, 1, sui::types::Digest::ZERO)
 }
@@ -282,16 +156,6 @@ impl NexusObjects {
             scheduler,
         };
         Ok(())
-    }
-
-    /// Compatibility alias for callers that previously resolved one origin per
-    /// package. The method now resolves every datatype origin.
-    #[cfg(feature = "nexus")]
-    pub async fn resolve_original_pkg_ids(
-        &mut self,
-        client: &Arc<sui::grpc::Client>,
-    ) -> anyhow::Result<()> {
-        self.resolve_package_metadata(client).await
     }
 
     pub fn primitives_pkg_id(&self) -> sui::types::Address {
@@ -1415,64 +1279,12 @@ mod tests {
     }
 
     #[test]
-    fn flat_package_ids_decode_generated_configuration() {
+    fn protocol_configuration_requires_package_metadata() {
         let objects = sample_objects();
         let mut value = toml::Value::try_from(&objects).unwrap();
-        let table = value.as_table_mut().unwrap();
-        table.remove("packages");
-        for (name, package) in [
-            ("primitives", &objects.packages.primitives),
-            ("interface", &objects.packages.interface),
-            ("registry", &objects.packages.registry),
-            ("gas", &objects.packages.gas),
-            ("workflow", &objects.packages.workflow),
-            ("scheduler", &objects.packages.scheduler),
-        ] {
-            table.insert(
-                format!("{name}_pkg_id"),
-                toml::Value::String(package.storage_id.to_string()),
-            );
-            table.insert(
-                format!("{name}_original_pkg_id"),
-                toml::Value::String(package.initial_id.to_string()),
-            );
-        }
-        let decoded: NexusObjects = toml::from_str(&toml::to_string(&value).unwrap()).unwrap();
-
-        assert_eq!(
-            decoded.packages.primitives.storage_id,
-            objects.packages.primitives.storage_id
-        );
-        assert_eq!(decoded.packages.primitives.version, 0);
-        assert!(decoded.packages.primitives.type_origins.is_empty());
-    }
-
-    #[test]
-    fn flat_configuration_rejects_missing_package_ids() {
-        let objects = sample_objects();
-        let mut value = toml::Value::try_from(&objects).unwrap();
-        let table = value.as_table_mut().unwrap();
-        table.remove("packages");
-        for (name, package) in [
-            ("primitives", &objects.packages.primitives),
-            ("interface", &objects.packages.interface),
-            ("registry", &objects.packages.registry),
-            ("gas", &objects.packages.gas),
-            ("workflow", &objects.packages.workflow),
-            ("scheduler", &objects.packages.scheduler),
-        ] {
-            table.insert(
-                format!("{name}_pkg_id"),
-                toml::Value::String(package.storage_id.to_string()),
-            );
-        }
-        let decoded: NexusObjects = value.clone().try_into().unwrap();
-        assert_eq!(decoded.protocol_version, objects.protocol_version);
-        assert_eq!(decoded.protocol, objects.protocol);
-
-        value.as_table_mut().unwrap().remove("scheduler_pkg_id");
+        value.as_table_mut().unwrap().remove("packages");
         let decoded: Result<NexusObjects, _> = value.try_into();
         let error = decoded.unwrap_err().to_string();
-        assert!(error.contains("missing field `scheduler_pkg_id`"));
+        assert!(error.contains("missing field `packages`"));
     }
 }
