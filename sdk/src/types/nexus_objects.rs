@@ -10,7 +10,10 @@ use crate::move_bindings::{
     workflow::execution as execution_move,
 };
 #[cfg(feature = "nexus")]
-use std::{collections::BTreeMap, sync::Arc};
+use {
+    crate::sui::traits::FieldMaskUtil as _,
+    std::{collections::BTreeMap, sync::Arc},
+};
 use {
     crate::{
         move_bindings::{
@@ -479,46 +482,117 @@ pub(crate) async fn resolve_package_release_metadata(
         );
     }
 
+    // The ABI service does not guarantee that it returns package linkage and
+    // type origins. Read those immutable tables from the package object itself.
+    let request = sui::grpc::GetObjectRequest::default()
+        .with_object_id(storage_id)
+        .with_read_mask(sui::grpc::FieldMask::from_paths([
+            "object_id",
+            "version",
+            "object_type",
+            "package",
+        ]));
+    let package_object = client
+        .as_ref()
+        .clone()
+        .ledger_client()
+        .get_object(request)
+        .await
+        .map_err(|error| anyhow::anyhow!("Failed to fetch {package_name} package object: {error}"))?
+        .into_inner()
+        .object
+        .ok_or_else(|| anyhow::anyhow!("{package_name} package object was not returned"))?;
+    let object_id = parse_package_address(
+        package_object.object_id.as_deref(),
+        package_name,
+        "object_id",
+    )?;
+    if object_id != storage_id {
+        anyhow::bail!(
+            "{package_name} package object returned ID '{object_id}', expected '{storage_id}'"
+        );
+    }
+    let object_version = package_object
+        .version
+        .ok_or_else(|| anyhow::anyhow!("{package_name} package object version is missing"))?;
+    if object_version != version {
+        anyhow::bail!(
+            "{package_name} package object has version '{object_version}', \
+             but its ABI reports '{version}'"
+        );
+    }
+    if package_object.object_type.as_deref() != Some("package") {
+        anyhow::bail!(
+            "{package_name} object '{storage_id}' has type '{}', expected 'package'",
+            package_object.object_type.as_deref().unwrap_or("<missing>")
+        );
+    }
+    let exact_package = package_object
+        .package
+        .ok_or_else(|| anyhow::anyhow!("{package_name} package object metadata is missing"))?;
+
     let mut release = PackageRelease::new(initial_id, storage_id, version, Default::default());
-    for origin in package.type_origins {
-        let module = origin.module_name.ok_or_else(|| {
-            anyhow::anyhow!("{package_name} contains a type origin without a module")
-        })?;
-        let datatype = origin.datatype_name.ok_or_else(|| {
-            anyhow::anyhow!("{package_name} contains a type origin without a datatype")
-        })?;
-        let package_id = parse_package_address(
-            origin.package_id.as_deref(),
-            package_name,
-            "type origin package_id",
-        )?;
-        release.insert_type_origin(DatatypeKey::new(module, datatype), package_id)?;
+    for origin in &exact_package.type_origins {
+        let (key, package_id) = parse_type_origin(origin, package_name)?;
+        release.insert_type_origin(key, package_id)?;
     }
 
-    for module in package.modules {
+    // When the ABI service also supplies an origin table, require it to agree
+    // with the immutable package object rather than treating it as a fallback.
+    for origin in &package.type_origins {
+        let (key, package_id) = parse_type_origin(origin, package_name)?;
+        require_type_origin(&release, &key, package_id, package_name)?;
+    }
+
+    for module in &package.modules {
         let module_name = module
             .name
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("{package_name} contains a module without a name"))?;
-        for datatype in module.datatypes {
-            let datatype_name = datatype.name.ok_or_else(|| {
+        for datatype in &module.datatypes {
+            let datatype_name = datatype.name.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(
                     "{package_name} module '{module_name}' contains an unnamed datatype"
                 )
             })?;
-            if !release
-                .type_origins
-                .get(&module_name)
-                .is_some_and(|types| types.contains_key(&datatype_name))
-            {
+            if datatype.module.as_deref() != Some(module_name.as_str()) {
                 anyhow::bail!(
-                    "{package_name} datatype '{module_name}::{datatype_name}' has no origin"
+                    "{package_name} datatype '{module_name}::{datatype_name}' declares module '{}'",
+                    datatype.module.as_deref().unwrap_or("<missing>")
                 );
             }
+            let defining_id = parse_package_address(
+                datatype.defining_id.as_deref(),
+                package_name,
+                "datatype defining_id",
+            )?;
+            let type_name = datatype.type_name.as_deref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "{package_name} datatype '{module_name}::{datatype_name}' has no type name"
+                )
+            })?;
+            let tag: sui::types::StructTag = type_name.parse().map_err(|error| {
+                anyhow::anyhow!(
+                    "{package_name} datatype '{module_name}::{datatype_name}' has invalid type \
+                     name '{type_name}': {error}"
+                )
+            })?;
+            if *tag.address() != defining_id
+                || tag.module().as_str() != module_name
+                || tag.name().as_str() != datatype_name
+            {
+                anyhow::bail!(
+                    "{package_name} datatype '{module_name}::{datatype_name}' has inconsistent \
+                     type name '{type_name}' and defining ID '{defining_id}'"
+                );
+            }
+            let key = DatatypeKey::new(module_name.clone(), datatype_name.clone());
+            require_type_origin(&release, &key, defining_id, package_name)?;
         }
     }
 
     let mut linkage = BTreeMap::new();
-    for link in package.linkage {
+    for link in exact_package.linkage {
         let original_id = parse_package_address(
             link.original_id.as_deref(),
             package_name,
@@ -560,6 +634,54 @@ fn parse_package_address(
         .ok_or_else(|| anyhow::anyhow!("{package_name} package {field} is missing"))?
         .parse()
         .map_err(|error| anyhow::anyhow!("{package_name} package {field} is invalid: {error}"))
+}
+
+#[cfg(feature = "nexus")]
+fn parse_type_origin(
+    origin: &sui::grpc::TypeOrigin,
+    package_name: &str,
+) -> anyhow::Result<(DatatypeKey, sui::types::Address)> {
+    let module = origin
+        .module_name
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("{package_name} contains a type origin without a module"))?;
+    let datatype = origin.datatype_name.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("{package_name} contains a type origin without a datatype")
+    })?;
+    let package_id = parse_package_address(
+        origin.package_id.as_deref(),
+        package_name,
+        "type origin package_id",
+    )?;
+    Ok((
+        DatatypeKey::new(module.clone(), datatype.clone()),
+        package_id,
+    ))
+}
+
+#[cfg(feature = "nexus")]
+fn require_type_origin(
+    release: &PackageRelease,
+    key: &DatatypeKey,
+    expected: sui::types::Address,
+    package_name: &str,
+) -> anyhow::Result<()> {
+    let observed = release
+        .type_origins
+        .get(&key.module)
+        .and_then(|types| types.get(&key.datatype))
+        .copied();
+    if observed != Some(expected) {
+        anyhow::bail!(
+            "{package_name} datatype '{}::{}' has origin '{}', expected '{expected}'",
+            key.module,
+            key.datatype,
+            observed
+                .map(|origin| origin.to_string())
+                .unwrap_or_else(|| "<missing>".to_owned())
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]

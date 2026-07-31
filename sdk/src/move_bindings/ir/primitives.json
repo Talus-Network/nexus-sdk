@@ -3377,27 +3377,16 @@
             "Struct": {
               "fields": [
                 {
-                  "name": "release_floor",
+                  "name": "active",
                   "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "active_release",
-                  "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "releases",
-                  "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "table",
-                        "name": "Table"
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
                       },
                       "type_arguments": [
-                        "U64",
                         {
                           "Datatype": {
                             "type_name": {
@@ -3420,10 +3409,10 @@
           "type_name": {
             "address": "0xa1",
             "module": "protocol",
-            "name": "ReleaseActivatedEvent"
+            "name": "ReleaseActivatedEventV1"
           },
           "module": "protocol",
-          "name": "ReleaseActivatedEvent",
+          "name": "ReleaseActivatedEventV1",
           "abilities": [
             "Copy",
             "Drop"
@@ -3447,15 +3436,17 @@
                   }
                 },
                 {
-                  "name": "release",
+                  "name": "record",
                   "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "manifest_hash",
-                  "position": 2,
                   "ty": {
-                    "Vector": "U8"
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseRecordV1"
+                      },
+                      "type_arguments": []
+                    }
                   }
                 }
               ]
@@ -3913,7 +3904,71 @@
       ],
       "functions": [
         {
-          "name": "activate_release",
+          "name": "activate",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "release",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "ReleaseRecordV1"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "max_supported_release",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "activate_release_v1",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3956,12 +4011,15 @@
             },
             {
               "name": "release",
-              "ty": "U64"
-            },
-            {
-              "name": "expected_manifest_hash",
               "ty": {
-                "Vector": "U8"
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "protocol",
+                    "name": "ReleaseRecordV1"
+                  },
+                  "type_arguments": []
+                }
               }
             }
           ],
@@ -3985,7 +4043,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEvent"
+                        "name": "ReleaseActivatedEventV1"
                       },
                       "type_arguments": []
                     }
@@ -4021,7 +4079,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEvent"
+                        "name": "ReleaseActivatedEventV1"
                       },
                       "type_arguments": []
                     }
@@ -4044,6 +4102,49 @@
           ]
         },
         {
+          "name": "activated_record",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "event",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ReleaseActivatedEventV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "protocol",
+                      "name": "ReleaseRecordV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "activated_release",
           "visibility": "Public",
           "is_entry": false,
@@ -4059,7 +4160,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ReleaseActivatedEvent"
+                        "name": "ReleaseActivatedEventV1"
                       },
                       "type_arguments": []
                     }
@@ -4070,6 +4171,49 @@
           ],
           "return_types": [
             "U64"
+          ]
+        },
+        {
+          "name": "active_record",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "protocol",
+                      "name": "ReleaseRecordV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
           ]
         },
         {
@@ -4284,13 +4428,13 @@
           "return_types": []
         },
         {
-          "name": "has_release",
-          "visibility": "Public",
+          "name": "assert_supported_active",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "state",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -4299,7 +4443,34 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "Protocol"
+                        "name": "ProtocolStateV1"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_supported_active_with_max",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "state",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolStateV1"
                       },
                       "type_arguments": []
                     }
@@ -4308,13 +4479,11 @@
               }
             },
             {
-              "name": "release",
+              "name": "max_supported_release",
               "ty": "U64"
             }
           ],
-          "return_types": [
-            "Bool"
-          ]
+          "return_types": []
         },
         {
           "name": "id",
@@ -4425,7 +4594,7 @@
           ]
         },
         {
-          "name": "load_v1_mut",
+          "name": "load_v1_mut_with_max",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -4447,6 +4616,10 @@
                   }
                 }
               }
+            },
+            {
+              "name": "max_supported_release",
+              "ty": "U64"
             }
           ],
           "return_types": [
@@ -4581,140 +4754,6 @@
                 "type_arguments": []
               }
             }
-          ]
-        },
-        {
-          "name": "register_release",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "Protocol"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "admin",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ProtocolAdminCap"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "release",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "protocol",
-                    "name": "ReleaseRecordV1"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "release",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "Protocol"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "release",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa1",
-                      "module": "protocol",
-                      "name": "ReleaseRecordV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "release_floor",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "Protocol"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         },
         {

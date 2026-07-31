@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Nexus clients and CLI commands can now discover the active coherent release from one stable protocol object.
+- Protocol resolution now reads one exact active snapshot, validates package
+  origin IDs against Sui metadata, and adopts versioned activation event
+  records only when they match canonical state.
 - Event consumers can reject events emitted by package versions outside their captured active release.
 - Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow payment adapter.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.

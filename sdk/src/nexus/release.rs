@@ -76,7 +76,7 @@ pub struct ResolvedRelease {
     pub leader_api_version: u64,
 }
 
-/// Resolves and validates releases registered under one stable [`Protocol`].
+/// Resolves and validates the exact snapshot selected by one stable [`Protocol`].
 #[derive(Clone)]
 pub struct ReleaseResolver {
     protocol: sui::types::ObjectReference,
@@ -112,24 +112,40 @@ impl ReleaseResolver {
     /// Resolve the active release and its consumer API requirements.
     pub async fn resolve_active_release(&self) -> Result<ResolvedRelease, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
-        let release = state.active_release;
-        if release == 0 {
-            return Err(release_error("Protocol has no active release"));
-        }
-        self.resolve_record(protocol, state, release).await
+        let record = active_record(state)?;
+        self.resolve_record_inner(protocol, &record).await
     }
 
-    /// Resolve one registered release that is not below the protocol floor.
-    pub async fn resolve(&self, release: u64) -> Result<NexusObjects, NexusError> {
-        self.resolve_release(release)
+    /// Resolve an event snapshot after confirming it is still canonical.
+    pub async fn resolve_record(
+        &self,
+        record: &ReleaseRecordV1,
+    ) -> Result<NexusObjects, NexusError> {
+        self.resolve_record_release(record)
             .await
             .map(|release| release.objects)
     }
 
-    /// Resolve one registered release and its consumer API requirements.
-    pub async fn resolve_release(&self, release: u64) -> Result<ResolvedRelease, NexusError> {
+    /// Resolve an event snapshot and its consumer API requirements.
+    pub async fn resolve_record_release(
+        &self,
+        record: &ReleaseRecordV1,
+    ) -> Result<ResolvedRelease, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
-        self.resolve_record(protocol, state, release).await
+        let active = active_record(state)?;
+        validate_record(record)?;
+        validate_record(&active)?;
+        if record != &active {
+            return Err(release_error(format!(
+                "Release event '{}' with manifest '{}' is not the active snapshot '{}' with \
+                 manifest '{}'",
+                record.release,
+                hex::encode(&record.manifest_hash),
+                active.release,
+                hex::encode(&active.manifest_hash),
+            )));
+        }
+        self.resolve_record_inner(protocol, record).await
     }
 
     async fn protocol_state(&self) -> Result<(Response<Protocol>, ProtocolStateV1), NexusError> {
@@ -160,48 +176,23 @@ impl ReleaseResolver {
             .get_versioned_state::<ProtocolStateV1>(&protocol.data.state)
             .await
             .map_err(NexusError::Rpc)?;
-        if state.release_floor > state.active_release {
+        if state.active.vec.len() > 1 {
             return Err(release_error(format!(
-                "Protocol release floor '{}' exceeds active release '{}'",
-                state.release_floor, state.active_release
+                "Protocol active option contains '{}' records",
+                state.active.vec.len()
             )));
         }
         Ok((protocol, state))
     }
 
-    async fn resolve_record(
+    async fn resolve_record_inner(
         &self,
         protocol: Response<Protocol>,
-        state: ProtocolStateV1,
-        release: u64,
+        record: &ReleaseRecordV1,
     ) -> Result<ResolvedRelease, NexusError> {
-        if release == 0 {
-            return Err(release_error("Release zero is not a published release"));
-        }
-        if release < state.release_floor {
-            return Err(release_error(format!(
-                "Release '{release}' is below protocol floor '{}'",
-                state.release_floor
-            )));
-        }
-        if release > state.active_release {
-            return Err(release_error(format!(
-                "Release '{release}' is not active; current release is '{}'",
-                state.active_release
-            )));
-        }
-
         let crawler = Crawler::new(Arc::clone(&self.client));
-        let record = crawler
-            .get_dynamic_field_by_key::<u64, ReleaseRecordV1>(
-                state.releases.id(),
-                release,
-                &sui::types::TypeTag::U64,
-            )
-            .await
-            .map_err(NexusError::Rpc)?
-            .ok_or_else(|| release_error(format!("Protocol has no release record '{release}'")))?;
-        validate_record(&record, release)?;
+        validate_record(record)?;
+        let release = record.release;
 
         if record.sdk_api_version != SUPPORTED_SDK_API_VERSION {
             return Err(NexusError::UnsupportedSdkApi {
@@ -211,9 +202,9 @@ impl ReleaseResolver {
             });
         }
 
-        let packages = self.resolve_packages(&record).await?;
+        let packages = self.resolve_packages(record).await?;
         validate_type_origin_lineages(&self.client, &packages).await?;
-        let refs = resolve_shared_objects(&crawler, &record).await?;
+        let refs = resolve_shared_objects(&crawler, record).await?;
         let default_dag_executor =
             tap::fetch_default_dag_executor(&crawler, *refs.agent_registry.object_id())
                 .await
@@ -390,16 +381,25 @@ fn package_release(info: &PackageInfo) -> PackageRelease {
     )
 }
 
-fn validate_record(record: &ReleaseRecordV1, expected_release: u64) -> Result<(), NexusError> {
-    if record.release != expected_release {
-        return Err(release_error(format!(
-            "Release record key '{expected_release}' contains release '{}'",
-            record.release
-        )));
+fn active_record(state: ProtocolStateV1) -> Result<ReleaseRecordV1, NexusError> {
+    match state.active.vec.as_slice() {
+        [] => Err(release_error("Protocol has no active release")),
+        [record] => Ok(record.clone()),
+        records => Err(release_error(format!(
+            "Protocol active option contains '{}' records",
+            records.len()
+        ))),
+    }
+}
+
+fn validate_record(record: &ReleaseRecordV1) -> Result<(), NexusError> {
+    if record.release == 0 {
+        return Err(release_error("Release zero is not a published release"));
     }
     if record.manifest_hash.len() != sui::types::Digest::LENGTH {
         return Err(release_error(format!(
-            "Release '{expected_release}' manifest is {} bytes, expected 32",
+            "Release '{}' manifest is {} bytes, expected 32",
+            record.release,
             record.manifest_hash.len()
         )));
     }
@@ -421,7 +421,8 @@ fn validate_record(record: &ReleaseRecordV1, expected_release: u64) -> Result<()
     let digest = sui::types::hash::Hasher::digest(bytes);
     if record.manifest_hash.as_slice() != digest.as_bytes() {
         return Err(release_error(format!(
-            "Release '{expected_release}' manifest hash does not match its contents"
+            "Release '{}' manifest hash does not match its contents",
+            record.release
         )));
     }
     Ok(())
@@ -625,7 +626,7 @@ mod tests {
 
     fn package(value: &'static str) -> PackageInfo {
         let id = ID::new(address(value));
-        PackageInfo::new(id.clone(), id, 1)
+        PackageInfo::new(id, id, 1)
     }
 
     fn shared(value: &'static str) -> SharedObjectInfo {
@@ -680,11 +681,11 @@ mod tests {
     #[test]
     fn manifest_hash_covers_every_release_field() {
         let record = record();
-        validate_record(&record, 1).unwrap();
+        validate_record(&record).unwrap();
 
         let mut tampered = record;
         tampered.leader_api_version += 1;
-        let error = validate_record(&tampered, 1).unwrap_err();
+        let error = validate_record(&tampered).unwrap_err();
         assert!(error.to_string().contains("manifest hash"));
     }
 

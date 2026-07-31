@@ -9,7 +9,7 @@ use {
             primitives::{
                 data::NexusData as MoveNexusData,
                 event as event_move,
-                protocol::ReleaseActivatedEvent,
+                protocol::ReleaseActivatedEventV1,
             },
         },
         sui::{
@@ -170,23 +170,23 @@ pub type NexusEventIngestor = EventIngestor<NexusEventQuery>;
 pub struct ReleaseActivation {
     pub id: (sui::types::Digest, u64),
     pub emitting_package: sui::types::Address,
-    pub event: ReleaseActivatedEvent,
+    pub event: ReleaseActivatedEventV1,
 }
 
 impl ReleaseActivation {
     /// Verify notification metadata against a fully resolved candidate.
     ///
-    /// The candidate still comes from [`crate::nexus::release::ReleaseResolver`];
-    /// an event never supplies package configuration.
+    /// The candidate is independently validated by
+    /// [`crate::nexus::release::ReleaseResolver`].
     pub fn matches_candidate(&self, candidate: &NexusObjects) -> bool {
         self.event.protocol_id.bytes == *candidate.protocol.object_id()
-            && self.event.release == candidate.release
-            && self.event.manifest_hash == candidate.manifest_hash
+            && self.event.record.release == candidate.release
+            && self.event.record.manifest_hash == candidate.manifest_hash
             && self.emitting_package == candidate.primitives_pkg_id()
     }
 }
 
-/// Event query for the stable `protocol::ReleaseActivatedEvent` datatype.
+/// Event query for the `protocol::ReleaseActivatedEventV1` datatype.
 #[derive(Clone)]
 pub struct ReleaseActivationQuery {
     objects: Arc<NexusObjects>,
@@ -205,7 +205,7 @@ impl ReleaseActivationQuery {
         event_type: &sui::types::StructTag,
         contents: &[u8],
     ) -> Result<Option<ReleaseActivation>, NexusEventDecodeError> {
-        if !crate::move_bindings::struct_tag_matches::<ReleaseActivatedEvent>(
+        if !crate::move_bindings::struct_tag_matches::<ReleaseActivatedEventV1>(
             &self.objects,
             event_type,
         ) {
@@ -227,7 +227,7 @@ impl EventQuery for ReleaseActivationQuery {
     type Output = ReleaseActivation;
 
     fn filter(&self) -> sui::grpc::EventFilter {
-        let event_type = crate::move_bindings::struct_tag::<ReleaseActivatedEvent>(&self.objects);
+        let event_type = crate::move_bindings::struct_tag::<ReleaseActivatedEventV1>(&self.objects);
         sui::grpc::EventFilter::any([event_filter::event_type(event_type.to_string())])
     }
 
@@ -280,21 +280,57 @@ pub type ReleaseActivationIngestor = EventIngestor<ReleaseActivationQuery>;
 
 #[cfg(all(test, feature = "test_utils"))]
 mod tests {
-    use {super::*, crate::move_bindings::sui_framework::object::ID};
+    use {
+        super::*,
+        crate::move_bindings::{
+            primitives::protocol::{
+                PackageInfo,
+                ReleaseRecordV1,
+                SharedObjectInfo,
+                SystemObjectsV1,
+            },
+            sui_framework::object::ID,
+        },
+    };
 
     #[test]
     fn activation_requires_candidate_protocol_manifest_and_emitter() {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
         objects.release = 2;
         objects.manifest_hash = vec![7; 32];
+        let package = PackageInfo::new(
+            ID::new(sui::types::Address::ZERO),
+            ID::new(sui::types::Address::ZERO),
+            1,
+        );
+        let shared = SharedObjectInfo::new(ID::new(sui::types::Address::ZERO), 1);
+        let system_objects = SystemObjectsV1::new(
+            ID::new(sui::types::Address::ZERO),
+            shared.clone(),
+            shared.clone(),
+            shared.clone(),
+            shared.clone(),
+            shared.clone(),
+            shared.clone(),
+            shared,
+        );
+        let record = ReleaseRecordV1::new(
+            objects.release,
+            package.clone(),
+            package.clone(),
+            package.clone(),
+            package.clone(),
+            package.clone(),
+            package,
+            system_objects,
+            1,
+            1,
+            objects.manifest_hash.clone(),
+        );
         let activation = ReleaseActivation {
             id: (sui::types::Digest::ZERO, 0),
             emitting_package: objects.primitives_pkg_id(),
-            event: ReleaseActivatedEvent::new(
-                ID::new(*objects.protocol.object_id()),
-                objects.release,
-                objects.manifest_hash.clone(),
-            ),
+            event: ReleaseActivatedEventV1::new(ID::new(*objects.protocol.object_id()), record),
         };
         assert!(activation.matches_candidate(&objects));
 
