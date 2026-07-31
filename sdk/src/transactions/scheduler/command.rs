@@ -577,6 +577,47 @@ pub(crate) fn expire_occurrence_ptb(
     })
 }
 
+/// Builds an occurrence expiration that reimburses the leader submission gas charge.
+pub fn expire_occurrence_with_gas_charge_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        let task = shared_task_arg(transaction, task)?;
+        let leader_registry_ref = transaction.objects().leader_registry.clone();
+        let leader_registry = transaction
+            .shared_object(&leader_registry_ref, false)
+            .map_err(SchedulerError::transaction)?;
+        let leader_cap = transaction
+            .shared_object(leader_cap, false)
+            .map_err(SchedulerError::transaction)?;
+        let occurrence_id = transaction
+            .arg(&occurrence_id)
+            .map_err(SchedulerError::transaction)?;
+        let gas_charge = transaction
+            .arg(&gas_charge)
+            .map_err(SchedulerError::transaction)?;
+        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                scheduler_binding::expire_with_gas_charge_target,
+                vec![
+                    task,
+                    leader_registry,
+                    leader_cap,
+                    occurrence_id,
+                    gas_charge,
+                    clock,
+                ],
+            )
+            .map_err(SchedulerError::transaction)?;
+        Ok(())
+    })
+}
+
 pub(crate) fn append_expire_occurrence(
     transaction: &mut NexusPtbBuilder<'_>,
     task: &sui::types::ObjectReference,
@@ -608,6 +649,49 @@ pub(crate) fn append_dispatch_occurrence(
     occurrence_id: u64,
     tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
+    append_dispatch_occurrence_(
+        transaction,
+        task,
+        dag,
+        leader_cap,
+        occurrence_id,
+        None,
+        tools_gas,
+    )
+}
+
+/// Builds an occurrence dispatch that reimburses the leader submission gas charge.
+pub fn dispatch_occurrence_with_gas_charge_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        append_dispatch_occurrence_(
+            transaction,
+            task,
+            dag,
+            leader_cap,
+            occurrence_id,
+            Some(gas_charge),
+            tools_gas,
+        )
+    })
+}
+
+fn append_dispatch_occurrence_(
+    transaction: &mut NexusPtbBuilder<'_>,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: Option<u64>,
+    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> Result<(), SchedulerError> {
     let protocol_ref = transaction.objects().protocol.clone();
     let protocol = transaction
         .shared_object(&protocol_ref, false)
@@ -635,22 +719,45 @@ pub(crate) fn append_dispatch_occurrence(
         .shared_object(&leader_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
     let clock = transaction.clock().map_err(SchedulerError::transaction)?;
-    let execution = transaction
-        .call_target(
-            scheduler_binding::dispatch_next_target,
-            vec![
-                protocol,
-                task,
-                dag,
-                agent_registry,
-                tool_registry,
-                leader_cap,
-                occurrence_id,
-                leader_registry,
-                clock,
-            ],
-        )
-        .map_err(SchedulerError::transaction)?;
+    let execution = if let Some(gas_charge) = gas_charge {
+        let gas_charge = transaction
+            .arg(&gas_charge)
+            .map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                scheduler_binding::dispatch_next_with_gas_charge_target,
+                vec![
+                    protocol,
+                    task,
+                    dag,
+                    agent_registry,
+                    tool_registry,
+                    leader_registry,
+                    leader_cap,
+                    occurrence_id,
+                    gas_charge,
+                    clock,
+                ],
+            )
+            .map_err(SchedulerError::transaction)?
+    } else {
+        transaction
+            .call_target(
+                scheduler_binding::dispatch_next_target,
+                vec![
+                    protocol,
+                    task,
+                    dag,
+                    agent_registry,
+                    tool_registry,
+                    leader_cap,
+                    occurrence_id,
+                    leader_registry,
+                    clock,
+                ],
+            )
+            .map_err(SchedulerError::transaction)?
+    };
 
     let gas_service_ref = transaction.objects().gas_service.clone();
     let gas_service = transaction
@@ -773,6 +880,16 @@ mod tests {
                 Command::MoveCall(call) => Some(call),
                 _ => None,
             })
+    }
+
+    fn pure_u64(transaction: &ProgrammableTransaction, argument: Argument) -> u64 {
+        let Argument::Input(index) = argument else {
+            panic!("expected pure input argument");
+        };
+        let Input::Pure(bytes) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected pure input");
+        };
+        u64::from_le_bytes(bytes.as_slice().try_into().expect("u64 input"))
     }
 
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
@@ -942,5 +1059,47 @@ mod tests {
         assert_eq!(protocol.object_id(), *objects.protocol.object_id());
         assert_eq!(protocol.version(), objects.protocol.version());
         assert!(!protocol.mutability().is_mutable());
+    }
+
+    #[test]
+    fn charged_dispatch_serializes_the_submission_gas_charge() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let dag = object_ref_for_id(address("0x51"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+
+        let transaction = dispatch_occurrence_with_gas_charge_ptb(
+            &objects,
+            &task,
+            &dag,
+            &leader_cap,
+            7,
+            42,
+            &HashSet::new(),
+        )
+        .expect("charged dispatch compiles");
+        let dispatch = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "dispatch_next_with_gas_charge")
+            .expect("charged dispatch call");
+
+        assert_eq!(dispatch.arguments.len(), 10);
+        assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 42);
+    }
+
+    #[test]
+    fn charged_expiration_serializes_the_submission_gas_charge() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+
+        let transaction =
+            expire_occurrence_with_gas_charge_ptb(&objects, &task, &leader_cap, 7, 42)
+                .expect("charged expiration compiles");
+        let expiration = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "expire_with_gas_charge")
+            .expect("charged expiration call");
+
+        assert_eq!(expiration.arguments.len(), 6);
+        assert_eq!(pure_u64(&transaction, expiration.arguments[4]), 42);
     }
 }
