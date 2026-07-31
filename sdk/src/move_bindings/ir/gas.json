@@ -2688,7 +2688,7 @@
           ]
         },
         {
-          "name": "service_state_version",
+          "name": "service_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -3012,7 +3012,7 @@
           ]
         },
         {
-          "name": "tool_state_version",
+          "name": "tool_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

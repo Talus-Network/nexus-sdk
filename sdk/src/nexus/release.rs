@@ -36,8 +36,8 @@ use {
     },
 };
 
-/// Newest release manifest API understood by this SDK.
-pub const SUPPORTED_SDK_API_VERSION: u64 = 1;
+/// Newest Nexus protocol release whose behavior this SDK understands.
+pub const MAX_SUPPORTED_PROTOCOL_RELEASE: u64 = 2;
 
 /// Configuration that is intentionally outside the six package release.
 ///
@@ -68,14 +68,6 @@ impl From<&NexusObjects> for ReleaseExtras {
     }
 }
 
-/// A validated protocol release and its declared consumer API requirements.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResolvedRelease {
-    pub objects: NexusObjects,
-    pub sdk_api_version: u64,
-    pub leader_api_version: u64,
-}
-
 /// Resolves and validates the exact snapshot selected by one stable [`Protocol`].
 #[derive(Clone)]
 pub struct ReleaseResolver {
@@ -104,13 +96,6 @@ impl ReleaseResolver {
 
     /// Resolve the release selected by the canonical protocol root.
     pub async fn resolve_active(&self) -> Result<NexusObjects, NexusError> {
-        self.resolve_active_release()
-            .await
-            .map(|release| release.objects)
-    }
-
-    /// Resolve the active release and its consumer API requirements.
-    pub async fn resolve_active_release(&self) -> Result<ResolvedRelease, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
         let record = active_record(state)?;
         self.resolve_record_inner(protocol, &record).await
@@ -121,16 +106,6 @@ impl ReleaseResolver {
         &self,
         record: &ReleaseRecordV1,
     ) -> Result<NexusObjects, NexusError> {
-        self.resolve_record_release(record)
-            .await
-            .map(|release| release.objects)
-    }
-
-    /// Resolve an event snapshot and its consumer API requirements.
-    pub async fn resolve_record_release(
-        &self,
-        record: &ReleaseRecordV1,
-    ) -> Result<ResolvedRelease, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
         let active = active_record(state)?;
         validate_record(record)?;
@@ -173,16 +148,15 @@ impl ReleaseResolver {
         &self,
         protocol: Response<Protocol>,
         record: &ReleaseRecordV1,
-    ) -> Result<ResolvedRelease, NexusError> {
+    ) -> Result<NexusObjects, NexusError> {
         let crawler = Crawler::new(Arc::clone(&self.client));
         validate_record(record)?;
         let release = record.release;
 
-        if record.sdk_api_version != SUPPORTED_SDK_API_VERSION {
-            return Err(NexusError::UnsupportedSdkApi {
+        if release > MAX_SUPPORTED_PROTOCOL_RELEASE {
+            return Err(NexusError::UnsupportedProtocolRelease {
                 release,
-                required: record.sdk_api_version,
-                supported: SUPPORTED_SDK_API_VERSION,
+                maximum: MAX_SUPPORTED_PROTOCOL_RELEASE,
             });
         }
 
@@ -200,26 +174,22 @@ impl ReleaseResolver {
         let priority_fee_vault_owner_cap =
             refresh_optional_authority(&crawler, &self.extras.priority_fee_vault_owner_cap).await?;
 
-        Ok(ResolvedRelease {
-            objects: NexusObjects {
-                release,
-                protocol: protocol.object_ref(),
-                packages,
-                manifest_hash: record.manifest_hash.clone(),
-                network_id: record.objects.network.bytes,
-                tool_registry: refs.tool_registry,
-                verifier_registry: refs.verifier_registry,
-                network_auth: refs.network_auth,
-                agent_registry: refs.agent_registry,
-                default_dag_executor,
-                gas_service: refs.gas_service,
-                leader_registry: refs.leader_registry,
-                priority_fee_vault: refs.priority_fee_vault,
-                priority_fee_vault_owner_cap,
-                us_token: self.extras.us_token.clone(),
-            },
-            sdk_api_version: record.sdk_api_version,
-            leader_api_version: record.leader_api_version,
+        Ok(NexusObjects {
+            release,
+            protocol: protocol.object_ref(),
+            packages,
+            manifest_hash: record.manifest_hash.clone(),
+            network_id: record.objects.network.bytes,
+            tool_registry: refs.tool_registry,
+            verifier_registry: refs.verifier_registry,
+            network_auth: refs.network_auth,
+            agent_registry: refs.agent_registry,
+            default_dag_executor,
+            gas_service: refs.gas_service,
+            leader_registry: refs.leader_registry,
+            priority_fee_vault: refs.priority_fee_vault,
+            priority_fee_vault_owner_cap,
+            us_token: self.extras.us_token.clone(),
         })
     }
 
@@ -420,8 +390,6 @@ fn validate_record(record: &ReleaseRecordV1) -> Result<(), NexusError> {
         workflow: record.workflow.clone(),
         scheduler: record.scheduler.clone(),
         objects: record.objects.clone(),
-        sdk_api_version: record.sdk_api_version,
-        leader_api_version: record.leader_api_version,
     };
     let bytes = bcs::to_bytes(&manifest)
         .context("Could not encode release manifest")
@@ -711,8 +679,6 @@ mod tests {
             workflow.clone(),
             scheduler.clone(),
             objects.clone(),
-            1,
-            1,
         );
         let hash = sui::types::hash::Hasher::digest(bcs::to_bytes(&manifest).unwrap());
         ReleaseRecordV1::new(
@@ -724,8 +690,6 @@ mod tests {
             workflow,
             scheduler,
             objects,
-            1,
-            1,
             hash.as_bytes().to_vec(),
         )
     }
@@ -733,7 +697,7 @@ mod tests {
     fn protocol_response(
         protocol_id: sui::types::Address,
         owner: sui::types::Owner,
-        state_version: u64,
+        state_schema: u64,
     ) -> Response<Protocol> {
         Response {
             object_id: protocol_id,
@@ -741,7 +705,7 @@ mod tests {
             version: 9,
             data: Protocol::new(
                 UID::new(protocol_id),
-                Versioned::new(UID::new(address("0x31")), state_version),
+                Versioned::new(UID::new(address("0x31")), state_schema),
             ),
             digest: sui::types::Digest::ZERO,
             balance: None,
@@ -778,7 +742,7 @@ mod tests {
         validate_record(&record).unwrap();
 
         let mut tampered = record;
-        tampered.leader_api_version += 1;
+        tampered.scheduler.version += 1;
         let error = validate_record(&tampered).unwrap_err();
         assert!(error.to_string().contains("manifest hash"));
     }
@@ -941,7 +905,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolver_rejects_unsupported_sdk_api_before_network_resolution() {
+    async fn resolver_rejects_unsupported_protocol_release_before_network_resolution() {
         let protocol_id = address("0x70");
         let protocol = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
         let client = Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
@@ -958,7 +922,7 @@ mod tests {
         assert_eq!(resolver.protocol(), &protocol_ref);
 
         let mut unsupported = record();
-        unsupported.sdk_api_version = SUPPORTED_SDK_API_VERSION + 1;
+        unsupported.release = MAX_SUPPORTED_PROTOCOL_RELEASE + 1;
         let manifest = ReleaseManifestV1::new(
             unsupported.release,
             unsupported.primitives.clone(),
@@ -968,8 +932,6 @@ mod tests {
             unsupported.workflow.clone(),
             unsupported.scheduler.clone(),
             unsupported.objects.clone(),
-            unsupported.sdk_api_version,
-            unsupported.leader_api_version,
         );
         unsupported.manifest_hash =
             sui::types::hash::Hasher::digest(bcs::to_bytes(&manifest).unwrap())
@@ -982,10 +944,9 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             error,
-            NexusError::UnsupportedSdkApi {
-                release: 1,
-                required: 2,
-                supported: 1
+            NexusError::UnsupportedProtocolRelease {
+                release: 3,
+                maximum: 2,
             }
         ));
     }

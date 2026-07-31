@@ -3285,7 +3285,7 @@
           ]
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -8394,7 +8394,7 @@
           "return_types": []
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -10272,7 +10272,7 @@
           ]
         },
         {
-          "name": "key_binding_state_version",
+          "name": "key_binding_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -10976,7 +10976,7 @@
           "return_types": []
         },
         {
-          "name": "registry_state_version",
+          "name": "registry_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -12457,7 +12457,7 @@
           "return_types": []
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -16416,7 +16416,7 @@
           ]
         },
         {
-          "name": "registry_state_version",
+          "name": "registry_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -17106,7 +17106,7 @@
           ]
         },
         {
-          "name": "tool_state_version",
+          "name": "tool_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -19235,7 +19235,7 @@
           "return_types": []
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

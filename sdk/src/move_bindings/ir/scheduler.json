@@ -9746,7 +9746,7 @@
           ]
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

@@ -161,11 +161,11 @@ impl Agent {
     pub fn from_anchor(
         agent_id: AgentId,
         state_id: sui::types::Address,
-        state_version: u64,
+        state_schema: u64,
     ) -> Self {
         Self {
             id: UID::new(agent_id),
-            state: Versioned::new(UID::new(state_id), state_version),
+            state: Versioned::new(UID::new(state_id), state_schema),
         }
     }
 }

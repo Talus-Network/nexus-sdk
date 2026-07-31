@@ -1295,7 +1295,7 @@
           ]
         },
         {
-          "name": "agent_payment_vault_state_version",
+          "name": "agent_payment_vault_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -1324,7 +1324,7 @@
           ]
         },
         {
-          "name": "agent_state_version",
+          "name": "agent_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -4794,7 +4794,7 @@
           ]
         },
         {
-          "name": "agent_skill_authorization_state_version",
+          "name": "agent_skill_authorization_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -8143,7 +8143,7 @@
           ]
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -20687,7 +20687,7 @@
           ]
         },
         {
-          "name": "task_payment_reserve_state_version",
+          "name": "task_payment_reserve_state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

@@ -727,7 +727,7 @@ pub mod grpc {
     pub fn mock_versioned_payload<T>(
         ledger_service: &mut MockLedgerService,
         state_id: sui::types::Address,
-        state_version: u64,
+        state_schema: u64,
         value: T,
     ) where
         T: Serialize + Clone + Send + 'static,
@@ -741,11 +741,11 @@ pub mod grpc {
 
         let field_id = state_id.derive_dynamic_child_id(
             &sui::types::TypeTag::U64,
-            &bcs::to_bytes(&state_version).expect("version key serializes"),
+            &bcs::to_bytes(&state_schema).expect("schema key serializes"),
         );
         let field = VersionedField {
             id: field_id,
-            name: state_version,
+            name: state_schema,
             value,
         };
         mock_get_object_bcs(

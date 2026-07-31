@@ -3572,16 +3572,6 @@
                       "type_arguments": []
                     }
                   }
-                },
-                {
-                  "name": "sdk_api_version",
-                  "position": 8,
-                  "ty": "U64"
-                },
-                {
-                  "name": "leader_api_version",
-                  "position": 9,
-                  "ty": "U64"
                 }
               ]
             }
@@ -3708,18 +3698,8 @@
                   }
                 },
                 {
-                  "name": "sdk_api_version",
-                  "position": 8,
-                  "ty": "U64"
-                },
-                {
-                  "name": "leader_api_version",
-                  "position": 9,
-                  "ty": "U64"
-                },
-                {
                   "name": "manifest_hash",
-                  "position": 10,
+                  "position": 8,
                   "ty": {
                     "Vector": "U8"
                   }
@@ -4916,14 +4896,6 @@
                   "type_arguments": []
                 }
               }
-            },
-            {
-              "name": "sdk_api_version",
-              "ty": "U64"
-            },
-            {
-              "name": "leader_api_version",
-              "ty": "U64"
             }
           ],
           "return_types": [
@@ -4968,7 +4940,7 @@
           ]
         },
         {
-          "name": "state_version",
+          "name": "state_schema",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

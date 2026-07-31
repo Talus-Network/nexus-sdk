@@ -327,8 +327,6 @@ mod tests {
             package.clone(),
             package,
             system_objects,
-            1,
-            1,
             objects.manifest_hash.clone(),
         );
         let activation = ReleaseActivation {
