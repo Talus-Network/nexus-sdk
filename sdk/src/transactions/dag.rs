@@ -247,10 +247,19 @@ fn build_runtime_tool_result_worksheet(
     })
 }
 
-/// PTB template for creating a new empty DAG.
-pub(crate) fn empty(tx: &mut move_boundary::NexusPtbBuilder<'_>) -> sui::types::Argument {
-    tx.call_target(dag_binding::new_target, vec![])
-        .expect("generated dag::new target is valid")
+#[derive(Clone, Copy)]
+struct NewDagArguments {
+    dag: sui::types::Argument,
+    owner_cap: sui::types::Argument,
+}
+
+/// PTB template for creating a new empty DAG and its owner capability.
+fn empty(tx: &mut move_boundary::NexusPtbBuilder<'_>) -> anyhow::Result<NewDagArguments> {
+    let result = tx.call_target(dag_binding::new_target, vec![])?;
+    Ok(NewDagArguments {
+        dag: tx.nested_result(result, 0)?,
+        owner_cap: tx.nested_result(result, 1)?,
+    })
 }
 
 /// PTB template to publish a DAG.
@@ -361,11 +370,15 @@ pub(crate) fn create(
 pub(crate) fn publish_ptb(
     objects: &NexusObjects,
     dag: DagSpec,
+    owner: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let mut dag_arg = empty(tx);
+        let new_dag = empty(tx)?;
+        let mut dag_arg = new_dag.dag;
         dag_arg = create(tx, dag_arg, dag)?;
         publish(tx, dag_arg);
+        let owner = tx.arg(&owner)?;
+        tx.transfer_objects(vec![new_dag.owner_cap], owner)?;
         Ok(())
     })
 }
@@ -2229,10 +2242,31 @@ mod tests {
             ..Default::default()
         };
 
-        let ptb = publish_ptb(&nexus_objects(), dag).unwrap();
+        let owner = addr("0x99");
+        let ptb = publish_ptb(&nexus_objects(), dag, owner).unwrap();
+        let new_dag = move_call_index(&ptb, None, "dag", "new");
+        let add_vertex = move_call_index(&ptb, None, "dag", "with_vertex");
         let bind = move_call_index(&ptb, None, "tool_registry", "with_registered_vertex");
         let mode = move_call_index(&ptb, None, "verifier", "verifier_mode_registered_key");
         let configure = move_call_index(&ptb, None, "tool_registry", "with_vertex_verifier_mode");
+        let Command::MoveCall(add_vertex_call) = &ptb.commands[add_vertex] else {
+            panic!("expected add vertex call");
+        };
+        assert_eq!(
+            add_vertex_call.arguments[0],
+            Argument::NestedResult(new_dag as u16, 0)
+        );
+        let Command::TransferObjects(transfer) = ptb.commands.last().unwrap() else {
+            panic!("expected DAG owner capability transfer");
+        };
+        assert_eq!(
+            transfer.objects,
+            [Argument::NestedResult(new_dag as u16, 1)]
+        );
+        let Input::Pure(recipient) = input_for_argument(&ptb, &transfer.address) else {
+            panic!("expected pure DAG owner address");
+        };
+        assert_eq!(recipient.as_ref(), bcs::to_bytes(&owner).unwrap());
         assert!(bind < mode);
         assert!(mode < configure);
     }
@@ -2252,7 +2286,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(publish_ptb(&nexus_objects(), dag)
+        assert!(publish_ptb(&nexus_objects(), dag, addr("0x99"))
             .unwrap_err()
             .to_string()
             .contains("cannot configure an off-chain verifier"));

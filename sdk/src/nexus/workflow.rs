@@ -1119,8 +1119,8 @@ impl WorkflowActions {
 
         // == Craft and submit the publish DAG transaction ==
 
-        let tx =
-            dag::publish_ptb(nexus_objects, dag_spec).map_err(NexusError::TransactionBuilding)?;
+        let tx = dag::publish_ptb(nexus_objects, dag_spec, address)
+            .map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
 
         // == Find the published DAG object ID ==

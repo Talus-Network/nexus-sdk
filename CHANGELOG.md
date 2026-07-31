@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Generated bindings now define `OnchainToolResult` in `nexus_interface`, matching its Move package boundary.
 - Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
 - Release validation now separates transport from deterministic metadata checks, with coverage for malformed package identity, datatype origins, linkage, shared object versions, protocol roots, and consumer API compatibility.
+- DAG publication now transfers the returned owner capability to the publishing account.
 
 #### Fixed
 
