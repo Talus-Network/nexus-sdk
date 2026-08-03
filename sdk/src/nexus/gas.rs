@@ -65,10 +65,17 @@ impl GasActions {
     pub async fn fetch_priority_fee_vault_state(
         &self,
     ) -> Result<PriorityFeeVaultStateV1, NexusError> {
-        self.client
+        let client = self.client.operation_client().await?;
+        Self::fetch_priority_fee_vault_state_with(&client).await
+    }
+
+    async fn fetch_priority_fee_vault_state_with(
+        client: &NexusClient,
+    ) -> Result<PriorityFeeVaultStateV1, NexusError> {
+        client
             .crawler()
             .get_versioned_object::<PriorityFeeVault, PriorityFeeVaultStateV1>(
-                *self.client.nexus_objects.priority_fee_vault.object_id(),
+                *client.nexus_objects.priority_fee_vault.object_id(),
             )
             .await
             .map(|response| response.data)
@@ -84,7 +91,8 @@ impl GasActions {
         &self,
         leader_cap: sui::types::Address,
     ) -> Result<u64, NexusError> {
-        let state = self.fetch_priority_fee_vault_state().await?;
+        let client = self.client.operation_client().await?;
+        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
         state.leader_share(leader_cap).ok_or_else(|| {
             NexusError::Configuration(format!(
                 "Leader cap '{leader_cap}' has no priority fee share in the vault"
@@ -98,7 +106,8 @@ impl GasActions {
         leader_cap: sui::types::Address,
         share_to_withdraw: u64,
     ) -> Result<PriorityFeeWithdrawalQuote, NexusError> {
-        let state = self.fetch_priority_fee_vault_state().await?;
+        let client = self.client.operation_client().await?;
+        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
         state
             .quote_leader_withdrawal(leader_cap, share_to_withdraw)
             .ok_or_else(|| {
@@ -113,12 +122,13 @@ impl GasActions {
         &self,
         exchange_rate_million_mists_us: u64,
     ) -> Result<ConfigurePriorityFeeVaultResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
         let tx = gas::configure_priority_fee_vault(nexus_objects, exchange_rate_million_mists_us)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(ConfigurePriorityFeeVaultResult {
             tx_digest: response.digest,
@@ -131,9 +141,18 @@ impl GasActions {
         us_coin: sui::types::Address,
         min_sui_out: u64,
     ) -> Result<SwapUsForSuiResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        Self::swap_us_for_sui_with(&client, us_coin, min_sui_out).await
+    }
+
+    async fn swap_us_for_sui_with(
+        client: &NexusClient,
+        us_coin: sui::types::Address,
+        min_sui_out: u64,
+    ) -> Result<SwapUsForSuiResult, NexusError> {
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
         let us_coin = crawler
             .get_object_metadata(us_coin)
             .await
@@ -145,7 +164,7 @@ impl GasActions {
         let tx = gas::swap_us_for_sui(nexus_objects, &us_coin, min_sui_out, address)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         let swap = response
             .events
@@ -179,7 +198,8 @@ impl GasActions {
         &self,
         us_coin: sui::types::Address,
     ) -> Result<DrainPriorityFeeVaultSuiResult, NexusError> {
-        let state = self.fetch_priority_fee_vault_state().await?;
+        let client = self.client.operation_client().await?;
+        let state = Self::fetch_priority_fee_vault_state_with(&client).await?;
         let quote = state.quote_sui_drain().ok_or_else(|| {
             NexusError::Configuration(
                 "Priority fee vault must have a configured exchange rate and positive SUI balance to drain"
@@ -187,7 +207,7 @@ impl GasActions {
             )
         })?;
         let min_sui_out = quote.sui_out;
-        let result = self.swap_us_for_sui(us_coin, min_sui_out).await?;
+        let result = Self::swap_us_for_sui_with(&client, us_coin, min_sui_out).await?;
 
         Ok(DrainPriorityFeeVaultSuiResult {
             tx_digest: result.tx_digest,
@@ -203,9 +223,10 @@ impl GasActions {
         leader_cap: sui::types::Address,
         share_to_withdraw: u64,
     ) -> Result<WithdrawPriorityFeeResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
         let leader_cap = crawler
             .get_object_metadata(leader_cap)
             .await
@@ -217,7 +238,7 @@ impl GasActions {
         let tx = gas::withdraw_priority_fee(nexus_objects, &leader_cap, share_to_withdraw, address)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(WithdrawPriorityFeeResult {
             tx_digest: response.digest,
@@ -231,9 +252,10 @@ impl GasActions {
         owner_cap: sui::types::Address,
         cost_per_minute: u64,
     ) -> Result<EnableExpiryExtensionResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let owner_cap = crawler
             .get_object_metadata(owner_cap)
@@ -245,14 +267,14 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx =
             gas::enable_expiry_ptb(nexus_objects, &tool_gas, &tool, &owner_cap, cost_per_minute)
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(EnableExpiryExtensionResult {
             tx_digest: response.digest,
@@ -265,9 +287,10 @@ impl GasActions {
         tool_fqn: crate::tool_fqn::ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<DisableExpiryExtensionResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let owner_cap = crawler
             .get_object_metadata(owner_cap)
@@ -279,13 +302,13 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx = gas::disable_expiry_ptb(nexus_objects, &tool_gas, &tool, &owner_cap)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(DisableExpiryExtensionResult {
             tx_digest: response.digest,
@@ -299,9 +322,10 @@ impl GasActions {
         invocations: u64,
         coin: sui::types::Address,
     ) -> Result<BuyLimitedInvocationsTicketResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let pay_with_coin = crawler
             .get_object_metadata(coin)
@@ -313,8 +337,8 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx = gas::buy_limited_invocations_gas_ticket_ptb(
             nexus_objects,
@@ -325,7 +349,7 @@ impl GasActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(BuyLimitedInvocationsTicketResult {
             tx_digest: response.digest,
@@ -341,9 +365,10 @@ impl GasActions {
         min_invocations: u64,
         max_invocations: u64,
     ) -> Result<EnableLimitedInvocationsExtensionResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let owner_cap = crawler
             .get_object_metadata(owner_cap)
@@ -355,8 +380,8 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx = gas::enable_limited_invocations_ptb(
             nexus_objects,
@@ -369,7 +394,7 @@ impl GasActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(EnableLimitedInvocationsExtensionResult {
             tx_digest: response.digest,
@@ -382,9 +407,10 @@ impl GasActions {
         tool_fqn: crate::tool_fqn::ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<DisableLimitedInvocationsExtensionResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let owner_cap = crawler
             .get_object_metadata(owner_cap)
@@ -396,13 +422,13 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx = gas::disable_limited_invocations_ptb(nexus_objects, &tool_gas, &tool, &owner_cap)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(DisableLimitedInvocationsExtensionResult {
             tx_digest: response.digest,
@@ -416,9 +442,10 @@ impl GasActions {
         minutes: u64,
         coin: sui::types::Address,
     ) -> Result<BuyExpiryTicketResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let crawler = client.crawler();
 
         let pay_with_coin = crawler
             .get_object_metadata(coin)
@@ -430,8 +457,8 @@ impl GasActions {
                 ))
             })?;
 
-        let tool = self.client.fetch_tool(&tool_fqn).await?;
-        let tool_gas = self.client.fetch_tool_gas(&tool_fqn).await?;
+        let tool = client.fetch_tool(&tool_fqn).await?;
+        let tool_gas = client.fetch_tool_gas(&tool_fqn).await?;
 
         let tx = gas::buy_expiry_gas_ticket_ptb(
             nexus_objects,
@@ -442,7 +469,7 @@ impl GasActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(BuyExpiryTicketResult {
             tx_digest: response.digest,

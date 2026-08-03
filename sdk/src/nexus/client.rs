@@ -147,6 +147,7 @@ pub struct NexusClientBuilder {
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     address_balance_gas: Option<AddressBalanceGas>,
+    #[cfg(any(test, feature = "test_utils"))]
     nexus_objects: Option<NexusObjects>,
     protocol: Option<sui::types::ObjectReference>,
     protocol_extras: Option<ProtocolExtras>,
@@ -195,7 +196,9 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Set Nexus objects to use.
+    /// Set a fixed Nexus object snapshot for tests.
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test_utils"))]
     pub fn with_nexus_objects(mut self, nexus_objects: NexusObjects) -> Self {
         self.nexus_objects = Some(nexus_objects);
         self
@@ -239,21 +242,27 @@ impl NexusClientBuilder {
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
         let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
-        let nexus_objects = match (self.nexus_objects, self.protocol) {
+        #[cfg(any(test, feature = "test_utils"))]
+        let test_objects = self.nexus_objects;
+        #[cfg(not(any(test, feature = "test_utils")))]
+        let test_objects: Option<NexusObjects> = None;
+
+        let (nexus_objects, protocol_resolver) = match (test_objects, self.protocol) {
             (Some(_), Some(_)) => {
                 return Err(NexusError::Configuration(
                     "configure either Nexus objects or a protocol root, not both".into(),
                 ));
             }
-            (Some(objects), None) => objects,
+            (Some(objects), None) => (objects, None),
             (None, Some(protocol)) => {
                 let resolver = ProtocolResolver::new(protocol, Arc::clone(&client))
                     .with_extras(self.protocol_extras.unwrap_or_default());
-                Box::pin(resolver.resolve_active()).await?
+                let objects = Box::pin(resolver.resolve_active()).await?;
+                (objects, Some(resolver))
             }
             (None, None) => {
                 return Err(NexusError::Configuration(
-                    "Nexus objects or a protocol root are required".into(),
+                    "a protocol root is required".into(),
                 ));
             }
         };
@@ -290,6 +299,8 @@ impl NexusClientBuilder {
             nexus_objects,
             crawler,
             rpc_url,
+            protocol_resolver,
+            operation_snapshot: false,
         };
         if let Some(gas_source) = gas_source {
             nexus_client.set_gas_source(gas_source).await?;
@@ -312,6 +323,12 @@ pub struct NexusClient {
     pub(super) crawler: Crawler,
     /// RPC URL used by the client.
     pub(super) rpc_url: String,
+    /// Authority used to follow the canonical protocol.
+    ///
+    /// This is absent only for snapshots created by test support.
+    protocol_resolver: Option<ProtocolResolver>,
+    /// Whether this clone is pinned for one in progress operation.
+    operation_snapshot: bool,
 }
 
 impl NexusClient {
@@ -591,6 +608,80 @@ impl NexusClient {
         Arc::clone(&self.nexus_objects)
     }
 
+    /// Return a new immutable client bound to the active protocol configuration.
+    ///
+    /// The original client remains bound to its existing configuration.
+    /// Standard action methods refresh automatically before beginning an
+    /// operation.
+    pub async fn refresh_protocol(&self) -> Result<NexusClient, NexusError> {
+        let Some(resolver) = &self.protocol_resolver else {
+            return Ok(self.clone());
+        };
+        let Some(objects) = resolver
+            .resolve_active_if_changed(&self.nexus_objects)
+            .await?
+        else {
+            return Ok(self.clone());
+        };
+
+        Ok(self.with_protocol_objects(objects))
+    }
+
+    /// Pin this client to its current protocol configuration.
+    ///
+    /// Actions invoked through the returned snapshot keep one configuration.
+    /// Transaction submission still verifies that the configuration remains
+    /// active before signing.
+    pub fn into_protocol_snapshot(mut self) -> Self {
+        self.operation_snapshot = true;
+        self
+    }
+
+    pub(crate) async fn operation_client(&self) -> Result<NexusClient, NexusError> {
+        if self.operation_snapshot {
+            return Ok(self.clone());
+        }
+
+        let mut client = self.refresh_protocol().await?;
+        client.operation_snapshot = true;
+        Ok(client)
+    }
+
+    fn with_protocol_objects(&self, nexus_objects: NexusObjects) -> Self {
+        let nexus_objects = Arc::new(nexus_objects);
+        let signer = self.signer.clone().map(|mut signer| {
+            signer.nexus_objects = Arc::clone(&nexus_objects);
+            signer
+        });
+
+        Self {
+            signer,
+            gas: Arc::clone(&self.gas),
+            nexus_objects,
+            crawler: self.crawler.clone(),
+            rpc_url: self.rpc_url.clone(),
+            protocol_resolver: self.protocol_resolver.clone(),
+            operation_snapshot: self.operation_snapshot,
+        }
+    }
+
+    async fn ensure_protocol_is_current(&self) -> Result<(), NexusError> {
+        let Some(resolver) = &self.protocol_resolver else {
+            return Ok(());
+        };
+        let Some(active) = resolver
+            .resolve_active_if_changed(&self.nexus_objects)
+            .await?
+        else {
+            return Ok(());
+        };
+
+        Err(NexusError::StaleProtocol {
+            client_version: self.nexus_objects.protocol_version,
+            active_version: active.protocol_version,
+        })
+    }
+
     /// Submits a programmable transaction through this client's configured
     /// [`Gas`] source.
     ///
@@ -603,9 +694,10 @@ impl NexusClient {
         tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
+        self.ensure_protocol_is_current().await?;
         let signer = self.signer()?;
         let gas = self.gas_configured()?;
-        match &gas {
+        let response = match &gas {
             GasSource::Coin(pool) => {
                 let reference_gas_price = pool.reference_gas_price.ok_or_else(|| {
                     NexusError::Configuration("coin gas source is not prepared".into())
@@ -635,7 +727,18 @@ impl NexusClient {
                 let signature = signer.sign_tx(&tx).await?;
                 signer.execute_tx_without_gas_coin(tx, signature).await
             }
+        };
+
+        if response.is_err() {
+            match self.ensure_protocol_is_current().await {
+                Err(error @ NexusError::StaleProtocol { .. })
+                | Err(error @ NexusError::UnsupportedProtocolVersion { .. })
+                | Err(error @ NexusError::ProtocolValidation(_)) => return Err(error),
+                _ => {}
+            }
         }
+
+        response
     }
 
     pub(crate) fn gas_configured(&self) -> Result<Gas, NexusError> {
@@ -754,6 +857,79 @@ mod tests {
             .build()
             .await
             .expect("query-only client should build without a private key")
+    }
+
+    #[tokio::test]
+    async fn protocol_rebind_keeps_both_clients_immutable_and_shares_resources() {
+        let first = sui_mocks::mock_nexus_objects();
+        let mut second = first.clone();
+        second.protocol_version += 1;
+        second.config_hash = vec![9; sui::types::Digest::LENGTH];
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let client = NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url("http://127.0.0.1:1")
+            .with_address_balance_gas(1_000_000)
+            .with_nexus_objects(first.clone())
+            .build()
+            .await
+            .unwrap();
+
+        let rebound = client.with_protocol_objects(second.clone());
+
+        assert_eq!(
+            client.get_nexus_objects().protocol_version,
+            first.protocol_version,
+        );
+        assert_eq!(
+            rebound.get_nexus_objects().protocol_version,
+            second.protocol_version,
+        );
+        assert!(Arc::ptr_eq(&client.gas, &rebound.gas));
+        assert_eq!(
+            rebound.signer().unwrap().nexus_objects.protocol_version,
+            second.protocol_version,
+        );
+    }
+
+    #[tokio::test]
+    async fn fixed_client_refresh_preserves_its_snapshot() {
+        let client = keyless_client("http://127.0.0.1:1").await;
+
+        let refreshed = client.refresh_protocol().await.unwrap();
+
+        assert!(Arc::ptr_eq(
+            &client.get_nexus_objects(),
+            &refreshed.get_nexus_objects(),
+        ));
+    }
+
+    #[tokio::test]
+    async fn nested_actions_keep_one_operation_snapshot() {
+        let client = keyless_client("http://127.0.0.1:1").await;
+
+        let operation = client.operation_client().await.unwrap();
+        let nested = operation.operation_client().await.unwrap();
+
+        assert!(!client.operation_snapshot);
+        assert!(operation.operation_snapshot);
+        assert!(Arc::ptr_eq(
+            &operation.get_nexus_objects(),
+            &nested.get_nexus_objects(),
+        ));
+    }
+
+    #[test]
+    fn stale_protocol_error_names_both_versions() {
+        let error = NexusError::StaleProtocol {
+            client_version: 1,
+            active_version: 2,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "Protocol changed from version 1 to version 2 while the operation was in progress",
+        );
     }
 
     #[tokio::test]

@@ -16,7 +16,7 @@ use crate::{
             versioned::Versioned,
         },
     },
-    nexus::{client::NexusClient, network_auth::NetworkAuthReader},
+    nexus::client::NexusClient,
     sui,
     test_utils::sui_mocks,
     types::NexusObjects,
@@ -58,19 +58,20 @@ pub async fn mock_nexus_client_without_coins(
         .expect("Failed to build coin-free NexusClient")
 }
 
-/// Create a direct network-auth reader with one mocked allowed leader.
-pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
+/// Create a read only Nexus client with one mocked allowed leader.
+pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
     let nexus_objects = sui_mocks::mock_nexus_objects();
     let network_auth_id = *nexus_objects.network_auth.object_id();
     let leader_id = sui::types::Address::from_static("0x71");
     let identity = IdentityKey::leader(leader_id);
-    let derivation_reader = NetworkAuthReader::from_rpc_url(
-        "http://127.0.0.1:1",
-        nexus_objects.registry_type_origin_pkg_id(),
-        network_auth_id,
-    )
-    .expect("derivation-only network-auth reader");
-    let binding_id = derivation_reader
+    let derivation_client = NexusClient::builder()
+        .with_rpc_url("http://127.0.0.1:1")
+        .with_nexus_objects(nexus_objects.clone())
+        .build()
+        .await
+        .expect("derivation client");
+    let binding_id = derivation_client
+        .network_auth()
         .binding_object_id(&identity)
         .expect("leader binding id");
     let key_table_id = sui::types::Address::from_static("0x72");
@@ -149,10 +150,10 @@ pub fn mock_network_auth_reader_without_wallet() -> NetworkAuthReader {
         ..Default::default()
     });
 
-    NetworkAuthReader::from_rpc_url(
-        &rpc_url,
-        nexus_objects.registry_type_origin_pkg_id(),
-        network_auth_id,
-    )
-    .expect("mock network-auth reader")
+    NexusClient::builder()
+        .with_rpc_url(&rpc_url)
+        .with_nexus_objects(nexus_objects)
+        .build()
+        .await
+        .expect("mock read only Nexus client")
 }

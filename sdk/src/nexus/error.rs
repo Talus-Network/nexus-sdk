@@ -31,6 +31,14 @@ pub enum NexusError {
          this SDK"
     )]
     UnsupportedProtocolVersion { protocol_version: u64, maximum: u64 },
+    #[error(
+        "Protocol changed from version {client_version} to version {active_version} while the \
+         operation was in progress"
+    )]
+    StaleProtocol {
+        client_version: u64,
+        active_version: u64,
+    },
     #[error("Object '{object}' requires protocol version {required}, active version is {current}")]
     MigrationRequired {
         object: crate::sui::types::Address,

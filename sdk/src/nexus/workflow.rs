@@ -1120,16 +1120,21 @@ pub async fn should_settle_tool_err_eval_gas(
 }
 
 impl WorkflowActions {
+    async fn operation_client(&self) -> Result<NexusClient, NexusError> {
+        self.client.operation_client().await
+    }
+
     /// Publish the provided [`DagSpec`] specification.
     pub async fn publish(&self, dag_spec: DagSpec) -> Result<PublishResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
 
         // == Craft and submit the publish DAG transaction ==
 
         let tx = dag::publish_ptb(nexus_objects, dag_spec, address)
             .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         // == Find the published DAG object ID ==
 
@@ -1178,10 +1183,11 @@ impl WorkflowActions {
             ));
         }
 
+        let client = self.operation_client().await?;
         let deadline = Instant::now() + options.timeout;
         let (tx, rx) = unbounded_channel::<NexusEvent>();
-        let crawler = self.client.crawler().clone();
-        let nexus_objects = self.client.nexus_objects.clone();
+        let crawler = client.crawler().clone();
+        let nexus_objects = client.nexus_objects.clone();
 
         let poller = tokio::spawn(async move {
             let inspection = async move {
@@ -1297,7 +1303,8 @@ impl WorkflowActions {
         &self,
         dag_execution_id: sui::types::Address,
     ) -> Result<ExecutionCostResult, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
             .await
@@ -1333,7 +1340,8 @@ impl WorkflowActions {
         &self,
         dag_execution_id: sui::types::Address,
     ) -> Result<AbortExecutionResult, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
             .await
@@ -1346,7 +1354,7 @@ impl WorkflowActions {
             .data;
         let cleaned_broken_onchain_results = broken_onchain_result_cleanups_for_abort(
             crawler,
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             dag_execution_id,
             &execution,
             clock.timestamp_ms,
@@ -1364,9 +1372,9 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.owner()?;
+        let address = client.owner()?;
         let tx = dag::abort_expired_execution_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &dag_ref,
             &execution_ref,
             &cleaned_broken_onchain_results
@@ -1379,7 +1387,7 @@ impl WorkflowActions {
                 .collect::<Vec<_>>(),
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(AbortExecutionResult {
             tx_digest: response.digest,
@@ -1395,7 +1403,8 @@ impl WorkflowActions {
         &self,
         params: SettleCommittedToolResultParams,
     ) -> Result<CommittedToolResultSettlementResult, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(params.dag_execution_id)
             .await
@@ -1412,8 +1421,8 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
             objects,
             &dag_ref,
@@ -1421,7 +1430,7 @@ impl WorkflowActions {
             params.walk_index,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(CommittedToolResultSettlementResult {
             tx_digest: response.digest,
@@ -1437,7 +1446,8 @@ impl WorkflowActions {
         &self,
         params: SettleCommittedToolResultByLeaderParams,
     ) -> Result<CommittedToolResultSettlementResult, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(params.dag_execution_id)
             .await
@@ -1466,8 +1476,8 @@ impl WorkflowActions {
                     )));
                 }
             };
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
             objects,
             &dag_ref,
@@ -1483,7 +1493,7 @@ impl WorkflowActions {
             params.settlement_gas_charge,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(CommittedToolResultSettlementResult {
             tx_digest: response.digest,
@@ -1499,7 +1509,8 @@ impl WorkflowActions {
         &self,
         params: RecordCommittedToolResultGasChargeParams,
     ) -> Result<RecordCommittedToolResultGasChargeResult, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(params.dag_execution_id)
             .await
@@ -1529,9 +1540,9 @@ impl WorkflowActions {
                 }
             };
 
-        let address = self.client.owner()?;
+        let address = client.owner()?;
         let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &dag_ref,
             &execution_ref.object_ref(),
             &execution_ref.owner,
@@ -1545,7 +1556,7 @@ impl WorkflowActions {
             params.settlement_gas_charge,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(RecordCommittedToolResultGasChargeResult {
             tx_digest: response.digest,
@@ -1561,7 +1572,8 @@ impl WorkflowActions {
         &self,
         params: ResolveExpiredWalkParams,
     ) -> Result<ExpiredWalkResolutionPlan, NexusError> {
-        inspect_expired_walk_resolution(self.client.crawler(), &self.client.nexus_objects, params)
+        let client = self.operation_client().await?;
+        inspect_expired_walk_resolution(client.crawler(), &client.nexus_objects, params)
             .await
             .map_err(NexusError::Rpc)
     }
@@ -1601,7 +1613,8 @@ impl WorkflowActions {
                 tool_witness_id,
                 finalize_tx_digest,
             } => {
-                let crawler = self.client.crawler();
+                let client = self.operation_client().await?;
+                let crawler = client.crawler();
                 let dag_ref = crawler
                     .get_object_metadata(plan.dag_id)
                     .await
@@ -1612,8 +1625,8 @@ impl WorkflowActions {
                     .await
                     .map_err(NexusError::Rpc)?
                     .object_ref();
-                let address = self.client.owner()?;
-                let objects = &self.client.nexus_objects;
+                let address = client.owner()?;
+                let objects = &client.nexus_objects;
                 let tx = move_boundary::ptb(objects, |tx| {
                     let dag = tx.shared_object(&dag_ref, false)?;
                     let execution = tx.shared_object(&execution_ref, true)?;
@@ -1637,7 +1650,7 @@ impl WorkflowActions {
                     )
                 })
                 .map_err(NexusError::TransactionBuilding)?;
-                let response = self.client.submit_transaction(tx, address).await?;
+                let response = client.submit_transaction(tx, address).await?;
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(response.digest),
                     tx_checkpoint: Some(response.checkpoint),
@@ -1675,14 +1688,15 @@ impl WorkflowActions {
     }
 
     /// Return ToolGas refs that can be passed to
-    /// `payment_adapter::abort_expired_execution_with_tool_gas` for the current
+    /// `gas_adapter::abort_expired_execution_with_tool_gas` for the current
     /// execution state. This is an advisory snapshot; Move still verifies
     /// timeout and lock state on chain.
     pub async fn abort_expired_execution_tool_gas_candidates(
         &self,
         dag_execution_id: sui::types::Address,
     ) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
             .await
@@ -1705,7 +1719,7 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let gas_service_id = *self.client.nexus_objects.gas_service.object_id();
+        let gas_service_id = *client.nexus_objects.gas_service.object_id();
         let refs = fetch_tool_gas_refs_for_abort_candidates(
             crawler,
             gas_service_id,
@@ -1723,7 +1737,7 @@ impl WorkflowActions {
         Ok(refs)
     }
 
-    /// Submit `payment_adapter::abort_expired_execution_with_tool_gas` for one
+    /// Submit `gas_adapter::abort_expired_execution_with_tool_gas` for one
     /// eligible ToolGas candidate. Candidate discovery is advisory; Move still
     /// verifies timeout and lock state on chain.
     pub async fn abort_expired_execution_with_tool_gas(
@@ -1735,7 +1749,8 @@ impl WorkflowActions {
             .abort_expired_execution_tool_gas_candidates(dag_execution_id)
             .await?;
         let selected_candidate = select_tool_gas_abort_candidate(candidates, tool_gas_id)?;
-        let crawler = self.client.crawler();
+        let client = self.operation_client().await?;
+        let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
             .await
@@ -1752,8 +1767,8 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
         let tx = gas::abort_expired_execution_with_tool_gas_ptb(
             nexus_objects,
             &selected_candidate.tool_gas_ref,
@@ -1761,7 +1776,7 @@ impl WorkflowActions {
             &execution_ref,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(AbortExpiredExecutionResult {
             tx_digest: response.digest,

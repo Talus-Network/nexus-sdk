@@ -44,6 +44,13 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
+    async fn operation_client(&self) -> Result<NexusClient, SchedulerError> {
+        self.client
+            .operation_client()
+            .await
+            .map_err(SchedulerError::transport)
+    }
+
     /// Creates and shares an empty Task.
     ///
     /// Use [`Self::schedule_task`] when the creation transaction must also add
@@ -54,11 +61,11 @@ impl Scheduler {
     /// Returns [`SchedulerError`] when the Task is invalid, request
     /// preparation fails, or the transaction is not confirmed.
     pub async fn create_task(&self, task: TaskSpec) -> Result<TaskMutationReceipt, SchedulerError> {
-        let sender = self.client.owner().map_err(SchedulerError::transport)?;
-        let prepared = resolve::prepare_task(&self.client, &task).await?;
-        let transaction = compile_create_task_ptb(&self.client.nexus_objects, &prepared, sender)?;
-        let executed = self
-            .client
+        let client = self.operation_client().await?;
+        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let prepared = resolve::prepare_task(&client, &task).await?;
+        let transaction = compile_create_task_ptb(&client.nexus_objects, &prepared, sender)?;
+        let executed = client
             .submit_transaction(transaction, sender)
             .await
             .map_err(SchedulerError::transport)?;
@@ -80,17 +87,17 @@ impl Scheduler {
         schedule: Schedule,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
         schedule.validate_for_task_creation()?;
-        let sender = self.client.owner().map_err(SchedulerError::transport)?;
-        let prepared_task = resolve::prepare_task(&self.client, &task).await?;
-        let prepared_schedule = resolve::prepare_schedule(&self.client, &schedule).await?;
+        let client = self.operation_client().await?;
+        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let prepared_task = resolve::prepare_task(&client, &task).await?;
+        let prepared_schedule = resolve::prepare_schedule(&client, &schedule).await?;
         let transaction = compile_schedule_task_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &prepared_task,
             &prepared_schedule,
             sender,
         )?;
-        let executed = self
-            .client
+        let executed = client
             .submit_transaction(transaction, sender)
             .await
             .map_err(SchedulerError::transport)?;
@@ -123,10 +130,10 @@ impl Scheduler {
                 message: "Task pointer page limit must be greater than zero".to_owned(),
             });
         }
-        let owner = self.client.owner().map_err(SchedulerError::transport)?;
-        let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&self.client.nexus_objects);
-        let page = self
-            .client
+        let client = self.operation_client().await?;
+        let owner = client.owner().map_err(SchedulerError::transport)?;
+        let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&client.nexus_objects);
+        let page = client
             .crawler()
             .get_owned_object_page::<MoveTaskPointer>(owner, object_type, cursor, limit)
             .await

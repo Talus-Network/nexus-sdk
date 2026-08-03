@@ -18209,8 +18209,8 @@
         }
       ]
     },
-    "payment_adapter": {
-      "name": "payment_adapter",
+    "gas_adapter": {
+      "name": "gas_adapter",
       "datatypes": [],
       "functions": [
         {

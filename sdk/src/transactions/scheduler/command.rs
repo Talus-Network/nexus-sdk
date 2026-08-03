@@ -8,7 +8,7 @@ use {
             scheduler::scheduler as scheduler_binding,
             workflow::{
                 execution_entries as execution_entries_binding,
-                payment_adapter as payment_adapter_binding,
+                gas_adapter as gas_adapter_binding,
             },
         },
         move_boundary::NexusPtbBuilder,
@@ -765,7 +765,7 @@ fn append_dispatch_occurrence_(
         .map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
-            payment_adapter_binding::snapshot_dag_tool_costs_target,
+            gas_adapter_binding::snapshot_dag_tool_costs_target,
             vec![gas_service, execution, dag],
         )
         .map_err(SchedulerError::transaction)?;
@@ -778,7 +778,7 @@ fn append_dispatch_occurrence_(
             .map_err(SchedulerError::transaction)?;
         transaction
             .call_target(
-                payment_adapter_binding::lock_payment_state_for_tool_target,
+                gas_adapter_binding::lock_payment_state_for_tool_target,
                 vec![tool_gas, dag, execution],
             )
             .map_err(SchedulerError::transaction)?;

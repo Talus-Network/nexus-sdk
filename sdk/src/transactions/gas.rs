@@ -3,7 +3,7 @@ use {
         move_bindings::{
             gas::gas_extension as gas_extension_binding,
             registry::priority_fee_vault as priority_fee_vault_binding,
-            workflow::payment_adapter as payment_adapter_binding,
+            workflow::gas_adapter as gas_adapter_binding,
         },
         move_boundary,
         sui,
@@ -100,7 +100,7 @@ pub(crate) fn settle_payment_state_for_vertex(
     expected_vertex: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
     tx.call_target(
-        payment_adapter_binding::settle_payment_state_for_vertex_target,
+        gas_adapter_binding::settle_payment_state_for_vertex_target,
         vec![tool_gas, dag, execution, expected_vertex],
     )
 }
@@ -121,7 +121,7 @@ pub fn abort_expired_execution_with_tool_gas_ptb(
         let clock = tx.clock()?;
 
         tx.call_target(
-            payment_adapter_binding::abort_expired_execution_with_tool_gas_target,
+            gas_adapter_binding::abort_expired_execution_with_tool_gas_target,
             vec![tool_gas, dag, execution, clock],
         )?;
         Ok(())
@@ -362,7 +362,7 @@ mod tests {
 
         let call = move_call(ptb.commands.last().unwrap());
         assert_eq!(call.package, objects.workflow_pkg_id());
-        assert_eq!(call.module.as_str(), "payment_adapter");
+        assert_eq!(call.module.as_str(), "gas_adapter");
         assert_eq!(
             call.function.as_str(),
             "abort_expired_execution_with_tool_gas"

@@ -6,6 +6,7 @@ use {
     nexus_sdk::{
         nexus::{
             client::{AddressBalanceGas, GasSource, NexusClient},
+            error::NexusError,
             protocol::ProtocolExtras,
         },
         sui,
@@ -212,26 +213,23 @@ async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient,
     let mut conf = CliConf::load().await.unwrap_or_default();
 
     let client = build_sui_grpc_client(&conf).await?;
-    let mut nexus_objects = get_nexus_objects(&mut conf).await?;
+    let nexus_objects = get_nexus_objects(&mut conf).await?;
     let rpc_url = client.uri().to_string();
+
+    if *nexus_objects.protocol.object_id() == sui::types::Address::ZERO {
+        return Err(NexusCliError::Nexus(NexusError::Configuration(
+            "a protocol root is required".into(),
+        )));
+    }
 
     let builder = NexusClient::builder().with_rpc_url(&rpc_url);
     let builder = match access {
         ClientAccess::ReadOnly => builder,
         ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
     };
-    let builder = if *nexus_objects.protocol.object_id() != sui::types::Address::ZERO {
-        let extras = ProtocolExtras::from(&nexus_objects);
-        builder
-            .with_protocol(nexus_objects.protocol.clone())
-            .with_protocol_extras(extras)
-    } else {
-        nexus_objects
-            .resolve_package_metadata(&client)
-            .await
-            .map_err(|e| NexusCliError::Any(anyhow!("Failed to resolve package metadata: {e}")))?;
-        builder.with_nexus_objects(nexus_objects)
-    };
+    let builder = builder
+        .with_protocol(nexus_objects.protocol.clone())
+        .with_protocol_extras(ProtocolExtras::from(&nexus_objects));
     builder.build().await.map_err(NexusCliError::Nexus)
 }
 
@@ -386,6 +384,15 @@ mod tests {
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
         ReadOnlyCommandCallSite {
+            command: "nexus tool auth sync-allowed-leaders",
+            source: include_str!("tool/tool_auth.rs"),
+            function_signature: "async fn sync_allowed_leaders(",
+            boundary_test_source: include_str!("tool/tool_auth.rs"),
+            boundary_test_signature:
+                "async fn sync_once_writes_allowlist_without_wallet_or_owned_coins(",
+            boundary_test_marker: "mock_network_auth_client_without_wallet",
+        },
+        ReadOnlyCommandCallSite {
             command: "nexus tool inspect",
             source: include_str!("tool/tool_inspect.rs"),
             function_signature: "pub(crate) async fn inspect_tool(",
@@ -507,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_network_auth_reader_command_has_no_wallet_dependency() {
+    fn network_auth_sync_command_has_no_wallet_dependency() {
         let source = include_str!("tool/tool_auth.rs");
         let body = function_source(source, "async fn sync_allowed_leaders(");
 
@@ -522,8 +529,8 @@ mod tests {
                 source,
                 "async fn sync_once_writes_allowlist_without_wallet_or_owned_coins("
             )
-            .contains("mock_network_auth_reader_without_wallet"),
-            "sync-allowed-leaders must retain execution-level direct-reader proof"
+            .contains("mock_network_auth_client_without_wallet"),
+            "sync allowed leaders must retain execution level read only proof"
         );
     }
 

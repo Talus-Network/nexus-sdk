@@ -136,8 +136,9 @@ impl NetworkAuthActions {
         tool_signing_key: SigningKey,
         description: Option<Vec<u8>>,
     ) -> Result<RegisteredToolKey, NexusError> {
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
 
         let codec = NetworkAuthCodec::new(
             objects.registry_type_origin_pkg_id(),
@@ -153,7 +154,7 @@ impl NetworkAuthActions {
         let identity = IdentityKey::tool(tool_id);
         let binding_object_id = codec.binding_object_id(&identity)?;
 
-        let binding = self.try_get_key_binding(binding_object_id).await?;
+        let binding = Self::try_get_key_binding(&client, binding_object_id).await?;
         let (binding_ref, next_key_id) = match binding {
             None => (None, 0),
             Some(b) => (Some(b.object_ref()), b.data.next_key_id),
@@ -162,8 +163,7 @@ impl NetworkAuthActions {
         let (public_key, pop_sig) = tool_key_material(&identity, next_key_id, &tool_signing_key)?;
 
         // Resolve owner cap object ref for PTB.
-        let owner_cap_ref = self
-            .client
+        let owner_cap_ref = client
             .crawler()
             .get_object_metadata(owner_cap_over_tool)
             .await
@@ -175,8 +175,7 @@ impl NetworkAuthActions {
             })?;
 
         // Resolve derived tool object ref for PTB.
-        let tool = self
-            .client
+        let tool = client
             .crawler()
             .get_object_metadata(tool_id)
             .await
@@ -209,7 +208,7 @@ impl NetworkAuthActions {
         }
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(RegisteredToolKey {
             tx_digest: response.digest,
@@ -228,7 +227,8 @@ impl NetworkAuthActions {
         &self,
         tool_fqn: &ToolFqn,
     ) -> Result<Option<ToolKeyList>, NexusError> {
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let objects = &client.nexus_objects;
         let codec = NetworkAuthCodec::new(
             objects.registry_type_origin_pkg_id(),
             *objects.network_auth.object_id(),
@@ -243,13 +243,12 @@ impl NetworkAuthActions {
         let identity = IdentityKey::tool(tool_id);
         let binding_object_id = codec.binding_object_id(&identity)?;
 
-        let binding = match self.try_get_key_binding(binding_object_id).await? {
+        let binding = match Self::try_get_key_binding(&client, binding_object_id).await? {
             None => return Ok(None),
             Some(b) => b,
         };
 
-        let key_records = self
-            .client
+        let key_records = client
             .crawler()
             .get_dynamic_fields::<u64, KeyRecord>(
                 binding.data.key_table_id(),
@@ -292,7 +291,8 @@ impl NetworkAuthActions {
         &self,
         leader_cap_ids: &[sui::types::Address],
     ) -> Result<AllowedLeadersFileV1, NexusError> {
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let objects = &client.nexus_objects;
         let codec = NetworkAuthCodec::new(
             objects.registry_type_origin_pkg_id(),
             *objects.network_auth.object_id(),
@@ -303,8 +303,7 @@ impl NetworkAuthActions {
             let identity = IdentityKey::leader(*leader_cap_id);
             let binding_object_id = codec.binding_object_id(&identity)?;
 
-            let binding = self
-                .client
+            let binding = client
                 .crawler()
                 .get_versioned_object::<KeyBinding, KeyBindingStateV1>(binding_object_id)
                 .await
@@ -320,8 +319,7 @@ impl NetworkAuthActions {
                 ))
             })?;
 
-            let keys = self
-                .client
+            let keys = client
                 .crawler()
                 .get_dynamic_fields::<u64, KeyRecord>(
                     binding.data.key_table_id(),
@@ -371,11 +369,17 @@ impl NetworkAuthActions {
     pub async fn list_leader_cap_ids_from_network_auth(
         &self,
     ) -> Result<Vec<sui::types::Address>, NexusError> {
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        Self::list_leader_cap_ids_with(&client).await
+    }
+
+    async fn list_leader_cap_ids_with(
+        client: &NexusClient,
+    ) -> Result<Vec<sui::types::Address>, NexusError> {
+        let objects = &client.nexus_objects;
         let network_auth_object_id = *objects.network_auth.object_id();
 
-        let registry = self
-            .client
+        let registry = client
             .crawler()
             .get_versioned_object::<NetworkAuth, NetworkAuthStateV1>(network_auth_object_id)
             .await
@@ -407,14 +411,15 @@ impl NetworkAuthActions {
     pub async fn export_allowed_leaders_file_v1_for_all_leaders(
         &self,
     ) -> Result<AllowedLeadersFileV1, NexusError> {
-        let leader_cap_ids = self.list_leader_cap_ids_from_network_auth().await?;
+        let client = self.client.operation_client().await?;
+        let leader_cap_ids = Self::list_leader_cap_ids_with(&client).await?;
         if leader_cap_ids.is_empty() {
             return Err(NexusError::Parsing(anyhow::anyhow!(
                 "network_auth contains no leader identities"
             )));
         }
 
-        let objects = &self.client.nexus_objects;
+        let objects = &client.nexus_objects;
         let codec = NetworkAuthCodec::new(
             objects.registry_type_origin_pkg_id(),
             *objects.network_auth.object_id(),
@@ -422,9 +427,8 @@ impl NetworkAuthActions {
 
         let mut out = Vec::with_capacity(leader_cap_ids.len());
         for leader_cap_id in leader_cap_ids {
-            if let Some(entry) = self
-                .export_allowed_leader_entry_file_v1(&codec, leader_cap_id)
-                .await?
+            if let Some(entry) =
+                Self::export_allowed_leader_entry_file_v1(&client, &codec, leader_cap_id).await?
             {
                 out.push(entry);
             }
@@ -443,23 +447,22 @@ impl NetworkAuthActions {
     }
 
     async fn try_get_key_binding(
-        &self,
+        client: &NexusClient,
         binding_object_id: sui::types::Address,
     ) -> Result<Option<crate::nexus::crawler::Response<KeyBindingStateV1>>, NexusError> {
-        try_get_key_binding_by_object_id(self.client.crawler(), binding_object_id).await
+        try_get_key_binding_by_object_id(client.crawler(), binding_object_id).await
     }
 
     #[cfg(feature = "signed_http")]
     async fn export_allowed_leader_entry_file_v1(
-        &self,
+        client: &NexusClient,
         codec: &NetworkAuthCodec,
         leader_cap_id: sui::types::Address,
     ) -> Result<Option<AllowedLeaderFileV1>, NexusError> {
         let identity = IdentityKey::leader(leader_cap_id);
         let binding_object_id = codec.binding_object_id(&identity)?;
 
-        let binding = self
-            .client
+        let binding = client
             .crawler()
             .get_versioned_object::<KeyBinding, KeyBindingStateV1>(binding_object_id)
             .await
@@ -473,8 +476,7 @@ impl NetworkAuthActions {
             return Ok(None);
         };
 
-        let keys = self
-            .client
+        let keys = client
             .crawler()
             .get_dynamic_fields::<u64, KeyRecord>(
                 binding.data.key_table_id(),

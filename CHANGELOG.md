@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   origin IDs against Sui metadata, and adopts versioned activation event
   records only when they match canonical state.
 - Event consumers can reject direct calls from inactive Nexus package versions while accepting user packages only when their transitive Nexus linkage exactly matches the captured protocol configuration.
-- Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow payment adapter.
+- Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow gas adapter.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
 - Renamed priority fee exchange-rate fields and CLI inputs to `exchange_rate_million_mists_us`, measured as `$US` atomic units per one million MIST.
 - Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.

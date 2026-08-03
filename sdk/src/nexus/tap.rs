@@ -240,7 +240,8 @@ impl TapActions {
             options.environment.clone(),
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let address = self.client.owner()?;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
         let modules = package.package.get_package_bytes(false);
         let dependencies = publish_dependency_ids_or_framework_defaults(
             package
@@ -252,11 +253,10 @@ impl TapActions {
                         .expect("compiled package dependency id must parse as Sui address")
                 }),
         );
-        let tx =
-            tap_tx::publish_package_ptb(&self.client.nexus_objects, modules, dependencies, address)
-                .map_err(NexusError::TransactionBuilding)?;
+        let tx = tap_tx::publish_package_ptb(&client.nexus_objects, modules, dependencies, address)
+            .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let package_id = response
             .objects
             .iter()
@@ -302,11 +302,12 @@ impl TapActions {
 
     /// Create a standard Talus agent through the configured TAP registry.
     pub async fn create_agent(&self) -> Result<CreateAgentResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
         let tx = tap_tx::create_agent_for_self_ptb(nexus_objects, address)
             .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
             NexusEventKind::AgentCreated(event) => Some(event),
             _ => None,
@@ -350,16 +351,15 @@ impl TapActions {
         agent_id: AgentId,
         artifact: &TapPublishArtifact,
     ) -> Result<RegisterSkillResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
-        let dag = self
-            .client
+        let dag = client
             .crawler()
             .get_object_metadata(artifact.dag_id)
             .await
@@ -370,7 +370,7 @@ impl TapActions {
         let tx = tap_tx::register_skill_ptb(nexus_objects, agent, &dag, artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
             NexusEventKind::SkillRegistered(event) => Some(event),
             _ => None,
@@ -395,9 +395,10 @@ impl TapActions {
         agent_id: AgentId,
         skill_id: SkillId,
     ) -> Result<GetSkillRequirementResult, NexusError> {
+        let client = self.client.operation_client().await?;
         let target = fetch_configured_active_tap_skill_execution_target(
-            self.client.crawler(),
-            &self.client.nexus_objects,
+            client.crawler(),
+            &client.nexus_objects,
             agent_id,
             skill_id,
         )
@@ -420,16 +421,15 @@ impl TapActions {
         skill_id: SkillId,
         artifact: &TapPublishArtifact,
     ) -> Result<UpdateSkillResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
-        let dag = self
-            .client
+        let dag = client
             .crawler()
             .get_object_metadata(artifact.dag_id)
             .await
@@ -442,7 +442,7 @@ impl TapActions {
             tap_tx::update_skill_from_artifact_ptb(nexus_objects, agent, &dag, skill_id, artifact)
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = response
             .events
             .iter()
@@ -476,10 +476,10 @@ impl TapActions {
         &self,
         params: DepositAgentVaultParams,
     ) -> Result<DepositAgentVaultResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(params.agent_id)
             .await
@@ -490,7 +490,7 @@ impl TapActions {
             tap_tx::deposit_agent_payment_vault_for_self_ptb(nexus_objects, agent, params.amount)
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(DepositAgentVaultResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
@@ -505,9 +505,9 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.owner()?;
-        let execution_ref = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let execution_ref = client
             .crawler()
             .get_object_metadata(params.execution_id)
             .await
@@ -515,13 +515,13 @@ impl TapActions {
             .object_ref();
 
         let tx = dag_tx::refill_tap_execution_payment_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &execution_ref,
             params.amount,
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(RefillExecutionPaymentResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
@@ -536,8 +536,9 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentFromAgentVaultParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.owner()?;
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let crawler = client.crawler();
         let execution_ref = crawler
             .get_object_metadata(params.execution_id)
             .await
@@ -551,14 +552,14 @@ impl TapActions {
         let agent =
             agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
         let tx = dag_tx::refill_tap_execution_payment_from_agent_vault_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             agent,
             &execution_ref,
             params.amount,
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(RefillExecutionPaymentResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
@@ -575,10 +576,10 @@ impl TapActions {
     ) -> Result<BindAgentSkillResult, NexusError> {
         let BindAgentSkillParams { artifact } = params;
 
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
-        let dag = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let dag = client
             .crawler()
             .get_object_metadata(artifact.dag_id)
             .await
@@ -588,7 +589,7 @@ impl TapActions {
         let tx = tap_tx::bind_agent_skill_ptb(nexus_objects, &dag, &artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         let agent_event = find_event(&response, |kind| match kind {
             NexusEventKind::AgentCreated(event) => Some(event),

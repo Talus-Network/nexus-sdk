@@ -31,7 +31,7 @@ use {
             workflow::{
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
-                payment_adapter as payment_adapter_binding,
+                gas_adapter as gas_adapter_binding,
             },
         },
         move_boundary,
@@ -1839,7 +1839,7 @@ fn lock_payment_state_for_tools(
 ) -> anyhow::Result<()> {
     for tool_gas in tools_gas {
         tx.call_target(
-            payment_adapter_binding::lock_payment_state_for_tool_target,
+            gas_adapter_binding::lock_payment_state_for_tool_target,
             vec![tool_gas, dag, execution],
         )?;
     }
@@ -2136,7 +2136,7 @@ mod tests {
         .unwrap();
 
         let lock_payment =
-            move_call_index(&ptb, None, "payment_adapter", "lock_payment_state_for_tool");
+            move_call_index(&ptb, None, "gas_adapter", "lock_payment_state_for_tool");
         let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
 
         assert!(lock_payment < execute);
@@ -2256,7 +2256,7 @@ mod tests {
             matches!(
                 command,
                 Command::MoveCall(call)
-                    if call.module.as_str() == "payment_adapter"
+                    if call.module.as_str() == "gas_adapter"
                         && call.function.as_str() == "lock_payment_state_for_tool"
             )
         }));
@@ -2305,8 +2305,7 @@ mod tests {
         expect_u64_arg(&ptb, &call.arguments[10], 123);
         expect_u64_arg(&ptb, &call.arguments[11], 45);
         assert!(
-            move_call_index(&ptb, None, "payment_adapter", "lock_payment_state_for_tool",)
-                > call_index
+            move_call_index(&ptb, None, "gas_adapter", "lock_payment_state_for_tool",) > call_index
         );
         assert!(
             move_call_index(

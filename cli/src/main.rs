@@ -98,7 +98,11 @@ async fn main() {
 
     // Handle any errors that occurred during command execution.
     if let Err(e) = result {
+        let protocol_upgrade_guidance = e.protocol_upgrade_guidance();
         eprintln!("\n{ballot} {e}", ballot = "X".red().bold());
+        if let Some(guidance) = protocol_upgrade_guidance {
+            eprintln!("\n{guidance}");
+        }
 
         std::process::exit(1);
     }

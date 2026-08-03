@@ -55,7 +55,7 @@ pub struct ToolActions {
 
 impl ToolActions {
     async fn resolve_tool_and_owner_cap(
-        &self,
+        client: &NexusClient,
         tool_fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<
@@ -66,18 +66,16 @@ impl ToolActions {
         ),
         NexusError,
     > {
-        let objects = &self.client.nexus_objects;
+        let objects = &client.nexus_objects;
         let tool_id = Tool::derive_id(*objects.tool_registry.object_id(), tool_fqn)
             .map_err(NexusError::Parsing)?;
-        let tool = self
-            .client
+        let tool = client
             .crawler()
             .get_object_metadata(tool_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
-        let owner_cap = self
-            .client
+        let owner_cap = client
             .crawler()
             .get_object_metadata(owner_cap)
             .await
@@ -93,18 +91,18 @@ impl ToolActions {
         new_timeout: Duration,
         owner_cap: sui::types::Address,
     ) -> Result<UpdateToolTimeoutResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
 
-        let owner_cap = self
-            .client
+        let owner_cap = client
             .crawler()
             .get_object_metadata(owner_cap)
             .await
             .map_err(NexusError::Rpc)?;
 
         // Derive and fetch the Tool object.
-        let tool_ref = self.client.fetch_tool_gas(tool_fqn).await?;
+        let tool_ref = client.fetch_tool_gas(tool_fqn).await?;
 
         let tx = tool::update_tool_timeout_ptb(
             nexus_objects,
@@ -114,7 +112,7 @@ impl ToolActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(UpdateToolTimeoutResult {
             tx_digest: response.digest,
@@ -127,15 +125,15 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let (tool_id, tool, owner_cap) =
-            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
-        let binding_id = self.client.network_auth().binding_object_id(
+            Self::resolve_tool_and_owner_cap(&client, tool_fqn, owner_cap).await?;
+        let binding_id = client.network_auth().binding_object_id(
             &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
         )?;
-        let tool_key_binding = self
-            .client
+        let tool_key_binding = client
             .crawler()
             .get_object_metadata(binding_id)
             .await
@@ -152,7 +150,7 @@ impl ToolActions {
             &tool_key_binding,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(ConfigureToolVerifierResult {
             tx_digest: response.digest,
             tool_id,
@@ -169,12 +167,13 @@ impl ToolActions {
         function_name: &str,
         verifier_object_ids: &[sui::types::Address],
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let (tool_id, tool, owner_cap) =
-            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
+            Self::resolve_tool_and_owner_cap(&client, tool_fqn, owner_cap).await?;
         let registration = preflight_external_verifier_registration(
-            self.client.crawler(),
+            client.crawler(),
             objects,
             package_id,
             module_name,
@@ -185,7 +184,7 @@ impl ToolActions {
         .map_err(|e| NexusError::Configuration(e.to_string()))?;
         let tx = tool::register_external_verifier_ptb(objects, &tool, &owner_cap, &registration)
             .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(ConfigureToolVerifierResult {
             tx_digest: response.digest,
             tool_id,
@@ -203,8 +202,9 @@ impl ToolActions {
     /// exists — that combination indicates corrupt registry state and
     /// requires operator intervention (e.g. a localnet reset).
     pub async fn inspect_tool(&self, fqn: &ToolFqn) -> Result<ToolInspection, NexusError> {
-        let crawler = self.client.crawler();
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let crawler = client.crawler();
+        let nexus_objects = &client.nexus_objects;
         let tool_registry_id = *nexus_objects.tool_registry.object_id();
         let gas_service_id = *nexus_objects.gas_service.object_id();
 

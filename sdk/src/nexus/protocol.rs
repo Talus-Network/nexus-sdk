@@ -130,6 +130,27 @@ impl ProtocolResolver {
         self.resolve_config_inner(protocol, &config).await
     }
 
+    /// Resolve the active configuration only when its identity changed.
+    pub async fn resolve_active_if_changed(
+        &self,
+        current: &NexusObjects,
+    ) -> Result<Option<NexusObjects>, NexusError> {
+        let (protocol, state) = self.protocol_state().await?;
+        let config = active_config(state)?;
+        validate_config(&config)?;
+        if config.protocol_version > MAX_SUPPORTED_PROTOCOL_VERSION {
+            return Err(NexusError::UnsupportedProtocolVersion {
+                protocol_version: config.protocol_version,
+                maximum: MAX_SUPPORTED_PROTOCOL_VERSION,
+            });
+        }
+        if !active_configuration_changed(current.protocol_version, &current.config_hash, &config)? {
+            return Ok(None);
+        }
+
+        self.resolve_config_inner(protocol, &config).await.map(Some)
+    }
+
     /// Resolve an activation after confirming it still names the active configuration.
     pub async fn resolve_activation(
         &self,
@@ -407,6 +428,27 @@ fn active_config(state: ProtocolStateV1) -> Result<ProtocolConfigV1, NexusError>
             "Protocol active option contains '{}' configurations",
             configs.len()
         ))),
+    }
+}
+
+fn active_configuration_changed(
+    current_version: u64,
+    current_hash: &[u8],
+    active: &ProtocolConfigV1,
+) -> Result<bool, NexusError> {
+    match active.protocol_version.cmp(&current_version) {
+        std::cmp::Ordering::Less => Err(protocol_error(format!(
+            "Refusing protocol downgrade from version '{current_version}' to '{}'",
+            active.protocol_version,
+        ))),
+        std::cmp::Ordering::Equal if active.config_hash != current_hash => {
+            Err(protocol_error(format!(
+                "Protocol version '{}' changed configuration hash",
+                active.protocol_version,
+            )))
+        }
+        std::cmp::Ordering::Equal => Ok(false),
+        std::cmp::Ordering::Greater => Ok(true),
     }
 }
 
@@ -931,6 +973,45 @@ mod tests {
     }
 
     #[test]
+    fn active_configuration_change_is_monotonic_and_immutable() {
+        let current = config(2);
+        let unchanged = current.clone();
+        let upgrade = config(3);
+        let downgrade = config(1);
+        let mut conflict = current.clone();
+        conflict.config_hash = vec![9; sui::types::Digest::LENGTH];
+
+        assert!(!active_configuration_changed(
+            current.protocol_version,
+            &current.config_hash,
+            &unchanged,
+        )
+        .unwrap());
+        assert!(active_configuration_changed(
+            current.protocol_version,
+            &current.config_hash,
+            &upgrade,
+        )
+        .unwrap());
+        assert!(active_configuration_changed(
+            current.protocol_version,
+            &current.config_hash,
+            &downgrade,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("downgrade"));
+        assert!(active_configuration_changed(
+            current.protocol_version,
+            &current.config_hash,
+            &conflict,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("changed configuration hash"));
+    }
+
+    #[test]
     fn role_bindings_require_canonical_order_and_unique_identities() {
         let mut wrong_role = config(1);
         wrong_role.packages.contents.swap(0, 1);
@@ -942,15 +1023,9 @@ mod tests {
 
         let mut duplicate_package = config(1);
         duplicate_package.packages.contents[1].value.initial_id =
-            duplicate_package.packages.contents[0]
-                .value
-                .initial_id
-                .clone();
+            duplicate_package.packages.contents[0].value.initial_id;
         duplicate_package.packages.contents[1].value.storage_id =
-            duplicate_package.packages.contents[0]
-                .value
-                .storage_id
-                .clone();
+            duplicate_package.packages.contents[0].value.storage_id;
         set_config_hash(&mut duplicate_package);
         assert!(validate_config(&duplicate_package)
             .unwrap_err()
@@ -959,7 +1034,7 @@ mod tests {
 
         let mut duplicate_object = config(1);
         duplicate_object.shared_objects.contents[1].value.id =
-            duplicate_object.shared_objects.contents[0].value.id.clone();
+            duplicate_object.shared_objects.contents[0].value.id;
         set_config_hash(&mut duplicate_object);
         assert!(validate_config(&duplicate_object)
             .unwrap_err()
