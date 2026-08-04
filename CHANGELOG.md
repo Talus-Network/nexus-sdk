@@ -29,9 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Changed
 
 - Nexus clients and CLI commands can now discover the active coherent protocol configuration from one stable protocol object.
-- Protocol resolution now reads one exact active configuration, validates package
-  origin IDs against Sui metadata, and adopts versioned activation event
-  records only when they match canonical state.
+- Protocol resolution now reads one exact active configuration, validates package origin IDs against Sui metadata, and adopts versioned activation event records only when they match canonical state.
 - Event consumers can reject direct calls from inactive Nexus package versions while accepting user packages only when their transitive Nexus linkage exactly matches the captured protocol configuration.
 - Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow gas adapter.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
@@ -61,10 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - Scheduler dispatch transactions now pass the active protocol root required by the protocol aware scheduler ABI.
-- Protocol activation queries now decode the canonical Nexus event wrapper and
-  reject wrappers for unrelated events.
-- Package metadata validation now distinguishes the runtime package address in
-  RPC type names from immutable datatype defining origins.
+- Protocol activation queries now decode the canonical Nexus event wrapper and reject wrappers for unrelated events.
+- Package metadata validation now distinguishes the runtime package address in RPC type names from immutable datatype defining origins.
 - Replaced the custom Testcontainers module fork with maintained releases and a local Sui container definition, removing vulnerable test utility dependencies.
 
 #### Removed
