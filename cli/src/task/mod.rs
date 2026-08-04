@@ -229,6 +229,16 @@ pub(crate) enum OccurrenceCommand {
         follow: bool,
     },
 
+    #[command(about = "Settle a finished runtime object into its Task record")]
+    Settle {
+        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        task_id: sui::types::Address,
+        #[arg(long, value_name = "U64")]
+        occurrence_id: u64,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
     #[command(about = "Record an advertised occurrence as missed")]
     Expire {
         #[arg(long, short = 't', value_name = "OBJECT_ID")]
@@ -559,6 +569,24 @@ mod tests {
             "0",
         ]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn occurrence_settle_accepts_task_and_occurrence_ids() {
+        let result = crate::Cli::try_parse_from([
+            "nexus",
+            "task",
+            "occurrence",
+            "settle",
+            "--task-id",
+            "0x42",
+            "--occurrence-id",
+            "7",
+        ]);
+
+        if let Err(error) = result {
+            panic!("occurrence settlement should parse: {error}");
+        }
     }
 
     #[test]

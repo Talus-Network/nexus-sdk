@@ -28,6 +28,11 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
             occurrence_id,
             follow,
         } => inspect(task_id, occurrence_id, follow).await,
+        OccurrenceCommand::Settle {
+            task_id,
+            occurrence_id,
+            gas,
+        } => settle(task_id, occurrence_id, gas).await,
         OccurrenceCommand::Expire {
             task_id,
             occurrence_id,
@@ -117,6 +122,25 @@ async fn inspect(
     };
     progress.success();
     json_output(&snapshot)
+}
+
+async fn settle(
+    task_id: sui::types::Address,
+    occurrence_id: u64,
+    gas: GasArgs,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Settling occurrence");
+    let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let progress = loading!("Submitting occurrence settlement transaction...");
+    let receipt = client
+        .scheduler()
+        .task(task_id)
+        .occurrence(occurrence_id)
+        .settle()
+        .await?;
+    progress.success();
+    notify_success!("Occurrence settled into Task");
+    json_output(&receipt)
 }
 
 async fn expire(

@@ -81,6 +81,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Added `NEXUS_CLI_CONF` for selecting an isolated CLI configuration file.
+- Added `nexus task occurrence settle` for settling finished executions into their Task records.
 - `nexus task list` discovers the configured signer's Tasks by listing owned `TaskPointer` objects with opaque cursor pagination.
 - `nexus gas priority-fee-vault` commands for configuring the priority-fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority-fee shares.
 - Added support for new priority fee system in commands.
