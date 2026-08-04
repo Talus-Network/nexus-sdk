@@ -768,11 +768,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -794,6 +793,6 @@ mod tests {
             .await
             .expect("Failed to update tool timeout");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 }

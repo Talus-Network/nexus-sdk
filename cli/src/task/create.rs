@@ -1,8 +1,8 @@
 use {
-    super::args::TaskArgs,
+    super::{args::TaskArgs, output},
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
@@ -22,5 +22,6 @@ pub(crate) async fn run(task: TaskArgs, gas: GasArgs) -> AnyResult<(), NexusCliE
         "Task created: {task_id}",
         task_id = receipt.task_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_task_receipt(&receipt, None));
     json_output(&receipt)
 }

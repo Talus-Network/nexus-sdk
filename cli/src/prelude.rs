@@ -84,7 +84,7 @@ pub(crate) struct GasArgs {
     #[arg(
         long = "sui-gas-coin",
         short = 'g',
-        help = "Optional gas coin object ID. Address balance gas is used when omitted.",
+        help = "Optional owned gas coin object ID. Most commands use address balance gas when omitted.",
         help_heading = "Gas",
         value_name = "OBJECT_ID"
     )]

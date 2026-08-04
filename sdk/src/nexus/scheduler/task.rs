@@ -68,7 +68,7 @@ impl TaskHandle {
         self.client
             .operation_client()
             .await
-            .map_err(SchedulerError::transport)
+            .map_err(SchedulerError::from)
     }
 
     /// Reads the current Task object into a public snapshot.
@@ -306,11 +306,11 @@ impl TaskHandle {
         client: &NexusClient,
         transaction: sui::types::ProgrammableTransaction,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let sender = client.owner().map_err(SchedulerError::from)?;
         let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         mutation_receipt(executed, self.task_id)
     }
 }

@@ -1643,11 +1643,10 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![agent_object],
             vec![],
@@ -1686,7 +1685,7 @@ mod tests {
             result.agent_object.object_id(),
             &sui::types::Address::from_static("0xa")
         );
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
     }
 
@@ -1736,7 +1735,6 @@ mod tests {
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![agent_object],
             vec![],
@@ -1796,7 +1794,6 @@ mod tests {
     #[tokio::test]
     async fn tap_actions_register_skill_extracts_event() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -1832,11 +1829,10 @@ mod tests {
             agent_registry_binding::register_skill_target,
         );
         let expected_agent_id = *agent_ref.object_id();
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
@@ -1887,13 +1883,12 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
     async fn tap_actions_update_skill_from_artifact_extracts_event() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -1934,7 +1929,6 @@ mod tests {
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
@@ -2007,7 +2001,6 @@ mod tests {
     #[tokio::test]
     async fn tap_actions_deposit_agent_payment_vault_calls_tap_deposit() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -2030,11 +2023,10 @@ mod tests {
             &nexus_objects,
             agent_binding::deposit_agent_payment_vault_target,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
@@ -2076,7 +2068,7 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.amount, 1500);
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]

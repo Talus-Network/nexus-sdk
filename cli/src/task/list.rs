@@ -1,10 +1,11 @@
 use {
+    super::output,
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         prelude::*,
-        sui::get_read_only_nexus_client,
+        sui::get_owner_nexus_client,
     },
     nexus_sdk::scheduler::TaskPointer,
 };
@@ -24,12 +25,17 @@ pub(crate) async fn run(cursor: Option<String>, limit: usize) -> AnyResult<(), N
         })
         .transpose()
         .map_err(NexusCliError::Any)?;
-    let client = get_read_only_nexus_client().await?;
+    let client = get_owner_nexus_client().await?;
     let progress = loading!("Reading owned TaskPointer objects...");
     let page = client.scheduler().task_pointers(cursor, limit).await?;
     progress.success();
+    let next_cursor = page.next_cursor().map(hex::encode);
+    human_output(&output::render_task_list(
+        page.task_pointers(),
+        next_cursor.as_deref(),
+    ));
     json_output(&TaskListOutput {
         task_pointers: page.task_pointers(),
-        next_cursor: page.next_cursor().map(hex::encode),
+        next_cursor,
     })
 }

@@ -1,7 +1,8 @@
 use {
+    super::output,
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
@@ -16,6 +17,7 @@ pub(crate) async fn inspect(task_id: sui::types::Address) -> AnyResult<(), Nexus
     let progress = loading!("Reading Task object...");
     let snapshot = client.scheduler().task(task_id).snapshot().await?;
     progress.success();
+    human_output(&output::render_task(&snapshot));
     json_output(&snapshot)
 }
 
@@ -85,5 +87,6 @@ fn finish(message: &str, receipt: &TaskMutationReceipt) -> AnyResult<(), NexusCl
         "{message}: {task_id}",
         task_id = receipt.task_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_task_receipt(receipt, None));
     json_output(receipt)
 }

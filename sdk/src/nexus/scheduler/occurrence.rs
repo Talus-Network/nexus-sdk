@@ -52,7 +52,7 @@ impl OccurrenceHandle {
         self.client
             .operation_client()
             .await
-            .map_err(SchedulerError::transport)
+            .map_err(SchedulerError::from)
     }
 
     /// Reads the permanent occurrence record and optional runtime object.
@@ -103,6 +103,29 @@ impl OccurrenceHandle {
     /// the timeout elapses. Invalid polling options and object read failures
     /// are returned directly.
     pub async fn watch(&self, options: WatchOptions) -> Result<OccurrenceSnapshot, SchedulerError> {
+        self.watch_until(options, |snapshot| snapshot.status().is_terminal())
+            .await
+    }
+
+    /// Polls object state until `stop` accepts a snapshot.
+    ///
+    /// This permits callers to stop at a state that requires their action,
+    /// such as [`OccurrenceStatus::Finished`], without changing the terminal
+    /// scheduler lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError::WatchTimedOut`] with the latest snapshot when
+    /// the timeout elapses. Invalid polling options and object read failures
+    /// are returned directly.
+    pub async fn watch_until<F>(
+        &self,
+        options: WatchOptions,
+        mut stop: F,
+    ) -> Result<OccurrenceSnapshot, SchedulerError>
+    where
+        F: FnMut(&OccurrenceSnapshot) -> bool,
+    {
         if options.poll_interval().is_zero() {
             return Err(SchedulerError::InvalidRequest {
                 message: "watch poll interval must be greater than zero".to_owned(),
@@ -116,7 +139,7 @@ impl OccurrenceHandle {
         let mut snapshot = self.snapshot().await?;
 
         loop {
-            if snapshot.status().is_terminal() {
+            if stop(&snapshot) {
                 return Ok(snapshot);
             }
             let now = Instant::now();
@@ -152,11 +175,11 @@ impl OccurrenceHandle {
             &task.object_ref(),
             self.reference.occurrence_id(),
         )?;
-        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let sender = client.owner().map_err(SchedulerError::from)?;
         let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         mutation_receipt(executed, self.reference.task_id())
     }
 
@@ -189,11 +212,11 @@ impl OccurrenceHandle {
             &task.object_ref(),
             &execution.object_ref(),
         )?;
-        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let sender = client.owner().map_err(SchedulerError::from)?;
         let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         mutation_receipt(executed, self.reference.task_id())
     }
 
@@ -210,7 +233,7 @@ impl OccurrenceHandle {
             .workflow()
             .execution_cost(execution_id)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         Ok(OccurrenceCost {
             payment_id: cost.payment_id,
             max_budget_mist: cost.max_budget_mist,
@@ -243,14 +266,14 @@ impl OccurrenceHandle {
                 .workflow()
                 .abort_expired_execution_with_tool_gas(execution_id, Some(tool_gas_id))
                 .await
-                .map_err(SchedulerError::transport)?;
+                .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)
         } else {
             let result = client
                 .workflow()
                 .abort_expired_execution(execution_id)
                 .await
-                .map_err(SchedulerError::transport)?;
+                .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)
         };
         Ok(AbortReceipt::new(transaction, self.reference, execution_id))

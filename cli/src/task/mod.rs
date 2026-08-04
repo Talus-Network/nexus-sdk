@@ -2,6 +2,7 @@ mod args;
 mod create;
 mod list;
 mod occurrence;
+mod output;
 mod recurrence;
 mod schedule;
 mod state;
@@ -11,17 +12,26 @@ use {
     crate::prelude::*,
 };
 
-const TASK_HELP: &str = r#"Task -> Schedule -> Occurrence
+const TASK_HELP: &str = r#"Task -> Occurrence -> Execution
 
 A Task owns reusable work, funding, controller authority, and one Schedule.
 A Schedule contains standalone occurrences and at most one recurrence.
 An Occurrence is one scheduling opportunity and has a permanent record under
-its Task.
+its Task. Dispatch creates a deterministic Execution that contains the runtime
+walks and failure trace.
 
 Commands:
   task create    Creates an empty Task for later composition.
   task schedule  Creates and schedules atomically in one transaction.
   task list      Lists Tasks discoverable through owned TaskPointer objects.
+
+Lifecycle commands:
+  task inspect             Reads Task state and occurrence counts.
+  task pause               Stops future dispatch while retaining work.
+  task resume              Resumes retained work.
+  task cancel              Withdraws future work and retains history.
+  task close               Releases resources after live work is complete.
+  task occurrence --help   Lists observation and recovery commands.
 
 Use --now to schedule at the current Sui Clock time. Task inspection and
 occurrence inspection read durable object state.
@@ -47,11 +57,42 @@ Examples:
   nexus task occurrence list --task-id 0x123 --json
   nexus task occurrence inspect --task-id 0x123 --occurrence-id 7"#;
 
+const OCCURRENCE_HELP: &str = r#"An Occurrence is the permanent scheduler record for one opportunity to run a Task.
+After dispatch it references a deterministic Execution with the detailed
+runtime history.
+
+Lifecycle:
+  pending      Waiting to be offered for dispatch.
+  advertised   Offered to leaders. Use expire only after its deadline.
+  executing    Runtime work is active. Inspect the Execution for progress.
+  finished     Runtime work ended. Settle the occurrence into its Task.
+  settled      Scheduler processing and refund accounting are complete.
+  missed       The dispatch deadline elapsed before dispatch.
+  withdrawn    Future work was removed before dispatch.
+
+Observation:
+  nexus task occurrence inspect --task-id 0x21 --occurrence-id 7
+  nexus task occurrence cost --task-id 0x21 --occurrence-id 7
+  nexus execution inspect --task-id 0x21 --occurrence-id 7
+
+Recovery:
+  nexus task occurrence settle --task-id 0x21 --occurrence-id 7
+  nexus task occurrence expire --task-id 0x21 --occurrence-id 7
+  nexus task occurrence abort-expired --task-id 0x21 --occurrence-id 7
+
+Use inspect --follow to wait until an action is required or lifecycle
+processing is complete."#;
+
 const CREATE_HELP: &str = r#"Creates and shares an empty Task. No occurrence is allocated.
 
 Outcome:
   The command returns a Task receipt. Add work later with
   `task occurrence add` or `task recurrence set`.
+
+Funding:
+  Unless --agent-funded is used, the reserve is withdrawn from the signer Sui
+  address balance. Inspect and fund it with `nexus gas balance` and
+  `nexus gas deposit --amount <MIST>`.
 
 Example:
   nexus task create --dag-id 0x42 \
@@ -64,6 +105,11 @@ one transaction. At least one standalone occurrence or recurrence is required.
 Outcome:
   The command returns the Task identifier, transaction reference, and every
   occurrence allocated by the transaction.
+
+Funding:
+  Unless --agent-funded is used, the reserve is withdrawn from the signer Sui
+  address balance. Inspect both balance stores with `nexus gas balance`. Move
+  MIST from an owned SUI coin with `nexus gas deposit --amount <MIST>`.
 
 Examples:
   nexus task schedule --dag-id 0x42 \
@@ -78,6 +124,18 @@ Examples:
     --prepay-amount-mist 50000000 \
     --occurrence-budget-mist 50000000 \
     --recurrence-interval-ms 60000 --recurrence-occurrences 10"#;
+
+const ADD_OCCURRENCE_HELP: &str = r#"Adds one standalone occurrence to an existing Task.
+
+Timing:
+  With no timing option, the occurrence starts at the current Sui Clock time.
+  Use --at-ms for an absolute time or --after-ms for an offset from the Clock.
+
+Outcome:
+  The receipt identifies the new occurrence and gives its inspect command."#;
+
+const TASK_ID_HELP: &str = "Task object ID";
+const OCCURRENCE_ID_HELP: &str = "Occurrence number within the Task";
 
 /// Commands for creating, scheduling, mutating, and inspecting Tasks.
 #[derive(Subcommand)]
@@ -115,13 +173,13 @@ pub(crate) enum TaskCommand {
 
     #[command(about = "Inspect current Task object state")]
     Inspect {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
     },
 
     #[command(about = "Pause future Task dispatch")]
     Pause {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
@@ -129,7 +187,7 @@ pub(crate) enum TaskCommand {
 
     #[command(about = "Resume retained Task work")]
     Resume {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
@@ -137,7 +195,7 @@ pub(crate) enum TaskCommand {
 
     #[command(about = "Cancel future Task work")]
     Cancel {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
@@ -145,9 +203,9 @@ pub(crate) enum TaskCommand {
 
     #[command(about = "Add MIST to the Task reserve")]
     Refill {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "MIST")]
+        #[arg(long, value_name = "MIST", help = "MIST added to the Task reserve")]
         amount_mist: u64,
         #[command(flatten)]
         gas: GasArgs,
@@ -155,13 +213,17 @@ pub(crate) enum TaskCommand {
 
     #[command(about = "Release live Task resources")]
     Close {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(subcommand, about = "Operate permanent Task occurrences")]
+    #[command(
+        subcommand,
+        about = "Operate permanent Task occurrences",
+        long_about = OCCURRENCE_HELP
+    )]
     Occurrence(OccurrenceCommand),
 
     #[command(subcommand, about = "Set or clear the Task recurrence")]
@@ -186,12 +248,12 @@ pub(crate) struct ScheduleTaskArgs {
     gas: GasArgs,
 }
 
-/// Commands for standalone occurrence records.
+/// Commands for permanent occurrence records.
 #[derive(Subcommand)]
 pub(crate) enum OccurrenceCommand {
     #[command(about = "List permanent occurrence records")]
     List {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[arg(
             long,
@@ -209,9 +271,12 @@ pub(crate) enum OccurrenceCommand {
         limit: usize,
     },
 
-    #[command(about = "Add one standalone occurrence")]
+    #[command(
+        about = "Add one standalone occurrence",
+        long_about = ADD_OCCURRENCE_HELP
+    )]
     Add {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         occurrence: OccurrenceArgs,
@@ -221,49 +286,72 @@ pub(crate) enum OccurrenceCommand {
 
     #[command(about = "Inspect one permanent occurrence record")]
     Inspect {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "U64")]
+        #[arg(long, value_name = "U64", help = OCCURRENCE_ID_HELP)]
         occurrence_id: u64,
-        #[arg(long, help = "Poll until scheduler processing is terminal")]
+        #[arg(
+            long,
+            help = "Poll until an action is required or processing is complete"
+        )]
         follow: bool,
+        #[arg(
+            long,
+            value_name = "SECONDS",
+            requires = "follow",
+            value_parser = clap::value_parser!(u64).range(1..),
+            help = "Maximum observation time; default is 3600"
+        )]
+        timeout_secs: Option<u64>,
+        #[arg(
+            long,
+            value_name = "MILLISECONDS",
+            requires = "follow",
+            value_parser = clap::value_parser!(u64).range(1..),
+            help = "Delay between reads; default is 1000"
+        )]
+        poll_ms: Option<u64>,
     },
 
     #[command(about = "Settle a finished runtime object into its Task record")]
     Settle {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "U64")]
+        #[arg(long, value_name = "U64", help = OCCURRENCE_ID_HELP)]
         occurrence_id: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(about = "Record an advertised occurrence as missed")]
+    #[command(about = "Record an advertised occurrence as missed after its deadline")]
     Expire {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "U64")]
+        #[arg(long, value_name = "U64", help = OCCURRENCE_ID_HELP)]
         occurrence_id: u64,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(about = "Inspect occurrence payment accounting")]
+    #[command(about = "Inspect occurrence payment, locks, and refund state")]
     Cost {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "U64")]
+        #[arg(long, value_name = "U64", help = OCCURRENCE_ID_HELP)]
         occurrence_id: u64,
     },
 
-    #[command(about = "Abort expired runtime work")]
+    #[command(about = "Abort runtime work after its workflow timeout")]
     AbortExpired {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
-        #[arg(long, value_name = "U64")]
+        #[arg(long, value_name = "U64", help = OCCURRENCE_ID_HELP)]
         occurrence_id: u64,
-        #[arg(long, value_name = "OBJECT_ID")]
+        #[arg(
+            long,
+            value_name = "OBJECT_ID",
+            help = "Select the ToolGas assisted abort path"
+        )]
         tool_gas_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
@@ -275,7 +363,7 @@ pub(crate) enum OccurrenceCommand {
 pub(crate) enum RecurrenceCommand {
     #[command(about = "Set or replace the Task recurrence")]
     Set {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         recurrence: RecurrenceArgs,
@@ -285,7 +373,7 @@ pub(crate) enum RecurrenceCommand {
 
     #[command(about = "Clear future recurring work")]
     Clear {
-        #[arg(long, short = 't', value_name = "OBJECT_ID")]
+        #[arg(long, short = 't', value_name = "OBJECT_ID", help = TASK_ID_HELP)]
         task_id: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
@@ -597,14 +685,89 @@ mod tests {
             Err(error) => error,
         };
         let help = error.to_string();
-        assert!(help.contains("Task -> Schedule -> Occurrence"));
+        assert!(help.contains("Task -> Occurrence -> Execution"));
         assert!(help.contains("A Task owns reusable work"));
         assert!(help.contains("task create"));
         assert!(help.contains("task schedule"));
         assert!(help.contains("Creates an empty Task"));
         assert!(help.contains("Creates and schedules atomically"));
         assert!(help.contains("durable object state"));
+        assert!(help.contains("task occurrence --help"));
         assert!(help.contains("Examples:"));
+    }
+
+    #[test]
+    fn occurrence_help_maps_states_to_recovery_commands() {
+        let error = match crate::Cli::try_parse_from(["nexus", "task", "occurrence", "--help"]) {
+            Ok(_) => panic!("help exits through Clap"),
+            Err(error) => error,
+        };
+        let help = error.to_string();
+
+        for expected in [
+            "pending",
+            "advertised",
+            "executing",
+            "finished",
+            "settled",
+            "missed",
+            "withdrawn",
+            "nexus execution inspect",
+            "nexus task occurrence settle",
+            "nexus task occurrence expire",
+            "nexus task occurrence abort-expired",
+        ] {
+            assert!(help.contains(expected), "missing '{expected}' from help");
+        }
+    }
+
+    #[test]
+    fn occurrence_add_help_explains_default_timing_and_outcome() {
+        let error =
+            match crate::Cli::try_parse_from(["nexus", "task", "occurrence", "add", "--help"]) {
+                Ok(_) => panic!("help exits through Clap"),
+                Err(error) => error,
+            };
+        let help = error.to_string();
+
+        assert!(help.contains("With no timing option"));
+        assert!(help.contains("current Sui Clock time"));
+        assert!(help.contains("receipt identifies the new occurrence"));
+        assert!(help.contains("Task object ID"));
+    }
+
+    #[test]
+    fn occurrence_follow_exposes_and_validates_its_polling_policy() {
+        crate::Cli::try_parse_from([
+            "nexus",
+            "task",
+            "occurrence",
+            "inspect",
+            "--task-id",
+            "0x42",
+            "--occurrence-id",
+            "7",
+            "--follow",
+            "--timeout-secs",
+            "30",
+            "--poll-ms",
+            "250",
+        ])
+        .expect("custom follow policy should parse");
+
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "task",
+            "occurrence",
+            "inspect",
+            "--task-id",
+            "0x42",
+            "--occurrence-id",
+            "7",
+            "--timeout-secs",
+            "30",
+        ])
+        .is_err());
     }
 
     #[test]
@@ -629,6 +792,9 @@ mod tests {
             "Output",
             "MILLIS",
             "MIST",
+            "Sui address balance",
+            "nexus gas balance",
+            "nexus gas deposit --amount",
         ] {
             assert!(help.contains(expected), "missing help section: {expected}");
         }

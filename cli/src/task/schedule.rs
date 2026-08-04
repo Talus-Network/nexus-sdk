@@ -1,8 +1,11 @@
 use {
-    super::args::{ScheduleArgs, TaskArgs},
+    super::{
+        args::{ScheduleArgs, TaskArgs},
+        output,
+    },
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
@@ -31,5 +34,6 @@ pub(crate) async fn run(
         "Allocated occurrences: {count}",
         count = receipt.delta().scheduled().len()
     );
+    human_output(&output::render_task_receipt(&receipt, None));
     json_output(&receipt)
 }

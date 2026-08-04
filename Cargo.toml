@@ -29,7 +29,6 @@ bip32 = "0.4.0"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive"] }
 clap_complete = "4.5.48"
-clap-verbosity = "2.1.0"
 colored = "3.0.0"
 convert_case = "0.7.1"
 directories = "5"
@@ -45,6 +44,7 @@ keyring = "3.6"
 lazy-regex = "3.4.1"
 log = "^0.4.26"
 minijinja = "2.8.0"
+miette = { version = "7.6.0", features = ["fancy"] }
 mockall = "0.14.0"
 mockito = "1.7"
 num-format = "0.4"

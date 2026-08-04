@@ -60,7 +60,7 @@ pub(crate) struct TaskArgs {
         long,
         value_name = "MIST",
         help_heading = "Funding",
-        help = "MIST placed in the Task reserve"
+        help = "MIST placed in the Task reserve; address funding uses the signer Sui address balance"
     )]
     prepay_amount_mist: u64,
 
@@ -105,12 +105,10 @@ impl TaskArgs {
 
 /// Arguments selecting the operation performed by every occurrence.
 #[derive(Args, Clone, Debug)]
-#[group(
-    id = "task_operation",
-    required = true,
-    multiple = true,
-    args = ["dag_id", "agent_id", "skill_id"]
-)]
+#[command(group = clap::ArgGroup::new("task_operation")
+    .required(true)
+    .multiple(true)
+    .args(["dag_id", "agent_id"]))]
 struct OperationArgs {
     #[arg(
         long,
@@ -126,7 +124,7 @@ struct OperationArgs {
         value_name = "OBJECT_ID",
         requires = "skill_id",
         help_heading = "Operation",
-        help = "Agent object whose registered skill performs the work"
+        help = "Agent object whose registered skill performs the work; requires --skill-id"
     )]
     agent_id: Option<sui::types::Address>,
 
@@ -135,7 +133,7 @@ struct OperationArgs {
         value_name = "U64",
         requires = "agent_id",
         help_heading = "Operation",
-        help = "Registered Agent skill identifier"
+        help = "Registered Agent skill identifier; requires --agent-id"
     )]
     skill_id: Option<u64>,
 }
@@ -437,7 +435,11 @@ impl ScheduleArgs {
     args = ["now", "at_ms", "after_ms"]
 )]
 pub(crate) struct OccurrenceArgs {
-    #[arg(long, help_heading = "Timing", help = "Use the current Sui Clock time")]
+    #[arg(
+        long,
+        help_heading = "Timing",
+        help = "Use the current Sui Clock time; this is the default"
+    )]
     now: bool,
 
     #[arg(

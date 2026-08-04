@@ -52,7 +52,10 @@ use {
     },
     anyhow::anyhow,
     sha2::{Digest as _, Sha256},
-    std::{collections::HashMap, sync::Arc},
+    std::{
+        collections::{BTreeMap, HashMap},
+        sync::Arc,
+    },
     tokio::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
         task::JoinHandle,
@@ -75,6 +78,15 @@ pub struct PublishResult {
     pub tx_digest: sui::types::Digest,
     pub tx_checkpoint: u64,
     pub dag_object_id: sui::types::Address,
+}
+
+/// Published DAG interface needed to author one execution.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct DagSnapshot {
+    pub dag_id: sui::types::Address,
+    pub minimum_protocol_version: u64,
+    pub vertex_count: u64,
+    pub entry_groups: BTreeMap<String, BTreeMap<String, Vec<String>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -600,6 +612,46 @@ pub async fn fetch_dag_vertices_bcs(
         .into_iter()
         .map(|(vertex, node)| (vertex, node.value))
         .collect())
+}
+
+pub(crate) async fn fetch_dag_snapshot(
+    crawler: &Crawler,
+    dag_id: sui::types::Address,
+) -> anyhow::Result<DagSnapshot> {
+    let dag = crawler
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_id)
+        .await?;
+    let entry_groups = dag
+        .data
+        .entry_groups
+        .contents
+        .iter()
+        .map(|entry_group| {
+            let vertices = entry_group
+                .value
+                .contents
+                .iter()
+                .map(|vertex| {
+                    let mut ports = vertex
+                        .value
+                        .contents
+                        .iter()
+                        .map(|port| port.name.as_str().to_owned())
+                        .collect::<Vec<_>>();
+                    ports.sort();
+                    (vertex.key.name.as_str().to_owned(), ports)
+                })
+                .collect::<BTreeMap<_, _>>();
+            (entry_group.key.name.as_str().to_owned(), vertices)
+        })
+        .collect();
+
+    Ok(DagSnapshot {
+        dag_id,
+        minimum_protocol_version: dag.data.minimum_protocol_version,
+        vertex_count: dag.data.vertices.size().try_into()?,
+        entry_groups,
+    })
 }
 
 /// Fetch the committed result for one walk from `DAGExecution` dynamic fields.
@@ -1165,6 +1217,18 @@ impl WorkflowActions {
             tx_checkpoint: response.checkpoint,
             dag_object_id,
         })
+    }
+
+    /// Reads the published DAG interface used to select an entry group and
+    /// provide its inputs.
+    pub async fn inspect_dag(
+        &self,
+        dag_id: sui::types::Address,
+    ) -> Result<DagSnapshot, NexusError> {
+        let client = self.operation_client().await?;
+        fetch_dag_snapshot(client.crawler(), dag_id)
+            .await
+            .map_err(NexusError::Rpc)
     }
 
     /// Inspect a DAG execution by following updates to its shared object.
@@ -2094,6 +2158,52 @@ mod tests {
         sui_mocks::grpc::mock_versioned_payload(ledger_service_mock, state_id, 1, state);
     }
 
+    #[tokio::test]
+    async fn inspect_dag_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_ref = sui_mocks::mock_sui_object_ref();
+        let mut state = dag_bcs(1);
+        state
+            .entry_groups
+            .contents
+            .push(crate::move_bindings::sui_framework::vec_map::Entry {
+                key: graph_move::EntryGroup::new("main"),
+                value: crate::move_bindings::sui_framework::vec_map::VecMap {
+                    contents: vec![crate::move_bindings::sui_framework::vec_map::Entry {
+                        key: graph_move::Vertex::new("sum"),
+                        value: VecSet {
+                            contents: vec![
+                                graph_move::InputPort::new("right"),
+                                graph_move::InputPort::new("left"),
+                            ],
+                        },
+                    }],
+                },
+            });
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        mock_get_dag_bcs(&mut ledger_service_mock, dag_ref.clone(), state);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let snapshot = client
+            .workflow()
+            .inspect_dag(*dag_ref.object_id())
+            .await
+            .expect("DAG inspection should not require a gas source");
+
+        assert!(client.gas_config().is_none());
+        assert_eq!(snapshot.dag_id, *dag_ref.object_id());
+        assert_eq!(snapshot.minimum_protocol_version, 1);
+        assert_eq!(snapshot.vertex_count, 1);
+        assert_eq!(
+            snapshot.entry_groups["main"]["sum"],
+            ["left".to_owned(), "right".to_owned()]
+        );
+    }
+
     fn empty_object_table<T0, T1>(
         id: sui::types::Address,
     ) -> crate::move_bindings::sui_framework::object_table::ObjectTable<T0, T1> {
@@ -2623,11 +2733,10 @@ mod tests {
             1000,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref.clone(),
             vec![dag_created],
             vec![],
@@ -2652,7 +2761,7 @@ mod tests {
             .expect("Failed to publish DAG");
 
         assert_eq!(result.dag_object_id, dag_object_id);
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
     }
 
@@ -3819,7 +3928,6 @@ mod tests {
     #[tokio::test]
     async fn test_abort_expired_execution_with_tool_gas_submits_selected_candidate() {
         let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let execution_ref = sui_mocks::mock_sui_object_ref();
@@ -3962,11 +4070,10 @@ mod tests {
             sui::types::Owner::Shared(execution_ref.version()),
             None,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -3995,7 +4102,7 @@ mod tests {
             .await
             .expect("abort transaction should submit");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
@@ -4034,8 +4141,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_abort_expired_execution_submits_workflow_transaction() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -4074,11 +4179,10 @@ mod tests {
             sui::types::Owner::Shared(execution_ref.version()),
             None,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -4099,7 +4203,7 @@ mod tests {
             .await
             .expect("abort transaction should submit");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
@@ -4108,8 +4212,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_settle_committed_tool_result_for_walk_submits_workflow_transaction() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -4138,11 +4240,10 @@ mod tests {
             sui::types::Owner::Shared(execution_ref.version()),
             None,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -4166,7 +4267,7 @@ mod tests {
             .await
             .expect("settlement transaction should submit");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
@@ -4175,9 +4276,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_leader_settlement_and_record_gas_paths_submit_transactions() {
-        let mut rng = rand::thread_rng();
-        let settle_digest = sui::types::Digest::generate(&mut rng);
-        let record_digest = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let settle_gas_ref = sui_mocks::mock_sui_object_ref();
         let record_gas_ref = sui_mocks::mock_sui_object_ref();
@@ -4214,11 +4312,10 @@ mod tests {
             sui::types::Owner::Immutable,
             None,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let settle_submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut settle_tx,
             &mut settle_sub,
             &mut settle_ledger,
-            settle_digest,
             settle_gas_ref.clone(),
             vec![],
             vec![],
@@ -4249,7 +4346,7 @@ mod tests {
             .await
             .expect("leader settlement transaction should submit");
 
-        assert_eq!(settle_result.tx_digest, settle_digest);
+        assert_eq!(settle_result.tx_digest, settle_submitted.digest());
         assert_eq!(settle_result.tx_checkpoint, 1);
         assert_eq!(settle_result.dag_id, *dag_ref.object_id());
         assert_eq!(settle_result.walk_index, 8);
@@ -4283,11 +4380,10 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0xabc")),
             None,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let record_submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut record_tx,
             &mut record_sub,
             &mut record_ledger,
-            record_digest,
             record_gas_ref.clone(),
             vec![],
             vec![],
@@ -4318,7 +4414,7 @@ mod tests {
             .await
             .expect("leader gas record transaction should submit");
 
-        assert_eq!(record_result.tx_digest, record_digest);
+        assert_eq!(record_result.tx_digest, record_submitted.digest());
         assert_eq!(record_result.tx_checkpoint, 1);
         assert_eq!(record_result.dag_execution_id, *execution_ref.object_id());
         assert_eq!(record_result.leader_cap_id, *leader_cap_ref.object_id());

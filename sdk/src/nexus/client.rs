@@ -1840,8 +1840,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_tx_mutates_gas_coin() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
@@ -1851,11 +1849,10 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -1904,7 +1901,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.digest, digest);
+        assert_eq!(response.digest, submitted.digest());
 
         assert_eq!(gas_coin.version(), gas_coin_ref.version());
         assert_eq!(gas_coin.digest(), gas_coin_ref.digest());
@@ -1913,7 +1910,6 @@ mod tests {
     #[tokio::test]
     async fn execute_tx_without_gas_coin_does_not_refresh_an_object() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let chain = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
@@ -1922,20 +1918,20 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            vec![],
-            vec![],
-            vec![],
-            |request| {
-                let transaction = request.transaction.as_ref().unwrap();
-                let transaction = sui::types::Transaction::try_from(transaction).unwrap();
-                assert!(transaction.gas_payment.objects.is_empty());
-            },
-        );
+        let submitted =
+            sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
+                &mut tx_service_mock,
+                &mut sub_service_mock,
+                &mut ledger_service_mock,
+                vec![],
+                vec![],
+                vec![],
+                |request| {
+                    let transaction = request.transaction.as_ref().unwrap();
+                    let transaction = sui::types::Transaction::try_from(transaction).unwrap();
+                    assert!(transaction.gas_payment.objects.is_empty());
+                },
+            );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
@@ -1969,13 +1965,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.digest, digest);
+        assert_eq!(response.digest, submitted.digest());
     }
 
     #[tokio::test]
     async fn address_balance_submission_fetches_fresh_context_and_uses_no_gas_object() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let chain = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -1983,33 +1978,33 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23, chain);
-        sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().unwrap();
-                let transaction = sui::types::Transaction::try_from(transaction).unwrap();
-                assert!(transaction.gas_payment.objects.is_empty());
-                assert_eq!(transaction.gas_payment.price, 17);
-                assert_eq!(transaction.gas_payment.budget, 9_000);
-                assert_eq!(
-                    transaction.expiration,
-                    sui::types::TransactionExpiration::ValidDuring {
-                        min_epoch: Some(23),
-                        max_epoch: Some(24),
-                        min_timestamp: None,
-                        max_timestamp: None,
-                        chain,
-                        nonce: 0,
-                    }
-                );
-            },
-        );
+        let submitted =
+            sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
+                &mut tx_service_mock,
+                &mut sub_service_mock,
+                &mut ledger_service_mock,
+                vec![],
+                vec![],
+                vec![],
+                move |request| {
+                    let transaction = request.transaction.as_ref().unwrap();
+                    let transaction = sui::types::Transaction::try_from(transaction).unwrap();
+                    assert!(transaction.gas_payment.objects.is_empty());
+                    assert_eq!(transaction.gas_payment.price, 17);
+                    assert_eq!(transaction.gas_payment.budget, 9_000);
+                    assert_eq!(
+                        transaction.expiration,
+                        sui::types::TransactionExpiration::ValidDuring {
+                            min_epoch: Some(23),
+                            max_epoch: Some(24),
+                            min_timestamp: None,
+                            max_timestamp: None,
+                            chain,
+                            nonce: 0,
+                        }
+                    );
+                },
+            );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
@@ -2038,7 +2033,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.digest, digest);
+        assert_eq!(result.digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -2066,6 +2061,17 @@ mod tests {
                     "address balance is insufficient",
                 ))
             });
+        ledger_service_mock
+            .expect_get_transaction()
+            .withf(|request| {
+                request
+                    .get_ref()
+                    .read_mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.paths.iter().any(|path| path == "timestamp"))
+            })
+            .times(2)
+            .returning(|_| Err(tonic::Status::not_found("transaction is not indexed")));
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
@@ -2101,7 +2107,12 @@ mod tests {
             panic!("Sui should reject an insufficient address balance");
         };
 
-        assert!(matches!(error, NexusError::Rpc(_)));
+        assert!(matches!(
+            error,
+            NexusError::Transaction(ref error)
+                if error.state()
+                    == crate::nexus::error::TransactionErrorState::SubmissionRejected
+        ));
         assert!(error
             .to_string()
             .contains("address balance is insufficient"));

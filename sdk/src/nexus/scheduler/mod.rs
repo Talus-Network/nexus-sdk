@@ -48,7 +48,7 @@ impl Scheduler {
         self.client
             .operation_client()
             .await
-            .map_err(SchedulerError::transport)
+            .map_err(SchedulerError::from)
     }
 
     /// Creates and shares an empty Task.
@@ -62,13 +62,13 @@ impl Scheduler {
     /// preparation fails, or the transaction is not confirmed.
     pub async fn create_task(&self, task: TaskSpec) -> Result<TaskMutationReceipt, SchedulerError> {
         let client = self.operation_client().await?;
-        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let sender = client.owner().map_err(SchedulerError::from)?;
         let prepared = resolve::prepare_task(&client, &task).await?;
         let transaction = compile_create_task_ptb(&client.nexus_objects, &prepared, sender)?;
         let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         let task_id = created_task_id(&executed)?;
         mutation_receipt(executed, task_id)
     }
@@ -88,7 +88,7 @@ impl Scheduler {
     ) -> Result<TaskMutationReceipt, SchedulerError> {
         schedule.validate_for_task_creation()?;
         let client = self.operation_client().await?;
-        let sender = client.owner().map_err(SchedulerError::transport)?;
+        let sender = client.owner().map_err(SchedulerError::from)?;
         let prepared_task = resolve::prepare_task(&client, &task).await?;
         let prepared_schedule = resolve::prepare_schedule(&client, &schedule).await?;
         let transaction = compile_schedule_task_ptb(
@@ -100,7 +100,7 @@ impl Scheduler {
         let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         let task_id = created_task_id(&executed)?;
         mutation_receipt(executed, task_id)
     }
@@ -131,7 +131,7 @@ impl Scheduler {
             });
         }
         let client = self.operation_client().await?;
-        let owner = client.owner().map_err(SchedulerError::transport)?;
+        let owner = client.owner().map_err(SchedulerError::from)?;
         let object_type = move_bindings::struct_tag::<MoveTaskPointer>(&client.nexus_objects);
         let page = client
             .crawler()

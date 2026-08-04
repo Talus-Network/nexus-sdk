@@ -200,6 +200,30 @@ pub fn withdraw_priority_fee(
     })
 }
 
+/// Build a PTB that moves SUI from the transaction gas coin into an address
+/// balance.
+///
+/// The selected gas coin must cover both `amount_mist` and the transaction gas
+/// budget. The remainder stays in the gas coin.
+///
+/// # Errors
+///
+/// Returns an error when the amount, split, or framework call cannot be built.
+pub fn deposit_sui_to_address_balance(
+    objects: &NexusObjects,
+    amount_mist: u64,
+    recipient: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let amount = tx.arg(&amount_mist)?;
+        let gas = tx.gas();
+        let split = tx.split_coins(gas, vec![amount])?;
+        let coin = tx.nested_result(split, 0)?;
+        tx.send_sui_to_address_balance(coin, recipient)?;
+        Ok(())
+    })
+}
+
 /// PTB template to refund payment settlement for a vertex.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn enable_limited_invocations_ptb(
@@ -426,5 +450,28 @@ mod tests {
         assert_shared(&ptb, &call.arguments[1], &objects.leader_registry, false);
         assert_owned(&ptb, &call.arguments[2], &leader_cap);
         assert!(matches!(&ptb.commands[1], Command::TransferObjects(_)));
+    }
+
+    #[test]
+    fn deposit_sui_to_address_balance_splits_the_gas_coin() {
+        let objects = nexus_objects();
+        let recipient = addr("0x99");
+        let ptb = deposit_sui_to_address_balance(&objects, 42, recipient).unwrap();
+
+        let Command::SplitCoins(split) = &ptb.commands[0] else {
+            panic!("expected SplitCoins command");
+        };
+        assert_eq!(split.coin, Argument::Gas);
+        assert_eq!(split.amounts.len(), 1);
+        assert_eq!(
+            input_for_argument(&ptb, &split.amounts[0]),
+            &Input::Pure(42u64.to_le_bytes().to_vec())
+        );
+
+        let send = move_call(&ptb.commands[1]);
+        assert_eq!(send.package, sui::types::Address::TWO);
+        assert_eq!(send.module.as_str(), "coin");
+        assert_eq!(send.function.as_str(), "send_funds");
+        assert_eq!(send.arguments[0], Argument::NestedResult(0, 0));
     }
 }

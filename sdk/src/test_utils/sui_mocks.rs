@@ -242,6 +242,23 @@ pub mod grpc {
         Box<dyn futures::Stream<Item = Result<ListEventsResponse, Status>> + Send + 'static>,
     >;
 
+    /// The digest observed from a transaction submitted to a mock server.
+    #[derive(Clone)]
+    pub struct SubmittedTransaction {
+        digest: tokio::sync::watch::Receiver<Option<sui::types::Digest>>,
+    }
+
+    impl SubmittedTransaction {
+        /// Returns the submitted transaction digest after execution.
+        pub fn digest(&self) -> sui::types::Digest {
+            self.digest
+                .borrow()
+                .as_ref()
+                .copied()
+                .expect("the mock transaction should have been submitted")
+        }
+    }
+
     #[tonic::async_trait]
 
     pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
@@ -349,23 +366,21 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
-    ) {
+    ) -> SubmittedTransaction {
         mock_execute_transaction_and_wait_for_checkpoint_matching(
             tx_service,
             sub_service,
             ledger_service,
-            digest,
             gas_coin_ref,
             objects,
             changed_objects,
             events,
             |_| {},
-        );
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -373,26 +388,25 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
         assert_request: F,
-    ) where
+    ) -> SubmittedTransaction
+    where
         F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
     {
         mock_execute_transaction_and_wait_for_checkpoint_inner(
             tx_service,
             sub_service,
             ledger_service,
-            digest,
             Some(gas_coin_ref),
             objects,
             changed_objects,
             events,
             assert_request,
-        );
+        )
     }
 
     /// Configures execution and checkpoint mocks for a transaction without an
@@ -402,25 +416,24 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
         assert_request: F,
-    ) where
+    ) -> SubmittedTransaction
+    where
         F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
     {
         mock_execute_transaction_and_wait_for_checkpoint_inner(
             tx_service,
             sub_service,
             ledger_service,
-            digest,
             None,
             objects,
             changed_objects,
             events,
             assert_request,
-        );
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -428,15 +441,17 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         gas_coin_ref: Option<sui::types::ObjectReference>,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
         assert_request: F,
-    ) where
+    ) -> SubmittedTransaction
+    where
         F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
     {
+        let (submitted_digest, observed_digest) = tokio::sync::watch::channel(None);
+        let checkpoint_digest = observed_digest.clone();
         let mut changed_objects_with_coin = gas_coin_ref
             .as_ref()
             .map(|gas_coin_ref| sui::types::ChangedObject {
@@ -458,17 +473,26 @@ pub mod grpc {
             .expect_subscribe_checkpoints()
             .times(1)
             .returning(move |_request| {
-                let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
-                let mut checkpoint = sui::grpc::Checkpoint::default();
-                let mut tx = sui::grpc::ExecutedTransaction::default();
+                let mut checkpoint_digest = checkpoint_digest.clone();
+                let stream = futures::stream::once(async move {
+                    let digest = {
+                        let observed = checkpoint_digest
+                            .wait_for(Option::is_some)
+                            .await
+                            .map_err(|_| tonic::Status::aborted("transaction was not submitted"))?;
+                        observed.expect("the observed digest is present")
+                    };
+                    let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
+                    let mut checkpoint = sui::grpc::Checkpoint::default();
+                    let mut tx = sui::grpc::ExecutedTransaction::default();
 
-                tx.set_digest(digest);
-                checkpoint.set_transactions(vec![tx]);
-                checkpoint.set_sequence_number(1);
-                response.set_checkpoint(checkpoint);
+                    tx.set_digest(digest);
+                    checkpoint.set_transactions(vec![tx]);
+                    checkpoint.set_sequence_number(1);
+                    response.set_checkpoint(checkpoint);
 
-                let output = vec![Ok(response)];
-                let stream = futures::stream::iter(output);
+                    Ok(response)
+                });
 
                 Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
@@ -478,6 +502,13 @@ pub mod grpc {
             .times(1)
             .returning(move |request| {
                 assert_request(request.get_ref());
+                let transaction =
+                    sui::types::Transaction::try_from(request.get_ref().transaction())
+                        .expect("the submitted transaction should decode");
+                let digest = transaction.digest();
+                submitted_digest
+                    .send(Some(digest))
+                    .expect("the checkpoint observer should remain active");
                 let mut response = sui::grpc::ExecuteTransactionResponse::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
@@ -527,6 +558,22 @@ pub mod grpc {
                 sui::types::Owner::Immutable,
                 Some(1000),
             );
+        }
+
+        ledger_service
+            .expect_get_transaction()
+            .withf(|request| {
+                request
+                    .get_ref()
+                    .read_mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.paths.iter().any(|path| path == "timestamp"))
+            })
+            .times(2)
+            .returning(|_| Err(tonic::Status::not_found("transaction is not indexed yet")));
+
+        SubmittedTransaction {
+            digest: observed_digest,
         }
     }
 

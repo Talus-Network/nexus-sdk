@@ -1,15 +1,20 @@
 use {
-    super::{args::OccurrenceArgs, OccurrenceCommand},
+    super::{args::OccurrenceArgs, output, OccurrenceCommand},
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
         sui::{get_nexus_client, get_read_only_nexus_client},
     },
-    nexus_sdk::scheduler::WatchOptions,
+    nexus_sdk::scheduler::{OccurrenceStatus, WatchOptions},
+    std::time::Duration,
 };
+
+const fn stop_following(status: OccurrenceStatus) -> bool {
+    matches!(status, OccurrenceStatus::Finished) || status.is_terminal()
+}
 
 pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCliError> {
     match command {
@@ -27,7 +32,9 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
             task_id,
             occurrence_id,
             follow,
-        } => inspect(task_id, occurrence_id, follow).await,
+            timeout_secs,
+            poll_ms,
+        } => inspect(task_id, occurrence_id, follow, timeout_secs, poll_ms).await,
         OccurrenceCommand::Settle {
             task_id,
             occurrence_id,
@@ -78,9 +85,15 @@ async fn list(
         .occurrences(cursor, limit)
         .await?;
     progress.success();
+    let next_cursor = page.next_cursor().map(hex::encode);
+    human_output(&output::render_occurrence_list(
+        task_id,
+        page.occurrences(),
+        next_cursor.as_deref(),
+    ));
     json_output(&OccurrenceListOutput {
         occurrences: page.occurrences(),
-        next_cursor: page.next_cursor().map(hex::encode),
+        next_cursor,
     })
 }
 
@@ -103,6 +116,7 @@ async fn add(
         "Occurrence added to Task: {task_id}",
         task_id = receipt.task_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_task_receipt(&receipt, None));
     json_output(&receipt)
 }
 
@@ -110,17 +124,27 @@ async fn inspect(
     task_id: sui::types::Address,
     occurrence_id: u64,
     follow: bool,
+    timeout_secs: Option<u64>,
+    poll_ms: Option<u64>,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Inspecting occurrence");
     let client = get_read_only_nexus_client().await?;
     let occurrence = client.scheduler().task(task_id).occurrence(occurrence_id);
     let progress = loading!("Reading permanent occurrence record...");
     let snapshot = if follow {
-        occurrence.watch(WatchOptions::default()).await?
+        let defaults = WatchOptions::default();
+        let options = WatchOptions::new(
+            timeout_secs.map_or(defaults.timeout(), Duration::from_secs),
+            poll_ms.map_or(defaults.poll_interval(), Duration::from_millis),
+        );
+        occurrence
+            .watch_until(options, |snapshot| stop_following(snapshot.status()))
+            .await?
     } else {
         occurrence.snapshot().await?
     };
     progress.success();
+    human_output(&output::render_occurrence(&snapshot));
     json_output(&snapshot)
 }
 
@@ -137,9 +161,15 @@ async fn settle(
         .task(task_id)
         .occurrence(occurrence_id)
         .settle()
-        .await?;
+        .await
+        .map_err(|source| NexusCliError::OccurrenceSettlement {
+            task_id,
+            occurrence_id,
+            source: Box::new(source),
+        })?;
     progress.success();
     notify_success!("Occurrence settled into Task");
+    human_output(&output::render_task_receipt(&receipt, Some(occurrence_id)));
     json_output(&receipt)
 }
 
@@ -159,6 +189,7 @@ async fn expire(
         .await?;
     progress.success();
     notify_success!("Occurrence recorded as missed");
+    human_output(&output::render_task_receipt(&receipt, Some(occurrence_id)));
     json_output(&receipt)
 }
 
@@ -173,6 +204,11 @@ async fn cost(task_id: sui::types::Address, occurrence_id: u64) -> AnyResult<(),
         .cost()
         .await?;
     progress.success();
+    human_output(&output::render_occurrence_cost(
+        task_id,
+        occurrence_id,
+        &cost,
+    ));
     json_output(&cost)
 }
 
@@ -196,5 +232,20 @@ async fn abort_expired(
         "Runtime execution aborted: {execution_id}",
         execution_id = receipt.execution_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_abort_receipt(&receipt));
     json_output(&receipt)
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::stop_following, nexus_sdk::scheduler::OccurrenceStatus};
+
+    #[test]
+    fn occurrence_follow_stops_when_action_is_required() {
+        assert!(stop_following(OccurrenceStatus::Finished));
+        assert!(stop_following(OccurrenceStatus::Settled {
+            succeeded: false
+        }));
+        assert!(!stop_following(OccurrenceStatus::Executing));
+    }
 }

@@ -531,8 +531,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_swap_us_for_sui_returns_executed_amounts() {
-        let mut rng = rand::thread_rng();
-        let tx_digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let us_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
@@ -557,11 +555,10 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
             Some(100),
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref,
             vec![],
             vec![],
@@ -582,7 +579,7 @@ mod tests {
             .await
             .expect("swap should decode its execution event");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.us_spent, 60);
         assert_eq!(result.us_refunded, 40);
         assert_eq!(result.sui_withdrawn, 6);
@@ -630,11 +627,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -656,7 +652,7 @@ mod tests {
             .await
             .expect("Failed to enable expiry extension");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -701,11 +697,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -727,7 +722,7 @@ mod tests {
             .await
             .expect("Failed to disable expiry extension");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -771,11 +766,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -797,7 +791,7 @@ mod tests {
             .await
             .expect("Failed to buy limited invocations ticket");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -842,11 +836,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -868,7 +861,7 @@ mod tests {
             .await
             .expect("Failed to enable limited invocations extension");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -913,11 +906,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -939,7 +931,7 @@ mod tests {
             .await
             .expect("Failed to disable limited invocations extension");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -985,11 +977,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -1011,7 +1002,7 @@ mod tests {
             .await
             .expect("Failed to buy expiry ticket");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
