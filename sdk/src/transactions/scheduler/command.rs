@@ -6,7 +6,10 @@ use {
     crate::{
         move_bindings::{
             scheduler::scheduler as scheduler_binding,
-            workflow::{execution_entries as execution_entries_binding, gas as gas_binding},
+            workflow::{
+                execution_entries as execution_entries_binding,
+                tool_cashier_adapter as tool_cashier_adapter_binding,
+            },
         },
         move_boundary::NexusPtbBuilder,
         scheduler::{FailurePolicy, ScheduleError, SchedulerError, TaskInputs, TaskOperation},
@@ -112,9 +115,9 @@ impl PreparedSchedule {
 
 fn ptb(
     objects: &NexusObjects,
-    build: impl FnOnce(&mut NexusPtbBuilder<'_>) -> Result<(), SchedulerError>,
+    build: impl FnOnce(&mut NexusPtbBuilder) -> Result<(), SchedulerError>,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
-    let mut transaction = NexusPtbBuilder::new(objects);
+    let mut transaction = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
     build(&mut transaction)?;
     Ok(transaction.finish())
 }
@@ -124,7 +127,7 @@ fn incompatible_funding(message: &'static str) -> SchedulerError {
 }
 
 pub(super) fn create_unshared_task(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &PreparedTask,
 ) -> Result<CreatedTask, SchedulerError> {
     if task.occurrence_budget_mist == 0 {
@@ -248,7 +251,7 @@ pub(super) fn create_unshared_task(
 }
 
 fn created_task(
-    transaction: &NexusPtbBuilder<'_>,
+    transaction: &NexusPtbBuilder,
     result: Argument,
     authority: ResolvedAuthority,
 ) -> Result<CreatedTask, SchedulerError> {
@@ -266,7 +269,7 @@ fn created_task(
 }
 
 fn shared_task_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
 ) -> Result<Argument, SchedulerError> {
     transaction
@@ -275,7 +278,7 @@ fn shared_task_arg(
 }
 
 pub(super) fn append_occurrence(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: Argument,
     authority: &ResolvedAuthority,
     occurrence: &PreparedOccurrence,
@@ -304,7 +307,7 @@ pub(super) fn append_occurrence(
 }
 
 pub(super) fn append_recurrence(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: Argument,
     authority: &ResolvedAuthority,
     recurrence: &PreparedRecurrence,
@@ -335,7 +338,7 @@ pub(super) fn append_recurrence(
 }
 
 pub(super) fn append_schedule(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: Argument,
     authority: &ResolvedAuthority,
     schedule: &PreparedSchedule,
@@ -350,7 +353,7 @@ pub(super) fn append_schedule(
 }
 
 pub(super) fn finish_task(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: Argument,
     pointer: Argument,
     pointer_owner: sui::types::Address,
@@ -574,8 +577,49 @@ pub(crate) fn expire_occurrence_ptb(
     })
 }
 
+/// Builds an occurrence expiration that reimburses the leader submission gas charge.
+pub fn expire_occurrence_with_gas_charge_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        let task = shared_task_arg(transaction, task)?;
+        let leader_registry_ref = transaction.objects().leader_registry.clone();
+        let leader_registry = transaction
+            .shared_object(&leader_registry_ref, false)
+            .map_err(SchedulerError::transaction)?;
+        let leader_cap = transaction
+            .shared_object(leader_cap, false)
+            .map_err(SchedulerError::transaction)?;
+        let occurrence_id = transaction
+            .arg(&occurrence_id)
+            .map_err(SchedulerError::transaction)?;
+        let gas_charge = transaction
+            .arg(&gas_charge)
+            .map_err(SchedulerError::transaction)?;
+        let clock = transaction.clock().map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                scheduler_binding::expire_with_gas_charge_target,
+                vec![
+                    task,
+                    leader_registry,
+                    leader_cap,
+                    occurrence_id,
+                    gas_charge,
+                    clock,
+                ],
+            )
+            .map_err(SchedulerError::transaction)?;
+        Ok(())
+    })
+}
+
 pub(crate) fn append_expire_occurrence(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
     occurrence_id: u64,
 ) -> Result<(), SchedulerError> {
@@ -598,13 +642,61 @@ pub(crate) fn append_expire_occurrence(
 }
 
 pub(crate) fn append_dispatch_occurrence(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
-    tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+    gas_charge: u64,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
+    append_dispatch_occurrence_(
+        transaction,
+        task,
+        dag,
+        leader_cap,
+        occurrence_id,
+        gas_charge,
+        tool_cashiers,
+    )
+}
+
+/// Builds an occurrence dispatch with an explicit leader submission gas charge.
+pub fn dispatch_occurrence_ptb(
+    objects: &NexusObjects,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> Result<ProgrammableTransaction, SchedulerError> {
+    ptb(objects, |transaction| {
+        append_dispatch_occurrence_(
+            transaction,
+            task,
+            dag,
+            leader_cap,
+            occurrence_id,
+            gas_charge,
+            tool_cashiers,
+        )
+    })
+}
+
+fn append_dispatch_occurrence_(
+    transaction: &mut NexusPtbBuilder,
+    task: &sui::types::ObjectReference,
+    dag: &sui::types::ObjectReference,
+    leader_cap: &sui::types::ObjectReference,
+    occurrence_id: u64,
+    gas_charge: u64,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
+) -> Result<(), SchedulerError> {
+    let protocol_ref = transaction.objects().protocol.clone();
+    let protocol = transaction
+        .shared_object(&protocol_ref, false)
+        .map_err(SchedulerError::transaction)?;
     let task = shared_task_arg(transaction, task)?;
     let dag = transaction
         .shared_object(dag, false)
@@ -617,54 +709,55 @@ pub(crate) fn append_dispatch_occurrence(
     let tool_registry = transaction
         .shared_object(&tool_registry_ref, false)
         .map_err(SchedulerError::transaction)?;
+    let leader_registry_ref = transaction.objects().leader_registry.clone();
+    let leader_registry = transaction
+        .shared_object(&leader_registry_ref, false)
+        .map_err(SchedulerError::transaction)?;
     let leader_cap = transaction
         .shared_object(leader_cap, false)
         .map_err(SchedulerError::transaction)?;
     let occurrence_id = transaction
         .arg(&occurrence_id)
         .map_err(SchedulerError::transaction)?;
-    let leader_registry_ref = transaction.objects().leader_registry.clone();
-    let leader_registry = transaction
-        .shared_object(&leader_registry_ref, false)
+    let gas_charge = transaction
+        .arg(&gas_charge)
         .map_err(SchedulerError::transaction)?;
     let clock = transaction.clock().map_err(SchedulerError::transaction)?;
     let execution = transaction
         .call_target(
             scheduler_binding::dispatch_next_target,
             vec![
+                protocol,
                 task,
                 dag,
                 agent_registry,
                 tool_registry,
+                leader_registry,
                 leader_cap,
                 occurrence_id,
-                leader_registry,
+                gas_charge,
                 clock,
             ],
         )
         .map_err(SchedulerError::transaction)?;
 
-    let gas_service_ref = transaction.objects().gas_service.clone();
-    let gas_service = transaction
-        .shared_object(&gas_service_ref, false)
-        .map_err(SchedulerError::transaction)?;
     transaction
         .call_target(
-            gas_binding::snapshot_dag_tool_costs_target,
-            vec![gas_service, execution, dag],
+            tool_cashier_adapter_binding::snapshot_dag_invocation_costs_target,
+            vec![tool_registry, execution, dag],
         )
         .map_err(SchedulerError::transaction)?;
 
-    let mut tools_gas = tools_gas.iter().copied().collect::<Vec<_>>();
-    tools_gas.sort_unstable();
-    for (address, version) in tools_gas {
-        let tool_gas = transaction
+    let mut tool_cashiers = tool_cashiers.iter().copied().collect::<Vec<_>>();
+    tool_cashiers.sort_unstable();
+    for (address, version) in tool_cashiers {
+        let tool_cashier = transaction
             .shared_object_by_id(address, version, true)
             .map_err(SchedulerError::transaction)?;
         transaction
             .call_target(
-                gas_binding::lock_payment_state_for_tool_target,
-                vec![tool_gas, dag, execution],
+                tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
+                vec![tool_cashier, dag, execution],
             )
             .map_err(SchedulerError::transaction)?;
     }
@@ -695,7 +788,7 @@ pub(crate) fn settle_occurrence_ptb(
 }
 
 pub(crate) fn append_settle_occurrence(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &sui::types::ObjectReference,
     execution: Argument,
     leader_registry: Argument,
@@ -721,7 +814,7 @@ mod tests {
             transactions::scheduler::compose::TaskDraftCompiler,
         },
         std::collections::BTreeMap,
-        sui_sdk_types::{Argument, Command, MoveCall},
+        sui_sdk_types::{Argument, Command, Input, MoveCall},
     };
 
     fn address(value: &'static str) -> sui::types::Address {
@@ -765,6 +858,16 @@ mod tests {
                 Command::MoveCall(call) => Some(call),
                 _ => None,
             })
+    }
+
+    fn pure_u64(transaction: &ProgrammableTransaction, argument: Argument) -> u64 {
+        let Argument::Input(index) = argument else {
+            panic!("expected pure input argument");
+        };
+        let Input::Pure(bytes) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected pure input");
+        };
+        u64::from_le_bytes(bytes.as_slice().try_into().expect("u64 input"))
     }
 
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
@@ -830,7 +933,7 @@ mod tests {
         let complete =
             schedule_task_ptb(&objects, &task, &schedule, pointer_owner).expect("complete compile");
 
-        let mut builder = NexusPtbBuilder::new(&objects);
+        let mut builder = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
         TaskDraftCompiler::create(&mut builder, &task)
             .expect("draft creation")
             .schedule(&schedule)
@@ -907,5 +1010,76 @@ mod tests {
             )]
         );
         assert!(matches!(recipient, Argument::Input(_)));
+    }
+
+    #[test]
+    fn dispatch_uses_the_protocol_as_its_first_argument() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let dag = object_ref_for_id(address("0x51"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+        let mut builder = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
+
+        append_dispatch_occurrence(
+            &mut builder,
+            &task,
+            &dag,
+            &leader_cap,
+            7,
+            0,
+            &HashSet::new(),
+        )
+        .expect("dispatch compiles");
+        let transaction = builder.finish();
+        let dispatch = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "dispatch_next")
+            .expect("dispatch call");
+
+        assert_eq!(dispatch.arguments.len(), 10);
+        assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 0);
+        let Argument::Input(protocol_index) = dispatch.arguments[0] else {
+            panic!("expected protocol input argument");
+        };
+        let Input::Shared(protocol) = &transaction.inputs[usize::from(protocol_index)] else {
+            panic!("expected shared protocol input");
+        };
+        assert_eq!(protocol.object_id(), *objects.protocol.object_id());
+        assert_eq!(protocol.version(), objects.protocol.version());
+        assert!(!protocol.mutability().is_mutable());
+    }
+
+    #[test]
+    fn dispatch_serializes_the_submission_gas_charge() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let dag = object_ref_for_id(address("0x51"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+
+        let transaction =
+            dispatch_occurrence_ptb(&objects, &task, &dag, &leader_cap, 7, 42, &HashSet::new())
+                .expect("charged dispatch compiles");
+        let dispatch = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "dispatch_next")
+            .expect("charged dispatch call");
+
+        assert_eq!(dispatch.arguments.len(), 10);
+        assert_eq!(pure_u64(&transaction, dispatch.arguments[8]), 42);
+    }
+
+    #[test]
+    fn charged_expiration_serializes_the_submission_gas_charge() {
+        let objects = mock_nexus_objects();
+        let task = object_ref_for_id(address("0x50"));
+        let leader_cap = object_ref_for_id(address("0x52"));
+
+        let transaction =
+            expire_occurrence_with_gas_charge_ptb(&objects, &task, &leader_cap, 7, 42)
+                .expect("charged expiration compiles");
+        let expiration = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "expire_with_gas_charge")
+            .expect("charged expiration call");
+
+        assert_eq!(expiration.arguments.len(), 6);
+        assert_eq!(pure_u64(&transaction, expiration.arguments[4]), 42);
     }
 }

@@ -6,7 +6,7 @@ use {
     crate::{
         move_bindings::{
             interface::verifier::ToolVerifierSupport,
-            registry::verifier_registry::ExternalVerifierRecord,
+            tool::external_verifier::ExternalVerifier,
         },
         nexus::{
             client::NexusClient,
@@ -14,12 +14,13 @@ use {
             registry::{
                 fetch_current_tool_registration,
                 fetch_external_verifier_record,
+                fetch_tool_invocation_cost,
                 preflight_external_verifier_registration,
             },
         },
         sui,
-        transactions::tool,
-        types::{Tool, ToolRef},
+        transactions::{tool, tool_cashier},
+        types::{Tool, ToolAnchor, ToolRef, ToolStateV1},
         ToolFqn,
     },
     std::time::Duration,
@@ -34,19 +35,25 @@ pub struct ConfigureToolVerifierResult {
     pub tool_id: sui::types::Address,
 }
 
-/// Result of [`ToolActions::inspect_tool`]. When `exists == false`, `tool` is
-/// `None`, but `tool_id` and `tool_gas_id` are still populated from local
-/// derivation so callers can pre-compute them. When `exists == true`, `tool`
-/// carries the full on-chain `Tool` record (HTTP- or Sui-variant).
+/// Result of a [`Tool`] cashier configuration or ticket transaction.
+pub struct ToolCashierActionResult {
+    pub tx_digest: sui::types::Digest,
+}
+
+/// Result of [`ToolActions::inspect_tool`].
+///
+/// The object IDs are derived locally even when the Tool does not exist.
+/// An existing Tool includes its complete [`ToolStateV1`] record.
 #[derive(Clone, Debug)]
 pub struct ToolInspection {
     pub fqn: ToolFqn,
     pub tool_id: sui::types::Address,
-    pub tool_gas_id: sui::types::Address,
+    pub tool_cashier_id: sui::types::Address,
     pub exists: bool,
-    pub tool: Option<Tool>,
+    pub tool: Option<ToolStateV1>,
     pub verifier_support: Option<ToolVerifierSupport>,
-    pub external_verifier: Option<ExternalVerifierRecord>,
+    pub external_verifier: Option<ExternalVerifier>,
+    pub invocation_cost_mist: Option<u64>,
 }
 
 pub struct ToolActions {
@@ -54,8 +61,46 @@ pub struct ToolActions {
 }
 
 impl ToolActions {
+    async fn resolve_tool_cashier_and_cap(
+        client: &NexusClient,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<(sui::types::ObjectReference, sui::types::ObjectReference), NexusError> {
+        let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let cashier_admin = client
+            .crawler()
+            .get_object_metadata(cashier_admin)
+            .await
+            .map_err(|error| {
+                NexusError::Configuration(format!(
+                    "Tool '{tool_fqn}' cashier admin capability '{cashier_admin}' could not be resolved: {error}"
+                ))
+            })?
+            .object_ref();
+        Ok((tool_cashier, cashier_admin))
+    }
+
+    async fn resolve_tool_and_cashier_admin(
+        client: &NexusClient,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<(sui::types::ObjectReference, sui::types::ObjectReference), NexusError> {
+        let tool = client.fetch_tool(tool_fqn).await?;
+        let cashier_admin = client
+            .crawler()
+            .get_object_metadata(cashier_admin)
+            .await
+            .map_err(|error| {
+                NexusError::Configuration(format!(
+                    "Tool '{tool_fqn}' cashier admin capability '{cashier_admin}' could not be resolved: {error}"
+                ))
+            })?
+            .object_ref();
+        Ok((tool, cashier_admin))
+    }
+
     async fn resolve_tool_and_owner_cap(
-        &self,
+        client: &NexusClient,
         tool_fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<
@@ -66,18 +111,16 @@ impl ToolActions {
         ),
         NexusError,
     > {
-        let objects = &self.client.nexus_objects;
+        let objects = &client.nexus_objects;
         let tool_id = Tool::derive_id(*objects.tool_registry.object_id(), tool_fqn)
             .map_err(NexusError::Parsing)?;
-        let tool = self
-            .client
+        let tool = client
             .crawler()
             .get_object_metadata(tool_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
-        let owner_cap = self
-            .client
+        let owner_cap = client
             .crawler()
             .get_object_metadata(owner_cap)
             .await
@@ -93,18 +136,18 @@ impl ToolActions {
         new_timeout: Duration,
         owner_cap: sui::types::Address,
     ) -> Result<UpdateToolTimeoutResult, NexusError> {
-        let address = self.client.owner()?;
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
 
-        let owner_cap = self
-            .client
+        let owner_cap = client
             .crawler()
             .get_object_metadata(owner_cap)
             .await
             .map_err(NexusError::Rpc)?;
 
         // Derive and fetch the Tool object.
-        let tool_ref = self.client.fetch_tool_gas(tool_fqn).await?;
+        let tool_ref = client.fetch_tool(tool_fqn).await?;
 
         let tx = tool::update_tool_timeout_ptb(
             nexus_objects,
@@ -114,7 +157,7 @@ impl ToolActions {
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         Ok(UpdateToolTimeoutResult {
             tx_digest: response.digest,
@@ -127,15 +170,18 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         owner_cap: sui::types::Address,
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let (tool_id, tool, owner_cap) =
-            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
-        let binding_id = self.client.network_auth().binding_object_id(
-            &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
-        )?;
-        let tool_key_binding = self
-            .client
+            Self::resolve_tool_and_owner_cap(&client, tool_fqn, owner_cap).await?;
+        let binding_id = client
+            .network_auth()
+            .binding_object_id(
+                &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
+            )
+            .await?;
+        let tool_key_binding = client
             .crawler()
             .get_object_metadata(binding_id)
             .await
@@ -152,7 +198,7 @@ impl ToolActions {
             &tool_key_binding,
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(ConfigureToolVerifierResult {
             tx_digest: response.digest,
             tool_id,
@@ -169,12 +215,13 @@ impl ToolActions {
         function_name: &str,
         verifier_object_ids: &[sui::types::Address],
     ) -> Result<ConfigureToolVerifierResult, NexusError> {
-        let address = self.client.owner()?;
-        let objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let objects = &client.nexus_objects;
         let (tool_id, tool, owner_cap) =
-            self.resolve_tool_and_owner_cap(tool_fqn, owner_cap).await?;
+            Self::resolve_tool_and_owner_cap(&client, tool_fqn, owner_cap).await?;
         let registration = preflight_external_verifier_registration(
-            self.client.crawler(),
+            client.crawler(),
             objects,
             package_id,
             module_name,
@@ -185,41 +232,248 @@ impl ToolActions {
         .map_err(|e| NexusError::Configuration(e.to_string()))?;
         let tx = tool::register_external_verifier_ptb(objects, &tool, &owner_cap, &registration)
             .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(ConfigureToolVerifierResult {
             tx_digest: response.digest,
             tool_id,
         })
     }
 
-    /// Derive the Tool and ToolGas object IDs for `fqn` and probe the Tool
-    /// object. Returns `exists: false` when neither object is present yet,
-    /// and the full on-chain `Tool` record when both exist. The same shape
+    /// Enable expiry payment tickets for a [`Tool`].
+    pub async fn enable_expiry_tickets(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        cost_per_minute: u64,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::enable_expiry_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            cost_per_minute,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Set the invocation price for a [`Tool`] in MIST.
+    pub async fn set_invocation_cost(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        invocation_cost_mist: u64,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool, cashier_admin) =
+            Self::resolve_tool_and_cashier_admin(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool::set_invocation_cost_ptb(
+            &client.nexus_objects,
+            &tool,
+            &cashier_admin,
+            invocation_cost_mist,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disable expiry payment tickets for a [`Tool`].
+    pub async fn disable_expiry_tickets(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction =
+            tool_cashier::disable_expiry_ptb(&client.nexus_objects, &tool_cashier, &cashier_admin)
+                .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Buy an expiry payment ticket for a [`Tool`].
+    pub async fn buy_expiry_ticket(
+        &self,
+        tool_fqn: &ToolFqn,
+        minutes: u64,
+        pay_with: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if minutes == 0 {
+            return Err(NexusError::Configuration(
+                "Ticket duration must be at least one minute".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let pay_with = client
+            .crawler()
+            .get_object_metadata(pay_with)
+            .await
+            .map_err(|error| {
+                NexusError::Configuration(format!(
+                    "Payment coin '{pay_with}' could not be resolved: {error}"
+                ))
+            })?
+            .object_ref();
+        let transaction = tool_cashier::buy_expiry_payment_ticket_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &pay_with,
+            minutes,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Enable limited invocation payment tickets for a [`Tool`].
+    pub async fn enable_limited_invocation_tickets(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        cost_per_invocation: u64,
+        min_invocations: u64,
+        max_invocations: u64,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if min_invocations == 0 {
+            return Err(NexusError::Configuration(
+                "Minimum invocations must be at least one".to_owned(),
+            ));
+        }
+        if min_invocations > max_invocations {
+            return Err(NexusError::Configuration(format!(
+                "Minimum invocations '{min_invocations}' cannot exceed maximum invocations '{max_invocations}'"
+            )));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::enable_limited_invocations_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            cost_per_invocation,
+            min_invocations,
+            max_invocations,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disable limited invocation payment tickets for a [`Tool`].
+    pub async fn disable_limited_invocation_tickets(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::disable_limited_invocations_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Buy a limited invocation payment ticket for a [`Tool`].
+    pub async fn buy_limited_invocation_ticket(
+        &self,
+        tool_fqn: &ToolFqn,
+        invocations: u64,
+        pay_with: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if invocations == 0 {
+            return Err(NexusError::Configuration(
+                "Ticket invocations must be at least one".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let pay_with = client
+            .crawler()
+            .get_object_metadata(pay_with)
+            .await
+            .map_err(|error| {
+                NexusError::Configuration(format!(
+                    "Payment coin '{pay_with}' could not be resolved: {error}"
+                ))
+            })?
+            .object_ref();
+        let transaction = tool_cashier::buy_limited_invocations_payment_ticket_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &pay_with,
+            invocations,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Derive the [`Tool`] and [`crate::move_bindings::tool::tool_cashier::ToolCashier`]
+    /// object IDs for `fqn` and probe the [`Tool`] object. Returns
+    /// `exists: false` when neither object is present yet, and the full
+    /// [`ToolStateV1`] record when both exist. The same shape
     /// works for HTTP and Sui tools. Callers can inspect the generated
     /// `Tool::r#ref` field or use [`ToolRef`] helper
     /// methods for ergonomic projections.
     ///
-    /// Returns [`NexusError::Configuration`] when only one of Tool/ToolGas
-    /// exists — that combination indicates corrupt registry state and
-    /// requires operator intervention (e.g. a localnet reset).
+    /// Returns [`NexusError::Configuration`] when only one object exists;
+    /// that combination indicates corrupt registry state and requires
+    /// operator intervention such as a localnet reset.
     pub async fn inspect_tool(&self, fqn: &ToolFqn) -> Result<ToolInspection, NexusError> {
-        let crawler = self.client.crawler();
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let crawler = client.crawler();
+        let nexus_objects = &client.nexus_objects;
         let tool_registry_id = *nexus_objects.tool_registry.object_id();
-        let gas_service_id = *nexus_objects.gas_service.object_id();
 
         let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, fqn)
             .map_err(NexusError::Parsing)?;
-        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(gas_service_id, fqn)
-            .map_err(NexusError::Parsing)?;
+        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            nexus_objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .map_err(NexusError::Parsing)?;
 
         let tool_exists = crawler.get_object_metadata(tool_id).await.is_ok();
-        let tool_gas_exists = crawler.get_object_metadata(tool_gas_id).await.is_ok();
+        let tool_cashier_exists = crawler.get_object_metadata(tool_cashier_id).await.is_ok();
 
-        if tool_exists ^ tool_gas_exists {
+        if tool_exists ^ tool_cashier_exists {
             return Err(NexusError::Configuration(format!(
                 "Tool '{fqn}' has inconsistent state: Tool exists={tool_exists}, \
-                 ToolGas exists={tool_gas_exists}. Reset the deployment or recreate the missing \
+                 ToolCashier exists={tool_cashier_exists}. Reset the deployment or recreate the missing \
                  object before retrying."
             )));
         }
@@ -228,19 +482,24 @@ impl ToolActions {
             return Ok(ToolInspection {
                 fqn: fqn.clone(),
                 tool_id,
-                tool_gas_id,
+                tool_cashier_id,
                 exists: false,
                 tool: None,
                 verifier_support: None,
                 external_verifier: None,
+                invocation_cost_mist: None,
             });
         }
 
         let tool = crawler
-            .get_object::<Tool>(tool_id)
+            .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
             .await
             .map_err(NexusError::Rpc)?
             .data;
+        let invocation_cost_mist =
+            fetch_tool_invocation_cost(crawler, &nexus_objects.tool_registry, fqn)
+                .await
+                .map_err(NexusError::Rpc)?;
         let (verifier_support, external_verifier) = match &tool.r#ref {
             ToolRef::Http { .. } => {
                 let support =
@@ -248,20 +507,17 @@ impl ToolActions {
                         .await
                         .map_err(NexusError::Rpc)?
                         .and_then(|registration| registration.verifier_support);
-                let record = fetch_external_verifier_record(
-                    crawler,
-                    &nexus_objects.verifier_registry,
-                    tool_id,
-                )
-                .await
-                .map_err(NexusError::Rpc)?;
+                let record =
+                    fetch_external_verifier_record(crawler, &nexus_objects.tool_registry, tool_id)
+                        .await
+                        .map_err(NexusError::Rpc)?;
                 (support, record)
             }
             ToolRef::Sui { .. } => (None, None),
         };
         match (&verifier_support, &external_verifier) {
             (Some(ToolVerifierSupport::External { method_id }), Some(record))
-                if method_id == &record.method_id => {}
+                if method_id == &record.method => {}
             (Some(ToolVerifierSupport::External { .. }), _) => {
                 return Err(NexusError::Configuration(format!(
                     "Tool '{fqn}' has inconsistent External verifier state"
@@ -278,11 +534,12 @@ impl ToolActions {
         Ok(ToolInspection {
             fqn: fqn.clone(),
             tool_id,
-            tool_gas_id,
+            tool_cashier_id,
             exists: true,
             tool: Some(tool),
             verifier_support,
             external_verifier,
+            invocation_cost_mist,
         })
     }
 }
@@ -295,11 +552,17 @@ mod tests {
             fqn,
             move_bindings::{
                 move_std::{ascii, option::Option as MoveOption},
-                registry::{
-                    tool_registry::ToolRegistry,
-                    verifier_registry::{ExternalVerifierRecord, VerifierRegistry},
+                sui_framework::{
+                    self,
+                    linked_table::LinkedTable,
+                    object::{ID, UID},
+                    table::Table,
+                    versioned::Versioned,
                 },
-                sui_framework::{self, linked_table::LinkedTable, table::Table},
+                tool::{
+                    external_verifier::ExternalVerifier,
+                    tool_registry::{ToolRegistry, ToolRegistryStateV1},
+                },
             },
             test_utils::{nexus_mocks, sui_mocks},
         },
@@ -312,7 +575,7 @@ mod tests {
         nexus_objects: crate::types::NexusObjects,
         fqn: crate::ToolFqn,
         tool_id: sui::types::Address,
-        tool_gas_id: sui::types::Address,
+        tool_cashier_id: sui::types::Address,
     }
 
     impl InspectionFixture {
@@ -324,16 +587,16 @@ mod tests {
                 &fqn,
             )
             .expect("tool id derives");
-            let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
-                *nexus_objects.gas_service.object_id(),
-                &fqn,
+            let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
+                nexus_objects.tool_cashier_type_origin_pkg_id(),
+                tool_id,
             )
-            .expect("tool gas id derives");
+            .expect("tool cashier id derives");
             Self {
                 nexus_objects,
                 fqn,
                 tool_id,
-                tool_gas_id,
+                tool_cashier_id,
             }
         }
     }
@@ -348,7 +611,6 @@ mod tests {
         tool_witness_id: sui::types::Address,
     ) -> ToolRef {
         ToolRef::Sui {
-            _variant_name: ascii("Sui"),
             package_address,
             module_name: ascii(module_name.as_str()),
             tool_witness_id: crate::move_bindings::sui_framework::object::ID::new(tool_witness_id),
@@ -359,9 +621,9 @@ mod tests {
         fixture: &InspectionFixture,
         reference: ToolRef,
         workflow_authorization_cap_first: bool,
-    ) -> Tool {
-        Tool {
-            id: crate::move_bindings::sui_framework::object::UID::new(fixture.tool_id),
+    ) -> ToolStateV1 {
+        ToolStateV1 {
+            minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 *fixture.nexus_objects.tool_registry.object_id(),
             ),
@@ -382,44 +644,47 @@ mod tests {
         }
     }
 
-    fn mock_empty_verifier_state(
+    fn mock_empty_tool_registry_state(
         ledger_service: &mut sui_mocks::grpc::MockLedgerService,
         fixture: &InspectionFixture,
+        reads: usize,
     ) {
-        use crate::move_bindings::{
-            interface::verifier::ToolVerifierSupport,
-            sui_framework::object::ID,
-        };
+        use crate::move_bindings::interface::verifier::ToolVerifierSupport;
 
         let id = sui::types::Address::from_static;
+        let tool_registry_state_id = id("0x109");
         let tool_registry = ToolRegistry::new(
-            sui_framework::object::UID::new(*fixture.nexus_objects.tool_registry.object_id()),
-            LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
-            Table::<ID, bool>::new(id("0x102"), 0),
-            LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
-            Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
-            LinkedTable::<ascii::String, ID>::new(id("0x105"), 0),
-            LinkedTable::<ascii::String, bool>::new(id("0x106"), 0),
-            0,
-            0,
+            UID::new(*fixture.nexus_objects.tool_registry.object_id()),
+            Versioned::new(UID::new(tool_registry_state_id), 1),
         );
-        let verifier_registry = VerifierRegistry::new(
-            sui_framework::object::UID::new(*fixture.nexus_objects.verifier_registry.object_id()),
-            sui_framework::object::UID::new(id("0x107")),
-            Table::<ID, ExternalVerifierRecord>::new(id("0x108"), 0),
-        );
-        sui_mocks::grpc::mock_get_object_bcs(
-            ledger_service,
-            fixture.nexus_objects.tool_registry.clone(),
-            sui::types::Owner::Shared(fixture.nexus_objects.tool_registry.version()),
-            bcs::to_bytes(&tool_registry).unwrap(),
-        );
-        sui_mocks::grpc::mock_get_object_bcs(
-            ledger_service,
-            fixture.nexus_objects.verifier_registry.clone(),
-            sui::types::Owner::Shared(fixture.nexus_objects.verifier_registry.version()),
-            bcs::to_bytes(&verifier_registry).unwrap(),
-        );
+        for _ in 0..reads {
+            let tool_registry_state = ToolRegistryStateV1::new(
+                ID::new(sui::types::Address::ZERO),
+                1,
+                LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
+                Table::<ID, bool>::new(id("0x102"), 0),
+                LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
+                Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
+                Table::<ID, ExternalVerifier>::new(id("0x107"), 0),
+                Table::<ascii::String, u64>::new(id("0x108"), 0),
+                LinkedTable::<ascii::String, ID>::new(id("0x105"), 0),
+                LinkedTable::<ascii::String, bool>::new(id("0x106"), 0),
+                0,
+                0,
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger_service,
+                fixture.nexus_objects.tool_registry.clone(),
+                sui::types::Owner::Shared(fixture.nexus_objects.tool_registry.version()),
+                bcs::to_bytes(&tool_registry).unwrap(),
+            );
+            sui_mocks::grpc::mock_versioned_payload(
+                ledger_service,
+                tool_registry_state_id,
+                1,
+                tool_registry_state,
+            );
+        }
     }
 
     /// Expect a `get_object` call and reply with a tonic NotFound error so the
@@ -453,7 +718,7 @@ mod tests {
 
         assert!(!inspection.exists);
         assert_eq!(inspection.tool_id, fixture.tool_id);
-        assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
+        assert_eq!(inspection.tool_cashier_id, fixture.tool_cashier_id);
         assert!(inspection.tool.is_none());
     }
 
@@ -475,7 +740,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             None,
         );
-        // Second probe (ToolGas) fails -> inconsistent.
+        // Second probe (ToolCashier) fails -> inconsistent.
         mock_get_object_not_found(&mut ledger_service_mock);
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
@@ -514,17 +779,21 @@ mod tests {
             7,
             sui::types::Digest::from([3u8; 32]),
         );
-        let tool_gas_ref = sui::types::ObjectReference::new(
-            fixture.tool_gas_id,
+        let tool_cashier_ref = sui::types::ObjectReference::new(
+            fixture.tool_cashier_id,
             7,
             sui::types::Digest::from([4u8; 32]),
         );
-        let tool = fixture_tool(
+        let tool_state = fixture_tool(
             &fixture,
             sui_tool_ref(package_address, module_name.clone(), tool_witness_id),
             true,
         );
-        let tool_bcs = bcs::to_bytes(&tool).expect("Tool serializes to BCS");
+        let tool_state_id = sui::types::Address::from_static("0x2010");
+        let tool = ToolAnchor::new(
+            UID::new(fixture.tool_id),
+            Versioned::new(UID::new(tool_state_id), 1),
+        );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -536,7 +805,7 @@ mod tests {
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_gas_ref,
+            tool_cashier_ref,
             sui::types::Owner::Shared(1),
             None,
         );
@@ -544,8 +813,15 @@ mod tests {
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_bcs,
+            bcs::to_bytes(&tool).expect("Tool anchor serializes to BCS"),
         );
+        sui_mocks::grpc::mock_versioned_payload(
+            &mut ledger_service_mock,
+            tool_state_id,
+            1,
+            tool_state,
+        );
+        mock_empty_tool_registry_state(&mut ledger_service_mock, &fixture, 1);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             ..Default::default()
@@ -560,7 +836,7 @@ mod tests {
 
         assert!(inspection.exists);
         assert_eq!(inspection.tool_id, fixture.tool_id);
-        assert_eq!(inspection.tool_gas_id, fixture.tool_gas_id);
+        assert_eq!(inspection.tool_cashier_id, fixture.tool_cashier_id);
         let decoded = inspection.tool.expect("Tool decoded");
         assert!(decoded.workflow_authorization_cap_first);
         let Some((decoded_package, decoded_module, decoded_witness)) =
@@ -574,10 +850,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inspect_tool_rejects_inconsistent_state_when_only_tool_gas_present() {
+    async fn inspect_tool_rejects_inconsistent_state_when_only_tool_cashier_present() {
         let fixture = InspectionFixture::new();
-        let tool_gas_ref = sui::types::ObjectReference::new(
-            fixture.tool_gas_id,
+        let tool_cashier_ref = sui::types::ObjectReference::new(
+            fixture.tool_cashier_id,
             5,
             sui::types::Digest::from([2u8; 32]),
         );
@@ -586,10 +862,10 @@ mod tests {
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         // First probe (Tool) fails.
         mock_get_object_not_found(&mut ledger_service_mock);
-        // Second probe (ToolGas) succeeds -> the XOR triggers the other branch.
+        // Second probe (ToolCashier) succeeds -> the XOR triggers the other branch.
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_gas_ref,
+            tool_cashier_ref,
             sui::types::Owner::Shared(1),
             None,
         );
@@ -613,7 +889,7 @@ mod tests {
         );
         assert!(
             error_string.contains("Tool exists=false")
-                && error_string.contains("ToolGas exists=true"),
+                && error_string.contains("ToolCashier exists=true"),
             "unexpected error message: {error_string}"
         );
     }
@@ -627,20 +903,23 @@ mod tests {
             11,
             sui::types::Digest::from([7u8; 32]),
         );
-        let tool_gas_ref = sui::types::ObjectReference::new(
-            fixture.tool_gas_id,
+        let tool_cashier_ref = sui::types::ObjectReference::new(
+            fixture.tool_cashier_id,
             11,
             sui::types::Digest::from([8u8; 32]),
         );
-        let http_tool = fixture_tool(
+        let http_tool_state = fixture_tool(
             &fixture,
             ToolRef::Http {
-                _variant_name: ascii("Http"),
                 url: b"https://example.com/tool".to_vec(),
             },
             false,
         );
-        let tool_bcs = bcs::to_bytes(&http_tool).expect("Tool serializes to BCS");
+        let tool_state_id = sui::types::Address::from_static("0x2020");
+        let http_tool = ToolAnchor::new(
+            UID::new(fixture.tool_id),
+            Versioned::new(UID::new(tool_state_id), 1),
+        );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
@@ -652,7 +931,7 @@ mod tests {
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_gas_ref,
+            tool_cashier_ref,
             sui::types::Owner::Shared(1),
             None,
         );
@@ -660,9 +939,15 @@ mod tests {
             &mut ledger_service_mock,
             tool_ref,
             sui::types::Owner::Shared(1),
-            tool_bcs,
+            bcs::to_bytes(&http_tool).expect("Tool anchor serializes to BCS"),
         );
-        mock_empty_verifier_state(&mut ledger_service_mock, &fixture);
+        sui_mocks::grpc::mock_versioned_payload(
+            &mut ledger_service_mock,
+            tool_state_id,
+            1,
+            http_tool_state,
+        );
+        mock_empty_tool_registry_state(&mut ledger_service_mock, &fixture, 3);
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
@@ -717,11 +1002,10 @@ mod tests {
             None,
         );
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            tx_digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -743,6 +1027,197 @@ mod tests {
             .await
             .expect("Failed to update tool timeout");
 
-        assert_eq!(result.tx_digest, tx_digest);
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    #[derive(Clone, Copy)]
+    enum PaymentAction {
+        EnableExpiry,
+        SetInvocationCost,
+        DisableExpiry,
+        BuyExpiry,
+        EnableLimited,
+        DisableLimited,
+        BuyLimited,
+    }
+
+    async fn assert_payment_action_succeeds(action: PaymentAction) {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.payment@1");
+        let tool_id = crate::move_bindings::derive_tool_id(
+            *nexus_objects.tool_registry.object_id(),
+            &tool_fqn,
+        )
+        .expect("tool id derives");
+        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            nexus_objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("tool cashier id derives");
+        let primary_id = match action {
+            PaymentAction::SetInvocationCost => tool_id,
+            _ => tool_cashier_id,
+        };
+        let primary_ref = sui_mocks::object_ref_for_id(primary_id);
+        let auxiliary_id = sui::types::Address::from_static("0x402");
+        let auxiliary_ref = sui_mocks::object_ref_for_id(auxiliary_id);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            primary_ref,
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            auxiliary_ref,
+            sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
+            None,
+        );
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transaction_service,
+            &mut subscription_service,
+            &mut ledger_service,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            execution_service_mock: Some(transaction_service),
+            subscription_service_mock: Some(subscription_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let actions = client.tool();
+
+        let result = match action {
+            PaymentAction::EnableExpiry => {
+                actions
+                    .enable_expiry_tickets(&tool_fqn, auxiliary_id, 7)
+                    .await
+            }
+            PaymentAction::SetInvocationCost => {
+                actions
+                    .set_invocation_cost(&tool_fqn, auxiliary_id, 11)
+                    .await
+            }
+            PaymentAction::DisableExpiry => {
+                actions
+                    .disable_expiry_tickets(&tool_fqn, auxiliary_id)
+                    .await
+            }
+            PaymentAction::BuyExpiry => actions.buy_expiry_ticket(&tool_fqn, 3, auxiliary_id).await,
+            PaymentAction::EnableLimited => {
+                actions
+                    .enable_limited_invocation_tickets(&tool_fqn, auxiliary_id, 13, 2, 9)
+                    .await
+            }
+            PaymentAction::DisableLimited => {
+                actions
+                    .disable_limited_invocation_tickets(&tool_fqn, auxiliary_id)
+                    .await
+            }
+            PaymentAction::BuyLimited => {
+                actions
+                    .buy_limited_invocation_ticket(&tool_fqn, 4, auxiliary_id)
+                    .await
+            }
+        }
+        .expect("Tool payment action succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    #[tokio::test]
+    async fn tool_cashier_actions_resolve_objects_and_submit() {
+        for action in [
+            PaymentAction::EnableExpiry,
+            PaymentAction::SetInvocationCost,
+            PaymentAction::DisableExpiry,
+            PaymentAction::BuyExpiry,
+            PaymentAction::EnableLimited,
+            PaymentAction::DisableLimited,
+            PaymentAction::BuyLimited,
+        ] {
+            assert_payment_action_succeeds(action).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn registered_key_verifier_resolves_binding_and_submits() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.verified@1");
+        let tool_id = crate::move_bindings::derive_tool_id(
+            *nexus_objects.tool_registry.object_id(),
+            &tool_fqn,
+        )
+        .expect("tool id derives");
+        let owner_cap_id = sui::types::Address::from_static("0x411");
+        let derivation_client = NexusClient::builder()
+            .with_rpc_url("http://127.0.0.1:1")
+            .with_nexus_objects(nexus_objects.clone())
+            .build()
+            .await
+            .expect("derivation client builds");
+        let binding_id = derivation_client
+            .network_auth()
+            .binding_object_id(
+                &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
+            )
+            .await
+            .expect("binding id derives");
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
+        for (object_ref, owner) in [
+            (
+                sui_mocks::object_ref_for_id(tool_id),
+                sui::types::Owner::Shared(1),
+            ),
+            (
+                sui_mocks::object_ref_for_id(owner_cap_id),
+                sui::types::Owner::Address(sui::types::Address::from_static("0x412")),
+            ),
+            (
+                sui_mocks::object_ref_for_id(binding_id),
+                sui::types::Owner::Shared(1),
+            ),
+        ] {
+            sui_mocks::grpc::mock_get_object_metadata(&mut ledger_service, object_ref, owner, None);
+        }
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transaction_service,
+            &mut subscription_service,
+            &mut ledger_service,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            vec![],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            execution_service_mock: Some(transaction_service),
+            subscription_service_mock: Some(subscription_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tool()
+            .configure_registered_key_verifier(&tool_fqn, owner_cap_id)
+            .await
+            .expect("registered key verifier configuration succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.tool_id, tool_id);
     }
 }

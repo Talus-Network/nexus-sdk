@@ -2,10 +2,9 @@
 
 use crate::{
     events::{parse_bcs, supports_event, NexusEvent},
-    move_bindings::primitives::{
-        data::NexusData as MoveNexusData,
-        distributed_event as distributed_event_move,
-        event as event_move,
+    move_bindings::{
+        interface::distributed_event as distributed_event_move,
+        primitives::{data::NexusData as MoveNexusData, event as event_move},
     },
     sui,
     types::NexusObjects,
@@ -41,6 +40,7 @@ impl<'a> NexusEventType<'a> {
 pub(super) fn decode_nexus_event(
     index: u64,
     digest: sui::types::Digest,
+    emitting_package: sui::types::Address,
     contents: &[u8],
     wrapper_type: &sui::types::StructTag,
     objects: &NexusObjects,
@@ -52,6 +52,7 @@ pub(super) fn decode_nexus_event(
 
     Ok(Some(NexusEvent {
         id: (digest, index),
+        emitting_package,
         generics: event_type.tag.type_params().to_vec(),
         data,
         distribution,
@@ -59,11 +60,7 @@ pub(super) fn decode_nexus_event(
 }
 
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
-    address == objects.primitives_pkg_id
-        || address == objects.interface_pkg_id
-        || address == objects.registry_pkg_id
-        || objects.is_scheduler_package(address)
-        || objects.is_workflow_package(address)
+    objects.is_nexus_package(address)
 }
 
 fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
@@ -128,6 +125,77 @@ mod tests {
 
         assert!(distribution.is_none());
         assert!(matches!(event, NexusEventKind::TaskCreated(_)));
+    }
+
+    #[test]
+    fn resolves_event_type_origins_after_package_upgrades() {
+        let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
+        objects
+            .packages
+            .primitives
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("event", "EventWrapper"),
+                address("0xa1"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .scheduler
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("scheduler", "TaskCreatedEvent"),
+                address("0xa2"),
+            )
+            .unwrap();
+        objects
+            .packages
+            .interface
+            .insert_type_origin(
+                crate::types::DatatypeKey::new("distributed_event", "DistributedEventWrapper"),
+                address("0xa3"),
+            )
+            .unwrap();
+
+        let event = TaskCreatedEvent::new(
+            ID::new(address("0x41")),
+            TaskController::Address {
+                pos0: address("0x42"),
+            },
+            ID::new(address("0x43")),
+            7,
+        );
+        let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
+        let inner = crate::move_bindings::struct_tag::<TaskCreatedEvent>(&objects);
+        let wrapper =
+            crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(&objects);
+        let wrapper = sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
+
+        let emitter = objects.packages.scheduler.storage_id;
+        let decoded = decode_nexus_event(
+            0,
+            sui::types::Digest::ZERO,
+            emitter,
+            &bytes,
+            &wrapper,
+            &objects,
+        )
+        .expect("event decoding succeeds")
+        .expect("event is recognized");
+
+        assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
+        assert!(decoded.was_emitted_by(&objects));
+        let mut stale = decoded.clone();
+        stale.emitting_package = objects.packages.scheduler.initial_id;
+        objects.packages.scheduler.storage_id = address("0xb2");
+        assert!(!stale.was_emitted_by(&objects));
+        let distributed_wrapper = crate::move_bindings::struct_tag::<
+            distributed_event_move::DistributedEventWrapper<MoveNexusData>,
+        >(&objects);
+        assert_eq!(*distributed_wrapper.address(), address("0xa3"));
     }
 
     #[test]

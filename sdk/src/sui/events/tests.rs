@@ -327,6 +327,123 @@ async fn replay_continues_after_an_item_limit() {
 }
 
 #[tokio::test]
+async fn replay_gap_is_terminal_by_default() {
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .once()
+        .returning(move |_request| {
+            let first = subscription_frame(None, watermark(b"live", None));
+            let stream = futures::stream::iter([Ok(first)]).chain(futures::stream::pending());
+            Ok(tonic::Response::new(
+                Box::pin(stream) as sui_mocks::grpc::BoxEventStream
+            ))
+        });
+
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger
+        .expect_list_events()
+        .once()
+        .returning(move |_request| {
+            Ok(tonic::Response::new(Box::pin(futures::stream::iter([Err(
+                tonic::Status::out_of_range("checkpoint was pruned"),
+            )]))
+                as sui_mocks::grpc::BoxListEventsStream))
+        });
+
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::default(),
+    );
+    let mut pages = EventIngestor::new(&rpc_url, query)
+        .start(Some(7))
+        .expect("ingestor should start");
+
+    let error = timeout(Duration::from_secs(2), pages.recv())
+        .await
+        .expect("ingestor did not report unavailable replay")
+        .expect("ingestor closed without reporting unavailable replay")
+        .expect_err("unavailable replay unexpectedly succeeded");
+    assert!(matches!(
+        error,
+        EventIngestionError::ReplayGap {
+            start_checkpoint: 7,
+            ..
+        }
+    ));
+    assert!(pages.recv().await.is_none());
+}
+
+#[tokio::test]
+async fn replay_gap_recovery_reports_the_gap_and_resumes_live() {
+    let mut subscription = sui_mocks::grpc::MockSubscriptionService::new();
+    subscription
+        .expect_subscribe_events()
+        .once()
+        .returning(move |_request| {
+            let frames = [
+                Ok(subscription_frame(None, watermark(b"live", None))),
+                Ok(subscription_frame(None, watermark(b"progress", Some(20)))),
+            ];
+            let stream = futures::stream::iter(frames).chain(futures::stream::pending());
+            Ok(tonic::Response::new(
+                Box::pin(stream) as sui_mocks::grpc::BoxEventStream
+            ))
+        });
+
+    let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+    ledger
+        .expect_list_events()
+        .once()
+        .returning(move |_request| {
+            Ok(tonic::Response::new(Box::pin(futures::stream::iter([Err(
+                tonic::Status::out_of_range("checkpoint was pruned"),
+            )]))
+                as sui_mocks::grpc::BoxListEventsStream))
+        });
+
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger),
+        subscription_service_mock: Some(subscription),
+        ..Default::default()
+    });
+    let query = RawEventQuery::new(
+        sui::grpc::EventFilter::default(),
+        sui::grpc::FieldMask::default(),
+    );
+    let mut pages = EventIngestor::new(&rpc_url, query)
+        .with_replay_gap_recovery()
+        .start(Some(7))
+        .expect("ingestor should start");
+
+    let error = timeout(Duration::from_secs(2), pages.recv())
+        .await
+        .expect("ingestor did not report unavailable replay")
+        .expect("ingestor closed without reporting unavailable replay")
+        .expect_err("unavailable replay unexpectedly succeeded");
+    assert!(matches!(
+        error,
+        EventIngestionError::ReplayGap {
+            start_checkpoint: 7,
+            ..
+        }
+    ));
+
+    let page = timeout(Duration::from_secs(2), pages.recv())
+        .await
+        .expect("ingestor did not resume at the live cursor")
+        .expect("ingestor closed after unavailable replay")
+        .expect("live ingestion failed after unavailable replay");
+    assert_eq!(page.checkpoint, 20);
+    assert!(page.events.is_empty());
+}
+
+#[tokio::test]
 async fn reconnect_replays_from_the_last_inclusive_checkpoint() {
     let mut first_event = sui::grpc::Event::default();
     first_event.set_checkpoint(10);

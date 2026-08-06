@@ -17,27 +17,25 @@ use {
 };
 
 pub(crate) fn agent_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let registry = &objects.agent_registry;
+    let registry = tx.objects().agent_registry.clone();
 
-    Ok(tx.shared_object(registry, mutability)?)
+    Ok(tx.shared_object(&registry, mutability)?)
 }
 
 fn tool_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     mutability: bool,
 ) -> anyhow::Result<sui::types::Argument> {
-    let objects = tx.objects();
-    let registry = &objects.tool_registry;
+    let registry = tx.objects().tool_registry.clone();
 
-    Ok(tx.shared_object(registry, mutability)?)
+    Ok(tx.shared_object(&registry, mutability)?)
 }
 
 pub(crate) fn create_agent(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
     tx.call_target(agent_registry_binding::create_agent_target, vec![registry])
@@ -75,7 +73,7 @@ pub(crate) fn create_agent_for_self_ptb(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn register_skill(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag: sui::types::Argument,
@@ -132,7 +130,7 @@ pub(crate) fn register_skill_ptb(
 }
 
 pub(crate) fn update_dag(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag: sui::types::Argument,
@@ -145,7 +143,7 @@ pub(crate) fn update_dag(
 }
 
 pub(crate) fn update_skill_policies(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     skill_id: SkillId,
@@ -239,7 +237,7 @@ pub(crate) fn bind_agent_skill_ptb(
 }
 
 fn schedule_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match schedule_policy {
@@ -259,7 +257,7 @@ fn schedule_policy_arg(
 }
 
 fn option_u64_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     value: Option<&u64>,
 ) -> anyhow::Result<sui::types::Argument> {
     match value {
@@ -272,7 +270,7 @@ fn option_u64_arg(
 }
 
 fn payment_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     payment_policy: &SkillPaymentPolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     Ok(match payment_policy {
@@ -290,7 +288,7 @@ fn payment_policy_arg(
 }
 
 fn fixed_tool_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     fixed_tool: &FixedTool,
 ) -> anyhow::Result<sui::types::Argument> {
     let tool_registry_id = tx.object_id(fixed_tool.tool_registry_address())?;
@@ -303,7 +301,7 @@ fn fixed_tool_arg(
 }
 
 fn fixed_tools_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     fixed_tools: &[FixedTool],
 ) -> anyhow::Result<sui::types::Argument> {
     let fixed_tools = fixed_tools

@@ -25,7 +25,7 @@ use {
 type VertexInputs = VecMap<InputPort, NexusData>;
 
 pub(super) fn execution_config_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     task: &PreparedTask,
 ) -> Result<Argument, SchedulerError> {
     let network = transaction
@@ -82,7 +82,7 @@ pub(super) fn execution_config_arg(
 }
 
 fn execution_inputs_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     inputs: &crate::scheduler::TaskInputs,
 ) -> Result<Argument, SchedulerError> {
     let execution_inputs = transaction
@@ -130,7 +130,7 @@ fn execution_inputs_arg(
 }
 
 fn optional_object_id_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     value: Option<sui::types::Address>,
 ) -> Result<Argument, SchedulerError> {
     let value = value
@@ -143,7 +143,7 @@ fn optional_object_id_arg(
 }
 
 fn authorization_template_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     template: &AuthorizationTemplate,
 ) -> Result<Argument, SchedulerError> {
     let skill_id = transaction
@@ -164,7 +164,7 @@ fn authorization_template_arg(
 }
 
 fn authorization_templates_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     templates: &[AuthorizationTemplate],
 ) -> Result<Argument, SchedulerError> {
     let templates = templates
@@ -177,7 +177,7 @@ fn authorization_templates_arg(
 }
 
 pub(super) fn failure_policy_arg(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     policy: FailurePolicy,
 ) -> Result<Argument, SchedulerError> {
     let target = match policy {
@@ -190,7 +190,7 @@ pub(super) fn failure_policy_arg(
 }
 
 pub(super) fn occurrence_args(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     occurrence: &PreparedOccurrence,
 ) -> Result<(Argument, Argument, Argument), SchedulerError> {
     let start_time_ms = transaction
@@ -206,7 +206,7 @@ pub(super) fn occurrence_args(
 }
 
 pub(super) fn recurrence_args(
-    transaction: &mut NexusPtbBuilder<'_>,
+    transaction: &mut NexusPtbBuilder,
     recurrence: &PreparedRecurrence,
 ) -> Result<(Argument, Argument, Argument, Argument, Argument), SchedulerError> {
     let (start_time_ms, deadline_ms, priority_fee_percentage) =

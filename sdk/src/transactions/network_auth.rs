@@ -14,7 +14,7 @@ use {
 };
 
 fn description_option(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
     let description = description
@@ -25,7 +25,7 @@ fn description_option(
 }
 
 fn proof_for_offchain_tool(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     tool: Argument,
     owner_cap: Argument,
 ) -> anyhow::Result<Argument> {
@@ -36,14 +36,14 @@ fn proof_for_offchain_tool(
 }
 
 fn proof_for_leader(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     leader_cap: Argument,
 ) -> anyhow::Result<Argument> {
     tx.call_target(network_auth_binding::prove_leader_target, vec![leader_cap])
 }
 
 fn register_key(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     binding: Argument,
     proof: Argument,
     public_key: [u8; 32],
@@ -65,12 +65,12 @@ fn register_key(
 }
 
 fn create_binding(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     proof: Argument,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
-    let objects = tx.objects();
-    let network_auth = tx.shared_object(&objects.network_auth, true)?;
+    let network_auth = tx.objects().network_auth.clone();
+    let network_auth = tx.shared_object(&network_auth, true)?;
     let description = description_option(tx, description)?;
 
     tx.call_target(
@@ -79,10 +79,7 @@ fn create_binding(
     )
 }
 
-fn share_binding(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    binding: Argument,
-) -> anyhow::Result<()> {
+fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> anyhow::Result<()> {
     tx.call_target(
         transfer_binding::public_share_object_target::<network_auth_binding::KeyBinding>,
         vec![binding],
@@ -92,7 +89,7 @@ fn share_binding(
 
 /// Composes a new tool binding and its initial key into the current transaction.
 pub(super) fn create_tool_binding_and_register_key(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     tool: Argument,
     owner_cap: Argument,
     public_key: [u8; 32],

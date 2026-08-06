@@ -3,7 +3,10 @@
 
 use {
     crate::{
-        move_bindings::sui_framework::table_vec::TableVec,
+        move_bindings::{
+            sui_framework::{table_vec::TableVec, versioned::Versioned},
+            VersionedAnchor,
+        },
         sui::{self, traits::FieldMaskUtil},
     },
     anyhow::{anyhow, bail, Context as _},
@@ -1006,6 +1009,99 @@ impl Crawler {
         Ok(Some(field.data.value))
     }
 
+    /// Fetch the payload selected by a [`Versioned`] container.
+    ///
+    /// The Sui framework stores each payload as a `u64` keyed dynamic field
+    /// below the container UID. The container version is therefore both the
+    /// schema discriminator and the dynamic field key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the schema is not the expected schema, when the
+    /// field cannot be fetched or decoded, or when the container points at a
+    /// payload that does not exist.
+    pub async fn get_versioned_state<V>(
+        &self,
+        state: &Versioned,
+        expected_schema: u64,
+    ) -> anyhow::Result<V>
+    where
+        V: DeserializeOwned,
+    {
+        let parent_id = state.id.id.bytes;
+        if state.version != expected_schema {
+            bail!(
+                "Versioned container '{parent_id}' uses unsupported state schema '{}'; expected \
+                 state schema '{expected_schema}'",
+                state.version,
+            );
+        }
+        self.get_dynamic_field_by_key(parent_id, state.version, &sui::types::TypeTag::U64)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "Versioned container '{parent_id}' has no payload for schema version '{}'",
+                    state.version
+                )
+            })
+    }
+
+    /// Fetch a stable object anchor and decode its selected payload.
+    ///
+    /// The returned [`Response`] keeps the anchor object metadata while its
+    /// `data` contains the current payload. This is the normal read path for
+    /// Nexus objects backed by `sui::versioned`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the anchor or payload cannot be decoded, when the
+    /// payload is absent, or when the embedded anchor ID differs from the
+    /// requested object ID.
+    pub async fn get_versioned_object<A, V>(
+        &self,
+        object_id: sui::types::Address,
+        expected_schema: u64,
+    ) -> anyhow::Result<Response<V>>
+    where
+        A: DeserializeOwned + VersionedAnchor,
+        V: DeserializeOwned,
+    {
+        let anchor = self.get_object::<A>(object_id).await?;
+        self.load_versioned_payload(anchor, expected_schema).await
+    }
+
+    /// Replace a fetched anchor value with its selected versioned payload.
+    ///
+    /// This form avoids fetching an anchor twice when it was discovered
+    /// through a dynamic object field.
+    pub async fn load_versioned_payload<A, V>(
+        &self,
+        anchor: Response<A>,
+        expected_schema: u64,
+    ) -> anyhow::Result<Response<V>>
+    where
+        A: VersionedAnchor,
+        V: DeserializeOwned,
+    {
+        let object_id = anchor.object_id;
+        let embedded_id = anchor.data.object_id();
+        if embedded_id != object_id {
+            bail!("Versioned anchor '{object_id}' contains embedded object ID '{embedded_id}'");
+        }
+        let data = self
+            .get_versioned_state::<V>(anchor.data.versioned_state(), expected_schema)
+            .await?;
+
+        Ok(Response {
+            object_id: anchor.object_id,
+            owner: anchor.owner,
+            version: anchor.version,
+            data,
+            digest: anchor.digest,
+            balance: anchor.balance,
+        })
+    }
+
     /// Fetch one RPC page of dynamic fields matching a key and value type.
     ///
     /// Fields from other namespaces are skipped. The returned cursor is the
@@ -1661,7 +1757,10 @@ pub struct Response<T> {
 impl<T> Response<T> {
     /// Check if the object is shared.
     pub fn is_shared(&self) -> bool {
-        matches!(self.owner, sui::types::Owner::Shared(_))
+        matches!(
+            self.owner,
+            sui::types::Owner::Shared(_) | sui::types::Owner::ConsensusAddress { .. }
+        )
     }
 
     /// Check if the object is immutable.
@@ -1673,7 +1772,8 @@ impl<T> Response<T> {
     /// otherwise.
     pub fn get_initial_version(&self) -> sui::types::Version {
         match self.owner {
-            sui::types::Owner::Shared(v) => v,
+            sui::types::Owner::Shared(version) => version,
+            sui::types::Owner::ConsensusAddress { start_version, .. } => start_version,
             _ => self.version,
         }
     }
@@ -1972,6 +2072,31 @@ mod tests {
         let mut object = object_with_bcs(object_ref, owner, value);
         object.set_object_type(object_type.to_string());
         object
+    }
+
+    #[tokio::test]
+    async fn versioned_state_rejects_unknown_schema_before_rpc() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(client));
+        let state_id = sui::types::Address::from_static("0x91");
+        let state = Versioned::new(
+            crate::move_bindings::sui_framework::object::UID::new(state_id),
+            2,
+        );
+
+        let error = crawler
+            .get_versioned_state::<TestValue>(&state, 1)
+            .await
+            .expect_err("unknown schema must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Versioned container '{state_id}' uses unsupported state schema '2'; expected \
+                 state schema '1'"
+            )
+        );
     }
 
     fn coin_object(

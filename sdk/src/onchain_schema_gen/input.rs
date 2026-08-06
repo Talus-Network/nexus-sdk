@@ -7,6 +7,7 @@ use {
         is_hidden_internal_tool_param,
         is_onchain_tool_result_param,
         is_proof_of_uid_param,
+        is_uid_requirements_param,
         is_workflow_dag_execution_param,
     },
     crate::{sui, types::OnchainToolMode},
@@ -19,7 +20,7 @@ use {
 ///
 /// This function fetches the Move module from the chain and analyzes the
 /// execute function's parameters to generate a JSON schema. It automatically
-/// skips internal parameters such as `ProofOfUID`, `ProvenValue<AgentVertexAuthorization>`,
+/// skips internal parameters such as `UIDRequirements`, `ProvenValue<AgentVertexAuthorization>`,
 /// and `TxContext`.
 pub async fn generate_input_schema(
     client: Arc<sui::grpc::Client>,
@@ -157,19 +158,19 @@ fn validate_execute_signature(
     let (mode, fixed_prefix_len) = match parameters {
         [authorization, worksheet, result, ..]
             if is_owned_param(authorization, is_agent_vertex_authorization_proof_param)
-                && is_owned_param(worksheet, is_proof_of_uid_param)
+                && is_owned_param(worksheet, is_uid_requirements_param)
                 && is_owned_param(result, is_onchain_tool_result_param) =>
         {
             (OnchainToolMode::WorkflowAuthorization, 3)
         }
         [worksheet, result, ..]
-            if is_owned_param(worksheet, is_proof_of_uid_param)
+            if is_owned_param(worksheet, is_uid_requirements_param)
                 && is_owned_param(result, is_onchain_tool_result_param) =>
         {
             (OnchainToolMode::Standard, 2)
         }
         _ => bail!(
-            "Onchain tool function '{module_name}::{execute_function}' must begin with owned ProofOfUID and OnchainToolResult parameters, optionally preceded by an owned AgentVertexAuthorization proof"
+            "Onchain tool function '{module_name}::{execute_function}' must begin with owned UIDRequirements and OnchainToolResult parameters, optionally preceded by an owned AgentVertexAuthorization proof"
         ),
     };
     if parameters[fixed_prefix_len..]
@@ -178,6 +179,7 @@ fn validate_execute_signature(
         .any(|body| {
             is_agent_vertex_authorization_proof_param(body)
                 || is_proof_of_uid_param(body)
+                || is_uid_requirements_param(body)
                 || is_onchain_tool_result_param(body)
         })
     {
@@ -222,6 +224,14 @@ mod tests {
         )
     }
 
+    fn owned_uid_requirements_signature() -> sui::grpc::OpenSignature {
+        sui::grpc::OpenSignature::default().with_body(
+            sui::grpc::OpenSignatureBody::default()
+                .with_type(Type::Datatype)
+                .with_type_name("0x42::proof_of_uid::UIDRequirements"),
+        )
+    }
+
     fn owned_authorization_signature() -> sui::grpc::OpenSignature {
         sui::grpc::OpenSignature::default().with_body(
             sui::grpc::OpenSignatureBody::default()
@@ -236,7 +246,7 @@ mod tests {
         sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
             .with_parameters(vec![
-                owned_proof_of_uid_signature(),
+                owned_uid_requirements_signature(),
                 owned_onchain_tool_result_signature(),
             ])
     }
@@ -246,7 +256,7 @@ mod tests {
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_authorization_signature(),
-                owned_proof_of_uid_signature(),
+                owned_uid_requirements_signature(),
                 owned_onchain_tool_result_signature(),
             ])
     }
@@ -272,7 +282,7 @@ mod tests {
         let descriptor = sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
             .with_parameters(vec![
-                owned_proof_of_uid_signature(),
+                owned_uid_requirements_signature(),
                 referenced_onchain_tool_result_signature(
                     sui::grpc::open_signature::Reference::Immutable,
                 ),
@@ -284,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_execute_signature_rejects_missing_worksheet() {
+    fn validate_execute_signature_rejects_missing_requirements() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
             .with_parameters(vec![owned_onchain_tool_result_signature()]);
@@ -293,11 +303,23 @@ mod tests {
     }
 
     #[test]
-    fn validate_execute_signature_rejects_misplaced_authorization() {
+    fn validate_execute_signature_rejects_proof_in_place_of_requirements() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_proof_of_uid_signature(),
+                owned_onchain_tool_result_signature(),
+            ]);
+        let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
+        assert!(err.to_string().contains("UIDRequirements"));
+    }
+
+    #[test]
+    fn validate_execute_signature_rejects_misplaced_authorization() {
+        let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_is_entry(true)
+            .with_parameters(vec![
+                owned_uid_requirements_signature(),
                 owned_authorization_signature(),
                 owned_onchain_tool_result_signature(),
             ]);
@@ -310,7 +332,7 @@ mod tests {
         let descriptor = sui::grpc::FunctionDescriptor::default()
             .with_is_entry(true)
             .with_parameters(vec![
-                owned_proof_of_uid_signature(),
+                owned_uid_requirements_signature(),
                 owned_onchain_tool_result_signature(),
                 owned_authorization_signature(),
             ]);
@@ -412,7 +434,7 @@ mod tests {
 
         // Verify schema structure.
         // The execute function has hidden internal parameters:
-        // execute(worksheet: &mut ProofOfUID, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
+        // execute(requirements: UIDRequirements, result: OnchainToolResult, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
         // After skipping hidden internal parameters, we should have:
         // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
         // - Parameter 1: increase_with (u64).

@@ -1,18 +1,12 @@
 # SDK Migration Guide
 
-This guide covers direct SDK migration after `nexus-sdk` moved to generated
-Move bindings. It is for code that imports `nexus-sdk` directly. Toolkit users
-should follow the Toolkit guide instead of depending on this crate unless they
-need SDK internals.
+This guide covers direct SDK migration after `nexus-sdk` moved to generated Move bindings. It is for code that imports `nexus-sdk` directly. Toolkit users should follow the Toolkit guide instead of depending on this crate unless they need SDK internals.
 
 ## Goal
 
-Move callers from old hand maintained SDK mirror types to the generated Move
-binding boundary, while keeping workflow code on the high level `NexusClient`
-actions where possible.
+Move callers from old hand maintained SDK mirror types to the generated Move binding boundary, while keeping workflow code on the high level `NexusClient` actions where possible.
 
-The changelog records every change. This guide gives the smallest path that
-preserves behavior.
+The changelog records every change. This guide gives the smallest path that preserves behavior.
 
 ## Model
 
@@ -25,18 +19,36 @@ The new SDK has four layers.
 | `transactions` | PTB builder layer | Use only when composing a custom transaction |
 | `NexusClient` actions | Workflow layer | Prefer this for agent, skill, scheduler, payment, and execution flows |
 
-The main invariant is simple: every value that crosses the Move boundary must
-come from `nexus_sdk::move_bindings` or from an SDK helper that returns such a
-value. Old local mirror types are no longer the authority.
+The main invariant is simple: every value that crosses the Move boundary must come from `nexus_sdk::move_bindings` or from an SDK helper that returns such a value. Old local mirror types are no longer the authority.
+
+The active `Protocol` root is the authority for package and shared object bindings. A standard `NexusClient` action resolves that configuration once at the start of an operation and uses the resulting immutable snapshot throughout the operation.
+
+## Protocol Resolution
+
+Build normal clients from the stable `Protocol` object rather than from a saved set of package and shared object references. Every standard action resolves the active supported protocol before reading state or building a transaction, then uses one immutable snapshot for all nested work.
+
+`NexusClient::refresh_protocol` returns a new client when explicit snapshot control is needed. It does not mutate the original client.
+
+Creating a custom `NexusTransaction` is an operation boundary. Call `client.transaction().await?`; the returned transaction owns the resolved snapshot and uses it for every call added to that transaction.
+
+If activation occurs after an operation has been built but before submission, submission returns `NexusError::StaleProtocol`. The next standard action uses the active protocol automatically. The SDK does not repeat the failed action because an ambiguous submission may already have executed. The caller must inspect transaction or object state before deciding whether a retry is safe.
+
+`NexusError::UnsupportedProtocolVersion` means the active protocol is newer than this SDK understands. Install a newer SDK or CLI. Selecting an older live protocol is not supported.
+
+Protocol support does not imply that the SDK can decode every future object schema. Each versioned state read checks the exact schema before decoding it. `NexusError::UnsupportedStateSchema` means the operation requires a state binding that this SDK does not contain. Install the SDK built for that state schema. The SDK never attempts to decode the payload as an older type.
+
+The initial NetworkAuth reader supports schema one and rejects schema two before decoding. Supporting a new schema requires its generated binding, an explicit projection in the reader, and a consumer release whose protocol support includes that change. The end to end release fixture prepares such a consumer for schema two without changing the initial release boundary.
 
 ## Migration Order
 
-1. Replace imports from removed mirror modules with generated bindings.
-2. Rebuild TAP skill inputs around `TapPublishArtifact`.
-3. Replace endpoint revision flows with current skill update flows.
-4. Replace scheduled execution helpers with scheduled task APIs.
-5. Replace old payment source bytes with typed payment source helpers.
-6. Run SDK checks, then fix any remaining compile errors at the import boundary.
+1. Build the client from the stable `Protocol` root.
+2. Replace imports from removed mirror modules with generated bindings.
+3. Move Tool registration and payment code from `gas` to `tool`.
+4. Rebuild TAP skill inputs around `TapPublishArtifact`.
+5. Replace endpoint revision flows with current skill update flows.
+6. Replace scheduled execution helpers with scheduled task APIs.
+7. Replace old payment source bytes with typed payment source helpers.
+8. Run SDK checks, then fix any remaining compile errors at the import boundary.
 
 ## Import Map
 
@@ -50,6 +62,12 @@ value. Old local mirror types are no longer the authority.
 | Shared object requirement fields in TAP artifacts | No direct replacement in active TAP flows |
 | Scheduled execution request helpers | `TaskSpec` plus `Schedule` through `NexusClient::scheduler()` |
 | `WorkflowActions::inspect_execution(execution, timeout)` | `WorkflowActions::inspect_execution(execution, InspectExecutionOptions { timeout, poll_interval })` |
+| `move_bindings::gas` | `move_bindings::tool` |
+| Nexus fee operations through `NexusClient::gas()` | `NexusClient::network()` |
+| Tool price and ticket operations through gas APIs | `NexusClient::tool()` |
+| Nexus GasService transaction builders | `transactions::tool_cashier` or `transactions::network` according to state ownership |
+| Shared `GasService` Tool payment state | The `ToolCashier` object derived from each `Tool` |
+| `VerifierRegistry` | Tool verifier records in `ToolRegistry` and registered keys in `NetworkAuth` |
 
 Use this import style for new TAP code:
 
@@ -66,9 +84,7 @@ use nexus_sdk::{
 
 ## TAP Skill Migration
 
-Old TAP skill state was centered on endpoint revisions, config digests, shared
-objects, and vertex authorization schemas. The new model is centered on a
-current skill record:
+Old TAP skill state was centered on endpoint revisions, config digests, shared objects, and vertex authorization schemas. The new model is centered on a current skill record:
 
 ```text
 agent_id + skill_id
@@ -77,8 +93,7 @@ agent_id + skill_id
     -> skill requirements
 ```
 
-Build skill inputs as a `SkillConfig`, then derive a `TapPublishArtifact` after
-the DAG is published.
+Build skill inputs as a `SkillConfig`, then derive a `TapPublishArtifact` after the DAG is published.
 
 ```rust
 let requirements = SkillRequirement {
@@ -107,8 +122,7 @@ let agent = tap.create_agent().await?;
 let skill = tap.register_skill(agent.agent_id, &artifact).await?;
 ```
 
-Update an existing skill by publishing the new DAG and applying the new
-artifact:
+Update an existing skill by publishing the new DAG and applying the new artifact:
 
 ```rust
 let update = tap
@@ -127,16 +141,32 @@ let user_policy = SkillPaymentPolicy::user_funded();
 let agent_policy = SkillPaymentPolicy::agent_funded(10_000_000);
 ```
 
-Payment source bytes should be derived from `PaymentSourceKind` rather than
-assembled manually.
+Payment source bytes should be derived from `PaymentSourceKind` rather than assembled manually.
 
 ```rust
 let user_source = bcs::to_bytes(&PaymentSourceKind::user_funded(user_address))?;
 let agent_source = bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id))?;
 ```
 
-For the common user funded path, the SDK also accepts an empty source where the
-active sender is the payer.
+For the common user funded path, the SDK also accepts an empty source where the active sender is the payer.
+
+Tool invocation price, earnings, settings, and tickets now belong to the Tool domain. Every registered Tool has one derived `ToolCashier` object. Tool registration returns an `OverTool` owner capability and a separate `OverToolCashier` administration capability.
+
+Use the Tool owner capability for Tool identity and earnings. Use the cashier administration capability for invocation price and ticket configuration.
+
+```rust
+client
+    .tool()
+    .set_invocation_cost(&tool_fqn, cashier_admin, 1_000_000)
+    .await?;
+
+client
+    .tool()
+    .enable_expiry_tickets(&tool_fqn, cashier_admin, 100_000)
+    .await?;
+```
+
+`transactions::gas` now contains only Sui transaction gas helpers such as depositing SUI into an address balance. Nexus network economics live in `transactions::network`. Tool cashier builders live in `transactions::tool_cashier`.
 
 ## Scheduled Task Migration
 
@@ -146,10 +176,7 @@ Scheduling now has one public request model:
 Task -> Schedule -> Occurrence
 ```
 
-Build work and funding with `TaskSpec`. Build timing with `Schedule`,
-`Occurrence`, and `Recurrence`. Use `create_task` for an empty composable Task,
-or `schedule_task` to create a Task and apply a nonempty complete Schedule in
-one transaction.
+Build work and funding with `TaskSpec`. Build timing with `Schedule`, `Occurrence`, and `Recurrence`. Use `create_task` for an empty composable Task, or `schedule_task` to create a Task and apply a nonempty complete Schedule in one transaction.
 
 ```rust
 use nexus_sdk::{
@@ -185,8 +212,7 @@ let snapshot = client
     .await?;
 ```
 
-Inspect Tasks and occurrences through their client handles. Occurrence
-snapshots remain available after settlement and after the Task is closed.
+Inspect Tasks and occurrences through their client handles. Occurrence snapshots remain available after settlement and after the Task is closed.
 
 ## Workflow Result Migration
 
@@ -200,18 +226,13 @@ On chain tool result flows now split producer work from settlement work.
 | Settle a committed result | `WorkflowActions::settle_committed_tool_result_for_walk` |
 | Resolve an expired walk | `WorkflowActions::resolve_expired_walk` |
 
-There is no SDK finalize helper in the active flow. Finalization happens in the
-result object flow, and settlement consumes the finalized or committed state.
+There is no SDK finalize helper in the active flow. Finalization happens in the result object flow, and settlement consumes the finalized or committed state.
 
 ## Binding Regeneration
 
-Generated bindings are built from committed normalized Move package IR under
-`sdk/src/move_bindings/ir/*.json`. Normal SDK builds render Rust bindings from
-that IR through `build.rs`.
+Generated bindings are built from committed normalized Move package IR under `sdk/src/move_bindings/ir/*.json`. Normal SDK builds render Rust bindings from that IR through `build.rs`.
 
-Normal regeneration refreshes the five Nexus package files and preserves the reduced Move standard
-library and Sui framework support IR. Update those framework files explicitly only when the pinned
-Sui version changes.
+Normal regeneration refreshes the six Nexus package files and preserves the reduced Move standard library and Sui framework support IR. Update those framework files explicitly only when the pinned Sui version changes.
 
 Regenerate the IR only when the published Move ABI changes:
 
@@ -219,11 +240,9 @@ Regenerate the IR only when the published Move ABI changes:
 just sdk rebind ../nexus/sui/bin/target/objects.localnet.toml http://127.0.0.1:9000
 ```
 
-This requires a published objects TOML and a running Sui gRPC endpoint. See the
-SDK just recipe for exact defaults [Rebind command].
+This requires a published objects TOML and a running Sui gRPC endpoint. See the SDK just recipe for exact defaults [Rebind command].
 
-Sui package metadata does not contain function parameter names. The command therefore keeps the
-network derived `argN` names unless a matching Move source tree is provided explicitly:
+Sui package metadata does not contain function parameter names. The command therefore keeps the network derived `argN` names unless a matching Move source tree is provided explicitly:
 
 ```sh
 just sdk rebind \
@@ -232,15 +251,9 @@ just sdk rebind \
   ../nexus/sui
 ```
 
-The source tree only supplies parameter names. Signatures, types, and abilities still come from the
-selected network package. Source names are trusted metadata and are not proof that the local source
-produced the published bytecode.
+The source tree only supplies parameter names. Signatures, types, and abilities still come from the selected network package. Source names are trusted metadata and are not proof that the local source produced the published bytecode.
 
-Before writing the committed IR, regeneration replaces current and original Nexus package IDs with
-stable SDK binding slots. This includes package IDs in cross package type references, so rebinding
-the same ABI from another deployment produces the same canonical IR. The package object version is
-also normalized because the renderer does not consume it. Runtime `NexusObjects` supplies current
-package IDs for calls and original package IDs for type identity.
+Before writing the committed IR, regeneration replaces current and original Nexus package IDs with stable SDK binding slots. This includes package IDs in cross package type references, so rebinding the same ABI from another deployment produces the same canonical IR. The package object version is also normalized because the renderer does not consume it. Runtime `NexusObjects` supplies current package IDs for calls and original package IDs for type identity.
 
 ## Checks
 

@@ -1,8 +1,8 @@
 use {
-    super::{args::RecurrenceArgs, RecurrenceCommand},
+    super::{args::RecurrenceArgs, output, RecurrenceCommand},
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
@@ -40,6 +40,7 @@ async fn set(
         "Recurrence set for Task: {task_id}",
         task_id = receipt.task_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_task_receipt(&receipt, None));
     json_output(&receipt)
 }
 
@@ -53,5 +54,6 @@ async fn clear(task_id: sui::types::Address, gas: GasArgs) -> AnyResult<(), Nexu
         "Recurrence cleared for Task: {task_id}",
         task_id = receipt.task_id().to_string().truecolor(100, 100, 100)
     );
+    human_output(&output::render_task_receipt(&receipt, None));
     json_output(&receipt)
 }

@@ -18,6 +18,15 @@ pub(crate) use {
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+pub(crate) const CLI_CONF_PATH_ENV: &str = "NEXUS_CLI_CONF";
+
+pub(crate) fn cli_conf_path() -> AnyResult<PathBuf> {
+    match std::env::var(CLI_CONF_PATH_ENV) {
+        Ok(path) => Ok(PathBuf::from(path)),
+        Err(std::env::VarError::NotPresent) => expand_tilde(CLI_CONF_PATH),
+        Err(error) => Err(anyhow!("Could not read {CLI_CONF_PATH_ENV}: {error}")),
+    }
+}
 
 /// Various Nexus RPC URLs.
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev/";
@@ -66,7 +75,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
     pub(crate) over_tool: sui::types::Address,
-    pub(crate) over_gas: Option<sui::types::Address>,
+    pub(crate) cashier_admin: Option<sui::types::Address>,
 }
 
 /// Reusable Sui gas command args.
@@ -75,7 +84,7 @@ pub(crate) struct GasArgs {
     #[arg(
         long = "sui-gas-coin",
         short = 'g',
-        help = "Optional gas coin object ID. Address balance gas is used when omitted.",
+        help = "Optional owned gas coin object ID. Most commands use address balance gas when omitted.",
         help_heading = "Gas",
         value_name = "OBJECT_ID"
     )]

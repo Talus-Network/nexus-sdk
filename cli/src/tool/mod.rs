@@ -1,3 +1,4 @@
+mod cashier;
 mod tool_auth;
 mod tool_claim_collateral;
 mod tool_configure_verifier;
@@ -13,6 +14,7 @@ mod tool_validate;
 
 use {
     crate::{prelude::*, tool::tool_update_timeout::update_tool_timeout},
+    cashier::{handle_cashier, CashierCommand},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
     tool_configure_verifier::configure_verifier,
@@ -176,7 +178,7 @@ pub(crate) enum RegisterCommand {
         #[arg(
             long = "invocation-cost",
             short = 'i',
-            help = "What is the cost of invoking this tool in MIST.",
+            help = "The price of one tool invocation in MIST.",
             default_value = "0",
             value_name = "MIST"
         )]
@@ -252,6 +254,14 @@ pub(crate) enum RegisterCommand {
             value_name = "OBJECT_ID"
         )]
         collateral_coin: Option<sui::types::Address>,
+
+        #[arg(
+            long = "invocation-cost",
+            help = "Cost of one tool invocation in MIST",
+            default_value_t = 0,
+            value_name = "MIST"
+        )]
+        invocation_cost: u64,
 
         #[arg(
             long = "no-save",
@@ -373,6 +383,9 @@ pub(crate) enum ToolCommand {
         tool_type: RegisterCommand,
     },
 
+    #[command(subcommand, about = "Manage payment tickets through a tool cashier")]
+    Cashier(CashierCommand),
+
     #[command(about = "Unregister a tool identified by its FQN.")]
     Unregister {
         #[arg(
@@ -422,26 +435,26 @@ pub(crate) enum ToolCommand {
         gas: GasArgs,
     },
 
-    #[command(about = "Set a single invocation cost of a tool in MIST")]
+    #[command(about = "Set the price of one tool invocation in MIST")]
     SetInvocationCost {
         #[arg(
             long = "tool-fqn",
             short = 't',
-            help = "The FQN of the tool to set the invocation cost for.",
+            help = "The fully qualified name (FQN) of the tool.",
             value_name = "FQN"
         )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "owner-cap",
-            short = 'o',
-            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
+            long = "cashier-admin",
+            short = 'a',
+            help = "The tool cashier admin capability object ID. Uses the saved capability when omitted.",
             value_name = "OBJECT_ID"
         )]
-        owner_cap: Option<sui::types::Address>,
+        cashier_admin: Option<sui::types::Address>,
         #[arg(
             long = "invocation-cost",
             short = 'i',
-            help = "What is the cost of invoking this tool in MIST.",
+            help = "The price of one tool invocation in MIST.",
             default_value = "0",
             value_name = "MIST"
         )]
@@ -456,7 +469,7 @@ pub(crate) enum ToolCommand {
     },
 
     #[command(
-        about = "Inspect a registered tool by FQN. Returns the derived Tool/ToolGas IDs and the full on-chain `Tool` record (HTTP or Sui variant) when it exists."
+        about = "Inspect a registered tool by FQN. Returns the derived Tool and ToolCashier IDs and the full onchain `Tool` record when it exists."
     )]
     Inspect {
         #[arg(
@@ -551,6 +564,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 timeout,
                 tool_witness_id,
                 collateral_coin,
+                invocation_cost,
                 no_save,
                 gas,
             } => {
@@ -562,6 +576,7 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     timeout,
                     tool_witness_id,
                     collateral_coin,
+                    invocation_cost,
                     no_save,
                     gas.sui_gas_coin,
                     gas.sui_gas_budget,
@@ -569,6 +584,9 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 .await
             }
         },
+
+        // == `$ nexus tool cashier` ==
+        ToolCommand::Cashier(command) => handle_cashier(command).await,
 
         // == `$ nexus tool unregister` ==
         ToolCommand::Unregister {
@@ -600,13 +618,13 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool set-invocation-cost` ==
         ToolCommand::SetInvocationCost {
             tool_fqn,
-            owner_cap,
+            cashier_admin,
             invocation_cost,
             gas,
         } => {
             set_tool_invocation_cost(
                 tool_fqn,
-                owner_cap,
+                cashier_admin,
                 invocation_cost,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,

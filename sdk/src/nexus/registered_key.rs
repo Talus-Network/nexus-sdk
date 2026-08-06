@@ -109,23 +109,6 @@ pub fn registered_key_auxiliary(
     )
 }
 
-pub fn encode_registered_key_auxiliary(
-    auxiliary: &RegisteredKeyAuxiliary,
-) -> anyhow::Result<Vec<u8>> {
-    validate_registered_key_auxiliary(auxiliary)?;
-    bcs::to_bytes(auxiliary).map_err(Into::into)
-}
-
-pub fn decode_registered_key_auxiliary(bytes: &[u8]) -> anyhow::Result<RegisteredKeyAuxiliary> {
-    let auxiliary: RegisteredKeyAuxiliary =
-        bcs::from_bytes(bytes).context("RegisteredKey auxiliary is not exact BCS")?;
-    validate_registered_key_auxiliary(&auxiliary)?;
-    if bcs::to_bytes(&auxiliary)? != bytes {
-        bail!("RegisteredKey auxiliary is not canonically encoded");
-    }
-    Ok(auxiliary)
-}
-
 pub fn validate_registered_key_auxiliary(auxiliary: &RegisteredKeyAuxiliary) -> anyhow::Result<()> {
     if auxiliary.input_hash.len() != SHA256_LEN {
         bail!("RegisteredKey input hash must be {SHA256_LEN} bytes");
@@ -174,19 +157,13 @@ mod tests {
     }
 
     #[test]
-    fn auxiliary_roundtrips_and_rejects_wrong_lengths_or_trailing_bytes() {
-        let auxiliary = registered_key_auxiliary([1; 32], [4; 32], [2; 64], [3; 64]);
-        let encoded = encode_registered_key_auxiliary(&auxiliary).unwrap();
-        assert_eq!(
-            decode_registered_key_auxiliary(&encoded).unwrap(),
-            auxiliary
-        );
-
-        let mut trailing = encoded;
-        trailing.push(0);
-        assert!(decode_registered_key_auxiliary(&trailing).is_err());
+    fn auxiliary_validation_rejects_wrong_lengths() {
+        validate_registered_key_auxiliary(&registered_key_auxiliary(
+            [1; 32], [4; 32], [2; 64], [3; 64],
+        ))
+        .unwrap();
         assert!(
-            encode_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
+            validate_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
                 vec![1; 31],
                 vec![4; 32],
                 vec![2; 64],
@@ -195,7 +172,7 @@ mod tests {
             .is_err()
         );
         assert!(
-            encode_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
+            validate_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
                 vec![1; 32],
                 vec![4; 31],
                 vec![2; 64],

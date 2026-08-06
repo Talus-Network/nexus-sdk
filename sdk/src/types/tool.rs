@@ -1,14 +1,19 @@
-//! Nexus helpers for the generated on chain [`crate::move_bindings::registry::tool_registry::Tool`]
+//! Nexus helpers for the generated on chain [`crate::move_bindings::tool::tool_registry::Tool`]
 //! representation.
 //!
 //! The persisted object shape is generated from Move. This module must not
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool, ToolRef};
+pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV1};
+/// Current logical Tool state.
+///
+/// [`ToolAnchor`] is the stable object shell. Most callers operate on the
+/// selected state payload, so this alias preserves the public Tool model.
+pub type Tool = ToolStateV1;
 use {
     crate::{
-        move_bindings::{move_std::ascii, registry::tool_registry},
+        move_bindings::{move_std::ascii, tool::tool_registry},
         sui,
         ToolFqn,
     },
@@ -19,23 +24,25 @@ use {
 /// Registry mode derived from an onchain Tool `execute` signature.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OnchainToolMode {
-    /// `execute` begins with `ProofOfUID` and `OnchainToolResult`.
+    /// `execute` begins with `UIDRequirements` and `OnchainToolResult`.
     Standard,
     /// `execute` begins with an Agent vertex authorization proof.
     WorkflowAuthorization,
 }
 
-impl Tool {
-    /// Derive a `Tool` object ID from the `ToolRegistry` ID and tool FQN.
+impl ToolAnchor {
+    pub fn object_id(&self) -> sui::types::Address {
+        self.id.address()
+    }
+}
+
+impl ToolStateV1 {
+    /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
         fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::Address> {
         crate::move_bindings::derive_tool_id(registry_id, fqn)
-    }
-
-    pub fn object_id(&self) -> sui::types::Address {
-        self.id.address()
     }
 
     pub fn registry_id(&self) -> sui::types::Address {
@@ -202,9 +209,13 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool(reference: ToolRef, input_schema: Vec<u8>, output_schema: Vec<u8>) -> Tool {
-        Tool {
-            id: crate::move_bindings::sui_framework::object::UID::new(sui_mocks::mock_sui_address()),
+    fn fixture_tool(
+        reference: ToolRef,
+        input_schema: Vec<u8>,
+        output_schema: Vec<u8>,
+    ) -> ToolStateV1 {
+        ToolStateV1 {
+            minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 sui_mocks::mock_sui_address(),
             ),
@@ -248,7 +259,6 @@ mod tests {
     fn generated_tool_bcs_roundtrips_and_preserves_schema_bytes() {
         let tool = fixture_tool(
             ToolRef::Http {
-                _variant_name: ascii("Http"),
                 url: b"https://example.com/tool".to_vec(),
             },
             b"input schema bytes".to_vec(),
@@ -256,7 +266,8 @@ mod tests {
         );
 
         let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
-        let decoded: Tool = bcs::from_bytes(&bytes).expect("generated Tool deserializes as BCS");
+        let decoded: ToolStateV1 =
+            bcs::from_bytes(&bytes).expect("generated Tool state deserializes as BCS");
 
         assert_eq!(
             decoded.fqn_string().unwrap(),
@@ -274,7 +285,6 @@ mod tests {
     #[test]
     fn tool_ref_helpers_decode_http_and_sui() {
         let http_ref = ToolRef::Http {
-            _variant_name: ascii("Http"),
             url: b"https://example.com/tool".to_vec(),
         };
         assert_eq!(
@@ -290,7 +300,6 @@ mod tests {
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
         );
         let sui_ref = ToolRef::Sui {
-            _variant_name: ascii("Sui"),
             package_address,
             module_name: ascii("my_tool_module"),
             tool_witness_id: crate::move_bindings::sui_framework::object::ID::new(tool_witness_id),

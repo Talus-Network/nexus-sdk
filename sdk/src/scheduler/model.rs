@@ -169,6 +169,17 @@ impl TaskOperation {
             Self::AgentSkill { agent_id, .. } => Some(*agent_id),
         }
     }
+
+    /// Returns the DAG selected directly by this operation.
+    ///
+    /// An Agent skill with no selection resolves its DAG from the active skill
+    /// registration during dispatch.
+    pub const fn selected_dag_id(&self) -> Option<sui::types::Address> {
+        match self {
+            Self::DefaultDag { dag_id } => Some(*dag_id),
+            Self::AgentSkill { selected_dag, .. } => *selected_dag,
+        }
+    }
 }
 
 /// Authorization material attached to each execution of an Agent skill.

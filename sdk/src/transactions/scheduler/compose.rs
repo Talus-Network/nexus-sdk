@@ -13,16 +13,16 @@ use {
     sui_sdk_types::Argument,
 };
 
-pub(crate) struct TaskDraftCompiler<'builder, 'objects> {
-    transaction: &'builder mut NexusPtbBuilder<'objects>,
+pub(crate) struct TaskDraftCompiler<'builder> {
+    transaction: &'builder mut NexusPtbBuilder,
     task: Argument,
     pointer: Argument,
     authority: ResolvedAuthority,
 }
 
-impl<'builder, 'objects> TaskDraftCompiler<'builder, 'objects> {
+impl<'builder> TaskDraftCompiler<'builder> {
     pub(crate) fn create(
-        transaction: &'builder mut NexusPtbBuilder<'objects>,
+        transaction: &'builder mut NexusPtbBuilder,
         task: &PreparedTask,
     ) -> Result<Self, SchedulerError> {
         let created = create_unshared_task(transaction, task)?;

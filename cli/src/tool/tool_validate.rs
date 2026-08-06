@@ -175,7 +175,7 @@ pub(crate) async fn validate_off_chain_tool_with_client(
 
 /// Validate an on-chain tool based on the provided ident.
 pub(crate) async fn validate_on_chain_tool(_ident: String) -> AnyResult<ToolMeta, NexusCliError> {
-    todo!("TODO: <https://github.com/Talus-Network/nexus-next/issues/96>")
+    todo!("TODO: <https://github.com/Talus-Network/nexus/issues/96>")
 }
 
 pub(crate) fn output_schema_has_top_level_one_of(meta: &ToolMeta) -> anyhow::Result<bool> {

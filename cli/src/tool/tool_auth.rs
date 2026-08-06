@@ -6,15 +6,10 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::{
-            build_sui_grpc_client,
-            get_nexus_client,
-            get_nexus_objects,
-            get_read_only_nexus_client,
-        },
+        sui::{get_nexus_client, get_read_only_nexus_client},
     },
     nexus_sdk::{
-        nexus::network_auth::NetworkAuthReader,
+        nexus::client::NexusClient,
         signed_http::{
             keys::{parse_ed25519_signing_key, Ed25519Keypair},
             v2::wire::AllowedLeadersFileV1,
@@ -298,21 +293,22 @@ enum AllowedLeadersSyncOutcome {
 
 #[derive(Clone)]
 struct AllowedLeadersFileSyncerV1 {
-    reader: NetworkAuthReader,
+    client: NexusClient,
     out_path: PathBuf,
 }
 
 impl AllowedLeadersFileSyncerV1 {
-    fn new(reader: NetworkAuthReader, out_path: impl Into<PathBuf>) -> Self {
+    fn new(client: NexusClient, out_path: impl Into<PathBuf>) -> Self {
         Self {
-            reader,
+            client,
             out_path: out_path.into(),
         }
     }
 
     async fn sync_once(&self) -> AnyResult<AllowedLeadersSyncOutcome, NexusCliError> {
         let file = self
-            .reader
+            .client
+            .network_auth()
             .export_allowed_leaders_file_v1_for_all_leaders()
             .await
             .map_err(NexusCliError::Nexus)?;
@@ -385,19 +381,8 @@ async fn sync_allowed_leaders(
         )));
     }
 
-    let mut conf = CliConf::load().await.unwrap_or_default();
-    let client = build_sui_grpc_client(&conf).await?;
-    let rpc_url = client.uri().to_string();
-    let objects = get_nexus_objects(&mut conf).await?;
-
-    let reader = NetworkAuthReader::from_rpc_url(
-        &rpc_url,
-        objects.registry_pkg_id,
-        *objects.network_auth.object_id(),
-    )
-    .map_err(NexusCliError::Nexus)?;
-
-    let syncer = AllowedLeadersFileSyncerV1::new(reader, out.clone());
+    let client = get_read_only_nexus_client().await?;
+    let syncer = AllowedLeadersFileSyncerV1::new(client, out.clone());
 
     if once {
         let handle = loading!("Syncing allowlist...");
@@ -518,13 +503,13 @@ mod tests {
     async fn sync_once_writes_allowlist_without_wallet_or_owned_coins() {
         let out_dir = tempfile::tempdir().expect("temporary output directory");
         let out_path = out_dir.path().join("allowed-leaders.json");
-        let reader = nexus_mocks::mock_network_auth_reader_without_wallet();
-        let syncer = AllowedLeadersFileSyncerV1::new(reader, out_path.clone());
+        let client = nexus_mocks::mock_network_auth_client_without_wallet().await;
+        let syncer = AllowedLeadersFileSyncerV1::new(client, out_path.clone());
 
         let outcome = syncer
             .sync_once()
             .await
-            .expect("direct reader sync should not require wallet configuration");
+            .expect("read only client sync should not require wallet configuration");
         let file: AllowedLeadersFileV1 = serde_json::from_slice(
             &std::fs::read(out_path).expect("allowlist output should be written"),
         )

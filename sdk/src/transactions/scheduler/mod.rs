@@ -5,6 +5,7 @@ mod command;
 mod compose;
 mod encode;
 
+pub use command::{dispatch_occurrence_ptb, expire_occurrence_with_gas_charge_ptb};
 pub(crate) use {
     authority::ResolvedAuthority,
     command::{

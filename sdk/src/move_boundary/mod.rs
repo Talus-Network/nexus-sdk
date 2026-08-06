@@ -13,7 +13,10 @@ use crate::{
     types::NexusObjects,
 };
 #[cfg(feature = "transactions")]
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 #[cfg(feature = "transactions")]
 use sui_move_call::CallTarget;
 #[cfg(feature = "transactions")]
@@ -55,14 +58,14 @@ pub(crate) fn publish_dependency_ids_or_framework_defaults(
 /// define package identity. Generated call targets and generic Move types are
 /// resolved through that same deployment.
 #[cfg(feature = "transactions")]
-pub struct NexusPtbBuilder<'a> {
-    objects: &'a NexusObjects,
+pub struct NexusPtbBuilder {
+    objects: Arc<NexusObjects>,
     tx: PtbBuilder,
 }
 
 #[cfg(feature = "transactions")]
-impl<'a> NexusPtbBuilder<'a> {
-    pub(crate) fn new(objects: &'a NexusObjects) -> Self {
+impl NexusPtbBuilder {
+    pub(crate) fn new(objects: Arc<NexusObjects>) -> Self {
         Self {
             objects,
             tx: PtbBuilder::new(),
@@ -70,8 +73,8 @@ impl<'a> NexusPtbBuilder<'a> {
     }
 
     /// Deployment object/package IDs associated with this PTB.
-    pub fn objects(&self) -> &'a NexusObjects {
-        self.objects
+    pub fn objects(&self) -> &NexusObjects {
+        self.objects.as_ref()
     }
 
     /// Add a generated Move call target to this PTB.
@@ -80,7 +83,7 @@ impl<'a> NexusPtbBuilder<'a> {
         target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
         arguments: Vec<Argument>,
     ) -> anyhow::Result<Argument> {
-        let target = crate::move_bindings::with_nexus_scope(self.objects, target)?;
+        let target = crate::move_bindings::with_nexus_scope(self.objects.as_ref(), target)?;
         Ok(self.tx.call_target(target, arguments)?)
     }
 
@@ -162,7 +165,8 @@ impl<'a> NexusPtbBuilder<'a> {
     /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
     /// be built.
     pub fn withdraw_sui_coin(&mut self, amount: u64) -> Result<Argument, BuildError> {
-        let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
+        let sui_type =
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
         self.withdraw_coin_from_address_balance(sui_type, amount)
     }
 
@@ -197,7 +201,8 @@ impl<'a> NexusPtbBuilder<'a> {
         coin: Argument,
         recipient: sui::types::Address,
     ) -> anyhow::Result<()> {
-        let sui_type = crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects);
+        let sui_type =
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
         self.send_coin_to_address_balance(sui_type, coin, recipient)
     }
 
@@ -403,7 +408,7 @@ impl<'a> NexusPtbBuilder<'a> {
     where
         T: sui_move::MoveType,
     {
-        let element_type = crate::move_bindings::type_tag::<T>(self.objects);
+        let element_type = crate::move_bindings::type_tag::<T>(self.objects.as_ref());
         self.tx.make_move_vector(Some(element_type), elements)
     }
 
@@ -412,7 +417,9 @@ impl<'a> NexusPtbBuilder<'a> {
     where
         T: sui_move::MoveType,
     {
-        crate::move_bindings::with_nexus_scope(self.objects, || option::<T>(&mut self.tx, value))
+        crate::move_bindings::with_nexus_scope(self.objects.as_ref(), || {
+            option::<T>(&mut self.tx, value)
+        })
     }
 
     /// Finish and return the canonical programmable transaction.
@@ -427,17 +434,17 @@ impl<'a> NexusPtbBuilder<'a> {
 /// scoped builder type used by reusable fragments, while this function owns package scoping and
 /// finalization.
 #[cfg(feature = "transactions")]
-pub fn ptb<'a>(
-    objects: &'a NexusObjects,
-    build: impl FnOnce(&mut NexusPtbBuilder<'a>) -> anyhow::Result<()>,
+pub fn ptb(
+    objects: &NexusObjects,
+    build: impl FnOnce(&mut NexusPtbBuilder) -> anyhow::Result<()>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    let mut tx = NexusPtbBuilder::new(objects);
+    let mut tx = NexusPtbBuilder::new(Arc::new(objects.clone()));
     crate::move_bindings::with_nexus_scope(objects, || build(&mut tx))?;
     Ok(tx.finish())
 }
 
 #[cfg(feature = "transactions")]
-impl Deref for NexusPtbBuilder<'_> {
+impl Deref for NexusPtbBuilder {
     type Target = PtbBuilder;
 
     fn deref(&self) -> &Self::Target {
@@ -446,7 +453,7 @@ impl Deref for NexusPtbBuilder<'_> {
 }
 
 #[cfg(feature = "transactions")]
-impl DerefMut for NexusPtbBuilder<'_> {
+impl DerefMut for NexusPtbBuilder {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.tx
     }
@@ -478,7 +485,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::agent::FixedTool,
-                workflow::gas::{deescalate_target, GasService},
+                tool::tool_cashier::{settle_payment_vertex_target, ToolCashier},
             },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
@@ -496,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn derives_tool_object_ids_match_snapshots() {
+    fn derives_tool_and_payment_ids_from_their_respective_parents() {
         let registry_id = sui::types::Address::from_static(
             "0x940f0dd81d4e4ae2cd476ff61ca5699e0d9356e1874d6c4ba3a5bdf28e67b9e9",
         );
@@ -508,12 +515,10 @@ mod tests {
                 "0x63152163bf12d54f38742656cba5d37a05e89d3ef5df7e9d22062e7bff0aed35"
             )
         );
-        assert_eq!(
-            crate::move_bindings::derive_tool_gas_id(registry_id, &fqn).unwrap(),
-            sui::types::Address::from_static(
-                "0x63152163bf12d54f38742656cba5d37a05e89d3ef5df7e9d22062e7bff0aed35"
-            )
-        );
+        let add_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
+        let add_payment =
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), add_tool).unwrap();
+        assert_ne!(add_payment, add_tool);
 
         let fqn = crate::fqn!("xyz.taluslabs.math.i64.mul@1");
         assert_eq!(
@@ -522,12 +527,11 @@ mod tests {
                 "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da"
             )
         );
-        assert_eq!(
-            crate::move_bindings::derive_tool_gas_id(registry_id, &fqn).unwrap(),
-            sui::types::Address::from_static(
-                "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da"
-            )
-        );
+        let mul_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
+        let mul_payment =
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), mul_tool).unwrap();
+        assert_ne!(mul_payment, mul_tool);
+        assert_ne!(mul_payment, add_payment);
     }
 
     #[test]
@@ -558,27 +562,59 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
-            workflow_pkg_id: addr(0x44),
-            scheduler_pkg_id: addr(0x55),
-            primitives_pkg_id: addr(0x11),
-            interface_pkg_id: addr(0x22),
+            protocol_version: 1,
+            protocol: obj(10),
+            packages: crate::types::NexusPackages {
+                primitives: crate::types::PackageVersion::new(
+                    addr(0x10),
+                    addr(0x11),
+                    2,
+                    Default::default(),
+                ),
+                interface: crate::types::PackageVersion::new(
+                    addr(0x20),
+                    addr(0x22),
+                    2,
+                    Default::default(),
+                ),
+                tool: crate::types::PackageVersion::new(
+                    addr(0x80),
+                    addr(0x88),
+                    2,
+                    Default::default(),
+                ),
+                registry: crate::types::PackageVersion::new(
+                    addr(0x30),
+                    addr(0x33),
+                    2,
+                    Default::default(),
+                ),
+                workflow: crate::types::PackageVersion::new(
+                    addr(0x40),
+                    addr(0x44),
+                    2,
+                    Default::default(),
+                ),
+                scheduler: crate::types::PackageVersion::new(
+                    addr(0x50),
+                    addr(0x55),
+                    2,
+                    Default::default(),
+                ),
+            },
+            config_hash: vec![0; 32],
             network_id: addr(0x77),
-            registry_pkg_id: addr(0x33),
             tool_registry: obj(1),
-            verifier_registry: obj(2),
             network_auth: obj(3),
             agent_registry: obj(4),
             default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: addr(5),
                 skill_id: 1,
             },
-            gas_service: obj(6),
             leader_registry: obj(7),
             priority_fee_vault: obj(8),
             priority_fee_vault_owner_cap: obj(9),
             us_token: UsTokenConfig::new(addr(0x66)),
-            workflow_original_pkg_id: Some(addr(0x40)),
-            scheduler_original_pkg_id: Some(addr(0x50)),
         }
     }
 
@@ -588,20 +624,20 @@ mod tests {
 
         let (target, tag) = crate::move_bindings::with_nexus_scope(&objects, || {
             (
-                deescalate_target().unwrap(),
-                GasService::struct_tag_static(),
+                settle_payment_vertex_target().unwrap(),
+                ToolCashier::struct_tag_static(),
             )
         });
 
-        assert_eq!(target.package, objects.workflow_pkg_id);
-        assert_eq!(*tag.address(), objects.workflow_type_origin_pkg_id());
+        assert_eq!(target.package, objects.tool_pkg_id());
+        assert_eq!(*tag.address(), objects.tool_cashier_type_origin_pkg_id());
     }
 
     #[test]
     fn scopes_generated_generic_types() {
         let objects = objects();
 
-        let mut transaction = NexusPtbBuilder::new(&objects);
+        let mut transaction = NexusPtbBuilder::new(Arc::new(objects.clone()));
         transaction.move_vector::<FixedTool>(vec![]).unwrap();
         transaction.option::<FixedTool>(None).unwrap();
         let transaction = transaction.finish();
@@ -613,7 +649,10 @@ mod tests {
             panic!("expected a generated struct element type");
         };
 
-        assert_eq!(*element_type.address(), objects.interface_pkg_id);
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
 
         let sui::types::Command::MoveCall(option) = &transaction.commands[1] else {
             panic!("expected an Option constructor call");
@@ -622,7 +661,10 @@ mod tests {
             panic!("expected a generated Option element type");
         };
 
-        assert_eq!(*element_type.address(), objects.interface_pkg_id);
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
     }
 
     #[test]

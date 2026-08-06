@@ -76,6 +76,11 @@ pub struct DistributedEventMetadata {
 pub struct NexusEvent {
     /// The event transaction digest and event sequence.
     pub id: (sui::types::Digest, u64),
+    /// Package containing the top level Move function that emitted the event.
+    ///
+    /// This identifies runtime code and is intentionally distinct from the
+    /// event datatype origin encoded in its type tag.
+    pub emitting_package: sui::types::Address,
     /// If the `T in NexusEvent<T>` is also a generic, this field holds the
     /// generic type. Note that this can be nested indefinitely.
     pub generics: Vec<sui::types::TypeTag>,
@@ -84,6 +89,17 @@ pub struct NexusEvent {
     /// If the event is a distributed event, this field holds the distribution
     /// metadata.
     pub distribution: Option<DistributedEventMetadata>,
+}
+
+impl NexusEvent {
+    /// Whether this event was emitted by a package in `objects`' protocol configuration.
+    ///
+    /// An operation pinned to a protocol version should use the configuration
+    /// captured at its boundary. This permits compatible in flight work to
+    /// finish without accepting an old package for newly created work.
+    pub fn was_emitted_by(&self, objects: &crate::types::NexusObjects) -> bool {
+        objects.is_active_emitter(self.emitting_package)
+    }
 }
 
 macro_rules! events {
@@ -198,15 +214,15 @@ events! {
     crate::move_bindings::interface::payment::TaskExecutionPaymentFinalizedEvent => TaskExecutionPaymentFinalized, "TaskExecutionPaymentFinalizedEvent",
     crate::move_bindings::interface::payment::TaskPaymentReserveCanceledEvent => TaskPaymentReserveCanceled, "TaskPaymentReserveCanceledEvent",
     crate::move_bindings::interface::payment::TaskPaymentReserveRefilledEvent => TaskPaymentReserveRefilled, "TaskPaymentReserveRefilledEvent",
-    crate::move_bindings::registry::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
-    crate::move_bindings::registry::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
+    crate::move_bindings::tool::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
+    crate::move_bindings::tool::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
     crate::move_bindings::registry::priority_fee_vault::PriorityFeeSwapEvent => PriorityFeeSwap, "PriorityFeeSwapEvent",
     crate::move_bindings::workflow::execution_events::CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
     crate::move_bindings::workflow::execution_events::WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
     crate::move_bindings::workflow::execution_events::WalkFailedEvent => WalkFailed, "WalkFailedEvent",
     crate::move_bindings::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent => SubmissionFailureEvidenceRecorded, "SubmissionFailureEvidenceRecordedEvent",
     crate::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
-    crate::move_bindings::workflow::execution_events::ToolVerificationResolved => ToolVerificationResolved, "ToolVerificationResolved",
+    crate::move_bindings::workflow::execution_events::ToolVerificationResolvedEvent => ToolVerificationResolved, "ToolVerificationResolvedEvent",
     crate::move_bindings::workflow::execution_events::WalkPendingAbortEvent => WalkPendingAbort, "WalkPendingAbortEvent",
     crate::move_bindings::workflow::execution_events::WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
     crate::move_bindings::workflow::execution_events::WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
@@ -218,9 +234,9 @@ events! {
     crate::move_bindings::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     crate::move_bindings::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
     crate::move_bindings::registry::leader::LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
-    crate::move_bindings::workflow::gas::PaymentInsufficientGasEvent => PaymentInsufficientGas, "PaymentInsufficientGasEvent",
-    crate::move_bindings::workflow::gas::PaymentLockUpdateEvent => PaymentLockUpdate, "PaymentLockUpdateEvent",
-    crate::move_bindings::workflow::gas::PaymentUnlockUpdateEvent => PaymentUnlockUpdate, "PaymentUnlockUpdateEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentInsufficientFundsEvent => ToolPaymentInsufficientFunds, "ToolPaymentInsufficientFundsEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentLockUpdatedEvent => ToolPaymentLockUpdated, "ToolPaymentLockUpdatedEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentSettledEvent => ToolPaymentSettled, "ToolPaymentSettledEvent",
     crate::move_bindings::interface::dag::DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
-    crate::move_bindings::registry::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
+    crate::move_bindings::tool::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 }

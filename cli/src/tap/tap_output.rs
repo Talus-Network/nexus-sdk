@@ -10,7 +10,7 @@
 use {
     super::*,
     nexus_sdk::{
-        move_bindings::interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
+        move_bindings::interface::payment::ExecutionPayment,
         nexus::{
             tap::{
                 BindAgentSkillResult,
@@ -276,7 +276,9 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
 
 pub(crate) fn vault_balance_result_json(
     agent_id: AgentId,
-    vault: &nexus_sdk::nexus::crawler::Response<AgentPaymentVault>,
+    vault: &nexus_sdk::nexus::crawler::Response<
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+    >,
 ) -> serde_json::Value {
     json!({
         "agent_id": agent_id,
@@ -385,6 +387,7 @@ mod tests {
             id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0xaa"),
             ),
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xcc"),

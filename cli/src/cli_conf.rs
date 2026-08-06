@@ -19,7 +19,7 @@ pub(crate) struct CliConf {
 
 impl CliConf {
     pub(crate) async fn load() -> AnyResult<Self> {
-        let conf_path = expand_tilde(CLI_CONF_PATH)?;
+        let conf_path = cli_conf_path()?;
 
         Self::load_from_path(&conf_path).await
     }
@@ -31,7 +31,7 @@ impl CliConf {
     }
 
     pub(crate) async fn save(&self) -> AnyResult<()> {
-        let conf_path = expand_tilde(CLI_CONF_PATH)?;
+        let conf_path = cli_conf_path()?;
 
         self.save_to_path(&conf_path).await
     }

@@ -7,7 +7,7 @@ use {
                 OccurrenceRecord,
                 OccurrenceRecordKey,
                 OccurrenceState,
-                Task as MoveTask,
+                TaskStateV1 as MoveTaskStateV1,
             },
             workflow::execution::DAGExecution,
         },
@@ -48,6 +48,13 @@ impl OccurrenceHandle {
         self.reference
     }
 
+    async fn operation_client(&self) -> Result<NexusClient, SchedulerError> {
+        self.client
+            .operation_client()
+            .await
+            .map_err(SchedulerError::from)
+    }
+
     /// Reads the permanent occurrence record and optional runtime object.
     ///
     /// # Errors
@@ -56,12 +63,19 @@ impl OccurrenceHandle {
     /// [`SchedulerError::OccurrenceNotFound`] when its record is absent, or an
     /// invariant error when stored identities disagree.
     pub async fn snapshot(&self) -> Result<OccurrenceSnapshot, SchedulerError> {
-        let task = resolve::fetch_task(&self.client, self.reference.task_id()).await?;
-        let record = self.record().await?;
+        let client = self.operation_client().await?;
+        self.snapshot_with(&client).await
+    }
+
+    async fn snapshot_with(
+        &self,
+        client: &NexusClient,
+    ) -> Result<OccurrenceSnapshot, SchedulerError> {
+        let task = resolve::fetch_task(client, self.reference.task_id()).await?;
+        let record = self.record_with(client).await?;
         let execution_id = state_execution_id(&record.state);
         let execution = match execution_id {
-            Some(execution_id) => self
-                .client
+            Some(execution_id) => client
                 .crawler()
                 .get_optional_object::<DAGExecution>(execution_id)
                 .await
@@ -89,6 +103,29 @@ impl OccurrenceHandle {
     /// the timeout elapses. Invalid polling options and object read failures
     /// are returned directly.
     pub async fn watch(&self, options: WatchOptions) -> Result<OccurrenceSnapshot, SchedulerError> {
+        self.watch_until(options, |snapshot| snapshot.status().is_terminal())
+            .await
+    }
+
+    /// Polls object state until `stop` accepts a snapshot.
+    ///
+    /// This permits callers to stop at a state that requires their action,
+    /// such as [`OccurrenceStatus::Finished`], without changing the terminal
+    /// scheduler lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError::WatchTimedOut`] with the latest snapshot when
+    /// the timeout elapses. Invalid polling options and object read failures
+    /// are returned directly.
+    pub async fn watch_until<F>(
+        &self,
+        options: WatchOptions,
+        mut stop: F,
+    ) -> Result<OccurrenceSnapshot, SchedulerError>
+    where
+        F: FnMut(&OccurrenceSnapshot) -> bool,
+    {
         if options.poll_interval().is_zero() {
             return Err(SchedulerError::InvalidRequest {
                 message: "watch poll interval must be greater than zero".to_owned(),
@@ -99,10 +136,11 @@ impl OccurrenceHandle {
             .ok_or_else(|| SchedulerError::InvalidRequest {
                 message: "watch timeout exceeds the supported duration".to_owned(),
             })?;
-        let mut snapshot = self.snapshot().await?;
+        let client = self.operation_client().await?;
+        let mut snapshot = self.snapshot_with(&client).await?;
 
         loop {
-            if snapshot.status().is_terminal() {
+            if stop(&snapshot) {
                 return Ok(snapshot);
             }
             let now = Instant::now();
@@ -120,7 +158,7 @@ impl OccurrenceHandle {
                     last_snapshot: Box::new(snapshot),
                 });
             }
-            snapshot = self.snapshot().await?;
+            snapshot = self.snapshot_with(&client).await?;
         }
     }
 
@@ -131,18 +169,18 @@ impl OccurrenceHandle {
     /// Returns [`SchedulerError`] when the Task cannot be read or the
     /// transaction cannot be built, submitted, or confirmed.
     pub async fn expire(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let task = resolve::fetch_task(&self.client, self.reference.task_id()).await?;
+        let client = self.operation_client().await?;
+        let task = resolve::fetch_task(&client, self.reference.task_id()).await?;
         let transaction = compile_expire_occurrence_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &task.object_ref(),
             self.reference.occurrence_id(),
         )?;
-        let sender = self.client.owner().map_err(SchedulerError::transport)?;
-        let executed = self
-            .client
+        let sender = client.owner().map_err(SchedulerError::from)?;
+        let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         mutation_receipt(executed, self.reference.task_id())
     }
 
@@ -153,11 +191,11 @@ impl OccurrenceHandle {
     /// Returns [`SchedulerError::OccurrenceNotDispatched`] before dispatch,
     /// or another [`SchedulerError`] when object reads or submission fail.
     pub async fn settle(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let snapshot = self.snapshot().await?;
+        let client = self.operation_client().await?;
+        let snapshot = self.snapshot_with(&client).await?;
         let execution_id = dispatched_execution_id(&snapshot)?;
-        let task = resolve::fetch_task(&self.client, self.reference.task_id()).await?;
-        let execution = self
-            .client
+        let task = resolve::fetch_task(&client, self.reference.task_id()).await?;
+        let execution = client
             .crawler()
             .get_optional_object::<DAGExecution>(execution_id)
             .await
@@ -171,16 +209,15 @@ impl OccurrenceHandle {
                 ),
             })?;
         let transaction = compile_settle_occurrence_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &task.object_ref(),
             &execution.object_ref(),
         )?;
-        let sender = self.client.owner().map_err(SchedulerError::transport)?;
-        let executed = self
-            .client
+        let sender = client.owner().map_err(SchedulerError::from)?;
+        let executed = client
             .submit_transaction(transaction, sender)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         mutation_receipt(executed, self.reference.task_id())
     }
 
@@ -191,13 +228,13 @@ impl OccurrenceHandle {
     /// Returns [`SchedulerError::OccurrenceNotDispatched`] before dispatch,
     /// or a transport error when payment state cannot be read.
     pub async fn cost(&self) -> Result<OccurrenceCost, SchedulerError> {
-        let execution_id = dispatched_execution_id(&self.snapshot().await?)?;
-        let cost = self
-            .client
+        let client = self.operation_client().await?;
+        let execution_id = dispatched_execution_id(&self.snapshot_with(&client).await?)?;
+        let cost = client
             .workflow()
             .execution_cost(execution_id)
             .await
-            .map_err(SchedulerError::transport)?;
+            .map_err(SchedulerError::from)?;
         Ok(OccurrenceCost {
             payment_id: cost.payment_id,
             max_budget_mist: cost.max_budget_mist,
@@ -211,7 +248,7 @@ impl OccurrenceHandle {
 
     /// Aborts expired runtime work.
     ///
-    /// Supplying `tool_gas_id` selects the ToolGas abort path. Without one,
+    /// Supplying `tool_cashier_id` selects the ToolCashier abort path. Without one,
     /// the permissionless workflow abort path is used.
     ///
     /// # Errors
@@ -221,34 +258,32 @@ impl OccurrenceHandle {
     /// fails.
     pub async fn abort_expired(
         &self,
-        tool_gas_id: Option<sui::types::Address>,
+        tool_cashier_id: Option<sui::types::Address>,
     ) -> Result<AbortReceipt, SchedulerError> {
-        let execution_id = dispatched_execution_id(&self.snapshot().await?)?;
-        let transaction = if let Some(tool_gas_id) = tool_gas_id {
-            let result = self
-                .client
+        let client = self.operation_client().await?;
+        let execution_id = dispatched_execution_id(&self.snapshot_with(&client).await?)?;
+        let transaction = if let Some(tool_cashier_id) = tool_cashier_id {
+            let result = client
                 .workflow()
-                .abort_expired_execution_with_tool_gas(execution_id, Some(tool_gas_id))
+                .abort_expired_execution_with_tool_cashier(execution_id, Some(tool_cashier_id))
                 .await
-                .map_err(SchedulerError::transport)?;
+                .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)
         } else {
-            let result = self
-                .client
+            let result = client
                 .workflow()
                 .abort_expired_execution(execution_id)
                 .await
-                .map_err(SchedulerError::transport)?;
+                .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)
         };
         Ok(AbortReceipt::new(transaction, self.reference, execution_id))
     }
 
-    async fn record(&self) -> Result<OccurrenceRecord, SchedulerError> {
+    async fn record_with(&self, client: &NexusClient) -> Result<OccurrenceRecord, SchedulerError> {
         let key = OccurrenceRecordKey::new(self.reference.occurrence_id());
-        let key_type =
-            crate::move_bindings::type_tag::<OccurrenceRecordKey>(&self.client.nexus_objects);
-        self.client
+        let key_type = crate::move_bindings::type_tag::<OccurrenceRecordKey>(&client.nexus_objects);
+        client
             .crawler()
             .get_dynamic_field_by_key::<OccurrenceRecordKey, OccurrenceRecord>(
                 self.reference.task_id(),
@@ -266,21 +301,12 @@ impl OccurrenceHandle {
 
 pub(super) fn snapshot_from_record(
     task_id: sui::types::Address,
-    task: &MoveTask,
+    task: &MoveTaskStateV1,
     occurrence_id: u64,
     record: &OccurrenceRecord,
     execution: Option<&DAGExecution>,
     task_version: sui::types::Version,
 ) -> Result<OccurrenceSnapshot, SchedulerError> {
-    let stored_task_id = task.id.id.bytes;
-    if stored_task_id != task_id {
-        return Err(SchedulerError::InconsistentChainState {
-            message: format!(
-                "Task object '{}' was decoded for requested Task '{task_id}'",
-                stored_task_id
-            ),
-        });
-    }
     if record.occurrence.id != occurrence_id {
         return Err(SchedulerError::InconsistentChainState {
             message: format!(

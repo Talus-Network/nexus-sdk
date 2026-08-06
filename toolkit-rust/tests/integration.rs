@@ -80,7 +80,7 @@ impl NexusTool for DummyErrTool {
 mod tests {
     use {
         super::*,
-        nexus_sdk::move_bindings::primitives::{data::DataTypeHint, tagged_output::TaggedOutput},
+        nexus_sdk::move_bindings::primitives::tagged_output::TaggedOutput,
         reqwest::Client,
         serde_json::json,
     };
@@ -98,8 +98,7 @@ mod tests {
         assert_eq!(output.named_payload.contents.len(), 1);
         let field = &output.named_payload.contents[0];
         assert_eq!(field.key, expected_field);
-        assert_eq!(field.value.type_hint, DataTypeHint::String);
-        assert_eq!(field.value.data.inline_one_bytes(), Some(expected_value));
+        assert_eq!(field.value.inline_one_bytes(), Some(expected_value));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -148,7 +147,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Ok", b"message", b"You said: Hello, world!").await;
+        assert_tagged_output(invoke, b"Ok", b"message", br#""You said: Hello, world!""#).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -188,7 +187,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Err", b"reason", b"Something went wrong").await;
+        assert_tagged_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Default health ep exists.
         let health = Client::new()
@@ -217,7 +216,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Err", b"reason", b"Something went wrong").await;
+        assert_tagged_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Invoke / tool.
         let invoke = Client::new()

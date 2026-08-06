@@ -75,7 +75,7 @@ fn generated_function(
 }
 
 fn append_standard_runtime_worksheet(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     leader_cap: sui::types::Argument,
@@ -103,7 +103,7 @@ fn append_standard_runtime_worksheet(
 }
 
 fn tap_agent_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     mutable: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry_ref = tx.objects().agent_registry.clone();
@@ -111,14 +111,14 @@ fn tap_agent_registry_arg(
 }
 
 fn tap_tool_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry_ref = tx.objects().tool_registry.clone();
     Ok(tx.shared_object(&registry_ref, false)?)
 }
 
 fn tap_payment_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     payment_policy: &SkillPaymentPolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match payment_policy {
@@ -136,7 +136,7 @@ fn tap_payment_policy_arg(
 }
 
 fn tap_schedule_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match schedule_policy {
@@ -163,7 +163,7 @@ fn tap_schedule_policy_arg(
 
 #[allow(clippy::too_many_arguments)]
 fn append_tap_register_skill(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag: sui::types::Argument,
@@ -218,27 +218,29 @@ fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version
 
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
-        workflow_pkg_id: addr("0x1"),
-        scheduler_pkg_id: addr("0x11"),
-        primitives_pkg_id: addr("0x2"),
-        interface_pkg_id: addr("0x3"),
+        protocol_version: 1,
+        protocol: object_ref("0x18", 1, 18),
+        packages: nexus_sdk::types::NexusPackages::first_publication(
+            addr("0x2"),
+            addr("0x3"),
+            addr("0x5"),
+            addr("0x13"),
+            addr("0x1"),
+            addr("0x11"),
+        ),
+        config_hash: vec![0; 32],
         network_id: addr("0x4"),
-        registry_pkg_id: addr("0x5"),
         tool_registry: object_ref("0x6", 1, 6),
-        verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
         agent_registry: object_ref("0xc", 1, 12),
         default_dag_executor: DefaultDagExecutorTarget {
             agent_id: addr("0xa1"),
             skill_id: 177,
         },
-        gas_service: object_ref("0xd", 1, 13),
         leader_registry: object_ref("0xe", 1, 14),
         priority_fee_vault: object_ref("0xf", 1, 15),
         priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
         us_token: UsTokenConfig::new(addr("0x12")),
-        workflow_original_pkg_id: None,
-        scheduler_original_pkg_id: None,
     }
 }
 
@@ -289,10 +291,10 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
         }],
         skills: vec![skill(agent_id, skill_id, active_revision)],
         default_executor: Some(DefaultDagExecutor {
-            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_ids(
+            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_anchor(
                 agent_id,
+                addr("0xa2"),
                 1,
-                Some(addr("0x91")),
             ),
             skill_id,
         }),
@@ -329,7 +331,7 @@ fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::type
         vec![sui::types::TypeTag::Struct(Box::new(inner))],
     );
     sui::types::Event {
-        package_id: objects.primitives_pkg_id,
+        package_id: objects.primitives_pkg_id(),
         module: wrapper.module().clone(),
         sender: addr("0xf3"),
         type_: wrapper,
@@ -558,7 +560,7 @@ fn standard_tap_events_are_nexus_events() {
     let revisioned_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.registry_pkg_id,
+            objects.registry_pkg_id(),
             struct_tag::<AgentRecord>(&objects).module().clone(),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -570,7 +572,7 @@ fn standard_tap_events_are_nexus_events() {
     let execution_requested_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.workflow_pkg_id(),
             sui::types::Identifier::from_static("dag"),
             sui::types::Identifier::from_static("AgentSkillExecutionRequestedEvent"),
             vec![],
@@ -582,7 +584,7 @@ fn standard_tap_events_are_nexus_events() {
     let unrelated_interface_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.interface_pkg_id,
+            objects.interface_pkg_id(),
             sui::types::Identifier::from_static("unrelated"),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -828,8 +830,8 @@ fn agent_payment_vault_builders_target_tap_functions() {
         })
         .expect("withdraw vault call");
 
-    assert_eq!(deposit.package, objects.interface_pkg_id);
-    assert_eq!(withdraw.package, objects.registry_pkg_id);
+    assert_eq!(deposit.package, objects.interface_pkg_id());
+    assert_eq!(withdraw.package, objects.registry_pkg_id());
     assert_eq!(
         deposit.arguments,
         vec![

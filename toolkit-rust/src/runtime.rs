@@ -11,10 +11,7 @@ use {
         ToolkitRuntimeConfig,
     },
     nexus_sdk::move_bindings::{
-        primitives::{
-            data::{DataTypeHint, NexusData, TypedNexusData},
-            tagged_output::TaggedOutput,
-        },
+        primitives::{data::NexusData, tagged_output::TaggedOutput},
         sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
     },
     reqwest::Url,
@@ -517,7 +514,7 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
         .map(|(name, value)| {
             Ok(VecMapEntry {
                 key: name.into_bytes(),
-                value: typed_nexus_data(value)?,
+                value: nexus_data(value)?,
             })
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
@@ -530,46 +527,16 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
     })?)
 }
 
-fn typed_nexus_data(value: serde_json::Value) -> anyhow::Result<TypedNexusData> {
+fn nexus_data(value: serde_json::Value) -> anyhow::Result<NexusData> {
     if let serde_json::Value::Array(values) = value {
-        let encoded = values
+        let many = values
             .iter()
-            .map(encoded_value)
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        let type_hint = encoded
-            .first()
-            .map(|(hint, _)| *hint)
-            .filter(|hint| encoded.iter().all(|(candidate, _)| candidate == hint))
-            .unwrap_or(DataTypeHint::Raw);
-        let many = if type_hint == DataTypeHint::Raw {
-            values
-                .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<Vec<_>, _>>()?
-        } else {
-            encoded.into_iter().map(|(_, bytes)| bytes).collect()
-        };
-        return Ok(TypedNexusData {
-            type_hint,
-            data: NexusData::inline_many(many),
-        });
+            .map(serde_json::to_vec)
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(NexusData::inline_many(many));
     }
 
-    let (type_hint, bytes) = encoded_value(&value)?;
-    Ok(TypedNexusData {
-        type_hint,
-        data: NexusData::inline_one(bytes),
-    })
-}
-
-fn encoded_value(value: &serde_json::Value) -> anyhow::Result<(DataTypeHint, Vec<u8>)> {
-    let encoded = match value {
-        serde_json::Value::String(value) => (DataTypeHint::String, value.as_bytes().to_vec()),
-        serde_json::Value::Number(_) => (DataTypeHint::Number, serde_json::to_vec(value)?),
-        serde_json::Value::Bool(_) => (DataTypeHint::Bool, serde_json::to_vec(value)?),
-        _ => (DataTypeHint::Raw, serde_json::to_vec(value)?),
-    };
-    Ok(encoded)
+    Ok(NexusData::inline_one(serde_json::to_vec(&value)?))
 }
 
 async fn invoke_handler<T: NexusTool>(
@@ -685,16 +652,13 @@ mod tests {
                 .value
         };
         let message = payload(b"message");
-        assert_eq!(message.type_hint, DataTypeHint::String);
-        assert_eq!(message.data.inline_one_bytes(), Some(b"hello".as_slice()));
+        assert_eq!(message.inline_one_bytes(), Some(br#""hello""#.as_slice()));
 
         let flags = payload(b"flags");
-        assert_eq!(flags.type_hint, DataTypeHint::Bool);
-        assert_eq!(flags.data.many, vec![b"true".to_vec(), b"false".to_vec()]);
+        assert_eq!(flags.many, vec![b"true".to_vec(), b"false".to_vec()]);
 
         let metadata = payload(b"metadata");
-        assert_eq!(metadata.type_hint, DataTypeHint::Raw);
-        assert_eq!(metadata.data.one, br#"{"source":"test"}"#);
+        assert_eq!(metadata.one, br#"{"source":"test"}"#);
     }
 
     #[test]
@@ -714,18 +678,18 @@ mod tests {
     }
 
     #[test]
-    fn array_payloads_use_typed_encoding_only_when_all_elements_match() {
-        let homogeneous = typed_nexus_data(json!(["a", "b"])).unwrap();
-        assert_eq!(homogeneous.type_hint, DataTypeHint::String);
-        assert_eq!(homogeneous.data.many, vec![b"a".to_vec(), b"b".to_vec()]);
+    fn array_payloads_encode_each_json_value() {
+        let homogeneous = nexus_data(json!(["a", "b"])).unwrap();
+        assert_eq!(
+            homogeneous.many,
+            vec![br#""a""#.to_vec(), br#""b""#.to_vec()]
+        );
 
-        let mixed = typed_nexus_data(json!([1, true])).unwrap();
-        assert_eq!(mixed.type_hint, DataTypeHint::Raw);
-        assert_eq!(mixed.data.many, vec![b"1".to_vec(), b"true".to_vec()]);
+        let mixed = nexus_data(json!([1, true])).unwrap();
+        assert_eq!(mixed.many, vec![b"1".to_vec(), b"true".to_vec()]);
 
-        let empty = typed_nexus_data(json!([])).unwrap();
-        assert_eq!(empty.type_hint, DataTypeHint::Raw);
-        assert!(empty.data.many.is_empty());
+        let empty = nexus_data(json!([])).unwrap();
+        assert!(empty.many.is_empty());
     }
 
     #[tokio::test]

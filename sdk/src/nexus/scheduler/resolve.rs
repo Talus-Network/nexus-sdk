@@ -1,11 +1,16 @@
 use {
     crate::{
         move_bindings::{
-            scheduler::task::{Task, TaskController},
+            scheduler::task::{Task, TaskController, TaskStateV1},
             sui_framework::clock::Clock,
         },
         move_boundary,
-        nexus::{client::NexusClient, crawler::Response, tap},
+        nexus::{
+            client::NexusClient,
+            crawler::Response,
+            tap,
+            workflow::{self, DagSnapshot},
+        },
         scheduler::{
             Deadline,
             Occurrence,
@@ -27,10 +32,11 @@ use {
         },
     },
     anyhow::Context as _,
+    std::collections::BTreeMap,
 };
 
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<Task>,
+    pub(super) object: Response<TaskStateV1>,
     pub(super) authority: ResolvedAuthority,
 }
 
@@ -39,7 +45,14 @@ pub(crate) async fn prepare_task(
     task: &TaskSpec,
 ) -> Result<PreparedTask, SchedulerError> {
     task.validate()?;
-    let sender = client.owner().map_err(SchedulerError::transport)?;
+    if let Some(dag_id) = task.operation().selected_dag_id() {
+        let dag = workflow::fetch_dag_snapshot(client.crawler(), dag_id)
+            .await
+            .with_context(|| format!("could not inspect Task DAG '{dag_id}'"))
+            .map_err(SchedulerError::transport)?;
+        validate_task_inputs(&dag, task.entry_group(), task.inputs())?;
+    }
+    let sender = client.owner().map_err(SchedulerError::from)?;
     let agent = match task.operation().agent_id() {
         Some(agent_id) => Some(agent_input(client, agent_id).await?),
         None => None,
@@ -72,6 +85,48 @@ pub(crate) async fn prepare_task(
         occurrence_budget_mist: task.occurrence_budget_mist(),
         failure_policy: task.failure_policy(),
     })
+}
+
+fn validate_task_inputs(
+    dag: &DagSnapshot,
+    entry_group: &str,
+    inputs: &crate::scheduler::TaskInputs,
+) -> Result<(), SchedulerError> {
+    let Some(expected) = dag.entry_groups.get(entry_group) else {
+        return Err(SchedulerError::TaskEntryGroupNotFound {
+            dag_id: dag.dag_id,
+            entry_group: entry_group.to_owned(),
+            available: dag.entry_groups.keys().cloned().collect(),
+        });
+    };
+    let received = inputs
+        .iter()
+        .map(|(vertex, ports)| (vertex.clone(), ports.keys().cloned().collect::<Vec<_>>()))
+        .collect::<BTreeMap<_, _>>();
+    if expected == &received {
+        return Ok(());
+    }
+
+    Err(SchedulerError::TaskInputsMismatch {
+        dag_id: dag.dag_id,
+        entry_group: entry_group.to_owned(),
+        expected: input_shape(expected, "<value>"),
+        received: input_shape(&received, "<provided>"),
+    })
+}
+
+fn input_shape(shape: &BTreeMap<String, Vec<String>>, placeholder: &str) -> String {
+    let shape = shape
+        .iter()
+        .map(|(vertex, ports)| {
+            let ports = ports
+                .iter()
+                .map(|port| (port.clone(), placeholder))
+                .collect::<BTreeMap<_, _>>();
+            (vertex, ports)
+        })
+        .collect::<BTreeMap<_, _>>();
+    serde_json::to_string(&shape).expect("a string input shape always serializes")
 }
 
 pub(crate) async fn prepare_schedule(
@@ -126,13 +181,18 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<Task>, SchedulerError> {
-    client
+) -> Result<Response<TaskStateV1>, SchedulerError> {
+    let anchor = client
         .crawler()
         .get_optional_object::<Task>(task_id)
         .await
         .map_err(SchedulerError::transport)?
-        .ok_or(SchedulerError::TaskNotFound { task_id })
+        .ok_or(SchedulerError::TaskNotFound { task_id })?;
+    client
+        .crawler()
+        .load_versioned_payload(anchor, 1)
+        .await
+        .map_err(SchedulerError::transport)
 }
 
 pub(super) async fn resolve_task(
@@ -146,11 +206,11 @@ pub(super) async fn resolve_task(
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<Task>,
+    task: &Response<TaskStateV1>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {
-            let sender = client.owner().map_err(SchedulerError::transport)?;
+            let sender = client.owner().map_err(SchedulerError::from)?;
             if *pos0 != sender {
                 return Err(SchedulerError::AuthorityUnavailable {
                     task_id: task.object_id,
@@ -274,13 +334,111 @@ mod tests {
     use {
         super::*,
         crate::{
-            nexus::client::AddressBalanceGas,
+            move_bindings::{
+                interface::{
+                    dag::{DAGStateV1, DAG},
+                    graph,
+                },
+                move_std::option::Option as MoveOption,
+                sui_framework::{
+                    linked_table::LinkedTable,
+                    object::UID,
+                    table::Table,
+                    vec_map::{Entry as VecMapEntry, VecMap},
+                    versioned::Versioned,
+                },
+            },
+            nexus::{client::AddressBalanceGas, workflow::DagSnapshot},
             scheduler::Occurrence,
             test_utils::sui_mocks,
             transactions::scheduler::{PreparedOccurrence, PreparedRecurrence, PreparedSchedule},
             types::DEFAULT_PRIORITY_FEE_PERCENTAGE,
         },
+        std::collections::BTreeMap,
     };
+
+    fn dag_snapshot() -> DagSnapshot {
+        DagSnapshot {
+            dag_id: crate::sui::types::Address::from_static("0xd"),
+            minimum_protocol_version: 1,
+            vertex_count: 1,
+            entry_groups: BTreeMap::from([(
+                "_default_group".to_owned(),
+                BTreeMap::from([(
+                    "sum".to_owned(),
+                    vec!["0".to_owned(), "1".to_owned(), "2".to_owned()],
+                )]),
+            )]),
+        }
+    }
+
+    #[test]
+    fn task_inputs_must_match_the_selected_dag_entry_group() {
+        let dag = dag_snapshot();
+        let empty = BTreeMap::new();
+
+        let error = validate_task_inputs(&dag, "_default_group", &empty)
+            .expect_err("missing entry inputs must fail before submission");
+
+        assert!(matches!(
+            error,
+            SchedulerError::TaskInputsMismatch {
+                dag_id,
+                ref entry_group,
+                ref expected,
+                ref received,
+            } if dag_id == dag.dag_id
+                && entry_group == "_default_group"
+                && expected == r#"{"sum":{"0":"<value>","1":"<value>","2":"<value>"}}"#
+                && received == "{}"
+        ));
+    }
+
+    #[test]
+    fn task_inputs_reject_an_unknown_entry_group() {
+        let dag = dag_snapshot();
+
+        let error = validate_task_inputs(&dag, "missing", &BTreeMap::new())
+            .expect_err("an unknown entry group must fail before submission");
+
+        assert!(matches!(
+            error,
+            SchedulerError::TaskEntryGroupNotFound {
+                dag_id,
+                ref entry_group,
+                ref available,
+            } if dag_id == dag.dag_id
+                && entry_group == "missing"
+                && available == &["_default_group".to_owned()]
+        ));
+    }
+
+    #[test]
+    fn task_inputs_accept_the_exact_entry_shape() {
+        let dag = dag_snapshot();
+        let inputs = BTreeMap::from([(
+            "sum".to_owned(),
+            BTreeMap::from([
+                (
+                    "0".to_owned(),
+                    crate::move_bindings::primitives::data::NexusData::inline_one(
+                        b"state".to_vec(),
+                    ),
+                ),
+                (
+                    "1".to_owned(),
+                    crate::move_bindings::primitives::data::NexusData::inline_one(b"20".to_vec()),
+                ),
+                (
+                    "2".to_owned(),
+                    crate::move_bindings::primitives::data::NexusData::inline_one(b"22".to_vec()),
+                ),
+            ]),
+        )]);
+
+        validate_task_inputs(&dag, "_default_group", &inputs)
+            .expect("the exact entry shape is valid");
+    }
 
     async fn test_client(mocks: sui_mocks::grpc::ServerMocks) -> NexusClient {
         let rpc_url = sui_mocks::grpc::mock_server(mocks);
@@ -294,6 +452,40 @@ mod tests {
             .build()
             .await
             .expect("client builds")
+    }
+
+    fn mock_dag(
+        ledger: &mut sui_mocks::grpc::MockLedgerService,
+        dag_id: crate::sui::types::Address,
+        entry_group: &str,
+    ) {
+        let dag_ref = sui_mocks::object_ref_for_id(dag_id);
+        let state_id = dag_id.derive_dynamic_child_id(
+            &crate::sui::types::TypeTag::U64,
+            &bcs::to_bytes(&u64::MAX).expect("the state key serializes"),
+        );
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
+        let state = DAGStateV1::new(
+            1,
+            LinkedTable::new(dag_id, 0),
+            VecMap {
+                contents: vec![VecMapEntry {
+                    key: graph::EntryGroup::new(entry_group),
+                    value: VecMap { contents: vec![] },
+                }],
+            },
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            MoveOption::from_option(None::<graph::PostFailureAction>),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            ledger,
+            dag_ref,
+            crate::sui::types::Owner::Shared(1),
+            bcs::to_bytes(&dag).expect("the DAG anchor serializes"),
+        );
+        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 1, state);
     }
 
     #[tokio::test]
@@ -397,8 +589,14 @@ mod tests {
 
     #[tokio::test]
     async fn address_funded_task_preparation_preserves_authored_values() {
-        let client = test_client(sui_mocks::grpc::ServerMocks::default()).await;
         let dag_id = crate::sui::types::Address::from_static("0x31");
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        mock_dag(&mut ledger_service_mock, dag_id, "main");
+        let client = test_client(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        })
+        .await;
         let refund_recipient = crate::sui::types::Address::from_static("0x32");
         let task = TaskSpec::new(
             crate::scheduler::TaskOperation::default_dag(dag_id),

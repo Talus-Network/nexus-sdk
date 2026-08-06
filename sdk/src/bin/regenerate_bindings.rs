@@ -23,11 +23,34 @@ const CANONICAL_PACKAGE_VERSION: u64 = 1;
 const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("primitives", "0xa1"),
     ("interface", "0xa2"),
+    ("tool", "0xa7"),
     ("registry", "0xa3"),
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
 const TALUS_PACKAGE: (&str, &str) = ("talus", "0xa6");
+const SUI_FRAMEWORK_PACKAGE: (&str, &str) = ("sui_framework", "0x2");
+const SUI_FRAMEWORK_MODULES: &[&str] = &[
+    "accumulator",
+    "bag",
+    "balance",
+    "clock",
+    "coin",
+    "funds_accumulator",
+    "linked_table",
+    "object",
+    "object_bag",
+    "object_table",
+    "priority_queue",
+    "sui",
+    "table",
+    "table_vec",
+    "transfer",
+    "url",
+    "vec_map",
+    "vec_set",
+    "versioned",
+];
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
@@ -65,6 +88,7 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
         let mut package = fetch_package(&mut client, package_id)
             .await
             .with_context(|| format!("fetch {name} ({package_id})"))?;
+        retain_supported_modules(&mut package, &name);
         apply_source_names(&mut package, &name, source_root)?;
         packages.push((name, package));
     }
@@ -77,6 +101,14 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn retain_supported_modules(package: &mut NormalizedPackage, package_name: &str) {
+    if package_name == SUI_FRAMEWORK_PACKAGE.0 {
+        package
+            .modules
+            .retain(|module, _| SUI_FRAMEWORK_MODULES.contains(&module.as_str()));
+    }
 }
 
 fn apply_source_names(
@@ -92,11 +124,14 @@ fn apply_source_names(
     }
 
     let source_dir = source_root.join(package_name).join("sources");
-    if NEXUS_PACKAGES.iter().any(|(name, _)| *name == package_name) && !source_dir.is_dir() {
-        bail!(
-            "source directory for {package_name} does not exist: {}",
-            source_dir.display()
-        );
+    if !source_dir.is_dir() {
+        if NEXUS_PACKAGES.iter().any(|(name, _)| *name == package_name) {
+            bail!(
+                "source directory for {package_name} does not exist: {}",
+                source_dir.display()
+            );
+        }
+        return Ok(());
     }
     apply_function_parameter_names_from_sources(package, &source_dir)
         .with_context(|| format!("apply parameter names from {}", source_dir.display()))
@@ -176,11 +211,12 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
 
     let mut packages = Vec::new();
     for (package, _) in NEXUS_PACKAGES {
-        let key = format!("{package}_pkg_id");
         let id = parsed
-            .get(&key)
+            .get("packages")
+            .and_then(|value| value.get(package))
+            .and_then(|value| value.get("storage_id"))
             .and_then(toml::Value::as_str)
-            .ok_or_else(|| anyhow!("{source} is missing {key}"))?;
+            .ok_or_else(|| anyhow!("{source} is missing packages.{package}.storage_id"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
     let talus_id = parsed
@@ -189,6 +225,10 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
         .and_then(toml::Value::as_str)
         .ok_or_else(|| anyhow!("{source} is missing us_token.package_id"))?;
     packages.push((TALUS_PACKAGE.0.to_string(), parse_address(talus_id)?));
+    packages.push((
+        SUI_FRAMEWORK_PACKAGE.0.to_string(),
+        parse_address(SUI_FRAMEWORK_PACKAGE.1)?,
+    ));
     Ok(packages)
 }
 
@@ -225,11 +265,18 @@ mod tests {
     #[test]
     fn parses_required_nexus_packages() {
         let objects = [
-            r#"primitives_pkg_id = "0x11""#,
-            r#"interface_pkg_id = "0x12""#,
-            r#"registry_pkg_id = "0x13""#,
-            r#"workflow_pkg_id = "0x14""#,
-            r#"scheduler_pkg_id = "0x15""#,
+            r#"[packages.primitives]"#,
+            r#"storage_id = "0x11""#,
+            r#"[packages.interface]"#,
+            r#"storage_id = "0x12""#,
+            r#"[packages.registry]"#,
+            r#"storage_id = "0x13""#,
+            r#"[packages.workflow]"#,
+            r#"storage_id = "0x14""#,
+            r#"[packages.scheduler]"#,
+            r#"storage_id = "0x15""#,
+            r#"[packages.tool]"#,
+            r#"storage_id = "0x17""#,
             r#"[us_token]"#,
             r#"package_id = "0x16""#,
         ]
@@ -242,10 +289,15 @@ mod tests {
             vec![
                 ("primitives".to_string(), Address::from_str("0x11").unwrap()),
                 ("interface".to_string(), Address::from_str("0x12").unwrap()),
+                ("tool".to_string(), Address::from_str("0x17").unwrap()),
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
+                (
+                    "sui_framework".to_string(),
+                    Address::from_str("0x2").unwrap()
+                ),
             ]
         );
     }
@@ -253,11 +305,18 @@ mod tests {
     #[test]
     fn rejects_objects_without_talus_package() {
         let objects = [
-            r#"primitives_pkg_id = "0x11""#,
-            r#"interface_pkg_id = "0x12""#,
-            r#"registry_pkg_id = "0x13""#,
-            r#"workflow_pkg_id = "0x14""#,
-            r#"scheduler_pkg_id = "0x15""#,
+            r#"[packages.primitives]"#,
+            r#"storage_id = "0x11""#,
+            r#"[packages.interface]"#,
+            r#"storage_id = "0x12""#,
+            r#"[packages.registry]"#,
+            r#"storage_id = "0x13""#,
+            r#"[packages.workflow]"#,
+            r#"storage_id = "0x14""#,
+            r#"[packages.scheduler]"#,
+            r#"storage_id = "0x15""#,
+            r#"[packages.tool]"#,
+            r#"storage_id = "0x17""#,
         ]
         .join("\n");
 
@@ -298,13 +357,13 @@ mod tests {
             Inputs::from_args([
                 "objects.toml".to_string(),
                 "--source-root".to_string(),
-                "../nexus-next/sui".to_string(),
+                "../nexus/sui".to_string(),
             ])
             .unwrap(),
             Inputs {
                 objects_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
-                source_root: Some(PathBuf::from("../nexus-next/sui")),
+                source_root: Some(PathBuf::from("../nexus/sui")),
             }
         );
 
@@ -313,13 +372,13 @@ mod tests {
                 "objects.toml".to_string(),
                 "http://localhost:9000".to_string(),
                 "--source-root".to_string(),
-                "../nexus-next/sui".to_string(),
+                "../nexus/sui".to_string(),
             ])
             .unwrap(),
             Inputs {
                 objects_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
-                source_root: Some(PathBuf::from("../nexus-next/sui")),
+                source_root: Some(PathBuf::from("../nexus/sui")),
             }
         );
     }

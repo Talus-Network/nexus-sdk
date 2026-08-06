@@ -8,7 +8,8 @@ use {
             address_balance::{fetch_submission_context, finish_transaction, NonceAllocator},
             crawler::Crawler,
             error::NexusError,
-            gas::GasActions,
+            network::NetworkActions,
+            protocol::{ProtocolExtras, ProtocolResolver},
             scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
             transaction::NexusTransaction,
@@ -146,7 +147,10 @@ pub struct NexusClientBuilder {
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     address_balance_gas: Option<AddressBalanceGas>,
+    #[cfg(any(test, feature = "test_utils"))]
     nexus_objects: Option<NexusObjects>,
+    protocol: Option<sui::types::ObjectReference>,
+    protocol_extras: Option<ProtocolExtras>,
     transaction_timeout: Option<Duration>,
 }
 
@@ -192,9 +196,23 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Set Nexus objects to use.
+    /// Set a fixed Nexus object snapshot for tests.
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test_utils"))]
     pub fn with_nexus_objects(mut self, nexus_objects: NexusObjects) -> Self {
         self.nexus_objects = Some(nexus_objects);
+        self
+    }
+
+    /// Resolve the active Nexus configuration from one stable protocol root.
+    pub fn with_protocol(mut self, protocol: sui::types::ObjectReference) -> Self {
+        self.protocol = Some(protocol);
+        self
+    }
+
+    /// Supply external token and optional operator authority configuration.
+    pub fn with_protocol_extras(mut self, extras: ProtocolExtras) -> Self {
+        self.protocol_extras = Some(extras);
         self
     }
 
@@ -223,10 +241,32 @@ impl NexusClientBuilder {
             .rpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
 
-        let nexus_objects = Arc::new(
-            self.nexus_objects
-                .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?,
-        );
+        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
+        #[cfg(any(test, feature = "test_utils"))]
+        let test_objects = self.nexus_objects;
+        #[cfg(not(any(test, feature = "test_utils")))]
+        let test_objects: Option<NexusObjects> = None;
+
+        let (nexus_objects, protocol_resolver) = match (test_objects, self.protocol) {
+            (Some(_), Some(_)) => {
+                return Err(NexusError::Configuration(
+                    "configure either Nexus objects or a protocol root, not both".into(),
+                ));
+            }
+            (Some(objects), None) => (objects, None),
+            (None, Some(protocol)) => {
+                let resolver = ProtocolResolver::new(protocol, Arc::clone(&client))
+                    .with_extras(self.protocol_extras.unwrap_or_default());
+                let objects = Box::pin(resolver.resolve_active()).await?;
+                (objects, Some(resolver))
+            }
+            (None, None) => {
+                return Err(NexusError::Configuration(
+                    "a protocol root is required".into(),
+                ));
+            }
+        };
+        let nexus_objects = Arc::new(nexus_objects);
         let coin_gas_requested = self.gas_budget.is_some() || !self.gas_coins.is_empty();
         let gas_source = match (coin_gas_requested, self.address_balance_gas) {
             (true, Some(_)) => {
@@ -242,7 +282,6 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
         let crawler = Crawler::new(Arc::clone(&client));
 
         let signer = self.pk.map(|pk| {
@@ -260,6 +299,8 @@ impl NexusClientBuilder {
             nexus_objects,
             crawler,
             rpc_url,
+            protocol_resolver,
+            operation_snapshot: false,
         };
         if let Some(gas_source) = gas_source {
             nexus_client.set_gas_source(gas_source).await?;
@@ -282,6 +323,12 @@ pub struct NexusClient {
     pub(super) crawler: Crawler,
     /// RPC URL used by the client.
     pub(super) rpc_url: String,
+    /// Authority used to follow the canonical protocol.
+    ///
+    /// This is absent only for snapshots created by test support.
+    protocol_resolver: Option<ProtocolResolver>,
+    /// Whether this clone is pinned for one in progress operation.
+    operation_snapshot: bool,
 }
 
 impl NexusClient {
@@ -290,9 +337,9 @@ impl NexusClient {
         NexusClientBuilder::new()
     }
 
-    /// Return a [`GasActions`] instance for performing gas-related operations.
-    pub fn gas(&self) -> GasActions {
-        GasActions {
+    /// Return a [`NetworkActions`] instance for Nexus network fee operations.
+    pub fn network(&self) -> NetworkActions {
+        NetworkActions {
             client: self.clone(),
         }
     }
@@ -311,9 +358,13 @@ impl NexusClient {
         }
     }
 
-    /// Starts one client scoped programmable transaction.
-    pub fn transaction(&self) -> NexusTransaction<'_> {
-        NexusTransaction::new(self)
+    /// Starts one programmable transaction from the active protocol snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when the active protocol cannot be resolved.
+    pub async fn transaction(&self) -> Result<NexusTransaction, NexusError> {
+        Ok(NexusTransaction::new(self.operation_client().await?))
     }
 
     /// Returns a
@@ -561,6 +612,80 @@ impl NexusClient {
         Arc::clone(&self.nexus_objects)
     }
 
+    /// Return a new immutable client bound to the active protocol configuration.
+    ///
+    /// The original client remains bound to its existing configuration.
+    /// Standard action methods resolve [`crate::move_bindings::primitives::protocol::Protocol`]
+    /// before beginning an operation.
+    pub async fn refresh_protocol(&self) -> Result<NexusClient, NexusError> {
+        let Some(resolver) = &self.protocol_resolver else {
+            return Ok(self.clone());
+        };
+        let Some(objects) = resolver
+            .resolve_active_if_changed(&self.nexus_objects)
+            .await?
+        else {
+            return Ok(self.clone());
+        };
+
+        Ok(self.with_protocol_objects(objects))
+    }
+
+    /// Pin this client to its current protocol configuration.
+    ///
+    /// Actions invoked through the returned snapshot keep one configuration.
+    /// Transaction submission still verifies that the configuration remains
+    /// active before signing.
+    pub fn into_protocol_snapshot(mut self) -> Self {
+        self.operation_snapshot = true;
+        self
+    }
+
+    pub(crate) async fn operation_client(&self) -> Result<NexusClient, NexusError> {
+        if self.operation_snapshot {
+            return Ok(self.clone());
+        }
+
+        let mut client = self.refresh_protocol().await?;
+        client.operation_snapshot = true;
+        Ok(client)
+    }
+
+    fn with_protocol_objects(&self, nexus_objects: NexusObjects) -> Self {
+        let nexus_objects = Arc::new(nexus_objects);
+        let signer = self.signer.clone().map(|mut signer| {
+            signer.nexus_objects = Arc::clone(&nexus_objects);
+            signer
+        });
+
+        Self {
+            signer,
+            gas: Arc::clone(&self.gas),
+            nexus_objects,
+            crawler: self.crawler.clone(),
+            rpc_url: self.rpc_url.clone(),
+            protocol_resolver: self.protocol_resolver.clone(),
+            operation_snapshot: self.operation_snapshot,
+        }
+    }
+
+    async fn ensure_protocol_is_current(&self) -> Result<(), NexusError> {
+        let Some(resolver) = &self.protocol_resolver else {
+            return Ok(());
+        };
+        let Some(active) = resolver
+            .resolve_active_if_changed(&self.nexus_objects)
+            .await?
+        else {
+            return Ok(());
+        };
+
+        Err(NexusError::StaleProtocol {
+            client_version: self.nexus_objects.protocol_version,
+            active_version: active.protocol_version,
+        })
+    }
+
     /// Submits a programmable transaction through this client's configured
     /// [`Gas`] source.
     ///
@@ -573,9 +698,10 @@ impl NexusClient {
         tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
+        self.ensure_protocol_is_current().await?;
         let signer = self.signer()?;
         let gas = self.gas_configured()?;
-        match &gas {
+        let response = match &gas {
             GasSource::Coin(pool) => {
                 let reference_gas_price = pool.reference_gas_price.ok_or_else(|| {
                     NexusError::Configuration("coin gas source is not prepared".into())
@@ -605,7 +731,18 @@ impl NexusClient {
                 let signature = signer.sign_tx(&tx).await?;
                 signer.execute_tx_without_gas_coin(tx, signature).await
             }
+        };
+
+        if response.is_err() {
+            match self.ensure_protocol_is_current().await {
+                Err(error @ NexusError::StaleProtocol { .. })
+                | Err(error @ NexusError::UnsupportedProtocolVersion { .. })
+                | Err(error @ NexusError::ProtocolValidation(_)) => return Err(error),
+                _ => {}
+            }
         }
+
+        response
     }
 
     pub(crate) fn gas_configured(&self) -> Result<Gas, NexusError> {
@@ -632,23 +769,26 @@ impl NexusClient {
         Ok(tool.object_ref())
     }
 
-    /// Derive and fetch a [`ToolGas`] object based on the provided tool FQN.
-    pub(crate) async fn fetch_tool_gas(
+    /// Derive and fetch a [`ToolCashier`] object based on the provided tool FQN.
+    pub(crate) async fn fetch_tool_cashier(
         &self,
         tool_fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
         let crawler = self.crawler();
         let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
-
-        let tool_gas_id =
-            crate::move_bindings::derive_tool_gas_id(tool_registry_object_id, tool_fqn)
-                .map_err(NexusError::Parsing)?;
-        let tool_gas = crawler
-            .get_object_metadata(tool_gas_id)
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            self.nexus_objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .map_err(NexusError::Parsing)?;
+        let tool_cashier = crawler
+            .get_object_metadata(tool_cashier_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        Ok(tool_gas.object_ref())
+        Ok(tool_cashier.object_ref())
     }
 }
 
@@ -724,6 +864,79 @@ mod tests {
             .build()
             .await
             .expect("query-only client should build without a private key")
+    }
+
+    #[tokio::test]
+    async fn protocol_rebind_keeps_both_clients_immutable_and_shares_resources() {
+        let first = sui_mocks::mock_nexus_objects();
+        let mut second = first.clone();
+        second.protocol_version += 1;
+        second.config_hash = vec![9; sui::types::Digest::LENGTH];
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let client = NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url("http://127.0.0.1:1")
+            .with_address_balance_gas(1_000_000)
+            .with_nexus_objects(first.clone())
+            .build()
+            .await
+            .unwrap();
+
+        let rebound = client.with_protocol_objects(second.clone());
+
+        assert_eq!(
+            client.get_nexus_objects().protocol_version,
+            first.protocol_version,
+        );
+        assert_eq!(
+            rebound.get_nexus_objects().protocol_version,
+            second.protocol_version,
+        );
+        assert!(Arc::ptr_eq(&client.gas, &rebound.gas));
+        assert_eq!(
+            rebound.signer().unwrap().nexus_objects.protocol_version,
+            second.protocol_version,
+        );
+    }
+
+    #[tokio::test]
+    async fn fixed_client_refresh_preserves_its_snapshot() {
+        let client = keyless_client("http://127.0.0.1:1").await;
+
+        let refreshed = client.refresh_protocol().await.unwrap();
+
+        assert!(Arc::ptr_eq(
+            &client.get_nexus_objects(),
+            &refreshed.get_nexus_objects(),
+        ));
+    }
+
+    #[tokio::test]
+    async fn nested_actions_keep_one_operation_snapshot() {
+        let client = keyless_client("http://127.0.0.1:1").await;
+
+        let operation = client.operation_client().await.unwrap();
+        let nested = operation.operation_client().await.unwrap();
+
+        assert!(!client.operation_snapshot);
+        assert!(operation.operation_snapshot);
+        assert!(Arc::ptr_eq(
+            &operation.get_nexus_objects(),
+            &nested.get_nexus_objects(),
+        ));
+    }
+
+    #[test]
+    fn stale_protocol_error_names_both_versions() {
+        let error = NexusError::StaleProtocol {
+            client_version: 1,
+            active_version: 2,
+        };
+
+        assert_eq!(
+            error.to_string(),
+            "Protocol changed from version 1 to version 2 while the operation was in progress",
+        );
     }
 
     #[tokio::test]
@@ -989,7 +1202,7 @@ mod tests {
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let client = keyless_client(&rpc_url).await;
 
-        let result = client.gas().configure_priority_fee_vault(1).await;
+        let result = client.network().configure_priority_fee_vault(1).await;
 
         assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
     }
@@ -1634,8 +1847,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_tx_mutates_gas_coin() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
@@ -1645,11 +1856,10 @@ mod tests {
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
 
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref.clone(),
             vec![],
             vec![],
@@ -1698,7 +1908,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.digest, digest);
+        assert_eq!(response.digest, submitted.digest());
 
         assert_eq!(gas_coin.version(), gas_coin_ref.version());
         assert_eq!(gas_coin.digest(), gas_coin_ref.digest());
@@ -1707,7 +1917,6 @@ mod tests {
     #[tokio::test]
     async fn execute_tx_without_gas_coin_does_not_refresh_an_object() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let chain = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
@@ -1716,20 +1925,20 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            vec![],
-            vec![],
-            vec![],
-            |request| {
-                let transaction = request.transaction.as_ref().unwrap();
-                let transaction = sui::types::Transaction::try_from(transaction).unwrap();
-                assert!(transaction.gas_payment.objects.is_empty());
-            },
-        );
+        let submitted =
+            sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
+                &mut tx_service_mock,
+                &mut sub_service_mock,
+                &mut ledger_service_mock,
+                vec![],
+                vec![],
+                vec![],
+                |request| {
+                    let transaction = request.transaction.as_ref().unwrap();
+                    let transaction = sui::types::Transaction::try_from(transaction).unwrap();
+                    assert!(transaction.gas_payment.objects.is_empty());
+                },
+            );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
@@ -1763,13 +1972,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(response.digest, digest);
+        assert_eq!(response.digest, submitted.digest());
     }
 
     #[tokio::test]
     async fn address_balance_submission_fetches_fresh_context_and_uses_no_gas_object() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let chain = sui::types::Digest::generate(&mut rng);
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -1777,33 +1985,33 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23, chain);
-        sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().unwrap();
-                let transaction = sui::types::Transaction::try_from(transaction).unwrap();
-                assert!(transaction.gas_payment.objects.is_empty());
-                assert_eq!(transaction.gas_payment.price, 17);
-                assert_eq!(transaction.gas_payment.budget, 9_000);
-                assert_eq!(
-                    transaction.expiration,
-                    sui::types::TransactionExpiration::ValidDuring {
-                        min_epoch: Some(23),
-                        max_epoch: Some(24),
-                        min_timestamp: None,
-                        max_timestamp: None,
-                        chain,
-                        nonce: 0,
-                    }
-                );
-            },
-        );
+        let submitted =
+            sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
+                &mut tx_service_mock,
+                &mut sub_service_mock,
+                &mut ledger_service_mock,
+                vec![],
+                vec![],
+                vec![],
+                move |request| {
+                    let transaction = request.transaction.as_ref().unwrap();
+                    let transaction = sui::types::Transaction::try_from(transaction).unwrap();
+                    assert!(transaction.gas_payment.objects.is_empty());
+                    assert_eq!(transaction.gas_payment.price, 17);
+                    assert_eq!(transaction.gas_payment.budget, 9_000);
+                    assert_eq!(
+                        transaction.expiration,
+                        sui::types::TransactionExpiration::ValidDuring {
+                            min_epoch: Some(23),
+                            max_epoch: Some(24),
+                            min_timestamp: None,
+                            max_timestamp: None,
+                            chain,
+                            nonce: 0,
+                        }
+                    );
+                },
+            );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
@@ -1832,7 +2040,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.digest, digest);
+        assert_eq!(result.digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -1860,6 +2068,17 @@ mod tests {
                     "address balance is insufficient",
                 ))
             });
+        ledger_service_mock
+            .expect_get_transaction()
+            .withf(|request| {
+                request
+                    .get_ref()
+                    .read_mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.paths.iter().any(|path| path == "timestamp"))
+            })
+            .times(2)
+            .returning(|_| Err(tonic::Status::not_found("transaction is not indexed")));
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
@@ -1895,7 +2114,12 @@ mod tests {
             panic!("Sui should reject an insufficient address balance");
         };
 
-        assert!(matches!(error, NexusError::Rpc(_)));
+        assert!(matches!(
+            error,
+            NexusError::Transaction(ref error)
+                if error.state()
+                    == crate::nexus::error::TransactionErrorState::SubmissionRejected
+        ));
         assert!(error
             .to_string()
             .contains("address balance is insufficient"));

@@ -19,11 +19,10 @@ use {
     nexus_sdk::{
         move_bindings::{
             primitives::owner_cap::CloneableOwnerCap,
-            registry::tool_registry::OverTool,
             struct_tag_matches,
-            workflow::gas::OverGas,
+            tool::{tool_authority::OverTool, tool_cashier::OverToolCashier},
         },
-        nexus::{client::NexusClient, error::NexusError},
+        nexus::client::NexusClient,
         transactions::tool,
         types::ToolMeta,
     },
@@ -91,6 +90,16 @@ async fn register_one_tool(
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
+    if let Some(result) =
+        super::tool_inspect::inspect_registration_result(nexus_client, &meta.fqn).await?
+    {
+        notify_success!(
+            "Tool '{fqn}' is already registered.",
+            fqn = meta.fqn.to_string().truecolor(100, 100, 100)
+        );
+        return Ok((result, None));
+    }
+
     let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let nexus_objects = nexus_client.get_nexus_objects();
     let collateral_coin = nexus_client
@@ -120,24 +129,17 @@ async fn register_one_tool(
     // Sign and submit the TX.
     let response = match nexus_client.submit_transaction(tx, address).await {
         Ok(response) => response,
-        // If the tool is already registered, treat as a non-fatal result so
-        // batch mode can continue to the next tool.
-        Err(NexusError::Wallet(e)) if e.to_string().contains("register_off_chain_tool_") => {
-            notify_error!(
-                "Tool '{fqn}' is already registered.",
-                fqn = meta.fqn.to_string().truecolor(100, 100, 100)
-            );
-
-            return Ok((
-                json!({
-                    "tool_fqn": meta.fqn,
-                    "already_registered": true,
-                }),
-                None,
-            ));
-        }
-        // Any other error is also non-fatal for batch mode.
         Err(e) => {
+            if let Ok(Some(result)) =
+                super::tool_inspect::inspect_registration_result(nexus_client, &meta.fqn).await
+            {
+                notify_success!(
+                    "Tool '{fqn}' is already registered.",
+                    fqn = meta.fqn.to_string().truecolor(100, 100, 100)
+                );
+                return Ok((result, None));
+            }
+
             notify_error!(
                 "Failed to register tool '{fqn}': {error}",
                 fqn = meta.fqn.to_string().truecolor(100, 100, 100),
@@ -189,11 +191,11 @@ async fn register_one_tool(
         )));
     };
 
-    // Find `CloneableOwnerCap<OverGas>` object ID.
-    let over_gas = owner_caps.iter().find_map(|(object_id, object_type)| {
+    // Find `CloneableOwnerCap<OverToolCashier>` object ID.
+    let cashier_admin = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverGas>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverToolCashier>(&nexus_objects, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -201,9 +203,9 @@ async fn register_one_tool(
         }
     });
 
-    let Some(over_gas_id) = over_gas else {
+    let Some(cashier_admin_id) = cashier_admin else {
         return Err(NexusCliError::Any(anyhow!(
-            "Could not find the OwnerCap<OverGas> object ID in the transaction response."
+            "Could not find the OwnerCap<OverToolCashier> object ID in the transaction response."
         )));
     };
 
@@ -213,8 +215,8 @@ async fn register_one_tool(
     );
 
     notify_success!(
-        "OwnerCap<OverGas> object ID: {id}",
-        id = over_gas_id.to_string().truecolor(100, 100, 100)
+        "OwnerCap<OverToolCashier> object ID: {id}",
+        id = cashier_admin_id.to_string().truecolor(100, 100, 100)
     );
 
     notify_success!(
@@ -224,7 +226,7 @@ async fn register_one_tool(
 
     let caps = ToolOwnerCaps {
         over_tool: over_tool_id,
-        over_gas: Some(over_gas_id),
+        cashier_admin: Some(cashier_admin_id),
     };
 
     // Re-fetch the freshly-registered Tool object so the JSON output carries
@@ -243,14 +245,33 @@ async fn register_one_tool(
         json!({
             "digest": response.digest,
             "tool_id": inspection.tool_id,
-            "tool_gas_id": inspection.tool_gas_id,
+            "tool_cashier_id": inspection.tool_cashier_id,
             "owner_cap_over_tool_id": over_tool_id,
-            "owner_cap_over_gas_id": over_gas_id,
+            "cashier_admin_cap_id": cashier_admin_id,
             "tool_ref": tool_ref,
             "tool": inspection.tool,
         }),
         Some((meta.fqn, caps)),
     ))
+}
+
+/// Ensures every [`register_one_tool`] result represents success.
+///
+/// Batch registration still attempts every tool, then returns an error so
+/// scripts cannot mistake partial registration for success.
+fn ensure_registrations_succeeded(results: &[serde_json::Value]) -> AnyResult<(), NexusCliError> {
+    let failure_count = results
+        .iter()
+        .filter(|result| result.get("error").is_some())
+        .count();
+
+    match failure_count {
+        0 => Ok(()),
+        1 => Err(NexusCliError::Any(anyhow!("1 tool registration failed"))),
+        count => Err(NexusCliError::Any(anyhow!(
+            "{count} tool registrations failed"
+        ))),
+    }
 }
 
 /// Validate and then register a new offchain Tool.
@@ -352,7 +373,7 @@ pub(crate) async fn register_off_chain_tool(
 
     json_output(&registration_results)?;
 
-    Ok(())
+    ensure_registrations_succeeded(&registration_results)
 }
 
 #[cfg(test)]
@@ -487,6 +508,30 @@ mod tests {
             err.to_string().contains("failed to read meta file"),
             "got: {err}"
         );
+    }
+
+    /// Verifies that an unsuccessful transaction makes the command fail.
+    #[test]
+    fn registration_results_reject_transaction_errors() {
+        let results = vec![json!({
+            "tool_fqn": "xyz.demo.tool@1",
+            "error": "transaction rejected",
+        })];
+
+        let error = ensure_registrations_succeeded(&results).unwrap_err();
+
+        assert_eq!(error.to_string(), "1 tool registration failed");
+    }
+
+    /// Verifies that repeated registration remains successful.
+    #[test]
+    fn registration_results_accept_already_registered_tools() {
+        let results = vec![json!({
+            "tool_fqn": "xyz.demo.tool@1",
+            "already_registered": true,
+        })];
+
+        ensure_registrations_succeeded(&results).unwrap();
     }
 
     // -- Clap constraint tests --

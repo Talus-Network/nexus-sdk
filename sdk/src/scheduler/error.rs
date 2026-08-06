@@ -1,5 +1,7 @@
 //! Errors produced while authoring or operating scheduled Tasks.
 
+#[cfg(feature = "nexus")]
+use crate::nexus::error::NexusError;
 use {
     crate::{scheduler::OccurrenceSnapshot, sui},
     std::error::Error,
@@ -84,6 +86,11 @@ pub enum SchedulerError {
     #[error(transparent)]
     Schedule(#[from] ScheduleError),
 
+    /// The configured Nexus client could not complete the operation.
+    #[cfg(feature = "nexus")]
+    #[error(transparent)]
+    Client(Box<NexusError>),
+
     /// The requested Task object does not exist.
     #[error("Task '{task_id}' was not found")]
     TaskNotFound {
@@ -109,6 +116,36 @@ pub enum SchedulerError {
         occurrence_id: u64,
     },
 
+    /// A selected DAG does not contain the requested Task entry group.
+    #[error(
+        "DAG '{dag_id}' does not contain Task entry group '{entry_group}'; available groups: \
+         {available:?}"
+    )]
+    TaskEntryGroupNotFound {
+        /// Selected DAG identifier.
+        dag_id: sui::types::Address,
+        /// Requested entry group.
+        entry_group: String,
+        /// Entry groups published by the DAG.
+        available: Vec<String>,
+    },
+
+    /// Task inputs do not exactly match the selected DAG entry group.
+    #[error(
+        "Task inputs do not match entry group '{entry_group}' on DAG '{dag_id}'; expected shape \
+         {expected}, received shape {received}"
+    )]
+    TaskInputsMismatch {
+        /// Selected DAG identifier.
+        dag_id: sui::types::Address,
+        /// Selected entry group.
+        entry_group: String,
+        /// Required input JSON shape with placeholder values.
+        expected: String,
+        /// Supplied input JSON shape without user values.
+        received: String,
+    },
+
     /// The configured signer cannot satisfy the Task controller.
     #[error("authority for Task '{task_id}' is unavailable: {message}")]
     AuthorityUnavailable {
@@ -132,7 +169,7 @@ pub enum SchedulerError {
     Bcs(#[source] bcs::Error),
 
     /// RPC or network transport failed.
-    #[error("scheduler transport failed")]
+    #[error("scheduler transport failed: {source}")]
     Transport {
         /// Original transport failure.
         #[source]
@@ -140,7 +177,7 @@ pub enum SchedulerError {
     },
 
     /// Programmable transaction construction failed.
-    #[error("scheduler transaction construction failed")]
+    #[error("scheduler transaction construction failed: {source}")]
     Transaction {
         /// Original construction failure.
         #[source]
@@ -198,14 +235,43 @@ impl SchedulerError {
     }
 }
 
+#[cfg(feature = "nexus")]
+impl From<NexusError> for SchedulerError {
+    fn from(error: NexusError) -> Self {
+        Self::Client(Box::new(error))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(feature = "nexus")]
+    #[test]
+    fn client_errors_remain_typed() {
+        let source = crate::nexus::error::NexusError::UnsupportedProtocolVersion {
+            protocol_version: 3,
+            maximum: 2,
+        };
+        let error = SchedulerError::from(source);
+
+        assert!(matches!(
+            error,
+            SchedulerError::Client(source)
+                if matches!(
+                    *source,
+                    crate::nexus::error::NexusError::UnsupportedProtocolVersion { .. }
+                )
+        ));
+    }
+
     #[test]
     fn boundary_errors_retain_transport_and_transaction_sources() {
         let transport = SchedulerError::transport(anyhow::anyhow!("RPC unavailable"));
-        assert_eq!(transport.to_string(), "scheduler transport failed");
+        assert_eq!(
+            transport.to_string(),
+            "scheduler transport failed: RPC unavailable"
+        );
         assert_eq!(
             transport.source().map(ToString::to_string).as_deref(),
             Some("RPC unavailable")
@@ -214,7 +280,7 @@ mod tests {
         let transaction = SchedulerError::transaction(anyhow::anyhow!("invalid PTB"));
         assert_eq!(
             transaction.to_string(),
-            "scheduler transaction construction failed"
+            "scheduler transaction construction failed: invalid PTB"
         );
         assert_eq!(
             transaction.source().map(ToString::to_string).as_deref(),

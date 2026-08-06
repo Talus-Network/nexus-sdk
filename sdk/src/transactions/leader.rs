@@ -102,27 +102,29 @@ mod tests {
 
     fn nexus_objects() -> NexusObjects {
         NexusObjects {
-            workflow_pkg_id: addr("0x1"),
-            scheduler_pkg_id: addr("0x11"),
-            primitives_pkg_id: addr("0x2"),
-            interface_pkg_id: addr("0x3"),
+            protocol_version: 1,
+            protocol: object_ref("0x18", 1, 18),
+            packages: crate::types::NexusPackages::first_publication(
+                addr("0x2"),
+                addr("0x3"),
+                addr("0x5"),
+                addr("0x13"),
+                addr("0x1"),
+                addr("0x11"),
+            ),
+            config_hash: vec![0; 32],
             network_id: addr("0x4"),
-            registry_pkg_id: addr("0x5"),
             tool_registry: object_ref("0x6", 1, 6),
-            verifier_registry: object_ref("0x7", 1, 7),
             network_auth: object_ref("0x8", 1, 8),
             agent_registry: object_ref("0xc", 1, 12),
             default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: addr("0xa1"),
                 skill_id: 177,
             },
-            gas_service: object_ref("0xd", 1, 13),
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
             priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
             us_token: UsTokenConfig::new(addr("0x12")),
-            workflow_original_pkg_id: None,
-            scheduler_original_pkg_id: None,
         }
     }
 
@@ -145,7 +147,7 @@ mod tests {
         assert_eq!(input_stake_coin, &stake_coin);
 
         let register = move_call(&ptb.commands[1]);
-        assert_eq!(register.package, objects.registry_pkg_id);
+        assert_eq!(register.package, objects.registry_pkg_id());
         assert_eq!(register.module.as_str(), "leader");
         assert_eq!(register.function.as_str(), "register");
         assert_eq!(register.arguments[1], Argument::Input(1));

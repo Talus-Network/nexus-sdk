@@ -13,11 +13,9 @@ use {
     nexus_sdk::{
         move_bindings::{
             primitives::owner_cap::CloneableOwnerCap,
-            registry::tool_registry::OverTool,
             struct_tag_matches,
-            workflow::gas::OverGas,
+            tool::{tool_authority::OverTool, tool_cashier::OverToolCashier},
         },
-        nexus::error::NexusError,
         sui,
         transactions::tool,
         types::OnchainToolMode,
@@ -43,6 +41,7 @@ pub(crate) async fn register_onchain_tool(
     timeout: Duration,
     tool_witness_id: sui::types::Address,
     collateral_coin: Option<sui::types::Address>,
+    invocation_cost_mist: u64,
     no_save: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -61,6 +60,17 @@ pub(crate) async fn register_onchain_tool(
     }
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    if let Some(result) =
+        super::tool_inspect::inspect_registration_result(&nexus_client, &fqn).await?
+    {
+        notify_success!(
+            "Tool '{fqn}' is already registered.",
+            fqn = fqn.to_string().truecolor(100, 100, 100)
+        );
+        json_output(&result)?;
+        return Ok(());
+    }
+
     let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let nexus_objects = nexus_client.get_nexus_objects();
     let collateral_coin = nexus_client
@@ -84,6 +94,7 @@ pub(crate) async fn register_onchain_tool(
         &output_schema,
         timeout,
         tool_witness_id,
+        invocation_cost_mist,
         &collateral_coin,
         address,
         mode,
@@ -100,24 +111,18 @@ pub(crate) async fn register_onchain_tool(
     // Sign and submit the TX.
     let response = match nexus_client.submit_transaction(tx, address).await {
         Ok(response) => response,
-        // If the tool is already registered, we don't want to fail the
-        // command.
-        Err(NexusError::Wallet(e)) if e.to_string().contains("register_tool_") => {
-            notify_error!(
-                "Tool '{fqn}' is already registered.",
-                fqn = fqn.to_string().truecolor(100, 100, 100)
-            );
-
-            json_output(&json!({
-                "tool_fqn": fqn,
-                "already_registered": true,
-            }))?;
-
-            return Err(NexusCliError::Any(e));
-        }
-        // Any other error fails the tool registration but continues the
-        // loop.
         Err(e) => {
+            if let Ok(Some(result)) =
+                super::tool_inspect::inspect_registration_result(&nexus_client, &fqn).await
+            {
+                notify_success!(
+                    "Tool '{fqn}' is already registered.",
+                    fqn = fqn.to_string().truecolor(100, 100, 100)
+                );
+                json_output(&result)?;
+                return Ok(());
+            }
+
             notify_error!(
                 "Failed to register tool '{fqn}': {error}",
                 fqn = fqn.to_string().truecolor(100, 100, 100),
@@ -128,8 +133,8 @@ pub(crate) async fn register_onchain_tool(
         }
     };
 
-    // Extract the OwnerCap<OverTool> and OwnerCap<OverGas> object IDs.
-    let (over_tool_id, over_gas_id) = extract_owner_caps(&response.objects, &nexus_objects)?;
+    // Extract the OwnerCap<OverTool> and OwnerCap<OverToolCashier> object IDs.
+    let (over_tool_id, cashier_admin_id) = extract_owner_caps(&response.objects, &nexus_objects)?;
 
     notify_success!(
         "Transaction digest: {digest}",
@@ -138,7 +143,7 @@ pub(crate) async fn register_onchain_tool(
 
     // Save the owner caps to the CLI conf.
     if !no_save {
-        save_tool_owner_caps(fqn.clone(), over_tool_id, over_gas_id).await?;
+        save_tool_owner_caps(fqn.clone(), over_tool_id, cashier_admin_id).await?;
     }
 
     // Re-fetch the freshly-registered Tool object so the JSON output carries
@@ -158,9 +163,9 @@ pub(crate) async fn register_onchain_tool(
         "digest": response.digest,
         "tx_checkpoint": response.checkpoint,
         "tool_id": inspection.tool_id,
-        "tool_gas_id": inspection.tool_gas_id,
+        "tool_cashier_id": inspection.tool_cashier_id,
         "owner_cap_over_tool_id": over_tool_id,
-        "owner_cap_over_gas_id": over_gas_id,
+        "cashier_admin_cap_id": cashier_admin_id,
         "tool_ref": tool_ref,
         "tool": inspection.tool,
     }))?;
@@ -224,14 +229,14 @@ async fn generate_and_customize_schemas(
     Ok((input_schema, output_schema, mode))
 }
 
-/// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverGas>` object IDs from the
+/// Extract the `OwnerCap<OverTool>` and `OwnerCap<OverToolCashier>` object IDs from the
 /// transaction response.
 fn extract_owner_caps(
     objects: &[sui::types::Object],
     nexus_objects: &NexusObjects,
 ) -> AnyResult<(sui::types::Address, Option<sui::types::Address>), NexusCliError> {
     let mut over_tool = None;
-    let mut over_gas = None;
+    let mut cashier_admin = None;
 
     for obj in objects {
         let sui::types::ObjectType::Struct(object_type) = obj.object_type() else {
@@ -242,19 +247,16 @@ fn extract_owner_caps(
             continue;
         }
 
-        // Disambiguate by the generic type param. OverTool is defined in the
-        // registry package (`nexus_registry::tool_registry::OverTool`) while
-        // OverGas is defined in the workflow package
-        // (`nexus_workflow::gas::OverGas`), so the inner type's address comes
-        // from a different package depending on which cap we are looking at.
+        // Disambiguate by the generic type parameter. [`OverTool`] and
+        // [`OverToolCashier`] are distinct authority markers in the Tool package.
         let Some(sui::types::TypeTag::Struct(inner)) = object_type.type_params().first() else {
             continue;
         };
 
         if struct_tag_matches::<OverTool>(nexus_objects, inner) {
             over_tool = Some(obj.object_id());
-        } else if struct_tag_matches::<OverGas>(nexus_objects, inner) {
-            over_gas = Some(obj.object_id());
+        } else if struct_tag_matches::<OverToolCashier>(nexus_objects, inner) {
+            cashier_admin = Some(obj.object_id());
         }
     }
 
@@ -269,24 +271,26 @@ fn extract_owner_caps(
         id = over_tool_id.to_string().truecolor(100, 100, 100)
     );
 
-    match over_gas {
-        Some(over_gas_id) => notify_success!(
-            "OwnerCap<OverGas> object ID: {id}",
-            id = over_gas_id.to_string().truecolor(100, 100, 100)
+    match cashier_admin {
+        Some(cashier_admin_id) => notify_success!(
+            "OwnerCap<OverToolCashier> object ID: {id}",
+            id = cashier_admin_id.to_string().truecolor(100, 100, 100)
         ),
         None => {
-            notify_success!("No OwnerCap<OverGas> was returned by the registration transaction.")
+            notify_success!(
+                "No OwnerCap<OverToolCashier> was returned by the registration transaction."
+            )
         }
     }
 
-    Ok((over_tool_id, over_gas))
+    Ok((over_tool_id, cashier_admin))
 }
 
 /// Save the tool owner caps to the CLI configuration.
 async fn save_tool_owner_caps(
     fqn: ToolFqn,
     over_tool_id: sui::types::Address,
-    over_gas_id: Option<sui::types::Address>,
+    cashier_admin_id: Option<sui::types::Address>,
 ) -> AnyResult<(), NexusCliError> {
     let save_handle = loading!("Saving the owner caps to the CLI configuration...");
 
@@ -296,7 +300,7 @@ async fn save_tool_owner_caps(
         fqn,
         ToolOwnerCaps {
             over_tool: over_tool_id,
-            over_gas: over_gas_id,
+            cashier_admin: cashier_admin_id,
         },
     );
 
@@ -1196,7 +1200,7 @@ mod tests {
     /// Build a `CloneableOwnerCap<INNER>` Sui object carrying `owner_cap_id` as
     /// its on-chain id, where `INNER` is identified by `(module, name)` under
     /// the workflow package. Mirrors the post-publish object set so the cap
-    /// extractor can be exercised against both `OverTool` and `OverGas`.
+    /// extractor can be exercised against both `OverTool` and `OverToolCashier`.
     fn cloneable_owner_cap(
         rng: &mut rand::rngs::ThreadRng,
         nexus_objects: &NexusObjects,
@@ -1204,7 +1208,7 @@ mod tests {
         owner_cap_id: sui::types::Address,
     ) -> sui::types::Object {
         let cap_tag = sui::types::StructTag::new(
-            nexus_objects.primitives_pkg_id,
+            nexus_objects.primitives_type_origin_pkg_id(),
             cloneable_owner_cap_tag(nexus_objects).module().clone(),
             cloneable_owner_cap_tag(nexus_objects).name().clone(),
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
@@ -1229,8 +1233,8 @@ mod tests {
         nexus_sdk::move_bindings::struct_tag::<OverTool>(nexus_objects)
     }
 
-    fn over_gas_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
-        nexus_sdk::move_bindings::struct_tag::<OverGas>(nexus_objects)
+    fn cashier_admin_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverToolCashier>(nexus_objects)
     }
 
     #[test]
@@ -1248,25 +1252,25 @@ mod tests {
             owner_cap_id,
         )];
 
-        // OverTool is found; OverGas is absent.
-        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        // OverTool is found; OverToolCashier is absent.
+        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &nexus_objects).unwrap();
         assert_eq!(over_tool, owner_cap_id);
-        assert_eq!(over_gas, None);
+        assert_eq!(cashier_admin, None);
     }
 
     #[test]
-    fn test_extract_owner_caps_does_not_treat_over_gas_as_over_tool() {
+    fn test_extract_owner_caps_does_not_treat_cashier_admin_as_over_tool() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_objects();
 
-        // An OverGas cap shares the outer CloneableOwnerCap struct and must not
+        // An OverToolCashier cap shares the outer CloneableOwnerCap struct and must not
         // be misidentified as the OverTool cap.
-        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let cashier_admin_id = sui::types::Address::generate(&mut rng);
         let objects = vec![cloneable_owner_cap(
             &mut rng,
             &nexus_objects,
-            over_gas_tag(&nexus_objects),
-            over_gas_id,
+            cashier_admin_tag(&nexus_objects),
+            cashier_admin_id,
         )];
 
         let result = extract_owner_caps(&objects, &nexus_objects);
@@ -1284,14 +1288,14 @@ mod tests {
 
         // Both caps present, as the workflow-authorization registration path
         // returns; the extractor must return each id under its own type param.
-        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let cashier_admin_id = sui::types::Address::generate(&mut rng);
         let over_tool_id = sui::types::Address::generate(&mut rng);
         let objects = vec![
             cloneable_owner_cap(
                 &mut rng,
                 &nexus_objects,
-                over_gas_tag(&nexus_objects),
-                over_gas_id,
+                cashier_admin_tag(&nexus_objects),
+                cashier_admin_id,
             ),
             cloneable_owner_cap(
                 &mut rng,
@@ -1301,9 +1305,9 @@ mod tests {
             ),
         ];
 
-        let (over_tool, over_gas) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &nexus_objects).unwrap();
         assert_eq!(over_tool, over_tool_id);
-        assert_eq!(over_gas, Some(over_gas_id));
+        assert_eq!(cashier_admin, Some(cashier_admin_id));
     }
 
     #[test]
@@ -1421,23 +1425,23 @@ mod tests {
         // Create a test FQN and object ID.
         let fqn = "com.example.testtool@1".parse::<ToolFqn>().unwrap();
         let over_tool_id = sui::types::Address::generate(&mut rng);
-        let over_gas_id = sui::types::Address::generate(&mut rng);
+        let cashier_admin_id = sui::types::Address::generate(&mut rng);
 
         // Call save_tool_owner_caps with both caps (as the on-chain
         // registration path now yields).
-        let result = save_tool_owner_caps(fqn.clone(), over_tool_id, Some(over_gas_id)).await;
+        let result = save_tool_owner_caps(fqn.clone(), over_tool_id, Some(cashier_admin_id)).await;
 
         // Should succeed.
         assert!(result.is_ok());
 
-        // Both caps must be persisted so later gas-management commands
-        // (`tool set-invocation-cost`, `gas tickets …`) can resolve OverGas.
+        // Both caps must be persisted so later tool cashier commands
+        // Cashier commands can resolve OverToolCashier from this saved capability.
         let conf = CliConf::load().await.expect("saved CLI config should load");
         assert_eq!(
             conf.tools.get(&fqn),
             Some(&ToolOwnerCaps {
                 over_tool: over_tool_id,
-                over_gas: Some(over_gas_id),
+                cashier_admin: Some(cashier_admin_id),
             })
         );
     }

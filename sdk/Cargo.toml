@@ -20,6 +20,10 @@ required-features = ["binding_codegen"]
 [features]
 default = ["tool_fqn"]
 
+# Enables protocol version two support only for the end to end upgrade fixture.
+# Released consumers use the protocol version one boundary by default.
+upgrade_test = []
+
 # Tool FQN feature enables the use of the `ToolFqn` struct and `fqn!` macro.
 # This feature is enabled by default.
 tool_fqn = ["regex", "lazy-regex"]
@@ -310,23 +314,23 @@ optional = true
 # === Move binding ===
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "chore/update_sdk_version"
+rev = "2d42967137b760b8b133625565255e12f5022cc1"
 optional = true
 
 [dependencies.sui-move]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "chore/update_sdk_version"
+rev = "2d42967137b760b8b133625565255e12f5022cc1"
 features = ["derive"]
 optional = true
 
 [dependencies.sui-move-call]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "chore/update_sdk_version"
+rev = "2d42967137b760b8b133625565255e12f5022cc1"
 optional = true
 
 [dependencies.sui-move-ptb]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "chore/update_sdk_version"
+rev = "2d42967137b760b8b133625565255e12f5022cc1"
 optional = true
 
 # === Sui deps ===
@@ -405,7 +409,7 @@ toml.workspace = true
 
 [build-dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
-branch = "chore/update_sdk_version"
+rev = "2d42967137b760b8b133625565255e12f5022cc1"
 
 [dependencies.blake3]
 version = "1.3"
