@@ -1028,4 +1028,195 @@ mod tests {
 
         assert_eq!(result.tx_digest, submitted.digest());
     }
+
+    #[derive(Clone, Copy)]
+    enum PaymentAction {
+        EnableExpiry,
+        SetInvocationCost,
+        DisableExpiry,
+        BuyExpiry,
+        EnableLimited,
+        DisableLimited,
+        BuyLimited,
+    }
+
+    async fn assert_payment_action_succeeds(action: PaymentAction) {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.payment@1");
+        let tool_id = crate::move_bindings::derive_tool_id(
+            *nexus_objects.tool_registry.object_id(),
+            &tool_fqn,
+        )
+        .expect("tool id derives");
+        let tool_payment_id = crate::move_bindings::derive_tool_payment_id(
+            nexus_objects.tool_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("tool payment id derives");
+        let primary_id = match action {
+            PaymentAction::SetInvocationCost => tool_id,
+            _ => tool_payment_id,
+        };
+        let primary_ref = sui_mocks::object_ref_for_id(primary_id);
+        let auxiliary_id = sui::types::Address::from_static("0x402");
+        let auxiliary_ref = sui_mocks::object_ref_for_id(auxiliary_id);
+        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            primary_ref,
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service,
+            auxiliary_ref,
+            sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
+            None,
+        );
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transaction_service,
+            &mut subscription_service,
+            &mut ledger_service,
+            gas_coin_ref,
+            vec![],
+            vec![],
+            vec![],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            execution_service_mock: Some(transaction_service),
+            subscription_service_mock: Some(subscription_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let actions = client.tool();
+
+        let result = match action {
+            PaymentAction::EnableExpiry => {
+                actions
+                    .enable_expiry_tickets(&tool_fqn, auxiliary_id, 7)
+                    .await
+            }
+            PaymentAction::SetInvocationCost => {
+                actions
+                    .set_invocation_cost(&tool_fqn, auxiliary_id, 11)
+                    .await
+            }
+            PaymentAction::DisableExpiry => {
+                actions
+                    .disable_expiry_tickets(&tool_fqn, auxiliary_id)
+                    .await
+            }
+            PaymentAction::BuyExpiry => actions.buy_expiry_ticket(&tool_fqn, 3, auxiliary_id).await,
+            PaymentAction::EnableLimited => {
+                actions
+                    .enable_limited_invocation_tickets(&tool_fqn, auxiliary_id, 13, 2, 9)
+                    .await
+            }
+            PaymentAction::DisableLimited => {
+                actions
+                    .disable_limited_invocation_tickets(&tool_fqn, auxiliary_id)
+                    .await
+            }
+            PaymentAction::BuyLimited => {
+                actions
+                    .buy_limited_invocation_ticket(&tool_fqn, 4, auxiliary_id)
+                    .await
+            }
+        }
+        .expect("Tool payment action succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    #[tokio::test]
+    async fn tool_payment_actions_resolve_objects_and_submit() {
+        for action in [
+            PaymentAction::EnableExpiry,
+            PaymentAction::SetInvocationCost,
+            PaymentAction::DisableExpiry,
+            PaymentAction::BuyExpiry,
+            PaymentAction::EnableLimited,
+            PaymentAction::DisableLimited,
+            PaymentAction::BuyLimited,
+        ] {
+            assert_payment_action_succeeds(action).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn registered_key_verifier_resolves_binding_and_submits() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.verified@1");
+        let tool_id = crate::move_bindings::derive_tool_id(
+            *nexus_objects.tool_registry.object_id(),
+            &tool_fqn,
+        )
+        .expect("tool id derives");
+        let owner_cap_id = sui::types::Address::from_static("0x411");
+        let derivation_client = NexusClient::builder()
+            .with_rpc_url("http://127.0.0.1:1")
+            .with_nexus_objects(nexus_objects.clone())
+            .build()
+            .await
+            .expect("derivation client builds");
+        let binding_id = derivation_client
+            .network_auth()
+            .binding_object_id(
+                &crate::move_bindings::registry::network_auth::IdentityKey::tool(tool_id),
+            )
+            .await
+            .expect("binding id derives");
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
+        for (object_ref, owner) in [
+            (
+                sui_mocks::object_ref_for_id(tool_id),
+                sui::types::Owner::Shared(1),
+            ),
+            (
+                sui_mocks::object_ref_for_id(owner_cap_id),
+                sui::types::Owner::Address(sui::types::Address::from_static("0x412")),
+            ),
+            (
+                sui_mocks::object_ref_for_id(binding_id),
+                sui::types::Owner::Shared(1),
+            ),
+        ] {
+            sui_mocks::grpc::mock_get_object_metadata(&mut ledger_service, object_ref, owner, None);
+        }
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transaction_service,
+            &mut subscription_service,
+            &mut ledger_service,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            vec![],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            execution_service_mock: Some(transaction_service),
+            subscription_service_mock: Some(subscription_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+
+        let result = client
+            .tool()
+            .configure_registered_key_verifier(&tool_fqn, owner_cap_id)
+            .await
+            .expect("registered key verifier configuration succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.tool_id, tool_id);
+    }
 }

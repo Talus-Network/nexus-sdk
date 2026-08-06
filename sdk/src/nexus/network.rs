@@ -226,3 +226,333 @@ impl NetworkActions {
         })
     }
 }
+
+#[cfg(all(test, feature = "test_utils"))]
+mod tests {
+    use {
+        super::*,
+        crate::{
+            move_bindings::{
+                primitives::{data::NexusData, event::EventWrapper},
+                registry::priority_fee_vault::{PriorityFeeAccount, PriorityFeeSwapEvent},
+                sui_framework::{
+                    balance::Balance,
+                    object::{ID, UID},
+                    sui::SUI,
+                    vec_map::{Entry, VecMap},
+                    versioned::Versioned,
+                },
+                talus::us::US,
+            },
+            test_utils::{nexus_mocks, sui_mocks},
+            types::NexusObjects,
+        },
+        serde::Serialize,
+    };
+
+    fn vault_state(
+        leader_cap: sui::types::Address,
+        leader_share: u64,
+        sui_balance: u64,
+        us_balance: u64,
+        exchange_rate_million_mists_us: u64,
+        total_share: u64,
+    ) -> PriorityFeeVaultStateV1 {
+        PriorityFeeVaultStateV1::new(
+            ID::new(sui::types::Address::from_static("0x501")),
+            1,
+            Balance::<SUI>::new(sui_balance),
+            Balance::<US>::new(us_balance),
+            exchange_rate_million_mists_us,
+            total_share,
+            VecMap::new(vec![Entry::new(
+                ID::new(leader_cap),
+                PriorityFeeAccount::new(leader_share),
+            )]),
+        )
+    }
+
+    fn mock_vault_reads(
+        ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+        objects: &NexusObjects,
+        state: &PriorityFeeVaultStateV1,
+        reads: usize,
+    ) {
+        let state_id = sui::types::Address::from_static("0x502");
+        let vault = PriorityFeeVault::new(
+            UID::new(*objects.priority_fee_vault.object_id()),
+            Versioned::new(UID::new(state_id), 1),
+        );
+        for _ in 0..reads {
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger_service,
+                objects.priority_fee_vault.clone(),
+                sui::types::Owner::Shared(objects.priority_fee_vault.version()),
+                bcs::to_bytes(&vault).expect("vault serializes"),
+            );
+            sui_mocks::grpc::mock_versioned_payload(ledger_service, state_id, 1, state.clone());
+        }
+    }
+
+    #[derive(Serialize)]
+    struct Wrapper<T> {
+        event: T,
+    }
+
+    fn swap_event(
+        objects: &NexusObjects,
+        us_in: u64,
+        us_refunded: u64,
+        sui_out: u64,
+    ) -> sui::types::Event {
+        let event = PriorityFeeSwapEvent::new(
+            ID::new(*objects.priority_fee_vault.object_id()),
+            us_in,
+            us_refunded,
+            sui_out,
+        );
+        let inner = crate::move_bindings::struct_tag::<PriorityFeeSwapEvent>(objects);
+        let wrapper = crate::move_bindings::struct_tag::<EventWrapper<NexusData>>(objects);
+        let wrapper = sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
+        sui_mocks::mock_sui_event(
+            objects.packages.registry.storage_id,
+            wrapper,
+            bcs::to_bytes(&Wrapper { event }).expect("swap event serializes"),
+        )
+    }
+
+    async fn mutating_client(
+        objects: &NexusObjects,
+        metadata: Vec<(sui::types::ObjectReference, sui::types::Owner)>,
+        events: Vec<sui::types::Event>,
+    ) -> (NexusClient, sui_mocks::grpc::SubmittedTransaction) {
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        let mut transaction_service = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscription_service = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service, 1_000);
+        for (object_ref, owner) in metadata {
+            sui_mocks::grpc::mock_get_object_metadata(&mut ledger_service, object_ref, owner, None);
+        }
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transaction_service,
+            &mut subscription_service,
+            &mut ledger_service,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            events,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            execution_service_mock: Some(transaction_service),
+            subscription_service_mock: Some(subscription_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client(objects, &rpc_url).await;
+        (client, submitted)
+    }
+
+    #[tokio::test]
+    async fn priority_fee_reads_decode_state_and_classify_invalid_requests() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let leader_cap = sui::types::Address::from_static("0x511");
+        let state = vault_state(leader_cap, 10, 0, 90, 3, 30);
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        mock_vault_reads(&mut ledger_service, &objects, &state, 5);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
+        let actions = client.network();
+
+        let decoded = actions
+            .fetch_priority_fee_vault_state()
+            .await
+            .expect("vault state decodes");
+        assert_eq!(decoded.leader_share(leader_cap), Some(10));
+        assert_eq!(actions.priority_fee_share(leader_cap).await.unwrap(), 10);
+        assert_eq!(
+            actions
+                .quote_priority_fee_withdrawal(leader_cap, 10)
+                .await
+                .unwrap(),
+            PriorityFeeWithdrawalQuote {
+                share_to_withdraw: 10,
+                us_out: 30,
+                us_refunded: 60,
+            }
+        );
+
+        let unknown = actions
+            .priority_fee_share(sui::types::Address::from_static("0x512"))
+            .await
+            .expect_err("unknown leader is rejected");
+        assert!(matches!(unknown, NexusError::Configuration(_)));
+        let excessive = actions
+            .quote_priority_fee_withdrawal(leader_cap, 11)
+            .await
+            .expect_err("excessive withdrawal is rejected");
+        assert!(matches!(excessive, NexusError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn priority_fee_read_failure_keeps_rpc_context() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
+
+        let error = client
+            .network()
+            .fetch_priority_fee_vault_state()
+            .await
+            .expect_err("missing vault is rejected");
+
+        assert!(matches!(error, NexusError::Rpc(_)));
+        assert!(error
+            .to_string()
+            .contains("Failed to fetch priority fee vault state"));
+    }
+
+    #[tokio::test]
+    async fn drain_requires_configured_rate_and_positive_sui_balance() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let state = vault_state(sui::types::Address::from_static("0x521"), 1, 0, 9, 0, 1);
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        mock_vault_reads(&mut ledger_service, &objects, &state, 1);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
+
+        let error = client
+            .network()
+            .drain_priority_fee_vault_sui(sui::types::Address::from_static("0x522"))
+            .await
+            .expect_err("empty unconfigured vault cannot be drained");
+
+        assert!(matches!(error, NexusError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn configure_priority_fee_vault_submits_transaction() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let (client, submitted) = mutating_client(&objects, vec![], vec![]).await;
+
+        let result = client
+            .network()
+            .configure_priority_fee_vault(17)
+            .await
+            .expect("vault configuration succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    #[tokio::test]
+    async fn swap_decodes_amounts_from_canonical_event() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let coin_id = sui::types::Address::from_static("0x531");
+        let coin_ref = sui_mocks::object_ref_for_id(coin_id);
+        let event = swap_event(&objects, 100, 20, 70);
+        let (client, submitted) = mutating_client(
+            &objects,
+            vec![(
+                coin_ref,
+                sui::types::Owner::Address(sui::types::Address::from_static("0x532")),
+            )],
+            vec![event],
+        )
+        .await;
+
+        let result = client
+            .network()
+            .swap_us_for_sui(coin_id, 60)
+            .await
+            .expect("swap succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.us_spent, 80);
+        assert_eq!(result.us_refunded, 20);
+        assert_eq!(result.sui_withdrawn, 70);
+    }
+
+    #[tokio::test]
+    async fn swap_requires_canonical_event() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let coin_id = sui::types::Address::from_static("0x541");
+        let (client, _submitted) = mutating_client(
+            &objects,
+            vec![(
+                sui_mocks::object_ref_for_id(coin_id),
+                sui::types::Owner::Address(sui::types::Address::from_static("0x542")),
+            )],
+            vec![],
+        )
+        .await;
+
+        let error = client
+            .network()
+            .swap_us_for_sui(coin_id, 1)
+            .await
+            .err()
+            .expect("eventless swap is rejected");
+
+        assert!(matches!(error, NexusError::Parsing(_)));
+        assert!(error.to_string().contains("PriorityFeeSwapEvent not found"));
+    }
+
+    #[tokio::test]
+    async fn swap_rejects_refund_larger_than_input() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let coin_id = sui::types::Address::from_static("0x551");
+        let event = swap_event(&objects, 10, 11, 1);
+        let (client, _submitted) = mutating_client(
+            &objects,
+            vec![(
+                sui_mocks::object_ref_for_id(coin_id),
+                sui::types::Owner::Address(sui::types::Address::from_static("0x552")),
+            )],
+            vec![event],
+        )
+        .await;
+
+        let error = client
+            .network()
+            .swap_us_for_sui(coin_id, 1)
+            .await
+            .err()
+            .expect("invalid refund is rejected");
+
+        assert!(matches!(error, NexusError::Parsing(_)));
+        assert!(error.to_string().contains("refund exceeds"));
+    }
+
+    #[tokio::test]
+    async fn priority_fee_withdrawal_resolves_cap_and_submits() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let leader_cap = sui::types::Address::from_static("0x561");
+        let (client, submitted) = mutating_client(
+            &objects,
+            vec![(
+                sui_mocks::object_ref_for_id(leader_cap),
+                sui::types::Owner::Address(sui::types::Address::from_static("0x562")),
+            )],
+            vec![],
+        )
+        .await;
+
+        let result = client
+            .network()
+            .withdraw_priority_fee(leader_cap, 5)
+            .await
+            .expect("priority fee withdrawal succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+}
