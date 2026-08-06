@@ -706,7 +706,10 @@ mod tests {
             objects.registry_type_origin_pkg_id(),
             objects.registry_pkg_id()
         );
-        assert_eq!(objects.tool_type_origin_pkg_id(), objects.tool_pkg_id());
+        assert_eq!(
+            objects.tool_cashier_type_origin_pkg_id(),
+            objects.tool_pkg_id()
+        );
         assert_eq!(
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id()

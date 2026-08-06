@@ -3,7 +3,7 @@ use crate::{command_title, display::json_output, loading, notify_success, prelud
 /// Set the invocation cost in MIST for a tool based on its FQN.
 pub(crate) async fn set_tool_invocation_cost(
     tool_fqn: ToolFqn,
-    payment_admin: Option<sui::types::Address>,
+    cashier_admin: Option<sui::types::Address>,
     invocation_cost: u64,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -14,21 +14,21 @@ pub(crate) async fn set_tool_invocation_cost(
 
     let conf = CliConf::load().await.unwrap_or_default();
 
-    // Use the provided or saved payment admin capability.
-    let Some(payment_admin) = payment_admin.or(conf
+    // Use the provided or saved cashier admin capability.
+    let Some(cashier_admin) = cashier_admin.or(conf
         .tools
         .get(&tool_fqn)
-        .and_then(|tool| tool.payment_admin))
+        .and_then(|tool| tool.cashier_admin))
     else {
         return Err(NexusCliError::Any(anyhow!(
-            "No payment admin capability was provided for tool '{tool_fqn}'. Pass --payment-admin or register the Tool with this CLI first."
+            "No cashier admin capability was provided for tool '{tool_fqn}'. Pass --cashier-admin or register the tool with this CLI first."
         )));
     };
 
     let progress = loading!("Setting Tool invocation price...");
     let response = match nexus_client
         .tool()
-        .set_invocation_cost(&tool_fqn, payment_admin, invocation_cost)
+        .set_invocation_cost(&tool_fqn, cashier_admin, invocation_cost)
         .await
     {
         Ok(response) => response,

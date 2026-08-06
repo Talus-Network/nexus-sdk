@@ -560,10 +560,10 @@
           "type_name": {
             "address": "0xa7",
             "module": "payment_extension",
-            "name": "ExpiryPaymentAdminCapKey"
+            "name": "ExpiryCashierAdminCapKey"
           },
           "module": "payment_extension",
-          "name": "ExpiryPaymentAdminCapKey",
+          "name": "ExpiryCashierAdminCapKey",
           "abilities": [
             "Copy",
             "Drop",
@@ -664,10 +664,10 @@
           "type_name": {
             "address": "0xa7",
             "module": "payment_extension",
-            "name": "LimitedInvocationsPaymentAdminCapKey"
+            "name": "LimitedInvocationsCashierAdminCapKey"
           },
           "module": "payment_extension",
-          "name": "LimitedInvocationsPaymentAdminCapKey",
+          "name": "LimitedInvocationsCashierAdminCapKey",
           "abilities": [
             "Copy",
             "Drop",
@@ -703,8 +703,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -799,8 +799,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -895,8 +895,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -921,8 +921,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -951,8 +951,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -977,8 +977,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -1007,8 +1007,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -1033,8 +1033,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -1085,8 +1085,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -1111,8 +1111,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -1256,16 +1256,16 @@
         }
       ]
     },
-    "tool_payment": {
-      "name": "tool_payment",
+    "tool_cashier": {
+      "name": "tool_cashier",
       "datatypes": [
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "ModusOperandi"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "ModusOperandi",
           "abilities": [
             "Copy",
@@ -1320,11 +1320,11 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
-            "name": "OverToolPayment"
+            "module": "tool_cashier",
+            "name": "OverToolCashier"
           },
-          "module": "tool_payment",
-          "name": "OverToolPayment",
+          "module": "tool_cashier",
+          "name": "OverToolCashier",
           "abilities": [
             "Drop"
           ],
@@ -1344,10 +1344,10 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "PaymentTicket"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "PaymentTicket",
           "abilities": [
             "Drop",
@@ -1369,7 +1369,7 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
+                        "module": "tool_cashier",
                         "name": "ModusOperandi"
                       },
                       "type_arguments": []
@@ -1383,10 +1383,10 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "Scope"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "Scope",
           "abilities": [
             "Copy",
@@ -1475,11 +1475,11 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
-            "name": "ToolPayment"
+            "module": "tool_cashier",
+            "name": "ToolCashier"
           },
-          "module": "tool_payment",
-          "name": "ToolPayment",
+          "module": "tool_cashier",
+          "name": "ToolCashier",
           "abilities": [
             "Key"
           ],
@@ -1522,10 +1522,10 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "ToolPaymentInsufficientFundsEvent"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "ToolPaymentInsufficientFundsEvent",
           "abilities": [
             "Copy",
@@ -1594,11 +1594,11 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
-            "name": "ToolPaymentKey"
+            "module": "tool_cashier",
+            "name": "ToolCashierKey"
           },
-          "module": "tool_payment",
-          "name": "ToolPaymentKey",
+          "module": "tool_cashier",
+          "name": "ToolCashierKey",
           "abilities": [
             "Copy",
             "Drop",
@@ -1620,10 +1620,10 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "ToolPaymentLockUpdatedEvent"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "ToolPaymentLockUpdatedEvent",
           "abilities": [
             "Copy",
@@ -1687,10 +1687,10 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
+            "module": "tool_cashier",
             "name": "ToolPaymentSettledEvent"
           },
-          "module": "tool_payment",
+          "module": "tool_cashier",
           "name": "ToolPaymentSettledEvent",
           "abilities": [
             "Copy",
@@ -1754,11 +1754,11 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "tool_payment",
-            "name": "ToolPaymentStateV1"
+            "module": "tool_cashier",
+            "name": "ToolCashierStateV1"
           },
-          "module": "tool_payment",
-          "name": "ToolPaymentStateV1",
+          "module": "tool_cashier",
+          "name": "ToolCashierStateV1",
           "abilities": [
             "Store"
           ],
@@ -1853,7 +1853,7 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
+                              "module": "tool_cashier",
                               "name": "Scope"
                             },
                             "type_arguments": []
@@ -1863,7 +1863,7 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
+                              "module": "tool_cashier",
                               "name": "PaymentTicket"
                             },
                             "type_arguments": []
@@ -1894,8 +1894,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -1920,8 +1920,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -1938,7 +1938,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "Scope"
                   },
                   "type_arguments": []
@@ -1951,7 +1951,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "ModusOperandi"
                   },
                   "type_arguments": []
@@ -1980,7 +1980,7 @@
           "return_types": []
         },
         {
-          "name": "assert_tool_payment_owner",
+          "name": "assert_cashier_owner",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [
@@ -1999,8 +1999,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2048,8 +2048,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2184,8 +2184,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2210,8 +2210,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2318,8 +2318,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2380,8 +2380,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2395,7 +2395,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "Scope"
                   },
                   "type_arguments": []
@@ -2426,8 +2426,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2461,7 +2461,7 @@
           "return_types": []
         },
         {
-          "name": "get_tool_payment_setting",
+          "name": "settings",
           "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
@@ -2475,8 +2475,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2504,7 +2504,7 @@
           ]
         },
         {
-          "name": "get_tool_payment_setting_mut",
+          "name": "settings_mut",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -2518,8 +2518,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2544,8 +2544,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -2623,8 +2623,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2674,8 +2674,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2689,7 +2689,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "Scope"
                   },
                   "type_arguments": []
@@ -2720,8 +2720,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2819,8 +2819,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2837,8 +2837,8 @@
                   "Datatype": {
                     "type_name": {
                       "address": "0xa7",
-                      "module": "tool_payment",
-                      "name": "ToolPaymentStateV1"
+                      "module": "tool_cashier",
+                      "name": "ToolCashierStateV1"
                     },
                     "type_arguments": []
                   }
@@ -2862,8 +2862,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2880,8 +2880,8 @@
                   "Datatype": {
                     "type_name": {
                       "address": "0xa7",
-                      "module": "tool_payment",
-                      "name": "ToolPaymentStateV1"
+                      "module": "tool_cashier",
+                      "name": "ToolCashierStateV1"
                     },
                     "type_arguments": []
                   }
@@ -2905,8 +2905,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2935,7 +2935,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "ModusOperandi"
                 },
                 "type_arguments": []
@@ -2967,7 +2967,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "ModusOperandi"
                 },
                 "type_arguments": []
@@ -2986,7 +2986,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "ModusOperandi"
                 },
                 "type_arguments": []
@@ -3050,8 +3050,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3076,8 +3076,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3102,8 +3102,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -3136,8 +3136,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3162,8 +3162,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -3180,7 +3180,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "Scope"
                   },
                   "type_arguments": []
@@ -3215,7 +3215,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "Scope"
                 },
                 "type_arguments": []
@@ -3248,7 +3248,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "Scope"
                 },
                 "type_arguments": []
@@ -3272,7 +3272,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "Scope"
                 },
                 "type_arguments": []
@@ -3305,7 +3305,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "tool_payment",
+                  "module": "tool_cashier",
                   "name": "Scope"
                 },
                 "type_arguments": []
@@ -3328,8 +3328,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3398,8 +3398,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3427,8 +3427,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3465,8 +3465,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3503,8 +3503,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3532,8 +3532,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3602,8 +3602,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3672,8 +3672,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3723,8 +3723,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -3738,7 +3738,7 @@
                 "Datatype": {
                   "type_name": {
                     "address": "0xa7",
-                    "module": "tool_payment",
+                    "module": "tool_cashier",
                     "name": "Scope"
                   },
                   "type_arguments": []
@@ -3769,8 +3769,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -5456,7 +5456,7 @@
           ]
         },
         {
-          "name": "delegate_payment_admin",
+          "name": "delegate_cashier_admin",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5540,8 +5540,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -6780,8 +6780,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -6994,8 +6994,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -7212,8 +7212,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -7426,8 +7426,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -7622,8 +7622,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "OverToolPayment"
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -7875,7 +7875,7 @@
               }
             },
             {
-              "name": "payment_admin",
+              "name": "cashier_admin",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -7891,8 +7891,8 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_payment",
-                              "name": "OverToolPayment"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }

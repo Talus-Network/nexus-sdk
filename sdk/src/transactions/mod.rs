@@ -13,8 +13,8 @@ pub mod gas;
 /// Transactions concerning Nexus network fees.
 pub mod network;
 
-/// Transactions concerning Tool payment state and tickets.
-pub mod tool_payment;
+/// Transactions concerning Tool cashier state and payment tickets.
+pub mod tool_cashier;
 
 /// Transactions concerning operations around the scheduler.
 pub mod scheduler;

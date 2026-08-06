@@ -65,8 +65,8 @@ The initial NetworkAuth reader supports schema one and rejects schema two before
 | `move_bindings::gas` | `move_bindings::tool` |
 | Nexus fee operations through `NexusClient::gas()` | `NexusClient::network()` |
 | Tool price and ticket operations through gas APIs | `NexusClient::tool()` |
-| Nexus GasService transaction builders | `transactions::tool_payment` or `transactions::network` according to state ownership |
-| Shared `GasService` Tool payment state | The `ToolPayment` object derived from each `Tool` |
+| Nexus GasService transaction builders | `transactions::tool_cashier` or `transactions::network` according to state ownership |
+| Shared `GasService` Tool payment state | The `ToolCashier` object derived from each `Tool` |
 | `VerifierRegistry` | Tool verifier records in `ToolRegistry` and registered keys in `NetworkAuth` |
 
 Use this import style for new TAP code:
@@ -150,23 +150,23 @@ let agent_source = bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id))?;
 
 For the common user funded path, the SDK also accepts an empty source where the active sender is the payer.
 
-Tool invocation price, earnings, settings, and tickets now belong to the Tool domain. Every registered Tool has one derived `ToolPayment` object. Tool registration returns an `OverTool` owner capability and a separate `OverToolPayment` administration capability.
+Tool invocation price, earnings, settings, and tickets now belong to the Tool domain. Every registered Tool has one derived `ToolCashier` object. Tool registration returns an `OverTool` owner capability and a separate `OverToolCashier` administration capability.
 
-Use the Tool owner capability for Tool identity and earnings. Use the payment administration capability for invocation price and ticket configuration.
+Use the Tool owner capability for Tool identity and earnings. Use the cashier administration capability for invocation price and ticket configuration.
 
 ```rust
 client
     .tool()
-    .set_invocation_cost(&tool_fqn, payment_admin, 1_000_000)
+    .set_invocation_cost(&tool_fqn, cashier_admin, 1_000_000)
     .await?;
 
 client
     .tool()
-    .enable_expiry_tickets(&tool_fqn, payment_admin, 100_000)
+    .enable_expiry_tickets(&tool_fqn, cashier_admin, 100_000)
     .await?;
 ```
 
-`transactions::gas` now contains only Sui transaction gas helpers such as depositing SUI into an address balance. Nexus network economics live in `transactions::network`. Tool payment builders live in `transactions::tool_payment`.
+`transactions::gas` now contains only Sui transaction gas helpers such as depositing SUI into an address balance. Nexus network economics live in `transactions::network`. Tool cashier builders live in `transactions::tool_cashier`.
 
 ## Scheduled Task Migration
 

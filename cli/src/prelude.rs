@@ -75,7 +75,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
     pub(crate) over_tool: sui::types::Address,
-    pub(crate) payment_admin: Option<sui::types::Address>,
+    pub(crate) cashier_admin: Option<sui::types::Address>,
 }
 
 /// Reusable Sui gas command args.

@@ -234,9 +234,9 @@ events! {
     crate::move_bindings::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
     crate::move_bindings::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
     crate::move_bindings::registry::leader::LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
-    crate::move_bindings::tool::tool_payment::ToolPaymentInsufficientFundsEvent => ToolPaymentInsufficientFunds, "ToolPaymentInsufficientFundsEvent",
-    crate::move_bindings::tool::tool_payment::ToolPaymentLockUpdatedEvent => ToolPaymentLockUpdated, "ToolPaymentLockUpdatedEvent",
-    crate::move_bindings::tool::tool_payment::ToolPaymentSettledEvent => ToolPaymentSettled, "ToolPaymentSettledEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentInsufficientFundsEvent => ToolPaymentInsufficientFunds, "ToolPaymentInsufficientFundsEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentLockUpdatedEvent => ToolPaymentLockUpdated, "ToolPaymentLockUpdatedEvent",
+    crate::move_bindings::tool::tool_cashier::ToolPaymentSettledEvent => ToolPaymentSettled, "ToolPaymentSettledEvent",
     crate::move_bindings::interface::dag::DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
     crate::move_bindings::tool::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
 }

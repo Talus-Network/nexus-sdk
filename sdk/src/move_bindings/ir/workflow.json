@@ -18337,18 +18337,18 @@
         }
       ]
     },
-    "tool_payment_adapter": {
-      "name": "tool_payment_adapter",
+    "tool_cashier_adapter": {
+      "name": "tool_cashier_adapter",
       "datatypes": [],
       "functions": [
         {
-          "name": "abort_expired_execution_with_tool_payment",
+          "name": "abort_expired_execution_with_tool_cashier",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18356,8 +18356,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18441,13 +18441,13 @@
           "return_types": []
         },
         {
-          "name": "assert_tool_payment_is_for_vertex",
+          "name": "assert_cashier_is_for_vertex",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -18455,8 +18455,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18505,7 +18505,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18513,8 +18513,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18636,7 +18636,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18644,8 +18644,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18699,7 +18699,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18707,8 +18707,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18885,7 +18885,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18893,8 +18893,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -18961,7 +18961,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -18969,8 +18969,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -19025,7 +19025,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "tool_payment",
+              "name": "tool_cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -19033,8 +19033,8 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
-                        "module": "tool_payment",
-                        "name": "ToolPayment"
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }

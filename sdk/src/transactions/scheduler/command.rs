@@ -8,7 +8,7 @@ use {
             scheduler::scheduler as scheduler_binding,
             workflow::{
                 execution_entries as execution_entries_binding,
-                tool_payment_adapter as tool_payment_adapter_binding,
+                tool_cashier_adapter as tool_cashier_adapter_binding,
             },
         },
         move_boundary::NexusPtbBuilder,
@@ -648,7 +648,7 @@ pub(crate) fn append_dispatch_occurrence(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
     append_dispatch_occurrence_(
         transaction,
@@ -657,7 +657,7 @@ pub(crate) fn append_dispatch_occurrence(
         leader_cap,
         occurrence_id,
         gas_charge,
-        tool_payments,
+        tool_cashiers,
     )
 }
 
@@ -669,7 +669,7 @@ pub fn dispatch_occurrence_ptb(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         append_dispatch_occurrence_(
@@ -679,7 +679,7 @@ pub fn dispatch_occurrence_ptb(
             leader_cap,
             occurrence_id,
             gas_charge,
-            tool_payments,
+            tool_cashiers,
         )
     })
 }
@@ -691,7 +691,7 @@ fn append_dispatch_occurrence_(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
     let protocol_ref = transaction.objects().protocol.clone();
     let protocol = transaction
@@ -743,21 +743,21 @@ fn append_dispatch_occurrence_(
 
     transaction
         .call_target(
-            tool_payment_adapter_binding::snapshot_dag_invocation_costs_target,
+            tool_cashier_adapter_binding::snapshot_dag_invocation_costs_target,
             vec![tool_registry, execution, dag],
         )
         .map_err(SchedulerError::transaction)?;
 
-    let mut tool_payments = tool_payments.iter().copied().collect::<Vec<_>>();
-    tool_payments.sort_unstable();
-    for (address, version) in tool_payments {
-        let tool_payment = transaction
+    let mut tool_cashiers = tool_cashiers.iter().copied().collect::<Vec<_>>();
+    tool_cashiers.sort_unstable();
+    for (address, version) in tool_cashiers {
+        let tool_cashier = transaction
             .shared_object_by_id(address, version, true)
             .map_err(SchedulerError::transaction)?;
         transaction
             .call_target(
-                tool_payment_adapter_binding::lock_payment_state_for_tool_target,
-                vec![tool_payment, dag, execution],
+                tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
+                vec![tool_cashier, dag, execution],
             )
             .map_err(SchedulerError::transaction)?;
     }

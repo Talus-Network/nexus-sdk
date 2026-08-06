@@ -39,7 +39,7 @@ impl_versioned_anchor!(
     crate::move_bindings::registry::network_auth::KeyBinding,
     crate::move_bindings::registry::network_auth::NetworkAuth,
     crate::move_bindings::registry::priority_fee_vault::PriorityFeeVault,
-    crate::move_bindings::tool::tool_payment::ToolPayment,
+    crate::move_bindings::tool::tool_cashier::ToolCashier,
     crate::move_bindings::tool::tool_registry::Tool,
     crate::move_bindings::tool::tool_registry::ToolRegistry,
     crate::move_bindings::scheduler::task::Task,

@@ -3,30 +3,35 @@ use {
     std::num::NonZeroU64,
 };
 
-/// Commands for expiry and invocation limited tool payment tickets.
+/// Commands for configuring and buying tool payment tickets.
 #[derive(Subcommand)]
-pub(crate) enum PaymentCommand {
+pub(crate) enum CashierCommand {
     #[command(subcommand, about = "Manage expiry payment tickets")]
-    Expiry(ExpiryPaymentCommand),
+    Expiry(ExpiryTicketCommand),
 
-    #[command(subcommand, about = "Manage invocation limited payment tickets")]
-    LimitedInvocations(LimitedInvocationsPaymentCommand),
+    #[command(subcommand, about = "Manage payment tickets with invocation limits")]
+    LimitedInvocations(LimitedInvocationsTicketCommand),
 }
 
 /// Commands for time limited tool payment tickets.
 #[derive(Subcommand)]
-pub(crate) enum ExpiryPaymentCommand {
+pub(crate) enum ExpiryTicketCommand {
     #[command(about = "Enable expiry payment tickets for a tool")]
     Enable {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "payment-admin",
+            long = "cashier-admin",
             short = 'a',
-            help = "Payment admin capability object ID. Defaults to the capability saved for this tool.",
+            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
             value_name = "OBJECT_ID"
         )]
-        payment_admin: Option<sui::types::Address>,
+        cashier_admin: Option<sui::types::Address>,
         #[arg(
             long = "cost-per-minute",
             short = 'c',
@@ -40,22 +45,32 @@ pub(crate) enum ExpiryPaymentCommand {
 
     #[command(about = "Disable expiry payment tickets for a tool")]
     Disable {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "payment-admin",
+            long = "cashier-admin",
             short = 'a',
-            help = "Payment admin capability object ID. Defaults to the capability saved for this tool.",
+            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
             value_name = "OBJECT_ID"
         )]
-        payment_admin: Option<sui::types::Address>,
+        cashier_admin: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
 
     #[command(about = "Buy an expiry payment ticket for a tool")]
     BuyTicket {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
             long,
@@ -78,18 +93,23 @@ pub(crate) enum ExpiryPaymentCommand {
 
 /// Commands for invocation limited tool payment tickets.
 #[derive(Subcommand)]
-pub(crate) enum LimitedInvocationsPaymentCommand {
-    #[command(about = "Enable invocation limited payment tickets for a tool")]
+pub(crate) enum LimitedInvocationsTicketCommand {
+    #[command(about = "Enable payment tickets with invocation limits for a tool")]
     Enable {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "payment-admin",
+            long = "cashier-admin",
             short = 'a',
-            help = "Payment admin capability object ID. Defaults to the capability saved for this tool.",
+            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
             value_name = "OBJECT_ID"
         )]
-        payment_admin: Option<sui::types::Address>,
+        cashier_admin: Option<sui::types::Address>,
         #[arg(
             long = "cost-per-invocation",
             short = 'c',
@@ -113,24 +133,34 @@ pub(crate) enum LimitedInvocationsPaymentCommand {
         gas: GasArgs,
     },
 
-    #[command(about = "Disable invocation limited payment tickets for a tool")]
+    #[command(about = "Disable payment tickets with invocation limits for a tool")]
     Disable {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
-            long = "payment-admin",
+            long = "cashier-admin",
             short = 'a',
-            help = "Payment admin capability object ID. Defaults to the capability saved for this tool.",
+            help = "Tool cashier admin capability object ID. Defaults to the capability saved for this tool.",
             value_name = "OBJECT_ID"
         )]
-        payment_admin: Option<sui::types::Address>,
+        cashier_admin: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(about = "Buy an invocation limited payment ticket for a tool")]
+    #[command(about = "Buy a payment ticket with an invocation limit for a tool")]
     BuyTicket {
-        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        #[arg(
+            long = "tool-fqn",
+            short = 't',
+            help = "The fully qualified name (FQN) of the tool.",
+            value_name = "FQN"
+        )]
         tool_fqn: ToolFqn,
         #[arg(
             long,
@@ -151,21 +181,21 @@ pub(crate) enum LimitedInvocationsPaymentCommand {
     },
 }
 
-async fn payment_admin(
+async fn cashier_admin(
     tool_fqn: &ToolFqn,
     explicit: Option<sui::types::Address>,
 ) -> AnyResult<sui::types::Address, NexusCliError> {
-    if let Some(payment_admin) = explicit {
-        return Ok(payment_admin);
+    if let Some(cashier_admin) = explicit {
+        return Ok(cashier_admin);
     }
 
     let conf = CliConf::load().await.unwrap_or_default();
     conf.tools
         .get(tool_fqn)
-        .and_then(|tool| tool.payment_admin)
+        .and_then(|tool| tool.cashier_admin)
         .ok_or_else(|| {
             NexusCliError::Any(anyhow!(
-                "No payment admin capability was provided for tool '{tool_fqn}'. Pass --payment-admin or register the Tool with this CLI first."
+                "No tool cashier admin capability was provided for tool '{tool_fqn}'. Pass --cashier-admin or register the tool with this CLI first."
             ))
         })
 }
@@ -201,17 +231,17 @@ fn emit_result(
 
 async fn enable_expiry(
     tool_fqn: ToolFqn,
-    explicit_payment_admin: Option<sui::types::Address>,
+    explicit_cashier_admin: Option<sui::types::Address>,
     cost_per_minute: u64,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Enabling expiry payment tickets for tool '{tool_fqn}'");
-    let payment_admin = payment_admin(&tool_fqn, explicit_payment_admin).await?;
+    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let progress = loading!("Crafting and executing transaction...");
     let response = match client
         .tool()
-        .enable_expiry_tickets(&tool_fqn, payment_admin, cost_per_minute)
+        .enable_expiry_tickets(&tool_fqn, cashier_admin, cost_per_minute)
         .await
     {
         Ok(response) => {
@@ -228,16 +258,16 @@ async fn enable_expiry(
 
 async fn disable_expiry(
     tool_fqn: ToolFqn,
-    explicit_payment_admin: Option<sui::types::Address>,
+    explicit_cashier_admin: Option<sui::types::Address>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Disabling expiry payment tickets for tool '{tool_fqn}'");
-    let payment_admin = payment_admin(&tool_fqn, explicit_payment_admin).await?;
+    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let progress = loading!("Crafting and executing transaction...");
     let response = match client
         .tool()
-        .disable_expiry_tickets(&tool_fqn, payment_admin)
+        .disable_expiry_tickets(&tool_fqn, cashier_admin)
         .await
     {
         Ok(response) => {
@@ -281,7 +311,7 @@ async fn buy_expiry(
 
 async fn enable_limited_invocations(
     tool_fqn: ToolFqn,
-    explicit_payment_admin: Option<sui::types::Address>,
+    explicit_cashier_admin: Option<sui::types::Address>,
     cost_per_invocation: u64,
     min_invocations: u64,
     max_invocations: u64,
@@ -293,14 +323,14 @@ async fn enable_limited_invocations(
         )));
     }
     command_title!("Enabling invocation limited payment tickets for tool '{tool_fqn}'");
-    let payment_admin = payment_admin(&tool_fqn, explicit_payment_admin).await?;
+    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let progress = loading!("Crafting and executing transaction...");
     let response = match client
         .tool()
         .enable_limited_invocation_tickets(
             &tool_fqn,
-            payment_admin,
+            cashier_admin,
             cost_per_invocation,
             min_invocations,
             max_invocations,
@@ -325,16 +355,16 @@ async fn enable_limited_invocations(
 
 async fn disable_limited_invocations(
     tool_fqn: ToolFqn,
-    explicit_payment_admin: Option<sui::types::Address>,
+    explicit_cashier_admin: Option<sui::types::Address>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Disabling invocation limited payment tickets for tool '{tool_fqn}'");
-    let payment_admin = payment_admin(&tool_fqn, explicit_payment_admin).await?;
+    let cashier_admin = cashier_admin(&tool_fqn, explicit_cashier_admin).await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let progress = loading!("Crafting and executing transaction...");
     let response = match client
         .tool()
-        .disable_limited_invocation_tickets(&tool_fqn, payment_admin)
+        .disable_limited_invocation_tickets(&tool_fqn, cashier_admin)
         .await
     {
         Ok(response) => {
@@ -384,31 +414,31 @@ async fn buy_limited_invocations(
     )
 }
 
-pub(crate) async fn handle_payment(command: PaymentCommand) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        PaymentCommand::Expiry(command) => match command {
-            ExpiryPaymentCommand::Enable {
+        CashierCommand::Expiry(command) => match command {
+            ExpiryTicketCommand::Enable {
                 tool_fqn,
-                payment_admin,
+                cashier_admin,
                 cost_per_minute,
                 gas,
-            } => enable_expiry(tool_fqn, payment_admin, cost_per_minute, gas).await,
-            ExpiryPaymentCommand::Disable {
+            } => enable_expiry(tool_fqn, cashier_admin, cost_per_minute, gas).await,
+            ExpiryTicketCommand::Disable {
                 tool_fqn,
-                payment_admin,
+                cashier_admin,
                 gas,
-            } => disable_expiry(tool_fqn, payment_admin, gas).await,
-            ExpiryPaymentCommand::BuyTicket {
+            } => disable_expiry(tool_fqn, cashier_admin, gas).await,
+            ExpiryTicketCommand::BuyTicket {
                 tool_fqn,
                 minutes,
                 payment_coin,
                 gas,
             } => buy_expiry(tool_fqn, minutes, payment_coin, gas).await,
         },
-        PaymentCommand::LimitedInvocations(command) => match command {
-            LimitedInvocationsPaymentCommand::Enable {
+        CashierCommand::LimitedInvocations(command) => match command {
+            LimitedInvocationsTicketCommand::Enable {
                 tool_fqn,
-                payment_admin,
+                cashier_admin,
                 cost_per_invocation,
                 min_invocations,
                 max_invocations,
@@ -416,7 +446,7 @@ pub(crate) async fn handle_payment(command: PaymentCommand) -> AnyResult<(), Nex
             } => {
                 enable_limited_invocations(
                     tool_fqn,
-                    payment_admin,
+                    cashier_admin,
                     cost_per_invocation,
                     min_invocations,
                     max_invocations,
@@ -424,12 +454,12 @@ pub(crate) async fn handle_payment(command: PaymentCommand) -> AnyResult<(), Nex
                 )
                 .await
             }
-            LimitedInvocationsPaymentCommand::Disable {
+            LimitedInvocationsTicketCommand::Disable {
                 tool_fqn,
-                payment_admin,
+                cashier_admin,
                 gas,
-            } => disable_limited_invocations(tool_fqn, payment_admin, gas).await,
-            LimitedInvocationsPaymentCommand::BuyTicket {
+            } => disable_limited_invocations(tool_fqn, cashier_admin, gas).await,
+            LimitedInvocationsTicketCommand::BuyTicket {
                 tool_fqn,
                 invocations,
                 payment_coin,
@@ -444,26 +474,26 @@ mod tests {
     use {super::*, clap::Parser};
 
     #[test]
-    fn payment_commands_use_the_tool_namespace() {
+    fn cashier_commands_use_the_tool_namespace() {
         let cli = crate::Cli::try_parse_from([
             "nexus",
             "tool",
-            "payment",
+            "cashier",
             "expiry",
             "enable",
             "--tool-fqn",
             "com.example.tool@1",
-            "--payment-admin",
+            "--cashier-admin",
             "0x1",
             "--cost-per-minute",
             "10",
         ])
-        .expect("tool payment command should parse");
+        .expect("tool cashier command should parse");
 
         assert!(matches!(
             cli.command,
-            crate::Command::Tool(super::super::ToolCommand::Payment(PaymentCommand::Expiry(
-                ExpiryPaymentCommand::Enable { .. }
+            crate::Command::Tool(super::super::ToolCommand::Cashier(CashierCommand::Expiry(
+                ExpiryTicketCommand::Enable { .. }
             )))
         ));
     }
@@ -473,7 +503,7 @@ mod tests {
         assert!(crate::Cli::try_parse_from([
             "nexus",
             "tool",
-            "payment",
+            "cashier",
             "expiry",
             "buy-ticket",
             "--tool-fqn",

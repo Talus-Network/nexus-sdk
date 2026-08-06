@@ -79,7 +79,7 @@ impl ToolCollateral<'_> {
 struct RegisteredToolArguments {
     tool: Argument,
     owner_cap_over_tool: Argument,
-    payment_admin_cap: Argument,
+    cashier_admin_cap: Argument,
 }
 
 fn timeout_millis(timeout: Duration) -> anyhow::Result<u64> {
@@ -92,12 +92,12 @@ fn configure_registration(
 ) -> anyhow::Result<RegisteredToolArguments> {
     let tool = tx.nested_result(register_result, 0)?;
     let owner_cap_over_tool = tx.nested_result(register_result, 1)?;
-    let payment_admin_cap = tx.nested_result(register_result, 2)?;
+    let cashier_admin_cap = tx.nested_result(register_result, 2)?;
 
     Ok(RegisteredToolArguments {
         tool,
         owner_cap_over_tool,
-        payment_admin_cap,
+        cashier_admin_cap,
     })
 }
 
@@ -118,7 +118,7 @@ fn finish_registrations(
         .flat_map(|registration| {
             [
                 registration.owner_cap_over_tool,
-                registration.payment_admin_cap,
+                registration.cashier_admin_cap,
             ]
         })
         .collect();
@@ -481,18 +481,18 @@ fn register_on_chain_for_self_with_collateral_ptb(
 pub fn set_invocation_cost_ptb(
     objects: &NexusObjects,
     tool: &sui::types::ObjectReference,
-    payment_admin: &sui::types::ObjectReference,
+    cashier_admin: &sui::types::ObjectReference,
     invocation_cost: u64,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let registry = tx.shared_object(&objects.tool_registry, true)?;
         let tool = tx.shared_object(tool, false)?;
-        let payment_admin = tx.owned_object(payment_admin)?;
+        let cashier_admin = tx.owned_object(cashier_admin)?;
         let invocation_cost_mist = tx.arg(&invocation_cost)?;
 
         tx.call_target(
             tool_registry_binding::set_invocation_cost_mist_target,
-            vec![registry, tool, payment_admin, invocation_cost_mist],
+            vec![registry, tool, cashier_admin, invocation_cost_mist],
         )?;
         Ok(())
     })

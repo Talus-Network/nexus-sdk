@@ -6,7 +6,7 @@ use crate::move_bindings::{
     primitives::event as event_move,
     registry::agent_registry as agent_registry_move,
     scheduler::task as scheduler_task_move,
-    tool::tool_payment as tool_payment_move,
+    tool::tool_cashier as tool_cashier_move,
     workflow::execution as execution_move,
 };
 #[cfg(feature = "nexus")]
@@ -188,10 +188,10 @@ impl NexusObjects {
         self.packages.interface.type_origin("graph", "Vertex")
     }
 
-    pub fn tool_type_origin_pkg_id(&self) -> sui::types::Address {
+    pub fn tool_cashier_type_origin_pkg_id(&self) -> sui::types::Address {
         self.packages
             .tool
-            .type_origin("tool_payment", "ToolPayment")
+            .type_origin("tool_cashier", "ToolCashier")
     }
 
     pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
@@ -1077,7 +1077,7 @@ mod tests {
             crate::move_bindings::struct_tag::<scheduler_task_move::Task>(&objects),
             crate::move_bindings::struct_tag::<agent_registry_move::SkillRegisteredEvent>(&objects),
             crate::move_bindings::struct_tag::<dag_move::DAG>(&objects),
-            crate::move_bindings::struct_tag::<tool_payment_move::ToolPayment>(&objects),
+            crate::move_bindings::struct_tag::<tool_cashier_move::ToolCashier>(&objects),
         ];
         for tag in cases {
             assert!(objects.is_event_from_nexus(&wrap_event(&objects, tag)));
@@ -1119,7 +1119,7 @@ mod tests {
             .packages
             .tool
             .insert_type_origin(
-                DatatypeKey::new("tool_payment", "ToolPayment"),
+                DatatypeKey::new("tool_cashier", "ToolCashier"),
                 address("0xb4"),
             )
             .unwrap();
@@ -1146,7 +1146,7 @@ mod tests {
         assert_eq!(objects.primitives_type_origin_pkg_id(), address("0xb1"));
         assert_eq!(objects.interface_type_origin_pkg_id(), address("0xb2"));
         assert_eq!(objects.registry_type_origin_pkg_id(), address("0xb3"));
-        assert_eq!(objects.tool_type_origin_pkg_id(), address("0xb4"));
+        assert_eq!(objects.tool_cashier_type_origin_pkg_id(), address("0xb4"));
         assert_eq!(objects.workflow_type_origin_pkg_id(), address("0xb5"));
         assert_eq!(objects.scheduler_type_origin_pkg_id(), address("0xb6"));
 

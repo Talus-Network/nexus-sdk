@@ -40,7 +40,7 @@ pub(crate) fn inspect_tool_result_json(
 
     Ok(json!({
         "tool_id": inspection.tool_id,
-        "tool_payment_id": inspection.tool_payment_id,
+        "tool_cashier_id": inspection.tool_cashier_id,
         "exists": inspection.exists,
         "tool_ref": tool_ref,
         "tool": inspection.tool,
@@ -136,9 +136,9 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
             id = inspection.tool_id.to_string().truecolor(100, 100, 100)
         );
         item!(
-            "Derived ToolPayment ID: {id}",
+            "Derived ToolCashier ID: {id}",
             id = inspection
-                .tool_payment_id
+                .tool_cashier_id
                 .to_string()
                 .truecolor(100, 100, 100)
         );
@@ -168,9 +168,9 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
         id = inspection.tool_id.to_string().truecolor(100, 100, 100)
     );
     item!(
-        "ToolPayment ID: {id}",
+        "ToolCashier ID: {id}",
         id = inspection
-            .tool_payment_id
+            .tool_cashier_id
             .to_string()
             .truecolor(100, 100, 100)
     );
@@ -293,7 +293,7 @@ mod tests {
         let inspection = ToolInspection {
             fqn: fqn!("xyz.taluslabs.example@1"),
             tool_id: sui::types::Address::from_static("0xaa"),
-            tool_payment_id: sui::types::Address::from_static("0xbb"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
             exists: false,
             tool: None,
             verifier_support: None,
@@ -319,7 +319,7 @@ mod tests {
         let inspection = ToolInspection {
             fqn: fqn!("xyz.taluslabs.example@1"),
             tool_id: sui::types::Address::from_static("0xaa"),
-            tool_payment_id: sui::types::Address::from_static("0xbb"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
             exists: true,
             tool: None,
             verifier_support: None,
@@ -334,7 +334,7 @@ mod tests {
         assert_eq!(json["already_registered"], serde_json::Value::Bool(true));
         assert_eq!(json["tool_fqn"], "xyz.taluslabs.example@1");
         assert_eq!(
-            json["tool_payment_id"],
+            json["tool_cashier_id"],
             serde_json::json!(sui::types::Address::from_static("0xbb").to_string())
         );
     }
@@ -345,7 +345,7 @@ mod tests {
         let inspection = ToolInspection {
             fqn: fqn!("xyz.taluslabs.example@1"),
             tool_id: sui::types::Address::from_static("0xaa"),
-            tool_payment_id: sui::types::Address::from_static("0xbb"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
             exists: false,
             tool: None,
             verifier_support: None,

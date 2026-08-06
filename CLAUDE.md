@@ -16,7 +16,7 @@ nexus-sdk/                  cargo workspace root
 │       ├── scheduler/      Task, Schedule, occurrence, receipt, and snapshot
 │       │                   domain types
 │       ├── transactions/   PTB builders: tap.rs, tool.rs, workflow.rs,
-│       │                   scheduler/, gas.rs, network.rs, tool_payment.rs
+│       │                   scheduler/, gas.rs, network.rs, tool_cashier.rs
 │       ├── types/          typed on-chain object/event models
 │       │                   (TapRegistry, TapExecutionPayment, Tool, ToolRef,
 │       │                   DagExecution, NexusObjects, derive helpers, …)
@@ -89,7 +89,7 @@ Sibling repos checked out next to this one (paths depend on local layout):
   `crawler.get_object_contents_bcs::<T>` for objects whose layout is best
   decoded from raw BCS. Dynamic field readers
   (`get_dynamic_fields_bcs`, `get_dynamic_object_fields`) sit on top of both.
-- **ID derivation** uses `derive_tool_id`, `derive_tool_payment_id`,
+- **ID derivation** uses `derive_tool_id`, `derive_tool_cashier_id`,
   `derive_walk_execution_event_task_id`, etc. Never reimplement the
   ascii-string / BCS-blake2b derivation in shell or Python.
 - **Struct reuse comes before new structs.** Before adding any new Rust struct, inspect the existing structs in the related SDK/CLI/type module and confirm that none of them, and no reasonable modification of them, can satisfy the new purpose. If a new struct is still necessary, add a short doc comment or nearby comment that states exactly what is missing from the closest existing struct and why modifying that existing struct would be wrong.

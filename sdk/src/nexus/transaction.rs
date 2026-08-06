@@ -105,7 +105,7 @@ impl SchedulerTransaction<'_> {
         dag: &sui::types::ObjectReference,
         leader_cap: &sui::types::ObjectReference,
         gas_charge: u64,
-        tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
+        tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
     ) -> Result<(), SchedulerError> {
         if offer.occurrence().task_id() != *task.object_id() {
             return Err(SchedulerError::InvalidRequest {
@@ -123,7 +123,7 @@ impl SchedulerTransaction<'_> {
             leader_cap,
             offer.occurrence().occurrence_id(),
             gas_charge,
-            tool_payments,
+            tool_cashiers,
         )
     }
 

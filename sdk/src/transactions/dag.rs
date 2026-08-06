@@ -22,7 +22,7 @@ use {
             workflow::{
                 execution_settlement as execution_settlement_binding,
                 execution_submission as execution_submission_binding,
-                tool_payment_adapter as tool_payment_adapter_binding,
+                tool_cashier_adapter as tool_cashier_adapter_binding,
             },
         },
         move_boundary,
@@ -106,7 +106,7 @@ struct RuntimeToolResultWorksheetInputs {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RuntimeToolPaymentRef {
+pub struct RuntimeToolCashierRef {
     pub vertex: GraphVertex,
     pub object_id: sui::types::Address,
     pub version: sui::types::Version,
@@ -479,10 +479,10 @@ fn offchain_verifier_ptb_objects(
     })
 }
 
-fn ordered_runtime_tool_payment_refs(
-    tool_payments: &[RuntimeToolPaymentRef],
-) -> Vec<&RuntimeToolPaymentRef> {
-    let mut ordered = tool_payments.iter().collect::<Vec<_>>();
+fn ordered_runtime_tool_cashier_refs(
+    tool_cashiers: &[RuntimeToolCashierRef],
+) -> Vec<&RuntimeToolCashierRef> {
+    let mut ordered = tool_cashiers.iter().collect::<Vec<_>>();
     ordered.sort_by(|left, right| {
         left.object_id
             .to_string()
@@ -493,45 +493,45 @@ fn ordered_runtime_tool_payment_refs(
     ordered
 }
 
-fn runtime_tool_payment_args(
+fn runtime_tool_cashier_args(
     tx: &mut move_boundary::NexusPtbBuilder,
-    tool_payments: &[RuntimeToolPaymentRef],
+    tool_cashiers: &[RuntimeToolCashierRef],
     next_vertex: &RuntimeVertex,
     settle_current_vertex_payment: bool,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     expected_vertex_arg: Option<sui::types::Argument>,
 ) -> anyhow::Result<Vec<sui::types::Argument>> {
-    let mut tool_payment_args = HashMap::new();
-    let mut lock_tool_payment_args = Vec::new();
-    let mut current_tool_payment = None;
+    let mut tool_cashier_args = HashMap::new();
+    let mut lock_tool_cashier_args = Vec::new();
+    let mut current_tool_cashier = None;
 
-    for payment_ref in ordered_runtime_tool_payment_refs(tool_payments) {
-        let key = (payment_ref.object_id, payment_ref.version);
-        let tool_payment = match tool_payment_args.entry(key) {
+    for cashier_ref in ordered_runtime_tool_cashier_refs(tool_cashiers) {
+        let key = (cashier_ref.object_id, cashier_ref.version);
+        let tool_cashier = match tool_cashier_args.entry(key) {
             std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let arg =
-                    tx.shared_object_by_id(payment_ref.object_id, payment_ref.version, true)?;
-                lock_tool_payment_args.push(arg);
+                    tx.shared_object_by_id(cashier_ref.object_id, cashier_ref.version, true)?;
+                lock_tool_cashier_args.push(arg);
                 *entry.insert(arg)
             }
         };
 
-        if &payment_ref.vertex == next_vertex.vertex() {
-            current_tool_payment = Some(tool_payment);
+        if &cashier_ref.vertex == next_vertex.vertex() {
+            current_tool_cashier = Some(tool_cashier);
         }
     }
 
     if settle_current_vertex_payment {
-        if let Some(tool_payment) = current_tool_payment {
+        if let Some(tool_cashier) = current_tool_cashier {
             let expected_vertex = match expected_vertex_arg {
                 Some(expected_vertex) => expected_vertex,
                 None => runtime_vertex_arg(tx, next_vertex)?,
             };
-            crate::transactions::tool_payment::settle_payment_state_for_vertex(
+            crate::transactions::tool_cashier::settle_payment_state_for_vertex(
                 tx,
-                tool_payment,
+                tool_cashier,
                 dag,
                 execution,
                 expected_vertex,
@@ -539,7 +539,7 @@ fn runtime_tool_payment_args(
         }
     }
 
-    Ok(lock_tool_payment_args)
+    Ok(lock_tool_cashier_args)
 }
 
 fn prepare_onchain_tool_argument(
@@ -667,7 +667,7 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
     dag: (sui::types::Address, sui::types::Version),
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_payments: &[RuntimeToolPaymentRef],
+    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
     settle_current_vertex_payment: bool,
@@ -696,9 +696,9 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
             },
         )?;
 
-        let lock_tool_payment_args = runtime_tool_payment_args(
+        let lock_tool_cashier_args = runtime_tool_cashier_args(
             tx,
-            tool_payments,
+            tool_cashiers,
             next_vertex,
             settle_current_vertex_payment,
             dag,
@@ -757,7 +757,7 @@ pub fn submit_off_chain_tool_result_for_walk_ptb(
             next_vertex,
         )?;
 
-        lock_payment_state_for_tools(tx, lock_tool_payment_args, dag, execution)?;
+        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag, execution)?;
 
         Ok(())
     })
@@ -769,7 +769,7 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
     dag: (sui::types::Address, sui::types::Version),
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_payments: &[RuntimeToolPaymentRef],
+    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
     settle_current_vertex_payment: bool,
@@ -802,9 +802,9 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             },
         )?;
 
-        let lock_tool_payment_args = runtime_tool_payment_args(
+        let lock_tool_cashier_args = runtime_tool_cashier_args(
             tx,
-            tool_payments,
+            tool_cashiers,
             next_vertex,
             settle_current_vertex_payment,
             dag_arg,
@@ -824,7 +824,7 @@ pub fn submit_on_chain_tool_result_for_walk_ptb(
             tool_registry,
             leader_registry,
         );
-        lock_payment_state_for_tools(tx, lock_tool_payment_args, dag_arg, execution_arg)?;
+        lock_payment_state_for_tools(tx, lock_tool_cashier_args, dag_arg, execution_arg)?;
         commit_prepared_onchain_tool_execution(
             tx,
             execution_plan,
@@ -849,7 +849,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
     dag: (sui::types::Address, sui::types::Version),
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_payments: &[RuntimeToolPaymentRef],
+    tool_cashiers: &[RuntimeToolCashierRef],
     walk_index: u64,
     next_vertex: &RuntimeVertex,
     result: (sui::types::Address, sui::types::Version),
@@ -885,9 +885,9 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
             clock,
         )?;
 
-        let tool_payments =
-            runtime_tool_payment_args(tx, tool_payments, next_vertex, false, dag, execution, None)?;
-        lock_payment_state_for_tools(tx, tool_payments, dag, execution)?;
+        let tool_cashiers =
+            runtime_tool_cashier_args(tx, tool_cashiers, next_vertex, false, dag, execution, None)?;
+        lock_payment_state_for_tools(tx, tool_cashiers, dag, execution)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
@@ -1314,7 +1314,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     dag: (sui::types::Address, sui::types::Version),
     execution: (sui::types::Address, sui::types::Version),
     leader_cap: &sui::types::ObjectReference,
-    tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
+    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     failed_onchain_tool_reason: Option<Vec<u8>>,
@@ -1349,11 +1349,11 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
             clock,
         )?;
 
-        let mut tool_payments_args = Vec::with_capacity(tool_payments.len());
-        for (addr, ver) in tool_payments {
-            tool_payments_args.push(tx.shared_object_by_id(*addr, *ver, true)?);
+        let mut tool_cashiers_args = Vec::with_capacity(tool_cashiers.len());
+        for (addr, ver) in tool_cashiers {
+            tool_cashiers_args.push(tx.shared_object_by_id(*addr, *ver, true)?);
         }
-        lock_payment_state_for_tools(tx, tool_payments_args, dag, execution)?;
+        lock_payment_state_for_tools(tx, tool_cashiers_args, dag, execution)?;
         emit_payment_ready_walk_requests(tx, dag, execution, leader_registry, clock);
 
         if let Some(task) = task_settlement {
@@ -1755,14 +1755,14 @@ fn mark_entry_input_port(
 #[allow(clippy::too_many_arguments)]
 fn lock_payment_state_for_tools(
     tx: &mut move_boundary::NexusPtbBuilder,
-    tool_payments: Vec<sui::types::Argument>,
+    tool_cashiers: Vec<sui::types::Argument>,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
 ) -> anyhow::Result<()> {
-    for tool_payment in tool_payments {
+    for tool_cashier in tool_cashiers {
         tx.call_target(
-            tool_payment_adapter_binding::lock_payment_state_for_tool_target,
-            vec![tool_payment, dag, execution],
+            tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
+            vec![tool_cashier, dag, execution],
         )?;
     }
     Ok(())
@@ -2067,7 +2067,7 @@ mod tests {
             (addr("0x50"), 7),
             (addr("0x60"), 8),
             &object_ref("0x20", 1, 20),
-            &[RuntimeToolPaymentRef {
+            &[RuntimeToolCashierRef {
                 vertex: next_vertex.vertex().clone(),
                 object_id: addr("0x30"),
                 version: 9,
@@ -2082,7 +2082,7 @@ mod tests {
         let lock_payment = move_call_index(
             &ptb,
             None,
-            "tool_payment_adapter",
+            "tool_cashier_adapter",
             "lock_payment_state_for_tool",
         );
         let execute = move_call_index(&ptb, Some(tool_package), "tool", "execute");
@@ -2204,7 +2204,7 @@ mod tests {
             matches!(
                 command,
                 Command::MoveCall(call)
-                    if call.module.as_str() == "tool_payment_adapter"
+                    if call.module.as_str() == "tool_cashier_adapter"
                         && call.function.as_str() == "lock_payment_state_for_tool"
             )
         }));
@@ -2256,7 +2256,7 @@ mod tests {
             move_call_index(
                 &ptb,
                 None,
-                "tool_payment_adapter",
+                "tool_cashier_adapter",
                 "lock_payment_state_for_tool",
             ) > call_index
         );

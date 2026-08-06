@@ -485,7 +485,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::agent::FixedTool,
-                tool::tool_payment::{settle_payment_vertex_target, ToolPayment},
+                tool::tool_cashier::{settle_payment_vertex_target, ToolCashier},
             },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
@@ -517,7 +517,7 @@ mod tests {
         );
         let add_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
         let add_payment =
-            crate::move_bindings::derive_tool_payment_id(addr(0xa7), add_tool).unwrap();
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), add_tool).unwrap();
         assert_ne!(add_payment, add_tool);
 
         let fqn = crate::fqn!("xyz.taluslabs.math.i64.mul@1");
@@ -529,7 +529,7 @@ mod tests {
         );
         let mul_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
         let mul_payment =
-            crate::move_bindings::derive_tool_payment_id(addr(0xa7), mul_tool).unwrap();
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), mul_tool).unwrap();
         assert_ne!(mul_payment, mul_tool);
         assert_ne!(mul_payment, add_payment);
     }
@@ -625,12 +625,12 @@ mod tests {
         let (target, tag) = crate::move_bindings::with_nexus_scope(&objects, || {
             (
                 settle_payment_vertex_target().unwrap(),
-                ToolPayment::struct_tag_static(),
+                ToolCashier::struct_tag_static(),
             )
         });
 
         assert_eq!(target.package, objects.tool_pkg_id());
-        assert_eq!(*tag.address(), objects.tool_type_origin_pkg_id());
+        assert_eq!(*tag.address(), objects.tool_cashier_type_origin_pkg_id());
     }
 
     #[test]

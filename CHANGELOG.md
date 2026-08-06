@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added canonical protocol configuration resolution with package lineage, dependency linkage, shared object bindings, configuration hash validation, and datatype origin validation.
 - Added versioned state loading for every Nexus root and exact datatype origin scoping for generated Move bindings.
 - Added protocol activation event queries that preserve both stable datatype identity and the package version that emitted each event.
-- Added generated bindings and package metadata for the Nexus tool package.
+- Added generated bindings and package metadata for the Nexus tool package, including `ToolCashier` state, payment tickets, and cashier administration authority.
 - Added one composable Task creation model covering default execution, Agent skill execution, address funding, Agent vault funding, manual occurrences, recurrence, and failure behavior.
 - Task creation now returns and transfers an owned `TaskPointer` containing the shared Task ID, and `Scheduler::task_pointers` lists those pointers through exact type filtered gRPC pagination.
 - Added `NexusClient::clone_grpc_client` for independently owned gRPC transports that do not acquire the crawler-owned client mutex.
@@ -37,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Every versioned state read now checks its exact schema before decoding. Network auth operations return `NexusError::UnsupportedStateSchema` when the active payload is newer than the SDK binding.
 - NetworkAuth readers support schema one in the initial release and return `NexusError::UnsupportedStateSchema` before decoding any unknown payload. The end to end upgrade fixture enables an explicit schema two branch only for its prepared version two consumer.
 - Event consumers can reject direct calls from inactive Nexus package versions while accepting user packages only when their transitive Nexus linkage exactly matches the captured protocol configuration.
-- Tool pricing, ticket calls, and payment events now use the tool package, while execution settlement calls use the workflow tool payment adapter. Network fee operations use the network facade.
+- Tool pricing, ticket calls, and payment events now use the tool package, while execution settlement calls use the workflow `tool_cashier_adapter`. Network fee operations use the network facade.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
 - Renamed priority fee exchange-rate fields and CLI inputs to `exchange_rate_million_mists_us`, measured as `$US` atomic units per one million MIST.
 - Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
@@ -66,7 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Fixed
 
 - Local test faucet requests now use the current object payload and report rejection details.
-- Tool payment ID derivation now hashes the generated [`ToolPaymentKey`](sdk/src/move_bindings/mod.rs) value, matching the exact Move layout used by `derived_object::claim`.
+- Tool cashier ID derivation now hashes the generated [`ToolCashierKey`](sdk/src/move_bindings/mod.rs) value, matching the exact Move layout used by `derived_object::claim`.
 - Scheduler dispatch transactions now pass the active protocol root required by the protocol aware scheduler ABI.
 - Protocol activation queries now decode the canonical Nexus event wrapper and reject wrappers for unrelated events.
 - Package metadata validation now distinguishes the runtime package address in RPC type names from immutable datatype defining origins.
@@ -91,6 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `nexus network priority-fee-vault` commands for configuring the priority fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority fee shares.
 - Added support for new priority fee system in commands.
 - Added `tool configure-verifier` commands for configuring built-in RegisteredKey verification or registering an External verifier with its package, module, function, witness, and immutable shared objects.
+- Added `nexus tool cashier` commands for configuring and buying expiry and invocation limited payment tickets with saved cashier administration capabilities.
 
 #### Changed
 

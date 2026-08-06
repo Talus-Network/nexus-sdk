@@ -20,7 +20,7 @@ use {
         move_bindings::{
             primitives::owner_cap::CloneableOwnerCap,
             struct_tag_matches,
-            tool::{tool_authority::OverTool, tool_payment::OverToolPayment},
+            tool::{tool_authority::OverTool, tool_cashier::OverToolCashier},
         },
         nexus::client::NexusClient,
         transactions::tool,
@@ -191,11 +191,11 @@ async fn register_one_tool(
         )));
     };
 
-    // Find `CloneableOwnerCap<OverToolPayment>` object ID.
-    let payment_admin = owner_caps.iter().find_map(|(object_id, object_type)| {
+    // Find `CloneableOwnerCap<OverToolCashier>` object ID.
+    let cashier_admin = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverToolPayment>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverToolCashier>(&nexus_objects, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -203,9 +203,9 @@ async fn register_one_tool(
         }
     });
 
-    let Some(payment_admin_id) = payment_admin else {
+    let Some(cashier_admin_id) = cashier_admin else {
         return Err(NexusCliError::Any(anyhow!(
-            "Could not find the OwnerCap<OverToolPayment> object ID in the transaction response."
+            "Could not find the OwnerCap<OverToolCashier> object ID in the transaction response."
         )));
     };
 
@@ -215,8 +215,8 @@ async fn register_one_tool(
     );
 
     notify_success!(
-        "OwnerCap<OverToolPayment> object ID: {id}",
-        id = payment_admin_id.to_string().truecolor(100, 100, 100)
+        "OwnerCap<OverToolCashier> object ID: {id}",
+        id = cashier_admin_id.to_string().truecolor(100, 100, 100)
     );
 
     notify_success!(
@@ -226,7 +226,7 @@ async fn register_one_tool(
 
     let caps = ToolOwnerCaps {
         over_tool: over_tool_id,
-        payment_admin: Some(payment_admin_id),
+        cashier_admin: Some(cashier_admin_id),
     };
 
     // Re-fetch the freshly-registered Tool object so the JSON output carries
@@ -245,9 +245,9 @@ async fn register_one_tool(
         json!({
             "digest": response.digest,
             "tool_id": inspection.tool_id,
-            "tool_payment_id": inspection.tool_payment_id,
+            "tool_cashier_id": inspection.tool_cashier_id,
             "owner_cap_over_tool_id": over_tool_id,
-            "payment_admin_cap_id": payment_admin_id,
+            "cashier_admin_cap_id": cashier_admin_id,
             "tool_ref": tool_ref,
             "tool": inspection.tool,
         }),

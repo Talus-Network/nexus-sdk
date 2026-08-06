@@ -172,22 +172,22 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the onchain [`tool::tool_payment::ToolPayment`] object ID for a Tool.
+/// Derive the onchain [`tool::tool_cashier::ToolCashier`] object ID for a Tool.
 ///
-/// The key value must use the generated [`tool::tool_payment::ToolPaymentKey`]
+/// The key value must use the generated [`tool::tool_cashier::ToolCashierKey`]
 /// layout. Move represents its empty declaration with a `false` dummy field,
 /// and that byte is part of the derived object hash.
-pub fn derive_tool_payment_id(
-    tool_type_origin: sui::types::Address,
+pub fn derive_tool_cashier_id(
+    tool_cashier_type_origin: sui::types::Address,
     tool: sui::types::Address,
 ) -> anyhow::Result<sui::types::Address> {
     let key = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        tool_type_origin,
-        sui::types::Identifier::from_static("tool_payment"),
-        sui::types::Identifier::from_static("ToolPaymentKey"),
+        tool_cashier_type_origin,
+        sui::types::Identifier::from_static("tool_cashier"),
+        sui::types::Identifier::from_static("ToolCashierKey"),
         vec![],
     )));
-    derive_object_id(tool, &key, &tool::tool_payment::ToolPaymentKey::new(false))
+    derive_object_id(tool, &key, &tool::tool_cashier::ToolCashierKey::new(false))
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
@@ -346,7 +346,7 @@ mod tests {
     use {
         super::{
             derive_task_execution_id,
-            derive_tool_payment_id,
+            derive_tool_cashier_id,
             derive_walk_execution_event_task_id,
             interface::graph::RuntimeVertex,
             registry,
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_payment_id_matches_the_move_derived_object_key() {
+    fn tool_cashier_id_matches_the_move_derived_object_key() {
         let package = sui::types::Address::from_static(
             "0xb9b0f588a28d41b7f40a8cc11e9ad5bb96f65f4da5f93d886db69519642fbebb",
         );
@@ -404,9 +404,9 @@ mod tests {
             "0x015002c6cb4dca09fecf1f52a09e5e92bc7b878ce6386a83cc021fb4df67b0ec",
         );
         let expected = sui::types::Address::from_static(
-            "0x6cf649dec0ed9740402ae6ea23c1a13b2ac6b8d41dddb313d3c10a03e8d6a626",
+            "0x6d6d6f4789bef43ac69883d713e63fe34ed2aa9e012c14d3da9ede3cb3b57e78",
         );
 
-        assert_eq!(derive_tool_payment_id(package, tool).unwrap(), expected);
+        assert_eq!(derive_tool_cashier_id(package, tool).unwrap(), expected);
     }
 }

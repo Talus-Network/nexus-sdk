@@ -769,8 +769,8 @@ impl NexusClient {
         Ok(tool.object_ref())
     }
 
-    /// Derive and fetch a [`ToolPayment`] object based on the provided tool FQN.
-    pub(crate) async fn fetch_tool_payment(
+    /// Derive and fetch a [`ToolCashier`] object based on the provided tool FQN.
+    pub(crate) async fn fetch_tool_cashier(
         &self,
         tool_fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
@@ -778,17 +778,17 @@ impl NexusClient {
         let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
         let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
             .map_err(NexusError::Parsing)?;
-        let tool_payment_id = crate::move_bindings::derive_tool_payment_id(
-            self.nexus_objects.tool_type_origin_pkg_id(),
+        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            self.nexus_objects.tool_cashier_type_origin_pkg_id(),
             tool_id,
         )
         .map_err(NexusError::Parsing)?;
-        let tool_payment = crawler
-            .get_object_metadata(tool_payment_id)
+        let tool_cashier = crawler
+            .get_object_metadata(tool_cashier_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        Ok(tool_payment.object_ref())
+        Ok(tool_cashier.object_ref())
     }
 }
 
