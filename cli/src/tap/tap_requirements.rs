@@ -14,6 +14,7 @@ pub(crate) async fn fetch_requirements(
         .await
         .map_err(NexusCliError::Nexus)?;
 
+    human_output(&render_requirements(&result));
     json_output(&requirements_result_json(&result))
 }
 

@@ -53,7 +53,10 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         DagCommand::Inspect { dag_id } => inspect_dag(dag_id).await,
 
         // == `$ nexus dag validate` ==
-        DagCommand::Validate { path } => validate_dag(path).await.map(|_| ()),
+        DagCommand::Validate { path } => {
+            validate_dag(path.clone()).await?;
+            output_validation(&path)
+        }
 
         // == `$ nexus dag publish` ==
         DagCommand::Publish { path, gas } => {

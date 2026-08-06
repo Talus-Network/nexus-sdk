@@ -2,6 +2,7 @@ use super::*;
 
 pub(crate) async fn dry_run_skill(config: PathBuf) -> AnyResult<(), NexusCliError> {
     let config = validate_skill(config).await?;
+    notify_success!("TAP skill dry run completed successfully.");
     json_output(&dry_run_result_json(&config))
 }
 

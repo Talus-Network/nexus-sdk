@@ -5,6 +5,7 @@ mod tool_configure_verifier;
 mod tool_inspect;
 mod tool_list;
 mod tool_new;
+mod tool_output;
 mod tool_register_offchain;
 mod tool_register_onchain;
 mod tool_set_invocation_cost;
@@ -25,7 +26,7 @@ use {
     tool_register_onchain::register_onchain_tool,
     tool_set_invocation_cost::*,
     tool_unregister::*,
-    tool_validate::{validate_off_chain_tool, validate_on_chain_tool},
+    tool_validate::{output_validation, validate_off_chain_tool, validate_on_chain_tool},
 };
 
 #[derive(Subcommand)]
@@ -469,7 +470,7 @@ pub(crate) enum ToolCommand {
     },
 
     #[command(
-        about = "Inspect a registered tool by FQN. Returns the derived Tool and ToolCashier IDs and the full onchain `Tool` record when it exists."
+        about = "Inspect a registered tool by FQN. Returns the derived Tool and ToolCashier IDs and the complete semantic tool record when it exists."
     )]
     Inspect {
         #[arg(
@@ -516,8 +517,8 @@ pub(crate) enum ToolCommand {
     },
 }
 
-/// Handle the provided tool command. The [ToolCommand] instance is passed from
-/// [crate::main].
+/// Handle the provided tool command. The [`ToolCommand`] instance is passed from
+/// [`crate::main`].
 pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError> {
     match command {
         // == `$ nexus tool new` ==
@@ -529,8 +530,14 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
         // == `$ nexus tool validate` ==
         ToolCommand::Validate { tool_type } => match tool_type {
-            ValidateCommand::Offchain { url } => validate_off_chain_tool(url).await.map(|_| ()),
-            ValidateCommand::Onchain { ident } => validate_on_chain_tool(ident).await.map(|_| ()),
+            ValidateCommand::Offchain { url } => {
+                let meta = validate_off_chain_tool(url).await?;
+                output_validation(&meta)
+            }
+            ValidateCommand::Onchain { ident } => {
+                let meta = validate_on_chain_tool(ident).await?;
+                output_validation(&meta)
+            }
         },
 
         // == `$ nexus tool register` ==
@@ -662,7 +669,25 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
+    use clap::{CommandFactory as _, Parser};
+
+    #[test]
+    fn inspect_help_describes_the_semantic_record() {
+        let command = crate::Cli::command();
+        let tool = command
+            .find_subcommand("tool")
+            .expect("tool command should exist");
+        let inspect = tool
+            .find_subcommand("inspect")
+            .expect("inspect command should exist");
+        let about = inspect
+            .get_about()
+            .expect("inspect command should have help text")
+            .to_string();
+
+        assert!(about.contains("complete semantic tool record"));
+        assert!(!about.contains("full onchain"));
+    }
 
     #[test]
     fn onchain_registration_rejects_manual_authorization_mode() {

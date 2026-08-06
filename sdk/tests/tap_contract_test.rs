@@ -33,6 +33,7 @@ use {
         test_utils::ptb as move_boundary,
         types::{
             resolve_active_tap_skill_revision,
+            AgentRecordContext,
             AgentRegistrySnapshot,
             DefaultDagExecutorTarget,
             NexusObjects,
@@ -285,9 +286,12 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
 
     AgentRegistrySnapshot {
         id: addr("0x91"),
-        agents: vec![AgentRecord {
-            active: true,
-            skills: MoveTable::new(addr("0x95"), 1),
+        agents: vec![AgentRecordContext {
+            agent_id,
+            record: AgentRecord {
+                active: true,
+                skills: MoveTable::new(addr("0x95"), 1),
+            },
         }],
         skills: vec![skill(agent_id, skill_id, active_revision)],
         default_executor: Some(DefaultDagExecutor {
@@ -858,9 +862,12 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
 
     let registry = AgentRegistrySnapshot {
         id: addr("0x91"),
-        agents: vec![AgentRecord {
-            active: true,
-            skills: MoveTable::new(addr("0x95"), 1),
+        agents: vec![AgentRecordContext {
+            agent_id,
+            record: AgentRecord {
+                active: true,
+                skills: MoveTable::new(addr("0x95"), 1),
+            },
         }],
         skills: vec![SkillRecordContext {
             agent_id,

@@ -78,6 +78,11 @@ pub(super) async fn run(
         human_output(&output::render_occurrence_command(&reference));
     }
     await_poller(inspection.poller).await?;
+    let events = events
+        .iter()
+        .map(output::event_result_json)
+        .collect::<anyhow::Result<Vec<_>>>()
+        .map_err(NexusCliError::Any)?;
     json_output(&events)
 }
 

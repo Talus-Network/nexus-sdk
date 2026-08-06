@@ -42,6 +42,7 @@ use {
             resolve_default_tap_dag_executor,
             ActiveSkillExecutionTarget,
             AgentId,
+            AgentRecordContext,
             AgentRegistrySnapshot,
             DefaultDagExecutorRecord,
             NexusObjects,
@@ -765,7 +766,10 @@ async fn fetch_agent_registry_tables(
                 record: skill,
             });
         }
-        agents.push(agent);
+        agents.push(AgentRecordContext {
+            agent_id,
+            record: agent,
+        });
     }
     Ok(Response {
         object_id: raw.object_id,
@@ -1186,9 +1190,12 @@ mod tests {
 
         AgentRegistrySnapshot {
             id: sui::types::Address::from_static("0xf"),
-            agents: vec![AgentRecord {
-                active: true,
-                skills: MoveTable::new(sui::types::Address::from_static("0x90"), 1),
+            agents: vec![AgentRecordContext {
+                agent_id: agent,
+                record: AgentRecord {
+                    active: true,
+                    skills: MoveTable::new(sui::types::Address::from_static("0x90"), 1),
+                },
             }],
             skills: vec![SkillRecordContext {
                 agent_id: agent,
@@ -1229,7 +1236,7 @@ mod tests {
     ) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
-        let agent = registry.agents[0].clone();
+        let agent = registry.agents[0].record.clone();
         let skill_context = registry.skills[0].clone();
         let skill_record = skill_context.record.clone();
         let skill_revision_record = registry
@@ -1526,6 +1533,10 @@ mod tests {
             .await
             .expect("full registry recovery decodes the default executor");
 
+        assert_eq!(
+            response.data.agents[0].agent_id,
+            sui::types::Address::from_static("0xa")
+        );
         assert_eq!(
             response
                 .data

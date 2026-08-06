@@ -171,6 +171,19 @@ pub struct SkillRecordContext {
     pub record: SkillRecord,
 }
 
+/// Fetched agent record plus its dynamic table key, which is not stored in Move.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentRecordContext {
+    pub agent_id: AgentId,
+    pub record: AgentRecord,
+}
+
+impl AgentRecordContext {
+    pub fn active(&self) -> bool {
+        self.record.active
+    }
+}
+
 impl SkillRecordContext {
     pub fn active(&self) -> bool {
         self.record.active
@@ -200,7 +213,7 @@ pub struct DefaultDagExecutorTarget {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentRegistrySnapshot {
     pub id: sui::types::Address,
-    pub agents: Vec<AgentRecord>,
+    pub agents: Vec<AgentRecordContext>,
     pub skills: Vec<SkillRecordContext>,
     #[serde(default)]
     pub default_executor: Option<DefaultDagExecutor>,
@@ -690,6 +703,20 @@ mod tests {
             skills: vec![skill(true, 2)],
             default_executor: None,
         }
+    }
+
+    #[test]
+    fn agent_record_context_preserves_the_dynamic_field_key() {
+        let context = AgentRecordContext {
+            agent_id: addr("0xa"),
+            record: AgentRecord {
+                active: true,
+                skills: MoveTable::new(addr("0x90"), 0),
+            },
+        };
+
+        assert_eq!(context.agent_id, addr("0xa"));
+        assert!(context.record.active);
     }
 
     #[test]

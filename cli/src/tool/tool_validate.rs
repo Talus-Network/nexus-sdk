@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, loading, prelude::*},
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*},
     nexus_sdk::types::ToolMeta,
     reqwest::StatusCode,
     serde::Deserialize,
@@ -79,6 +79,30 @@ pub(crate) async fn validate_off_chain_tool(
 ) -> AnyResult<ToolMeta, NexusCliError> {
     let client = build_tool_http_client()?;
     validate_off_chain_tool_with_client(url, &client).await
+}
+
+pub(crate) fn output_validation(meta: &ToolMeta) -> AnyResult<(), NexusCliError> {
+    notify_success!("Tool '{}' is valid.", meta.fqn);
+    json_output(&validation_result_json(meta)?)
+}
+
+fn validation_result_json(meta: &ToolMeta) -> AnyResult<serde_json::Value, NexusCliError> {
+    let timeout_ms = u64::try_from(meta.timeout.as_millis())
+        .map_err(|_| NexusCliError::Any(anyhow!("Tool timeout exceeds u64 milliseconds")))?;
+    let input_schema = serde_json::from_slice::<serde_json::Value>(&meta.input_schema)
+        .map_err(|error| NexusCliError::Any(error.into()))?;
+    let output_schema = serde_json::from_slice::<serde_json::Value>(&meta.output_schema)
+        .map_err(|error| NexusCliError::Any(error.into()))?;
+
+    Ok(json!({
+        "valid": true,
+        "fqn": meta.fqn,
+        "url": meta.url,
+        "description": meta.description,
+        "timeout_ms": timeout_ms,
+        "input_schema": input_schema,
+        "output_schema": output_schema,
+    }))
 }
 
 pub(crate) async fn validate_off_chain_tool_with_client(
@@ -188,6 +212,34 @@ mod tests {
     use {super::*, nexus_toolkit::*, schemars::JsonSchema, warp::http::StatusCode};
 
     // == Dummy tools setup ==
+
+    #[test]
+    fn validation_result_json_exposes_readable_metadata() {
+        let meta = ToolMeta {
+            fqn: "xyz.taluslabs.example@1".parse().unwrap(),
+            url: "https://example.com/tool".to_owned(),
+            description: "Example tool".to_owned(),
+            timeout: Duration::from_millis(5_000),
+            input_schema: br#"{"type":"object"}"#.to_vec(),
+            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+        };
+
+        let value = validation_result_json(&meta).expect("valid metadata should project");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "valid": true,
+                "fqn": "xyz.taluslabs.example@1",
+                "url": "https://example.com/tool",
+                "description": "Example tool",
+                "timeout_ms": 5_000,
+                "input_schema": {"type": "object"},
+                "output_schema": {"oneOf": []},
+            })
+        );
+        assert!(!value.to_string().contains("\"bytes\""));
+    }
 
     #[derive(Debug, Deserialize, JsonSchema)]
     struct Input {

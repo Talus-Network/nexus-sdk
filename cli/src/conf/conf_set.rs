@@ -1,4 +1,5 @@
 use {
+    super::output::ConfOutput,
     crate::{cli_conf::StorageKind, command_title, display::json_output, loading, prelude::*},
     nexus_sdk::{
         types::SecretValue,
@@ -78,11 +79,10 @@ pub(crate) async fn set_nexus_conf(
         };
     }
 
-    json_output(&serde_json::to_value(&conf).unwrap())?;
-
     match conf.save_to_path(&conf_path).await {
         Ok(()) => {
             conf_handle.success();
+            json_output(&ConfOutput::from(&conf))?;
             Ok(())
         }
         Err(e) => {

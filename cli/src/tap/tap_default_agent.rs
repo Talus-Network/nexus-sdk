@@ -12,11 +12,6 @@ pub(crate) async fn show_default_agent() -> AnyResult<(), NexusCliError> {
         .map_err(NexusCliError::Any)?
         .data;
 
-    notify_success!(
-        "Default agent={agent} skill={skill}",
-        agent = record.target.agent_id.to_string().truecolor(100, 100, 100),
-        skill = record.target.skill_id.to_string().truecolor(100, 100, 100),
-    );
-
+    human_output(&render_default_agent(&record));
     json_output(&default_agent_result_json(&record))
 }
