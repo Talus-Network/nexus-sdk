@@ -29,10 +29,7 @@ The main invariant is simple: every value that crosses the Move boundary must
 come from `nexus_sdk::move_bindings` or from an SDK helper that returns such a
 value. Old local mirror types are no longer the authority.
 
-The active `Protocol` root is the authority for package and shared object
-bindings. A standard `NexusClient` action resolves that configuration once at
-the start of an operation and uses the resulting immutable snapshot throughout
-the operation.
+The active `Protocol` root is the authority for package and shared object bindings. A standard `NexusClient` action resolves that configuration once at the start of an operation and uses the resulting immutable snapshot throughout the operation.
 
 ## Protocol Resolution
 
