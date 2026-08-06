@@ -17,13 +17,13 @@ pub(crate) async fn handle_execution_command(
         ExecutionCommand::ResolveExpiredWalk {
             execution_id,
             walk_index,
-            tool_gas_id,
+            tool_cashier_id,
             gas,
         } => {
             resolve_expired_walk(
                 execution_id,
                 walk_index,
-                tool_gas_id,
+                tool_cashier_id,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -51,7 +51,7 @@ pub(crate) async fn handle_execution_command(
 async fn resolve_expired_walk(
     execution_id: sui::types::Address,
     walk_index: u64,
-    tool_gas_id: Option<sui::types::Address>,
+    tool_cashier_id: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -64,7 +64,7 @@ async fn resolve_expired_walk(
         .resolve_expired_walk(ResolveExpiredWalkParams {
             dag_execution_id: execution_id,
             walk_index,
-            tool_gas_id,
+            tool_cashier_id,
         })
         .await
         .map_err(NexusCliError::Nexus)

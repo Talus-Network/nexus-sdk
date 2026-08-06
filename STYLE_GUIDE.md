@@ -29,7 +29,7 @@ Alternatively (and this is recommended at least as additional step) you could as
 
 GitBook prefers inline links over reference-style links. However, to manage links and facilitate updating in this repository we urge you to use reference style links.
 
-> Note that there is a Github workflow in the Gitbook synced repository to transform reference style links for content that is synced from source repositories (like `nexus-sdk` and `nexus-next`). This ensures that all links in the `gitbook-docs` repo are inline style links for Gitbook compatibility.
+> Note that there is a Github workflow in the Gitbook synced repository to transform reference style links for content that is synced from source repositories such as `nexus-sdk` and `nexus`. This ensures that all links in the `gitbook-docs` repo are inline style links for Gitbook compatibility.
 
 In this repo, use reference-style links at the bottom of the file:
 

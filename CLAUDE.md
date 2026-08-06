@@ -10,12 +10,13 @@ it when a pattern is unclear.
 nexus-sdk/                  cargo workspace root
 ├── sdk/                    `nexus-sdk` crate — Rust SDK
 │   └── src/
-│       ├── nexus/          high-level action types (TapActions, ToolActions,
-│       │                   WorkflowActions, SchedulerActions, GasActions,
-│       │                   NetworkAuthActions) + NexusClient, Crawler,
-│       │                   Signer, gas pool, EventPoller, errors
+│       ├── nexus/          high-level action types, Scheduler and Task handles,
+│       │                   NexusTransaction, NexusClient, Crawler, Signer,
+│       │                   gas pool, EventPoller, and errors
+│       ├── scheduler/      Task, Schedule, occurrence, receipt, and snapshot
+│       │                   domain types
 │       ├── transactions/   PTB builders: tap.rs, tool.rs, workflow.rs,
-│       │                   scheduler.rs, gas.rs, network_auth.rs
+│       │                   scheduler/, gas.rs, network.rs, tool_cashier.rs
 │       ├── types/          typed on-chain object/event models
 │       │                   (TapRegistry, TapExecutionPayment, Tool, ToolRef,
 │       │                   DagExecution, NexusObjects, derive helpers, …)
@@ -38,7 +39,7 @@ nexus-sdk/                  cargo workspace root
 │       │                   json_output(), JSON_MODE: AtomicBool
 │       ├── sui.rs          get_nexus_client(), gRPC client helpers
 │       ├── cli_conf.rs     CliConf (~/.nexus/conf.toml)
-│       └── {tool,conf,dag,scheduler,gas,tap,completion}/mod.rs
+│       └── {tool,conf,dag,task,gas,tap,completion}/mod.rs
 │                           subcommand groups with their handlers
 ├── toolkit-rust/           Rust toolkit (`nexus-toolkit`) for tool authors
 ├── helpers/                workspace helper crates / just recipes
@@ -55,8 +56,9 @@ nexus-sdk/                  cargo workspace root
 
 Sibling repos checked out next to this one (paths depend on local layout):
 
-- `nexus-next/` — on-chain Move packages (`sui/primitives`, `sui/interface`,
-  `sui/registry`, `sui/workflow`), example TAPs (`sui/examples/demo_tap`),
+- `nexus/` — onchain Move packages (`sui/primitives`, `sui/interface`,
+  `sui/tool`, `sui/registry`, `sui/workflow`, `sui/scheduler`), example TAPs
+  (`sui/examples/demo_tap`),
   and the off-chain leader (`be/leader/`). Its `sui/bin/publish.sh` and
   `sui/bin/test_demo.sh` are the canonical localnet bring-up and demo driver.
 - `nexus-tools/`, `nexus-workbench/`, `nexus-api/` — sibling repos consumed
@@ -69,6 +71,11 @@ Sibling repos checked out next to this one (paths depend on local layout):
   shared signer/gas/crawler, and returns a typed `*Result` struct. Free-
   function `fetch_*` helpers (e.g. `fetch_registry`) live in the same
   file when they're useful without a full client.
+- **Scheduling** uses the neutral domain in `sdk/src/scheduler`, stateful
+  handles in `sdk/src/nexus/scheduler`, and one compiler in
+  `sdk/src/transactions/scheduler`. Stateful calls begin at
+  `NexusClient::scheduler`; custom programmable transactions begin at
+  `NexusClient::transaction`.
 - **PTB builders** live in `sdk/src/transactions/<area>.rs` and take
   `&mut TransactionBuilder` plus `&NexusObjects`. They never read from the
   network; they only emit move calls/inputs. Pair an action with one PTB
@@ -82,7 +89,7 @@ Sibling repos checked out next to this one (paths depend on local layout):
   `crawler.get_object_contents_bcs::<T>` for objects whose layout is best
   decoded from raw BCS. Dynamic field readers
   (`get_dynamic_fields_bcs`, `get_dynamic_object_fields`) sit on top of both.
-- **ID derivation** uses `derive_tool_id`, `derive_tool_gas_id`,
+- **ID derivation** uses `derive_tool_id`, `derive_tool_cashier_id`,
   `derive_walk_execution_event_task_id`, etc. Never reimplement the
   ascii-string / BCS-blake2b derivation in shell or Python.
 - **Struct reuse comes before new structs.** Before adding any new Rust struct, inspect the existing structs in the related SDK/CLI/type module and confirm that none of them, and no reasonable modification of them, can satisfy the new purpose. If a new struct is still necessary, add a short doc comment or nearby comment that states exactly what is missing from the closest existing struct and why modifying that existing struct would be wrong.
@@ -104,7 +111,7 @@ How the pipeline fits together:
   identities with stable SDK binding slots, normalizes the unused deployment
   version, and writes committed JSON under
   `sdk/src/move_bindings/ir/<package>.json`. The reduced `move_std` and
-  `sui_framework` IR files remain unchanged and are rendered alongside the five
+  `sui_framework` IR files remain unchanged and are rendered alongside the six
   refreshed Nexus package files.
 - **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
   renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
@@ -124,10 +131,10 @@ Key invariants:
 - Normal Nexus regeneration does not rewrite framework IR. Update that support
   surface explicitly only when the pinned Sui version changes.
 - Committed Nexus IR uses stable binding slots: `primitives` uses `0xa1`,
-  `interface` uses `0xa2`, `registry` uses `0xa3`, `workflow` uses `0xa4`, and
-  `scheduler` uses `0xa5`. These slots describe the canonical SDK package
-  graph and are not deployment package IDs. The unused package object version
-  is normalized to `1`.
+  `interface` uses `0xa2`, `tool` uses `0xa7`, `registry` uses `0xa3`,
+  `workflow` uses `0xa4`, and `scheduler` uses `0xa5`. These slots describe the
+  canonical SDK package graph and are not deployment package IDs. The unused
+  package object version is normalized to `1`.
 - Nexus package call targets use the current package ids from `NexusObjects`.
   Type identity uses the defining package id where Sui upgrades keep type tags
   pinned to the original package.
@@ -335,6 +342,6 @@ A change is "done" only when **all** of the following pass:
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for commit-message conventions
   (Conventional Commits, imperative tense) and the pre-commit hook setup
   (`./.pre-commit/pre-commit --install`).
-- The on-chain Move source lives in the sibling `nexus-next` repo —
+- The onchain Move source lives in the sibling `nexus` repo —
   cross-check struct layouts, function signatures, and idents there
   before guessing.

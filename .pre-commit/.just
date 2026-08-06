@@ -106,7 +106,7 @@ md-lint: _check-markdownlint-cli2
     # Ensure we are in the root of the repository, makes things easier.
     cd $(git rev-parse --show-toplevel)
 
-    markdownlint-cli2 '**/*.md' '!.git/' --config .markdownlint.json
+    markdownlint-cli2 '**/*.md' '!.git/' '!sdk/target' --config .markdownlint.json
 
 
 check-shebang:

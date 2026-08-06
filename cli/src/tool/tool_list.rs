@@ -3,67 +3,28 @@ use {
     nexus_sdk::{
         move_bindings::{
             move_std::ascii::String as MoveAsciiString,
-            registry::tool_registry::ToolRegistry,
             sui_framework::linked_table::Node as LinkedTableNode,
+            tool::tool_registry::{ToolRegistry, ToolRegistryStateV1},
         },
-        types::Tool,
+        types::{Tool, ToolAnchor, ToolStateV1},
     },
     prettytable::{row, Table},
 };
 
 /// List tools available in the tool registry.
+/// TODO: Provide a search based solution or move this functions to nexus API
 pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     command_title!("Listing all available Nexus tools");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
-    let nexus_objects = &*nexus_client.get_nexus_objects();
-    let crawler = nexus_client.crawler();
-
+    let nexus_client = get_read_only_nexus_client().await?;
     let tools_handle = loading!("Fetching tools from the tool registry...");
 
-    let tool_registry = match crawler
-        .get_object::<ToolRegistry>(*nexus_objects.tool_registry.object_id())
-        .await
-    {
-        Ok(tool_registry) => tool_registry.data,
+    let (timeouts, tools) = match fetch_tools_with_client(&nexus_client).await {
+        Ok(result) => result,
         Err(e) => {
             tools_handle.error();
 
-            return Err(NexusCliError::Any(e));
-        }
-    };
-
-    let timeouts = match crawler
-        .get_dynamic_fields::<MoveAsciiString, LinkedTableNode<MoveAsciiString, u64>>(
-            tool_registry.timeouts.id(),
-            tool_registry.timeouts.size(),
-        )
-        .await
-    {
-        Ok(timeouts) => timeouts
-            .into_iter()
-            .map(|(key, node)| (key.into_string(), node.value))
-            .collect::<HashMap<_, _>>(),
-        Err(e) => {
-            tools_handle.error();
-
-            return Err(NexusCliError::Any(e));
-        }
-    };
-
-    let tool_ids = timeouts
-        .keys()
-        .filter_map(|fqn| {
-            Tool::derive_id(*nexus_objects.tool_registry.object_id(), &fqn.parse().ok()?).ok()
-        })
-        .collect::<Vec<_>>();
-
-    let tools = match crawler.get_objects::<Tool>(&tool_ids).await {
-        Ok(tools) => tools,
-        Err(e) => {
-            tools_handle.error();
-
-            return Err(NexusCliError::Any(e));
+            return Err(e);
         }
     };
 
@@ -84,7 +45,6 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     ]);
 
     for tool in tools {
-        let tool = tool.data;
         let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
         let registered_at = tool.registered_at_datetime().map_err(NexusCliError::Any)?;
         let unregistered_at = tool
@@ -113,4 +73,118 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
     json_output(&tools_json)?;
 
     Ok(())
+}
+
+async fn fetch_tools_with_client(
+    nexus_client: &nexus_sdk::nexus::client::NexusClient,
+) -> AnyResult<(HashMap<String, u64>, Vec<ToolStateV1>), NexusCliError> {
+    let nexus_objects = &*nexus_client.get_nexus_objects();
+    let crawler = nexus_client.crawler();
+    let tool_registry = crawler
+        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(
+            *nexus_objects.tool_registry.object_id(),
+            1,
+        )
+        .await
+        .map_err(NexusCliError::Any)?
+        .data;
+
+    let timeouts = crawler
+        .get_dynamic_fields::<MoveAsciiString, LinkedTableNode<MoveAsciiString, u64>>(
+            tool_registry.timeouts.id(),
+            tool_registry.timeouts.size(),
+        )
+        .await
+        .map_err(NexusCliError::Any)?
+        .into_iter()
+        .map(|(key, node)| (key.into_string(), node.value))
+        .collect::<HashMap<_, _>>();
+
+    let tool_ids = timeouts
+        .keys()
+        .filter_map(|fqn| {
+            Tool::derive_id(*nexus_objects.tool_registry.object_id(), &fqn.parse().ok()?).ok()
+        })
+        .collect::<Vec<_>>();
+
+    let mut tools = Vec::with_capacity(tool_ids.len());
+    for tool_id in tool_ids {
+        tools.push(
+            crawler
+                .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
+                .await
+                .map_err(NexusCliError::Any)?
+                .data,
+        );
+    }
+
+    Ok((timeouts, tools))
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        nexus_sdk::{
+            move_bindings::{
+                interface::verifier::ToolVerifierSupport,
+                sui_framework::{
+                    linked_table::LinkedTable,
+                    object::{ID, UID},
+                    table::Table as MoveTable,
+                    versioned::Versioned,
+                },
+                tool::external_verifier::ExternalVerifier,
+            },
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+    };
+
+    #[tokio::test]
+    async fn fetch_tools_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let registry_id = *nexus_objects.tool_registry.object_id();
+        let state_id = sui::types::Address::from_static("0x107");
+        let registry =
+            ToolRegistry::new(UID::new(registry_id), Versioned::new(UID::new(state_id), 1));
+        let state = ToolRegistryStateV1::new(
+            ID::new(*nexus_objects.protocol.object_id()),
+            nexus_objects.protocol_version,
+            LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x101"), 0),
+            MoveTable::<ID, bool>::new(sui::types::Address::from_static("0x102"), 0),
+            LinkedTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x103"), 0),
+            MoveTable::<ID, ToolVerifierSupport>::new(sui::types::Address::from_static("0x104"), 0),
+            MoveTable::<ID, ExternalVerifier>::new(sui::types::Address::from_static("0x108"), 0),
+            MoveTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x109"), 0),
+            LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x105"), 0),
+            LinkedTable::<MoveAsciiString, bool>::new(sui::types::Address::from_static("0x106"), 0),
+            0,
+            0,
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_get_object_value_bcs_for(
+            &mut ledger_service_mock,
+            nexus_objects.tool_registry.clone(),
+            sui::types::Owner::Shared(1),
+            &registry,
+            nexus_sdk::move_bindings::struct_tag::<ToolRegistry>(&nexus_objects),
+        );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, state);
+        sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
+        sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 2);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let (timeouts, tools) = fetch_tools_with_client(&client)
+            .await
+            .expect("tool registry read should not require owned coins");
+
+        assert!(timeouts.is_empty());
+        assert!(tools.is_empty());
+    }
 }

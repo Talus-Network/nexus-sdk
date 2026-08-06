@@ -10,4 +10,4 @@ fo = "fo" # this "fo" thing appears a lot in IDs, like "b26v89c19zqg8o3fo7dpmyo3
 PN = "PN" # used in sdk/src/crypto
 
 [files]
-extend-exclude = ["sdk/src/idents/generated/ir/*.json"]
+extend-exclude = ["sdk/src/move_bindings/ir/*.json"]

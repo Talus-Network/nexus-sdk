@@ -28,7 +28,7 @@ pub(crate) async fn unregister_tool(
     }
 
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
-    let signer = nexus_client.signer();
+    let signer = nexus_client.signer().map_err(NexusCliError::Nexus)?;
     let address = signer.get_active_address();
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
@@ -36,7 +36,7 @@ pub(crate) async fn unregister_tool(
     let conf = CliConf::load().await.unwrap_or_default();
 
     // Use the provided or saved `owner_cap` object ID and fetch the object.
-    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).and_then(|t| t.over_gas)) else {
+    let Some(owner_cap) = owner_cap.or(conf.tools.get(&tool_fqn).map(|t| t.over_tool)) else {
         return Err(NexusCliError::Any(anyhow!(
             "No OwnerCap object ID found for tool '{tool_fqn}'."
         )));

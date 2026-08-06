@@ -11,10 +11,11 @@ use {
                 agent::{
                     Agent,
                     AgentPaymentVault,
+                    AgentPaymentVaultStateV1,
+                    AgentStateV1,
                     AgentVaultFieldKey,
                     FixedTool,
                     SkillDagBinding,
-                    SkillRecurrenceKind,
                     SkillRequirement,
                     SkillSchedulePolicy,
                 },
@@ -26,7 +27,10 @@ use {
                 DefaultDagExecutorFieldKey,
                 SkillRecord,
             },
-            sui_framework::object::{ID, UID},
+            sui_framework::{
+                object::{ID, UID},
+                versioned::Versioned,
+            },
             workflow::execution::DagExecutionPaymentFieldKey,
         },
         sui,
@@ -53,6 +57,7 @@ impl fmt::Display for InterfaceVersion {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillPaymentPolicy {
     fn default() -> Self {
         Self::UserFunded
@@ -64,14 +69,14 @@ impl SkillPaymentPolicy {
         Self::UserFunded
     }
 
-    pub fn agent_funded(max_budget: u64) -> Self {
-        Self::AgentFunded { max_budget }
+    pub fn agent_funded(max_budget_mist: u64) -> Self {
+        Self::AgentFunded { max_budget_mist }
     }
 
-    pub fn max_budget(&self) -> u64 {
+    pub fn max_budget_mist(&self) -> u64 {
         match self {
             Self::UserFunded => 0,
-            Self::AgentFunded { max_budget } => *max_budget,
+            Self::AgentFunded { max_budget_mist } => *max_budget_mist,
         }
     }
 }
@@ -90,7 +95,7 @@ impl PaymentSourceKind {
     pub fn identity(&self) -> sui::types::Address {
         match self {
             Self::UserFunded { user } => *user,
-            Self::AgentFunded { agent_id } => agent_id.clone().into(),
+            Self::AgentFunded { agent_id } => (*agent_id).into(),
         }
     }
 }
@@ -112,18 +117,16 @@ impl SkillDagBinding {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillSchedulePolicy {
     fn default() -> Self {
-        Self {
-            recurrence: SkillRecurrenceKind::Once,
-            allow_recursive: false,
-        }
+        Self::Once
     }
 }
 
 impl FixedTool {
     pub fn tool_registry_address(&self) -> sui::types::Address {
-        self.tool_registry_id.clone().into()
+        self.tool_registry_id.into()
     }
 
     pub fn tool_fqn_string(&self) -> String {
@@ -131,6 +134,7 @@ impl FixedTool {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for SkillRequirement {
     fn default() -> Self {
         Self {
@@ -153,16 +157,22 @@ impl Agent {
         self.id.clone().into()
     }
 
-    pub fn from_ids(
+    /// Construct an anchor projection from its stable object and state IDs.
+    pub fn from_anchor(
         agent_id: AgentId,
-        next_skill_id: u64,
-        registry_id: Option<sui::types::Address>,
+        state_id: sui::types::Address,
+        state_schema: u64,
     ) -> Self {
         Self {
             id: UID::new(agent_id),
-            next_skill_id,
-            registry_id: registry_id.map(ID::new).into(),
+            state: Versioned::new(UID::new(state_id), state_schema),
         }
+    }
+}
+
+impl AgentStateV1 {
+    pub fn registry_id(&self) -> Option<sui::types::Address> {
+        self.registry_id.as_option().map(|id| id.bytes)
     }
 }
 
@@ -175,6 +185,7 @@ impl DefaultDagExecutor {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for DefaultDagExecutorFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }
@@ -185,7 +196,9 @@ impl AgentPaymentVault {
     pub fn object_id(&self) -> AgentId {
         self.id.id.bytes
     }
+}
 
+impl AgentPaymentVaultStateV1 {
     pub fn agent_id_address(&self) -> AgentId {
         self.agent_id.bytes
     }
@@ -201,12 +214,14 @@ impl AgentPaymentVault {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for DagExecutionPaymentFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for AgentVaultFieldKey {
     fn default() -> Self {
         Self { dummy_field: false }

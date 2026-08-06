@@ -8,7 +8,7 @@ mod tool_fqn;
 #[cfg(feature = "tool_fqn")]
 pub use tool_fqn::*;
 
-/// Re-exporting Sui types into something that makes more sense.
+/// Reexports Sui types into something that makes more sense.
 #[cfg(feature = "sui_types")]
 pub mod sui;
 
@@ -20,7 +20,7 @@ pub use sui_transaction_builder;
 pub mod move_bindings;
 
 /// Nexus types represent the structure of various objects that are defined
-/// on-chain. It also provides the logic for serializing and deserializing these
+/// onchain. It also provides the logic for serializing and deserializing these
 /// objects.
 #[cfg(any(feature = "types", feature = "wasm_types"))]
 pub mod types;
@@ -37,7 +37,7 @@ pub mod dag;
 pub mod onchain_schema_gen;
 
 /// Nexus events that are fired by the Nexus workflow package and are used to
-/// communicate between the on-chain and off-chain parts of Nexus. This module
+/// communicate between the onchain and offchain parts of Nexus. This module
 /// also contains the logic for serializing and deserializing these events.
 #[cfg(feature = "events")]
 pub mod events;
@@ -46,6 +46,10 @@ pub mod events;
 /// and perform various operations on the Nexus ecosystem.
 #[cfg(feature = "transactions")]
 pub mod transactions;
+
+/// Task authoring, scheduler results, and object backed inspection types.
+#[cfg(feature = "transactions")]
+pub mod scheduler;
 
 /// Test utils container management for Sui and Redis, faucet, Move code
 /// compilation and deployment and similar.
@@ -61,6 +65,6 @@ pub mod walrus;
 #[cfg(feature = "nexus")]
 pub mod nexus;
 
-/// Application-layer request/response signatures for HTTP.
+/// Application layer request and response signatures for HTTP.
 #[cfg(feature = "signed_http")]
 pub mod signed_http;

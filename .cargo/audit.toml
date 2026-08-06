@@ -2,15 +2,8 @@
 # permanently specified in this file.
 
 [advisories]
-# advisory IDs to ignore e.g. ["RUSTSEC-2019-0001", ...]
-ignore = [
-  # Ignoring errors from sui dependencies:
-  #
-  # protobuf: Crash due to uncontrolled recursion in protobuf crate
-  "RUSTSEC-2024-0437",
-  # rsa: Marvin Attack: potential key recovery through timing sidechannels
-  "RUSTSEC-2023-0071",
-]
+# Discovery reports the complete graph. Policy exceptions live in deny.toml.
+ignore = []
 
 [output]
 quiet = false

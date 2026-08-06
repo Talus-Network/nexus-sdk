@@ -12,24 +12,17 @@ use {
                 agent::{
                     Agent,
                     AgentPaymentVault,
+                    AgentPaymentVaultStateV1,
                     AgentVaultFieldKey,
-                    ExecutionPaymentHistoryFieldKey,
-                    ExecutionPaymentReceiptFieldKey,
                     SkillRequirement,
                 },
-                authorization::AgentVertexAuthorizationTemplate,
-                payment::{
-                    ExecutionPayment,
-                    ExecutionPaymentFinalState,
-                    ExecutionPaymentHistoryList,
-                    ExecutionPaymentReceipt,
-                },
+                payment::{ExecutionPayment, ExecutionPaymentFinalState},
                 version::InterfaceVersion,
             },
-            primitives::data::NexusData,
             registry::agent_registry::{
                 AgentRecord,
                 AgentRegistry,
+                AgentRegistryStateV1,
                 DefaultDagExecutor,
                 DefaultDagExecutorFieldKey,
                 SkillRecord,
@@ -42,12 +35,7 @@ use {
             signer::ExecutedTransaction,
         },
         sui,
-        transactions::{
-            agent_input::AgentInput,
-            dag as dag_tx,
-            scheduler as scheduler_tx,
-            tap as tap_tx,
-        },
+        transactions::{agent_input::AgentInput, dag as dag_tx, tap as tap_tx},
         types::{
             resolve_active_tap_skill_execution_target,
             resolve_active_tap_skill_revision,
@@ -65,10 +53,7 @@ use {
             TapPublishArtifact,
         },
     },
-    std::{
-        collections::HashMap,
-        time::{Duration, Instant},
-    },
+    std::time::{Duration, Instant},
 };
 #[cfg(feature = "move_publish")]
 use {std::path::PathBuf, sui_move_build::CompiledPackage};
@@ -129,60 +114,6 @@ pub struct GetSkillRequirementResult {
     pub skill_id: SkillId,
     pub active_skill_revision_key: SkillRevisionLookupKey,
     pub requirements: SkillRequirement,
-}
-
-/// Parameters required to create an explicit-agent scheduled task.
-pub struct CreateAgentTaskParams {
-    pub entry_group: String,
-    pub input_data: HashMap<String, HashMap<String, NexusData>>,
-    pub metadata: Vec<(String, String)>,
-    pub execution_priority_fee_per_gas_unit: u64,
-    pub initial_schedule: Option<crate::nexus::scheduler::OccurrenceRequest>,
-    pub generator: crate::nexus::scheduler::GeneratorKind,
-    pub agent_id: AgentId,
-    pub skill_id: SkillId,
-    pub payment: AgentTaskPayment,
-}
-
-/// Actions supported when mutating an explicit-agent scheduled task.
-#[derive(Clone, Copy, Debug)]
-pub enum AgentTaskStateAction {
-    Pause,
-    Resume,
-    Cancel,
-}
-
-pub struct SetAgentTaskStateResult {
-    pub tx_digest: sui::types::Digest,
-    pub tx_checkpoint: u64,
-    pub task_id: sui::types::Address,
-    pub agent_id: AgentId,
-    pub state: AgentTaskStateAction,
-}
-
-#[derive(Clone, Debug)]
-pub enum AgentTaskPayment {
-    UserFunded {
-        prepay_amount: u64,
-        refund_recipient: Option<sui::types::Address>,
-        occurrence_budget: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-    AgentVault {
-        prepay_amount: u64,
-        occurrence_budget: u64,
-        selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AgentVertexAuthorizationTemplate>,
-    },
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TapPaymentHistory {
-    pub wallet_receipts: Vec<ExecutionPaymentReceipt>,
-    pub vault_receipts: Vec<ExecutionPaymentReceipt>,
-    pub unresolved_execution_ids: Vec<sui::types::Address>,
-    pub resolved_execution_ids: Vec<sui::types::Address>,
 }
 
 /// Options for publishing a TAP Move package through [`TapActions`].
@@ -253,30 +184,6 @@ pub struct DepositAgentVaultResult {
     pub amount: u64,
 }
 
-/// Parameters for [`TapActions::accomplish_execution_payment`].
-#[derive(Clone, Debug)]
-pub struct AccomplishExecutionPaymentParams {
-    /// The shared `DAGExecution` object whose TAP payment should be settled.
-    pub execution_id: sui::types::Address,
-    /// When set, the SDK fetches the agent object and routes through
-    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment_from_agent_vault`
-    /// — settling the payment out of the agent's vault rather than from the
-    /// invoker-funded payment object. When `None`, the default
-    /// `accomplish_tap_execution_payment` PTB is built.
-    pub agent_id: Option<sui::types::Address>,
-}
-
-/// Result returned by [`TapActions::accomplish_execution_payment`].
-#[derive(Clone, Debug)]
-pub struct AccomplishExecutionPaymentResult {
-    pub tx_digest: sui::types::Digest,
-    pub tx_checkpoint: u64,
-    pub execution_id: sui::types::Address,
-    /// Echoes the resolved `agent_id` when the from-vault PTB was used.
-    /// `None` for the default invoker-funded path.
-    pub agent_id: Option<sui::types::Address>,
-}
-
 /// Parameters for [`TapActions::refill_execution_payment`].
 #[derive(Clone, Debug)]
 pub struct RefillExecutionPaymentParams {
@@ -333,7 +240,8 @@ impl TapActions {
             options.environment.clone(),
         )
         .map_err(NexusError::TransactionBuilding)?;
-        let address = self.client.signer.get_active_address();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
         let modules = package.package.get_package_bytes(false);
         let dependencies = publish_dependency_ids_or_framework_defaults(
             package
@@ -345,11 +253,10 @@ impl TapActions {
                         .expect("compiled package dependency id must parse as Sui address")
                 }),
         );
-        let tx =
-            tap_tx::publish_package_ptb(&self.client.nexus_objects, modules, dependencies, address)
-                .map_err(NexusError::TransactionBuilding)?;
+        let tx = tap_tx::publish_package_ptb(&client.nexus_objects, modules, dependencies, address)
+            .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let package_id = response
             .objects
             .iter()
@@ -381,8 +288,9 @@ impl TapActions {
             .validate()
             .map_err(|error| NexusError::TransactionBuilding(anyhow::anyhow!(error)))?;
 
-        let tap_package = self.publish_tap_package(package_options).await?;
-        let dag = self.client.workflow().publish(dag).await?;
+        let client = self.client.operation_client().await?;
+        let tap_package = client.tap().publish_tap_package(package_options).await?;
+        let dag = client.workflow().publish(dag).await?;
         let artifact = TapPublishArtifact::from_config(config, dag.dag_object_id)
             .map_err(NexusError::TransactionBuilding)?;
 
@@ -395,11 +303,12 @@ impl TapActions {
 
     /// Create a standard Talus agent through the configured TAP registry.
     pub async fn create_agent(&self) -> Result<CreateAgentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
         let tx = tap_tx::create_agent_for_self_ptb(nexus_objects, address)
             .map_err(NexusError::TransactionBuilding)?;
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
             NexusEventKind::AgentCreated(event) => Some(event),
             _ => None,
@@ -443,20 +352,26 @@ impl TapActions {
         agent_id: AgentId,
         artifact: &TapPublishArtifact,
     ) -> Result<RegisterSkillResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
+        let dag = client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
         let agent =
             agent_input_from_metadata(&agent_object).map_err(NexusError::TransactionBuilding)?;
-        let tx = tap_tx::register_skill_ptb(nexus_objects, agent, artifact)
+        let tx = tap_tx::register_skill_ptb(nexus_objects, agent, &dag, artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = find_event(&response, |kind| match kind {
             NexusEventKind::SkillRegistered(event) => Some(event),
             _ => None,
@@ -481,9 +396,10 @@ impl TapActions {
         agent_id: AgentId,
         skill_id: SkillId,
     ) -> Result<GetSkillRequirementResult, NexusError> {
+        let client = self.client.operation_client().await?;
         let target = fetch_configured_active_tap_skill_execution_target(
-            self.client.crawler(),
-            &self.client.nexus_objects,
+            client.crawler(),
+            &client.nexus_objects,
             agent_id,
             skill_id,
         )
@@ -506,21 +422,28 @@ impl TapActions {
         skill_id: SkillId,
         artifact: &TapPublishArtifact,
     ) -> Result<UpdateSkillResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(agent_id)
             .await
             .map_err(NexusError::Rpc)?;
+        let dag = client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
 
         let agent =
             agent_input_from_metadata(&agent_object).map_err(NexusError::TransactionBuilding)?;
-        let tx = tap_tx::update_skill_from_artifact_ptb(nexus_objects, agent, skill_id, artifact)
-            .map_err(NexusError::TransactionBuilding)?;
+        let tx =
+            tap_tx::update_skill_from_artifact_ptb(nexus_objects, agent, &dag, skill_id, artifact)
+                .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         let event = response
             .events
             .iter()
@@ -554,10 +477,10 @@ impl TapActions {
         &self,
         params: DepositAgentVaultParams,
     ) -> Result<DepositAgentVaultResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
-        let agent_object = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let agent_object = client
             .crawler()
             .get_object_metadata(params.agent_id)
             .await
@@ -568,62 +491,12 @@ impl TapActions {
             tap_tx::deposit_agent_payment_vault_for_self_ptb(nexus_objects, agent, params.amount)
                 .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(DepositAgentVaultResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
             agent_id: params.agent_id,
             amount: params.amount,
-        })
-    }
-
-    /// Wraps the on-chain `nexus_workflow::execution_settlement::accomplish_tap_execution_payment`
-    /// PTB so the holder of the `DAGExecution` can settle its TAP payment
-    /// directly — useful when the off-chain leader has not (yet) emitted the
-    /// settlement transaction itself but the execution has reached a state
-    /// that satisfies `assert_execution_can_accomplish_payment`. Returns
-    /// the transaction digest, checkpoint, and the resolved execution id.
-    ///
-    /// When `params.agent_id` is supplied, the SDK additionally fetches the
-    /// shared agent object and routes through
-    /// `accomplish_tap_execution_payment_from_agent_vault` — settling the
-    /// payment out of the agent's payment vault rather than from the
-    /// invoker-funded payment object.
-    pub async fn accomplish_execution_payment(
-        &self,
-        params: AccomplishExecutionPaymentParams,
-    ) -> Result<AccomplishExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let crawler = self.client.crawler();
-
-        let execution_ref = crawler
-            .get_object_metadata(params.execution_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-
-        let agent = if let Some(agent_id) = params.agent_id {
-            let agent_ref = crawler
-                .get_object_metadata(agent_id)
-                .await
-                .map_err(NexusError::Rpc)?;
-            Some(agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?)
-        } else {
-            None
-        };
-        let tx = dag_tx::accomplish_tap_execution_payment_for_self_ptb(
-            &self.client.nexus_objects,
-            &execution_ref,
-            agent,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        Ok(AccomplishExecutionPaymentResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            execution_id: params.execution_id,
-            agent_id: params.agent_id,
         })
     }
 
@@ -633,9 +506,9 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let execution_ref = self
-            .client
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let execution_ref = client
             .crawler()
             .get_object_metadata(params.execution_id)
             .await
@@ -643,13 +516,13 @@ impl TapActions {
             .object_ref();
 
         let tx = dag_tx::refill_tap_execution_payment_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             &execution_ref,
             params.amount,
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(RefillExecutionPaymentResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
@@ -664,8 +537,9 @@ impl TapActions {
         &self,
         params: RefillExecutionPaymentFromAgentVaultParams,
     ) -> Result<RefillExecutionPaymentResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let crawler = client.crawler();
         let execution_ref = crawler
             .get_object_metadata(params.execution_id)
             .await
@@ -679,205 +553,20 @@ impl TapActions {
         let agent =
             agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
         let tx = dag_tx::refill_tap_execution_payment_from_agent_vault_for_self_ptb(
-            &self.client.nexus_objects,
+            &client.nexus_objects,
             agent,
             &execution_ref,
             params.amount,
         )
         .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
         Ok(RefillExecutionPaymentResult {
             tx_digest: response.digest,
             tx_checkpoint: response.checkpoint,
             execution_id: params.execution_id,
             agent_id: Some(params.agent_id),
             amount: params.amount,
-        })
-    }
-
-    /// Create a scheduled task for an explicit standard agent skill.
-    pub async fn create_agent_task(
-        &self,
-        params: CreateAgentTaskParams,
-    ) -> Result<crate::nexus::scheduler::CreateTaskResult, NexusError> {
-        let CreateAgentTaskParams {
-            entry_group,
-            input_data,
-            metadata,
-            execution_priority_fee_per_gas_unit,
-            initial_schedule: initial_schedule_request,
-            generator,
-            agent_id,
-            skill_id,
-            payment,
-        } = params;
-
-        if initial_schedule_request.is_some()
-            && generator != crate::nexus::scheduler::GeneratorKind::Queue
-        {
-            return Err(NexusError::Configuration(
-                "Initial queue schedule can only be used with the queue generator".into(),
-            ));
-        }
-
-        let address = self.client.signer.get_active_address();
-        let objects = &self.client.nexus_objects;
-
-        let agent_ref = self
-            .client
-            .crawler()
-            .get_object_metadata(agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let agent =
-            agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
-
-        let (prepay_amount, occurrence_budget) = match &payment {
-            AgentTaskPayment::UserFunded {
-                prepay_amount,
-                occurrence_budget,
-                ..
-            } => (*prepay_amount, *occurrence_budget),
-            AgentTaskPayment::AgentVault {
-                prepay_amount,
-                occurrence_budget,
-                ..
-            } => (*prepay_amount, *occurrence_budget),
-        };
-        let payment_input = match &payment {
-            AgentTaskPayment::UserFunded {
-                prepay_amount,
-                refund_recipient,
-                occurrence_budget,
-                selected_dag,
-                authorization_templates,
-            } => tap_tx::AgentTaskPaymentPtbInput::UserFunded {
-                prepay_amount: *prepay_amount,
-                refund_recipient: *refund_recipient,
-                occurrence_budget: *occurrence_budget,
-                selected_dag: *selected_dag,
-                authorization_templates: authorization_templates.clone(),
-            },
-            AgentTaskPayment::AgentVault {
-                prepay_amount,
-                occurrence_budget,
-                selected_dag,
-                authorization_templates,
-            } => tap_tx::AgentTaskPaymentPtbInput::AgentVault {
-                prepay_amount: *prepay_amount,
-                occurrence_budget: *occurrence_budget,
-                selected_dag: *selected_dag,
-                authorization_templates: authorization_templates.clone(),
-            },
-        };
-
-        let tx = tap_tx::create_agent_task_ptb(
-            objects,
-            address,
-            &metadata,
-            generator.into(),
-            execution_priority_fee_per_gas_unit,
-            entry_group.as_str(),
-            &input_data,
-            agent_id,
-            agent,
-            skill_id,
-            &payment_input,
-        )
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        let task_id = crate::nexus::scheduler::extract_task_id(&response)?;
-
-        let mut initial_schedule_result = None;
-        if let Some(schedule) = initial_schedule_request {
-            if schedule.start_ms.is_some() {
-                return Err(NexusError::Configuration(
-                    "agent-owned TAP scheduled tasks support relative initial occurrences; use --schedule-start-offset-ms"
-                        .into(),
-                ));
-            }
-            let task_object = self.client.scheduler().fetch_task(task_id).await?;
-            let fresh_agent_ref = self
-                .client
-                .crawler()
-                .get_object_metadata(agent_id)
-                .await
-                .map_err(NexusError::Rpc)?;
-            let agent_input = agent_input_from_metadata(&fresh_agent_ref)
-                .map_err(NexusError::TransactionBuilding)?;
-            let schedule_tx = scheduler_tx::add_occurrence_relative_for_agent_task_for_self_ptb(
-                objects,
-                &task_object.object_ref(),
-                agent_input,
-                schedule.start_offset_ms.expect("validated start offset"),
-                schedule.deadline_offset_ms,
-                schedule.priority_fee_per_gas_unit,
-            )
-            .map_err(NexusError::TransactionBuilding)?;
-            let schedule_response = self.client.submit_transaction(schedule_tx, address).await?;
-            initial_schedule_result = Some(crate::nexus::scheduler::ScheduleExecutionResult {
-                tx_digest: schedule_response.digest,
-                event: crate::nexus::scheduler::extract_occurrence_event(&schedule_response),
-            });
-        }
-
-        Ok(crate::nexus::scheduler::CreateTaskResult {
-            tx_digest: response.digest,
-            task_id,
-            initial_schedule: initial_schedule_result,
-            tap_payment: Some(crate::nexus::scheduler::CreateTaskTapPaymentResult {
-                agent_id,
-                skill_id,
-                prepay_amount,
-                occurrence_budget,
-            }),
-        })
-    }
-
-    /// Set the scheduler state for an explicit-agent scheduled task.
-    pub async fn set_agent_task_state(
-        &self,
-        task_id: sui::types::Address,
-        agent_id: AgentId,
-        action: AgentTaskStateAction,
-    ) -> Result<SetAgentTaskStateResult, NexusError> {
-        let address = self.client.signer.get_active_address();
-        let objects = &self.client.nexus_objects;
-        let crawler = self.client.crawler();
-        let task_ref = crawler
-            .get_object_metadata(task_id)
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-        let agent_ref = crawler
-            .get_object_metadata(agent_id)
-            .await
-            .map_err(NexusError::Rpc)?;
-        let agent =
-            agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
-
-        let tx = match action {
-            AgentTaskStateAction::Pause => {
-                scheduler_tx::pause_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-            AgentTaskStateAction::Resume => {
-                scheduler_tx::resume_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-            AgentTaskStateAction::Cancel => {
-                scheduler_tx::cancel_agent_task_for_self_ptb(objects, &task_ref, agent)
-            }
-        }
-        .map_err(NexusError::TransactionBuilding)?;
-
-        let response = self.client.submit_transaction(tx, address).await?;
-        Ok(SetAgentTaskStateResult {
-            tx_digest: response.digest,
-            tx_checkpoint: response.checkpoint,
-            task_id,
-            agent_id,
-            state: action,
         })
     }
 
@@ -888,13 +577,20 @@ impl TapActions {
     ) -> Result<BindAgentSkillResult, NexusError> {
         let BindAgentSkillParams { artifact } = params;
 
-        let address = self.client.signer.get_active_address();
-        let nexus_objects = &self.client.nexus_objects;
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let nexus_objects = &client.nexus_objects;
+        let dag = client
+            .crawler()
+            .get_object_metadata(artifact.dag_id)
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
 
-        let tx = tap_tx::bind_agent_skill_ptb(nexus_objects, &artifact)
+        let tx = tap_tx::bind_agent_skill_ptb(nexus_objects, &dag, &artifact)
             .map_err(NexusError::TransactionBuilding)?;
 
-        let response = self.client.submit_transaction(tx, address).await?;
+        let response = client.submit_transaction(tx, address).await?;
 
         let agent_event = find_event(&response, |kind| match kind {
             NexusEventKind::AgentCreated(event) => Some(event),
@@ -964,7 +660,8 @@ impl TapActions {
             ));
         }
 
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let crawler = client.crawler();
         let started_at = Instant::now();
 
         loop {
@@ -1044,7 +741,9 @@ async fn fetch_agent_registry_tables(
     crawler: &Crawler,
     registry_id: sui::types::Address,
 ) -> anyhow::Result<Response<AgentRegistrySnapshot>> {
-    let raw = crawler.get_object::<AgentRegistry>(registry_id).await?;
+    let raw = crawler
+        .get_versioned_object::<AgentRegistry, AgentRegistryStateV1>(registry_id, 1)
+        .await?;
     let agent_records = crawler
         .get_dynamic_fields::<sui::types::Address, AgentRecord>(
             raw.data.agents.id(),
@@ -1075,7 +774,7 @@ async fn fetch_agent_registry_tables(
         digest: raw.digest,
         balance: raw.balance,
         data: AgentRegistrySnapshot {
-            id: raw.data.id.into(),
+            id: raw.object_id,
             agents,
             skills,
             default_executor: None,
@@ -1083,7 +782,7 @@ async fn fetch_agent_registry_tables(
     })
 }
 
-async fn fetch_default_dag_executor(
+pub(crate) async fn fetch_default_dag_executor(
     crawler: &Crawler,
     registry_id: sui::types::Address,
 ) -> anyhow::Result<Option<DefaultDagExecutor>> {
@@ -1283,123 +982,28 @@ pub async fn fetch_execution_payment_for_execution(
     }
 }
 
-/// Fetch wallet-owned standard TAP execution payment receipts.
-pub async fn fetch_wallet_execution_payment_receipts(
-    crawler: &Crawler,
-    objects: &NexusObjects,
-    owner: sui::types::Address,
-) -> anyhow::Result<Vec<Response<ExecutionPaymentReceipt>>> {
-    crawler
-        .get_owned_objects(
-            owner,
-            crate::move_bindings::struct_tag::<ExecutionPaymentReceipt>(objects),
-        )
-        .await
-}
-
-/// Fetch one vault-owned payment receipt stored under a Talus agent.
-pub async fn fetch_agent_vault_execution_payment_receipt(
-    crawler: &Crawler,
-    agent_id: AgentId,
-    execution_id: sui::types::Address,
-) -> anyhow::Result<Response<ExecutionPaymentReceipt>> {
-    crawler
-        .get_dynamic_object_field::<ExecutionPaymentReceiptFieldKey, ExecutionPaymentReceipt>(
-            agent_id,
-            ExecutionPaymentReceiptFieldKey { execution_id },
-        )
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "execution payment receipt for execution '{execution_id}' not found under agent '{agent_id}': {e}"
-            )
-        })
-}
-
-/// Fetch vault-owned execution IDs from an agent's unresolved/resolved history lists.
-pub async fn fetch_agent_execution_payment_history_ids(
-    crawler: &Crawler,
-    agent_id: AgentId,
-) -> anyhow::Result<(Vec<sui::types::Address>, Vec<sui::types::Address>)> {
-    let mut fields = crawler
-        .get_dynamic_object_fields::<ExecutionPaymentHistoryFieldKey, ExecutionPaymentHistoryList>(
-            agent_id,
-        )
-        .await?;
-    let mut unresolved = Vec::new();
-    let mut resolved = Vec::new();
-
-    if let Some(list) = fields.remove(&ExecutionPaymentHistoryFieldKey { resolved: false }) {
-        unresolved = list.data.execution_ids;
-    }
-    if let Some(list) = fields.remove(&ExecutionPaymentHistoryFieldKey { resolved: true }) {
-        resolved = list.data.execution_ids;
-    }
-
-    Ok((unresolved, resolved))
-}
-
-/// Fetch wallet receipts and, when an agent is supplied, vault receipt history.
-pub async fn fetch_execution_payment_history(
-    crawler: &Crawler,
-    objects: &NexusObjects,
-    owner: sui::types::Address,
-    agent_id: Option<AgentId>,
-) -> anyhow::Result<TapPaymentHistory> {
-    let wallet_receipts = fetch_wallet_execution_payment_receipts(crawler, objects, owner)
-        .await?
-        .into_iter()
-        .map(|response| response.data)
-        .collect::<Vec<_>>();
-    let mut history = TapPaymentHistory {
-        wallet_receipts,
-        ..Default::default()
-    };
-
-    let Some(agent_id) = agent_id else {
-        return Ok(history);
-    };
-
-    let (unresolved_execution_ids, resolved_execution_ids) =
-        fetch_agent_execution_payment_history_ids(crawler, agent_id).await?;
-    let mut vault_receipts = Vec::new();
-    for execution_id in unresolved_execution_ids
-        .iter()
-        .chain(resolved_execution_ids.iter())
-        .copied()
-    {
-        vault_receipts.push(
-            fetch_agent_vault_execution_payment_receipt(crawler, agent_id, execution_id)
-                .await?
-                .data,
-        );
-    }
-
-    history.vault_receipts = vault_receipts;
-    history.unresolved_execution_ids = unresolved_execution_ids;
-    history.resolved_execution_ids = resolved_execution_ids;
-    Ok(history)
-}
-
 /// Fetch a standard Talus agent payment vault object by object ID.
 pub async fn fetch_agent_payment_vault(
     crawler: &Crawler,
     vault_id: sui::types::Address,
-) -> anyhow::Result<Response<AgentPaymentVault>> {
-    crawler.get_object::<AgentPaymentVault>(vault_id).await
+) -> anyhow::Result<Response<AgentPaymentVaultStateV1>> {
+    crawler
+        .get_versioned_object::<AgentPaymentVault, AgentPaymentVaultStateV1>(vault_id, 1)
+        .await
 }
 
 /// Fetch the standard Talus agent payment vault stored as a child of the agent object.
 pub async fn fetch_agent_payment_vault_for_agent(
     crawler: &Crawler,
     agent_id: AgentId,
-) -> anyhow::Result<Response<AgentPaymentVault>> {
-    crawler
+) -> anyhow::Result<Response<AgentPaymentVaultStateV1>> {
+    let anchor = crawler
         .get_dynamic_object_field::<AgentVaultFieldKey, AgentPaymentVault>(
             agent_id,
             AgentVaultFieldKey::default(),
         )
-        .await
+        .await?;
+    crawler.load_versioned_payload(anchor, 1).await
 }
 
 /// Resolve a fresh execution skill revision from already fetched records.
@@ -1436,6 +1040,7 @@ mod tests {
                     agent::{
                         self as agent_binding,
                         Agent,
+                        AgentPaymentVaultStateV1,
                         SkillDagBinding,
                         SkillRequirement,
                         SkillSchedulePolicy,
@@ -1443,18 +1048,21 @@ mod tests {
                     payment::{ExecutionPaymentFinalState, PaymentSourceKind, SkillPaymentPolicy},
                     version::InterfaceVersion,
                 },
-                primitives::event as event_binding,
+                primitives::{data::NexusData, event as event_binding},
                 registry::agent_registry::{
                     self as agent_registry_binding,
                     AgentRecord,
                     AgentRegistry,
+                    AgentRegistryStateV1,
                     DefaultDagExecutor,
                     DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
-                scheduler::scheduler::Task as SchedulerTask,
-                sui_framework::{table::Table as MoveTable, transfer as transfer_binding},
-                workflow::execution_settlement as execution_settlement_binding,
+                sui_framework::{
+                    table::Table as MoveTable,
+                    transfer as transfer_binding,
+                    versioned::Versioned,
+                },
             },
             test_utils::{nexus_mocks, sui_mocks},
             types::{
@@ -1491,7 +1099,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
         let target = generated_target(
             &objects,
-            transfer_binding::public_share_object_target::<SchedulerTask>,
+            transfer_binding::public_share_object_target::<Agent>,
         );
         assert!(!transaction.commands.iter().any(|command| matches!(
             command,
@@ -1595,7 +1203,7 @@ mod tests {
                 },
             }],
             default_executor: Some(DefaultDagExecutor {
-                agent: Agent::from_ids(agent, 1, Some(sui::types::Address::from_static("0xf"))),
+                agent: Agent::from_anchor(agent, sui::types::Address::from_static("0xe"), 1),
                 skill_id,
             }),
         }
@@ -1604,6 +1212,8 @@ mod tests {
     #[derive(Clone)]
     struct RegistryObjectMock {
         registry_object: AgentRegistry,
+        registry_state: AgentRegistryStateV1,
+        registry_state_id: sui::types::Address,
         agent_field_ref: sui::types::ObjectReference,
         skill_field_ref: sui::types::ObjectReference,
         default_executor_field_ref: Option<sui::types::ObjectReference>,
@@ -1613,7 +1223,10 @@ mod tests {
         skill_revision_record: SkillRevisionContext,
     }
 
-    fn registry_object_mock(registry: &AgentRegistrySnapshot) -> RegistryObjectMock {
+    fn registry_object_mock(
+        registry: &AgentRegistrySnapshot,
+        registry_id: sui::types::Address,
+    ) -> RegistryObjectMock {
         assert_eq!(registry.agents.len(), 1, "test registry has one agent");
         assert_eq!(registry.skills.len(), 1, "test registry has one skill");
         let agent = registry.agents[0].clone();
@@ -1629,12 +1242,22 @@ mod tests {
             .as_ref()
             .map(|_| sui_mocks::mock_sui_object_ref());
         let default_executor_value = registry.default_executor.clone();
+        let registry_state_id = sui::types::Address::from_static("0x9001");
 
         RegistryObjectMock {
-            registry_object: AgentRegistry {
-                id: crate::move_bindings::sui_framework::object::UID::new(registry.id),
-                agents: MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
-            },
+            registry_object: AgentRegistry::new(
+                crate::move_bindings::sui_framework::object::UID::new(registry_id),
+                Versioned::new(
+                    crate::move_bindings::sui_framework::object::UID::new(registry_state_id),
+                    1,
+                ),
+            ),
+            registry_state: AgentRegistryStateV1::new(
+                crate::move_bindings::sui_framework::object::ID::new(sui::types::Address::ZERO),
+                1,
+                MoveTable::new(sui::types::Address::from_static("0x9000"), 1),
+            ),
+            registry_state_id,
             agent_field_ref,
             skill_field_ref,
             default_executor_field_ref,
@@ -1652,13 +1275,19 @@ mod tests {
         registry_ref: sui::types::ObjectReference,
         registry: &AgentRegistrySnapshot,
     ) -> RegistryObjectMock {
-        let mock = registry_object_mock(registry);
+        let mock = registry_object_mock(registry, *registry_ref.object_id());
         sui_mocks::grpc::mock_get_object_bcs_for(
             ledger_service_mock,
             registry_ref,
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&mock.registry_object).expect("raw registry bcs"),
             crate::move_bindings::struct_tag::<AgentRegistry>(nexus_objects),
+        );
+        sui_mocks::grpc::mock_versioned_payload(
+            ledger_service_mock,
+            mock.registry_state_id,
+            1,
+            mock.registry_state.clone(),
         );
         sui_mocks::grpc::mock_list_dynamic_fields(
             state_service_mock,
@@ -1849,8 +1478,8 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(std::sync::Arc::new(client));
 
         let response = fetch_skill_revision(
             &crawler,
@@ -1891,10 +1520,9 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = sui::grpc::Client::new(rpc_url).expect("mock client");
-        let crawler = Crawler::new(std::sync::Arc::new(tokio::sync::Mutex::new(client)));
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
-        let response = fetch_agent_registry(&crawler, registry.id)
+        let response = fetch_configured_agent_registry(client.crawler(), &nexus_objects)
             .await
             .expect("full registry recovery decodes the default executor");
 
@@ -1908,6 +1536,44 @@ mod tests {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_configured_default_tap_dag_executor_succeeds_without_owned_coins() {
+        let mut registry = registry();
+        registry.skills[0].record.dag_binding = SkillDagBinding::runtime_selected();
+        let registry_ref = sui_mocks::object_ref_for_id(registry.id);
+        let nexus_objects = NexusObjects {
+            agent_registry: registry_ref.clone(),
+            ..sui_mocks::mock_nexus_objects()
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        mock_fetch_registry_from_tables(
+            &mut ledger_service_mock,
+            &mut state_service_mock,
+            &nexus_objects,
+            registry_ref,
+            &registry,
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = fetch_configured_default_tap_dag_executor(client.crawler(), &nexus_objects)
+            .await
+            .expect("default agent read should not require owned coins");
+
+        assert_eq!(
+            response.data.target,
+            DefaultDagExecutorTarget {
+                agent_id: sui::types::Address::from_static("0xa"),
+                skill_id: 11,
+            }
         );
     }
 
@@ -1926,7 +1592,7 @@ mod tests {
         );
 
         sui_mocks::mock_sui_event(
-            objects.primitives_pkg_id,
+            objects.primitives_pkg_id(),
             event_wrapper_tag(objects, inner),
             bytes,
         )
@@ -1979,17 +1645,16 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![agent_object],
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.interface_pkg_id,
+                nexus_objects.interface_type_origin_pkg_id(),
                 "tap",
                 "AgentCreatedEvent",
                 bcs::to_bytes(&Wrapper {
@@ -2022,7 +1687,7 @@ mod tests {
             result.agent_object.object_id(),
             &sui::types::Address::from_static("0xa")
         );
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.tx_checkpoint, 1);
     }
 
@@ -2033,6 +1698,11 @@ mod tests {
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let agent_ref = sui::types::ObjectReference::new(
             sui::types::Address::from_static("0xa"),
             1,
@@ -2057,18 +1727,23 @@ mod tests {
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
         sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
         sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![agent_object],
             vec![],
             vec![
                 wrapped_event(
                     &nexus_objects,
-                    nexus_objects.interface_pkg_id,
+                    nexus_objects.interface_type_origin_pkg_id(),
                     "tap",
                     "AgentCreatedEvent",
                     bcs::to_bytes(&Wrapper {
@@ -2081,7 +1756,7 @@ mod tests {
                 ),
                 wrapped_event(
                     &nexus_objects,
-                    nexus_objects.registry_pkg_id,
+                    nexus_objects.registry_type_origin_pkg_id(),
                     "agent_registry",
                     "SkillRegisteredEvent",
                     bcs::to_bytes(&Wrapper {
@@ -2121,7 +1796,6 @@ mod tests {
     #[tokio::test]
     async fn tap_actions_register_skill_extracts_event() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -2130,6 +1804,11 @@ mod tests {
             sui::types::Digest::generate(&mut rng),
         );
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -2141,22 +1820,27 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0xc")),
             None,
         );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
+            None,
+        );
         let expected_register_target = generated_target(
             &nexus_objects,
-            agent_registry_binding::register_skill_with_fixed_tools_target,
+            agent_registry_binding::register_skill_target,
         );
         let expected_agent_id = *agent_ref.object_id();
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.registry_pkg_id,
+                nexus_objects.registry_type_origin_pkg_id(),
                 "agent_registry",
                 "SkillRegisteredEvent",
                 bcs::to_bytes(&Wrapper {
@@ -2201,13 +1885,12 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.skill_id, 11);
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
     async fn tap_actions_update_skill_from_artifact_extracts_event() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -2216,6 +1899,11 @@ mod tests {
             sui::types::Digest::generate(&mut rng),
         );
         let artifact = artifact();
+        let dag_ref = sui::types::ObjectReference::new(
+            artifact.dag_id,
+            1,
+            sui::types::Digest::generate(&mut rng),
+        );
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
@@ -2225,6 +1913,12 @@ mod tests {
             &mut ledger_service_mock,
             agent_ref.clone(),
             sui::types::Owner::Shared(agent_ref.version()),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            dag_ref.clone(),
+            sui::types::Owner::Shared(dag_ref.version()),
             None,
         );
         let expected_update_dag_target =
@@ -2237,13 +1931,12 @@ mod tests {
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
             vec![wrapped_event(
                 &nexus_objects,
-                nexus_objects.registry_pkg_id,
+                nexus_objects.registry_type_origin_pkg_id(),
                 "agent_registry",
                 "SkillContractRevisionedEvent",
                 bcs::to_bytes(&Wrapper {
@@ -2310,7 +2003,6 @@ mod tests {
     #[tokio::test]
     async fn tap_actions_deposit_agent_payment_vault_calls_tap_deposit() {
         let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let agent_ref = sui::types::ObjectReference::new(
@@ -2333,11 +2025,10 @@ mod tests {
             &nexus_objects,
             agent_binding::deposit_agent_payment_vault_target,
         );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
             &mut tx_service_mock,
             &mut sub_service_mock,
             &mut ledger_service_mock,
-            digest,
             gas_coin_ref,
             vec![],
             vec![],
@@ -2379,202 +2070,7 @@ mod tests {
 
         assert_eq!(result.agent_id, *agent_ref.object_id());
         assert_eq!(result.amount, 1500);
-        assert_eq!(result.tx_digest, digest);
-    }
-
-    /// `accomplish_execution_payment` wraps the on-chain
-    /// `nexus_workflow::execution_settlement::accomplish_tap_execution_payment` PTB. The
-    /// happy path fetches the shared `DAGExecution` object's metadata,
-    /// builds a single move-call PTB targeting the workflow package, and
-    /// returns the supplied `execution_id` verbatim in the result so
-    /// callers can correlate the digest with the resolved payment.
-    #[tokio::test]
-    async fn tap_actions_accomplish_execution_payment_calls_workflow_dag_entrypoint() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xee"),
-            9,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            None,
-        );
-        let expected_settlement_target = generated_target(
-            &nexus_objects,
-            execution_settlement_binding::accomplish_tap_execution_payment_target,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().expect("submitted transaction");
-                let transaction = sui::types::Transaction::try_from(transaction)
-                    .expect("submitted transaction decodes");
-                let sui::types::TransactionKind::ProgrammableTransaction(
-                    sui::types::ProgrammableTransaction { commands, .. },
-                ) = &transaction.kind
-                else {
-                    panic!("expected programmable transaction");
-                };
-                // Exactly one move call: dag::accomplish_tap_execution_payment
-                // on the workflow package.
-                let move_calls: Vec<_> = commands
-                    .iter()
-                    .filter_map(|command| match command {
-                        sui::types::Command::MoveCall(call) => Some(call),
-                        _ => None,
-                    })
-                    .collect();
-                assert_eq!(move_calls.len(), 1, "expected exactly one move call");
-                let call = move_calls[0];
-                assert!(call_matches_generated(call, &expected_settlement_target));
-                // The only argument is the shared DAGExecution input.
-                assert_eq!(call.arguments.len(), 1);
-                assert!(matches!(call.arguments[0], sui::types::Argument::Input(_)));
-            },
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .accomplish_execution_payment(AccomplishExecutionPaymentParams {
-                execution_id: *execution_ref.object_id(),
-                agent_id: None,
-            })
-            .await
-            .expect("accomplish execution payment succeeds");
-
-        assert_eq!(result.execution_id, *execution_ref.object_id());
-        assert!(result.agent_id.is_none());
-        assert_eq!(result.tx_digest, digest);
-    }
-
-    /// When `params.agent_id` is supplied, the SDK fetches the agent
-    /// object's metadata *in addition to* the execution, and the PTB calls
-    /// the `_from_agent_vault` entrypoint with both shared inputs in order
-    /// (agent first, execution second — matches the Move signature).
-    #[tokio::test]
-    async fn tap_actions_accomplish_execution_payment_routes_through_vault_when_agent_supplied() {
-        let mut rng = rand::thread_rng();
-        let digest = sui::types::Digest::generate(&mut rng);
-        let gas_coin_ref = sui_mocks::mock_sui_object_ref();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
-        let execution_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xee"),
-            9,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let agent_ref = sui::types::ObjectReference::new(
-            sui::types::Address::from_static("0xa"),
-            5,
-            sui::types::Digest::generate(&mut rng),
-        );
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
-        let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
-
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
-        // Execution metadata fetched first (top of `accomplish_execution_payment`).
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            execution_ref.clone(),
-            sui::types::Owner::Shared(execution_ref.version()),
-            None,
-        );
-        // Agent metadata fetched only on the from-vault branch.
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service_mock,
-            agent_ref.clone(),
-            sui::types::Owner::Shared(agent_ref.version()),
-            None,
-        );
-
-        let expected_settlement_target = generated_target(
-            &nexus_objects,
-            execution_settlement_binding::accomplish_tap_execution_payment_from_agent_vault_target,
-        );
-        sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint_matching(
-            &mut tx_service_mock,
-            &mut sub_service_mock,
-            &mut ledger_service_mock,
-            digest,
-            gas_coin_ref,
-            vec![],
-            vec![],
-            vec![],
-            move |request| {
-                let transaction = request.transaction.as_ref().expect("submitted transaction");
-                let transaction = sui::types::Transaction::try_from(transaction)
-                    .expect("submitted transaction decodes");
-                let sui::types::TransactionKind::ProgrammableTransaction(
-                    sui::types::ProgrammableTransaction { commands, .. },
-                ) = &transaction.kind
-                else {
-                    panic!("expected programmable transaction");
-                };
-                let move_calls: Vec<_> = commands
-                    .iter()
-                    .filter_map(|command| match command {
-                        sui::types::Command::MoveCall(call) => Some(call),
-                        _ => None,
-                    })
-                    .collect();
-                assert_eq!(move_calls.len(), 1, "expected exactly one move call");
-                let call = move_calls[0];
-                assert!(call_matches_generated(call, &expected_settlement_target));
-                // (agent, execution) in that order — matches the Move
-                // signature `(&mut Agent, &mut DAGExecution)`. Both are
-                // shared-object inputs.
-                assert_eq!(call.arguments.len(), 2);
-                assert!(matches!(call.arguments[0], sui::types::Argument::Input(_)));
-                assert!(matches!(call.arguments[1], sui::types::Argument::Input(_)));
-            },
-        );
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            execution_service_mock: Some(tx_service_mock),
-            subscription_service_mock: Some(sub_service_mock),
-            ..Default::default()
-        });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
-
-        let result = client
-            .tap()
-            .accomplish_execution_payment(AccomplishExecutionPaymentParams {
-                execution_id: *execution_ref.object_id(),
-                agent_id: Some(*agent_ref.object_id()),
-            })
-            .await
-            .expect("accomplish from-vault execution payment succeeds");
-
-        assert_eq!(result.execution_id, *execution_ref.object_id());
-        assert_eq!(result.agent_id, Some(*agent_ref.object_id()));
-        assert_eq!(result.tx_digest, digest);
+        assert_eq!(result.tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -2588,7 +2084,6 @@ mod tests {
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
         let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_reference_gas_price(&mut ledger_service_mock, 1000);
         mock_fetch_registry_from_tables(
             &mut ledger_service_mock,
             &mut state_service_mock,
@@ -2602,7 +2097,7 @@ mod tests {
             state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
 
         let result = client
             .tap()
@@ -2626,6 +2121,7 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xa"),
@@ -2635,13 +2131,18 @@ mod tests {
             payment_policy:
                 crate::move_bindings::interface::payment::SkillPaymentPolicy::UserFunded,
             source_kind: PaymentSourceKind::user_funded(sui::types::Address::from_static("0x1")),
-            max_budget: 1_000_000,
-            locked_budget: 0,
+            max_budget_mist: 1_000_000,
+            gas_budget_mist: 833_334,
+            priority_fee_reserve_mist: 166_666,
+            locked_budget_mist: 0,
             funds: crate::move_bindings::sui_framework::balance::Balance {
                 value: 1_000_000,
                 phantom_t0: std::marker::PhantomData,
             },
             consumed: 0,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 20,
             tool_cost_snapshot: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
@@ -2652,6 +2153,109 @@ mod tests {
         }
     }
 
+    async fn coin_free_payment_client(
+        payment: ExecutionPayment,
+    ) -> (NexusClient, sui::types::Address) {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let payment_id = payment.id.id.bytes;
+        let payment_ref = sui_mocks::object_ref_for_id(payment_id);
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs_for(
+            &mut ledger_service_mock,
+            payment_ref,
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&payment).expect("payment BCS"),
+            crate::move_bindings::struct_tag::<ExecutionPayment>(&nexus_objects),
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        (client, payment_id)
+    }
+
+    #[tokio::test]
+    async fn fetch_execution_payment_succeeds_without_owned_coins() {
+        let payment = baseline_payment(false, false, ExecutionPaymentFinalState::Pending);
+        let (client, payment_id) = coin_free_payment_client(payment).await;
+
+        let response = fetch_execution_payment(client.crawler(), payment_id)
+            .await
+            .expect("payment read should not require owned coins");
+
+        assert_eq!(response.object_id, payment_id);
+    }
+
+    #[tokio::test]
+    async fn wait_for_payment_settled_succeeds_without_owned_coins() {
+        let payment = baseline_payment(true, false, ExecutionPaymentFinalState::Accomplished);
+        let (client, payment_id) = coin_free_payment_client(payment).await;
+
+        let result = client
+            .tap()
+            .wait_for_payment_settled(payment_id, Duration::from_secs(1), Duration::from_millis(1))
+            .await
+            .expect("settled payment read should not require owned coins");
+
+        assert!(result.terminal);
+    }
+
+    #[tokio::test]
+    async fn fetch_agent_payment_vault_for_agent_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let agent_id = sui::types::Address::from_static("0xa");
+        let vault_id = sui::types::Address::from_static("0xb");
+        let field_id = sui::types::Address::from_static("0xc");
+        let vault_ref = sui_mocks::object_ref_for_id(vault_id);
+        let state_id = sui::types::Address::from_static("0xd");
+        let vault = AgentPaymentVault::new(
+            crate::move_bindings::sui_framework::object::UID::new(vault_id),
+            Versioned::new(
+                crate::move_bindings::sui_framework::object::UID::new(state_id),
+                1,
+            ),
+        );
+        let vault_state = AgentPaymentVaultStateV1 {
+            minimum_protocol_version: 1,
+            agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
+            available_balance: crate::move_bindings::sui_framework::balance::Balance {
+                value: 10,
+                phantom_t0: std::marker::PhantomData,
+            },
+            locked_amount: 3,
+        };
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_list_dynamic_object_fields(
+            &mut state_service_mock,
+            vec![(AgentVaultFieldKey::default(), field_id, vault_id)],
+        );
+        sui_mocks::grpc::mock_get_objects_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                vault_ref,
+                sui::types::Owner::Shared(1),
+                bcs::to_bytes(&vault).expect("vault BCS"),
+                crate::move_bindings::struct_tag::<AgentPaymentVault>(&nexus_objects),
+            )],
+        );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, vault_state);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let response = fetch_agent_payment_vault_for_agent(client.crawler(), agent_id)
+            .await
+            .expect("vault read should not require owned coins");
+
+        assert_eq!(response.data.unlocked_balance_value(), 7);
+    }
+
     #[test]
     fn canonical_execution_payment_keeps_policy_and_source() {
         let agent_id = sui::types::Address::from_static("0xa");
@@ -2659,22 +2263,28 @@ mod tests {
             id: crate::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0x1"),
             ),
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0x2"),
             agent_id: crate::move_bindings::sui_framework::object::ID::new(agent_id),
             skill_id: 11,
             interface_revision: InterfaceVersion::new(1),
             payment_policy:
                 crate::move_bindings::interface::payment::SkillPaymentPolicy::AgentFunded {
-                    max_budget: 100,
+                    max_budget_mist: 100,
                 },
             source_kind: PaymentSourceKind::agent_funded(agent_id),
-            max_budget: 100,
-            locked_budget: 0,
+            max_budget_mist: 100,
+            gas_budget_mist: 84,
+            priority_fee_reserve_mist: 16,
+            locked_budget_mist: 0,
             funds: crate::move_bindings::sui_framework::balance::Balance {
                 value: 100,
                 phantom_t0: std::marker::PhantomData,
             },
             consumed: 0,
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 20,
             accomplished: false,
             refunded: false,
             final_state: ExecutionPaymentFinalState::Pending,
@@ -2687,7 +2297,7 @@ mod tests {
         assert_eq!(
             payment.payment_policy,
             crate::move_bindings::interface::payment::SkillPaymentPolicy::AgentFunded {
-                max_budget: 100
+                max_budget_mist: 100
             }
         );
         assert_eq!(

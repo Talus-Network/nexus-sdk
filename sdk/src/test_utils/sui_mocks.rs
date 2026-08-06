@@ -1,7 +1,7 @@
 use {
     crate::{
         sui,
-        types::{DefaultDagExecutorTarget, NexusObjects},
+        types::{DefaultDagExecutorTarget, NexusObjects, NexusPackages, UsTokenConfig},
     },
     sui_transaction_builder as tx,
 };
@@ -21,43 +21,48 @@ pub fn object_ref_for_id(object_id: sui::types::Address) -> sui::types::ObjectRe
     sui::types::ObjectReference::new(object_id, 1, sui::types::Digest::from([1; 32]))
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates a random event cursor.
 pub fn mock_sui_event_id() -> (sui::types::Digest, u64) {
     let mut rng = rand::thread_rng();
 
     (sui::types::Digest::generate(&mut rng), 0)
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates a random [`sui::types::Address`].
 pub fn mock_sui_address() -> sui::types::Address {
     let mut rng = rand::thread_rng();
 
     sui::types::Address::generate(&mut rng)
 }
 
-/// Create a new [`sui::EventID`] with random values.
+/// Creates random [`NexusObjects`].
 pub fn mock_nexus_objects() -> NexusObjects {
     let mut rng = rand::thread_rng();
 
     NexusObjects {
-        workflow_pkg_id: sui::types::Address::generate(&mut rng),
-        scheduler_pkg_id: sui::types::Address::generate(&mut rng),
-        primitives_pkg_id: sui::types::Address::generate(&mut rng),
-        interface_pkg_id: sui::types::Address::generate(&mut rng),
+        protocol_version: 1,
+        protocol: mock_sui_object_ref(),
+        packages: NexusPackages::first_publication(
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+            sui::types::Address::generate(&mut rng),
+        ),
+        config_hash: vec![0; 32],
         network_id: sui::types::Address::generate(&mut rng),
-        registry_pkg_id: sui::types::Address::generate(&mut rng),
         tool_registry: mock_sui_object_ref(),
-        verifier_registry: mock_sui_object_ref(),
         network_auth: mock_sui_object_ref(),
         agent_registry: mock_sui_object_ref(),
         default_dag_executor: DefaultDagExecutorTarget {
             agent_id: sui::types::Address::generate(&mut rng),
             skill_id: 1,
         },
-        gas_service: mock_sui_object_ref(),
         leader_registry: mock_sui_object_ref(),
-        workflow_original_pkg_id: None,
-        scheduler_original_pkg_id: None,
+        priority_fee_vault: mock_sui_object_ref(),
+        priority_fee_vault_owner_cap: mock_sui_object_ref(),
+        us_token: UsTokenConfig::new(sui::types::Address::generate(&mut rng)),
     }
 }
 
@@ -159,6 +164,11 @@ pub mod grpc {
                 &self,
                 request: Request<GetEpochRequest>,
             ) -> Result<Response<GetEpochResponse>, Status>;
+
+            async fn list_events(
+                &self,
+                request: Request<ListEventsRequest>,
+            ) -> Result<Response<BoxListEventsStream>, Status>;
         }
     }
 
@@ -222,6 +232,31 @@ pub mod grpc {
         >,
     >;
 
+    pub type BoxEventStream = std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<SubscribeEventsResponse, Status>> + Send + 'static>,
+    >;
+
+    pub type BoxListEventsStream = std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<ListEventsResponse, Status>> + Send + 'static>,
+    >;
+
+    /// The digest observed from a transaction submitted to a mock server.
+    #[derive(Clone)]
+    pub struct SubmittedTransaction {
+        digest: tokio::sync::watch::Receiver<Option<sui::types::Digest>>,
+    }
+
+    impl SubmittedTransaction {
+        /// Returns the submitted transaction digest after execution.
+        pub fn digest(&self) -> sui::types::Digest {
+            self.digest
+                .borrow()
+                .as_ref()
+                .copied()
+                .expect("the mock transaction should have been submitted")
+        }
+    }
+
     #[tonic::async_trait]
 
     pub trait SubscriptionServiceWrapper: Send + Sync + 'static {
@@ -230,6 +265,11 @@ pub mod grpc {
 
             request: Request<SubscribeCheckpointsRequest>,
         ) -> Result<Response<BoxCheckpointStream>, Status>;
+
+        async fn subscribe_events(
+            &self,
+            request: Request<SubscribeEventsRequest>,
+        ) -> Result<Response<BoxEventStream>, Status>;
     }
 
     pub struct SubscriptionServiceAdapter<W: SubscriptionServiceWrapper> {
@@ -250,6 +290,13 @@ pub mod grpc {
         ) -> Result<Response<BoxCheckpointStream>, Status> {
             self.inner.subscribe_checkpoints(request).await
         }
+
+        async fn subscribe_events(
+            &self,
+            request: Request<SubscribeEventsRequest>,
+        ) -> Result<Response<BoxEventStream>, Status> {
+            self.inner.subscribe_events(request).await
+        }
     }
 
     mock! {
@@ -261,6 +308,11 @@ pub mod grpc {
                 &self,
                 request: tonic::Request<SubscribeCheckpointsRequest>,
             ) -> Result<tonic::Response<BoxCheckpointStream>, tonic::Status>;
+
+            async fn subscribe_events(
+                &self,
+                request: tonic::Request<SubscribeEventsRequest>,
+            ) -> Result<tonic::Response<BoxEventStream>, tonic::Status>;
         }
     }
 
@@ -312,23 +364,21 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
-    ) {
+    ) -> SubmittedTransaction {
         mock_execute_transaction_and_wait_for_checkpoint_matching(
             tx_service,
             sub_service,
             ledger_service,
-            digest,
             gas_coin_ref,
             objects,
             changed_objects,
             events,
             |_| {},
-        );
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -336,24 +386,84 @@ pub mod grpc {
         tx_service: &mut MockTransactionExecutionService,
         sub_service: &mut MockSubscriptionService,
         ledger_service: &mut MockLedgerService,
-        digest: sui::types::Digest,
         gas_coin_ref: sui::types::ObjectReference,
         objects: Vec<sui::types::Object>,
         changed_objects: Vec<sui::types::ChangedObject>,
         events: Vec<sui::types::Event>,
         assert_request: F,
-    ) where
+    ) -> SubmittedTransaction
+    where
         F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
     {
-        let mut changed_objects_with_coin = vec![sui::types::ChangedObject {
-            object_id: sui::types::Address::from_static("0x1"),
-            input_state: sui::types::ObjectIn::NotExist,
-            output_state: sui::types::ObjectOut::ObjectWrite {
-                digest: *gas_coin_ref.digest(),
-                owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
-            },
-            id_operation: sui::types::IdOperation::None,
-        }];
+        mock_execute_transaction_and_wait_for_checkpoint_inner(
+            tx_service,
+            sub_service,
+            ledger_service,
+            Some(gas_coin_ref),
+            objects,
+            changed_objects,
+            events,
+            assert_request,
+        )
+    }
+
+    /// Configures execution and checkpoint mocks for a transaction without an
+    /// owned gas object.
+    #[allow(clippy::too_many_arguments)]
+    pub fn mock_execute_transaction_without_gas_and_wait_for_checkpoint<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) -> SubmittedTransaction
+    where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
+        mock_execute_transaction_and_wait_for_checkpoint_inner(
+            tx_service,
+            sub_service,
+            ledger_service,
+            None,
+            objects,
+            changed_objects,
+            events,
+            assert_request,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn mock_execute_transaction_and_wait_for_checkpoint_inner<F>(
+        tx_service: &mut MockTransactionExecutionService,
+        sub_service: &mut MockSubscriptionService,
+        ledger_service: &mut MockLedgerService,
+        gas_coin_ref: Option<sui::types::ObjectReference>,
+        objects: Vec<sui::types::Object>,
+        changed_objects: Vec<sui::types::ChangedObject>,
+        events: Vec<sui::types::Event>,
+        assert_request: F,
+    ) -> SubmittedTransaction
+    where
+        F: Fn(&ExecuteTransactionRequest) + Send + Sync + 'static,
+    {
+        let (submitted_digest, observed_digest) = tokio::sync::watch::channel(None);
+        let checkpoint_digest = observed_digest.clone();
+        let mut changed_objects_with_coin = gas_coin_ref
+            .as_ref()
+            .map(|gas_coin_ref| sui::types::ChangedObject {
+                object_id: sui::types::Address::from_static("0x1"),
+                input_state: sui::types::ObjectIn::NotExist,
+                output_state: sui::types::ObjectOut::ObjectWrite {
+                    digest: *gas_coin_ref.digest(),
+                    owner: sui::types::Owner::Address(sui::types::Address::from_static("0x1")),
+                },
+                id_operation: sui::types::IdOperation::None,
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        let gas_object_index = gas_coin_ref.as_ref().map(|_| 0);
 
         changed_objects_with_coin.extend(changed_objects.clone());
 
@@ -361,17 +471,26 @@ pub mod grpc {
             .expect_subscribe_checkpoints()
             .times(1)
             .returning(move |_request| {
-                let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
-                let mut checkpoint = sui::grpc::Checkpoint::default();
-                let mut tx = sui::grpc::ExecutedTransaction::default();
+                let mut checkpoint_digest = checkpoint_digest.clone();
+                let stream = futures::stream::once(async move {
+                    let digest = {
+                        let observed = checkpoint_digest
+                            .wait_for(Option::is_some)
+                            .await
+                            .map_err(|_| tonic::Status::aborted("transaction was not submitted"))?;
+                        observed.expect("the observed digest is present")
+                    };
+                    let mut response = sui::grpc::SubscribeCheckpointsResponse::default();
+                    let mut checkpoint = sui::grpc::Checkpoint::default();
+                    let mut tx = sui::grpc::ExecutedTransaction::default();
 
-                tx.set_digest(digest);
-                checkpoint.set_transactions(vec![tx]);
-                checkpoint.set_sequence_number(1);
-                response.set_checkpoint(checkpoint);
+                    tx.set_digest(digest);
+                    checkpoint.set_transactions(vec![tx]);
+                    checkpoint.set_sequence_number(1);
+                    response.set_checkpoint(checkpoint);
 
-                let output = vec![Ok(response)];
-                let stream = futures::stream::iter(output);
+                    Ok(response)
+                });
 
                 Ok(tonic::Response::new(Box::pin(stream) as BoxCheckpointStream))
             });
@@ -381,6 +500,13 @@ pub mod grpc {
             .times(1)
             .returning(move |request| {
                 assert_request(request.get_ref());
+                let transaction =
+                    sui::types::Transaction::try_from(request.get_ref().transaction())
+                        .expect("the submitted transaction should decode");
+                let digest = transaction.digest();
+                submitted_digest
+                    .send(Some(digest))
+                    .expect("the checkpoint observer should remain active");
                 let mut response = sui::grpc::ExecuteTransactionResponse::default();
                 let mut tx = sui::grpc::ExecutedTransaction::default();
 
@@ -399,7 +525,7 @@ pub mod grpc {
                         non_refundable_storage_fee: 0,
                     },
                     transaction_digest: digest,
-                    gas_object_index: Some(0),
+                    gas_object_index,
                     events_digest: None,
                     dependencies: vec![],
                     lamport_version: 1,
@@ -423,12 +549,30 @@ pub mod grpc {
                 Ok(tonic::Response::new(response))
             });
 
-        mock_get_object_metadata(
-            ledger_service,
-            gas_coin_ref,
-            sui::types::Owner::Immutable,
-            Some(1000),
-        );
+        if let Some(gas_coin_ref) = gas_coin_ref {
+            mock_get_object_metadata(
+                ledger_service,
+                gas_coin_ref,
+                sui::types::Owner::Immutable,
+                Some(1000),
+            );
+        }
+
+        ledger_service
+            .expect_get_transaction()
+            .withf(|request| {
+                request
+                    .get_ref()
+                    .read_mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.paths.iter().any(|path| path == "timestamp"))
+            })
+            .times(2)
+            .returning(|_| Err(tonic::Status::not_found("transaction is not indexed yet")));
+
+        SubmittedTransaction {
+            digest: observed_digest,
+        }
     }
 
     pub fn mock_reference_gas_price(
@@ -443,6 +587,35 @@ pub mod grpc {
                 let mut epoch = sui::grpc::Epoch::default();
                 epoch.set_reference_gas_price(reference_gas_price);
                 response.set_epoch(epoch);
+                Ok(tonic::Response::new(response))
+            });
+    }
+
+    /// Configures the epoch and service information used by address balance
+    /// transaction construction.
+    pub fn mock_submission_context(
+        ledger_service: &mut MockLedgerService,
+        reference_gas_price: u64,
+        epoch_number: u64,
+        chain: sui::types::Digest,
+    ) {
+        ledger_service
+            .expect_get_epoch()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetEpochResponse::default();
+                let mut epoch = sui::grpc::Epoch::default();
+                epoch.set_epoch(epoch_number);
+                epoch.set_reference_gas_price(reference_gas_price);
+                response.set_epoch(epoch);
+                Ok(tonic::Response::new(response))
+            });
+        ledger_service
+            .expect_get_service_info()
+            .times(1)
+            .returning(move |_request| {
+                let mut response = sui::grpc::GetServiceInfoResponse::default();
+                response.chain_id = Some(chain.to_string());
                 Ok(tonic::Response::new(response))
             });
     }
@@ -464,81 +637,6 @@ pub mod grpc {
                 grpc_object.set_version(object_ref.version());
                 grpc_object.set_balance(balance.unwrap_or(0));
                 response.set_object(grpc_object);
-                Ok(tonic::Response::new(response))
-            });
-    }
-
-    /// Set up the three-RPC chain consumed by
-    /// [`crate::nexus::crawler::Crawler::get_object_creation_checkpoint`]:
-    ///
-    /// 1. `get_object` (no version) → returns `Owner::Shared(initial_shared_version)`.
-    /// 2. `get_object` (version=`initial_shared_version`) → returns an object whose
-    ///    `previous_transaction` is `creation_tx_digest`.
-    /// 3. `batch_get_transactions` (one digest) → returns one tx whose
-    ///    `checkpoint` is `creation_checkpoint`.
-    ///
-    /// The two `expect_get_object` calls are registered in order; mockall
-    /// matches FIFO, so the first inspect call gets the metadata response and
-    /// the second the version-pinned one.
-    pub fn mock_object_creation_checkpoint(
-        ledger_service: &mut MockLedgerService,
-        object_ref: sui::types::ObjectReference,
-        initial_shared_version: u64,
-        creation_tx_digest: sui::types::Digest,
-        creation_checkpoint: u64,
-    ) {
-        // Both `expect_get_object` closures move from `object_ref`; clone for
-        // each registration so neither hits an E0382.
-        let metadata_object_ref = object_ref.clone();
-        let version_object_id = *object_ref.object_id();
-
-        // (1) Current metadata fetch: Owner::Shared carries the initial version.
-        ledger_service
-            .expect_get_object()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::GetObjectResponse::default();
-                let mut grpc_object = sui::grpc::Object::default();
-                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
-                    initial_shared_version,
-                )));
-                grpc_object.set_digest(*metadata_object_ref.digest());
-                grpc_object.set_object_id(*metadata_object_ref.object_id());
-                grpc_object.set_version(metadata_object_ref.version());
-                response.set_object(grpc_object);
-                Ok(tonic::Response::new(response))
-            });
-
-        // (2) Time-travelled fetch at the initial shared version: must carry
-        // `previous_transaction` so the crawler can chase the creation digest.
-        ledger_service
-            .expect_get_object()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::GetObjectResponse::default();
-                let mut grpc_object = sui::grpc::Object::default();
-                grpc_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Shared(
-                    initial_shared_version,
-                )));
-                grpc_object.set_object_id(version_object_id);
-                grpc_object.set_version(initial_shared_version);
-                grpc_object.set_previous_transaction(creation_tx_digest.to_string());
-                response.set_object(grpc_object);
-                Ok(tonic::Response::new(response))
-            });
-
-        // (3) Resolve the digest's checkpoint via batch_get_transactions.
-        ledger_service
-            .expect_batch_get_transactions()
-            .times(1)
-            .returning(move |_request| {
-                let mut response = sui::grpc::BatchGetTransactionsResponse::default();
-                let mut result = sui::grpc::GetTransactionResult::default();
-                let mut transaction = sui::grpc::ExecutedTransaction::default();
-                transaction.set_digest(creation_tx_digest);
-                transaction.set_checkpoint(creation_checkpoint);
-                result.set_transaction(transaction);
-                response.set_transactions(vec![result]);
                 Ok(tonic::Response::new(response))
             });
     }
@@ -601,8 +699,12 @@ pub mod grpc {
         owner: sui::types::Owner,
         contents: Vec<u8>,
     ) {
+        let expected_id = object_ref.object_id().to_string();
         ledger_service
             .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
@@ -626,8 +728,12 @@ pub mod grpc {
         contents: Vec<u8>,
         object_type: sui::types::StructTag,
     ) {
+        let expected_id = object_ref.object_id().to_string();
         ledger_service
             .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
@@ -644,6 +750,55 @@ pub mod grpc {
                 response.set_object(grpc_object);
                 Ok(tonic::Response::new(response))
             });
+    }
+
+    pub fn mock_get_object_value_bcs_for<T: Serialize>(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        value: &T,
+        object_type: sui::types::StructTag,
+    ) {
+        mock_get_object_bcs_for(
+            ledger_service,
+            object_ref,
+            owner,
+            bcs::to_bytes(value).expect("mock object value serializes as BCS"),
+            object_type,
+        );
+    }
+
+    /// Mock the dynamic field selected by a `sui::versioned::Versioned` value.
+    pub fn mock_versioned_payload<T>(
+        ledger_service: &mut MockLedgerService,
+        state_id: sui::types::Address,
+        state_schema: u64,
+        value: T,
+    ) where
+        T: Serialize + Clone + Send + 'static,
+    {
+        #[derive(Clone, Serialize)]
+        struct VersionedField<T> {
+            id: sui::types::Address,
+            name: u64,
+            value: T,
+        }
+
+        let field_id = state_id.derive_dynamic_child_id(
+            &sui::types::TypeTag::U64,
+            &bcs::to_bytes(&state_schema).expect("schema key serializes"),
+        );
+        let field = VersionedField {
+            id: field_id,
+            name: state_schema,
+            value,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            super::object_ref_for_id(field_id),
+            sui::types::Owner::Object(state_id),
+            bcs::to_bytes(&field).expect("versioned payload serializes"),
+        );
     }
 
     pub fn mock_get_objects_bcs(
@@ -680,6 +835,17 @@ pub mod grpc {
 
                 response.set_objects(objs);
                 Ok(tonic::Response::new(response))
+            });
+    }
+
+    pub fn mock_empty_batch_get_objects(ledger_service: &mut MockLedgerService, times: usize) {
+        ledger_service
+            .expect_batch_get_objects()
+            .times(times)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::default(),
+                ))
             });
     }
 
@@ -855,6 +1021,17 @@ pub mod grpc {
             });
     }
 
+    pub fn mock_empty_dynamic_fields(state_service: &mut MockStateService, times: usize) {
+        state_service
+            .expect_list_dynamic_fields()
+            .times(times)
+            .returning(|_request| {
+                Ok(tonic::Response::new(
+                    sui::grpc::ListDynamicFieldsResponse::default(),
+                ))
+            });
+    }
+
     pub fn mock_list_dynamic_object_fields<T: Serialize + Clone + Send + 'static>(
         state_service: &mut MockStateService,
         fields: Vec<(T, sui::types::Address, sui::types::Address)>,
@@ -918,16 +1095,22 @@ pub mod grpc {
                 }
 
                 for event in nexus_events.clone() {
-                    let (event_pkg_id, event_module, event_name) = match event {
-                        NexusEventKind::DAGCreated(_) => {
-                            (objects.interface_pkg_id, "dag", event.name())
-                        }
+                    let (event_pkg_id, event_type_origin, event_module, event_name) = match event {
+                        NexusEventKind::DAGCreated(_) => (
+                            objects.interface_pkg_id(),
+                            objects.interface_type_origin_pkg_id(),
+                            "dag",
+                            event.name(),
+                        ),
                         NexusEventKind::WalkAdvanced(_)
                         | NexusEventKind::EndStateReached(_)
                         | NexusEventKind::ExecutionFinished(_)
-                        | NexusEventKind::TerminalErrEvalRecorded(_) => {
-                            (objects.workflow_pkg_id, "execution_events", event.name())
-                        }
+                        | NexusEventKind::TerminalErrEvalRecorded(_) => (
+                            objects.workflow_pkg_id(),
+                            objects.workflow_type_origin_pkg_id(),
+                            "execution_events",
+                            event.name(),
+                        ),
                         _ => panic!("Unsupported event type for mock event serialization"),
                     };
                     let wrapper_tag = crate::move_bindings::struct_tag::<
@@ -935,10 +1118,10 @@ pub mod grpc {
                     >(&objects);
                     let t = format!(
                         "{}::{}::{}<{}::{}::{}>",
-                        objects.primitives_pkg_id,
+                        objects.primitives_type_origin_pkg_id(),
                         wrapper_tag.module(),
                         wrapper_tag.name(),
-                        event_pkg_id,
+                        event_type_origin,
                         event_module,
                         event_name
                     );

@@ -5,7 +5,6 @@ mod tap_create_agent;
 mod tap_create_skill_artifact;
 mod tap_default_agent;
 mod tap_dry_run;
-mod tap_execute;
 mod tap_output;
 mod tap_payments;
 mod tap_publish_skill;
@@ -13,8 +12,6 @@ mod tap_register_skill;
 mod tap_registry;
 mod tap_requirements;
 mod tap_scaffold;
-mod tap_schedule_task;
-mod tap_scheduled_task;
 mod tap_settle;
 mod tap_update_skill;
 mod tap_validate_skill;
@@ -34,34 +31,25 @@ use {
         loading,
         notify_success,
         prelude::*,
-        sui::get_nexus_client,
-        workflow,
+        sui::{get_nexus_client, get_read_only_nexus_client},
     },
     convert_case::{Case, Casing},
     nexus_sdk::{
-        move_bindings::interface::payment::ExecutionPaymentReceipt,
-        nexus::{
-            error::NexusError,
-            tap::{
-                fetch_agent_payment_vault_for_agent,
-                fetch_execution_payment_history,
-                AgentTaskStateAction,
-                CreateAgentResult,
-                GetSkillRequirementResult,
-                PublishSkillResult,
-                RegisterSkillResult,
-                TapPackagePublishOptions,
-                UpdateSkillResult,
-            },
-            workflow::AgentDagExecuteOptions,
+        nexus::tap::{
+            fetch_agent_payment_vault_for_agent,
+            CreateAgentResult,
+            GetSkillRequirementResult,
+            PublishSkillResult,
+            RegisterSkillResult,
+            TapPackagePublishOptions,
+            UpdateSkillResult,
         },
-        types::{SkillConfig, SkillId, TapPublishArtifact, DEFAULT_ENTRY_GROUP},
+        types::{SkillConfig, SkillId, TapPublishArtifact},
     },
     regex::Regex,
     tap_agent::handle_agent_command,
     tap_bind::bind_agent_skill,
     tap_common::{
-        agent_execute_options_from_cli,
         agent_id_from_alias_or_arg,
         ensure_cli_agent_owner,
         ensure_cli_mutable_agent,
@@ -72,9 +60,7 @@ use {
     tap_create_skill_artifact::{create_skill_artifact, ArtifactPaymentMode},
     tap_default_agent::show_default_agent,
     tap_dry_run::dry_run_skill,
-    tap_execute::execute_agent_dag_skill,
     tap_output::{
-        agent_execute_result_json,
         agent_list_result_json,
         agent_remove_result_json,
         agent_save_result_json,
@@ -83,16 +69,13 @@ use {
         create_skill_artifact_result_json,
         default_agent_result_json,
         dry_run_result_json,
-        payment_resolve_result_json,
         payment_show_result_json,
         payment_wait_result_json,
-        payments_list_result_json,
         publish_skill_result_json,
         register_skill_result_json,
         registry_show_result_json,
         requirements_result_json,
         scaffold_result_json,
-        schedule_task_result_json,
         update_skill_result_json,
         validate_skill_result_json,
         vault_balance_result_json,
@@ -104,8 +87,6 @@ use {
     tap_registry::show_registry,
     tap_requirements::fetch_requirements,
     tap_scaffold::scaffold_tap_skill,
-    tap_schedule_task::{schedule_tap_task, TapTaskPaymentSourceArg},
-    tap_scheduled_task::set_agent_task_state,
     tap_settle::handle_execution_command,
     tap_update_skill::update_skill_from_artifact,
     tap_validate_skill::{resolve_relative, validate_skill},
@@ -178,19 +159,17 @@ pub(crate) enum TapCommand {
         )]
         payment_mode: ArtifactPaymentMode,
         #[arg(
-            long = "agent-funded-max-budget",
-            help = "Maximum budget for agent-funded skills.",
-            value_name = "AMOUNT"
+            long = "agent-funded-max-budget-mist",
+            help = "Maximum budget in MIST for agent-funded skills.",
+            value_name = "MIST"
         )]
-        agent_funded_max_budget: Option<u64>,
+        agent_funded_max_budget_mist: Option<u64>,
         #[arg(long, default_value = "once", help = "Schedule recurrence kind.")]
         recurrence_kind: String,
         #[arg(long, default_value_t = 0, help = "Minimum interval in milliseconds.")]
         min_interval_ms: u64,
         #[arg(long, default_value_t = 1, help = "Maximum occurrences.")]
         max_occurrences: u64,
-        #[arg(long, default_value_t = false, help = "Allow recursive execution.")]
-        allow_recursive: bool,
         #[arg(
             long = "fixed-tool",
             help = "Fixed tool requirement as <TOOL_REGISTRY_ID>=<TOOL_FQN>. Repeatable.",
@@ -279,168 +258,6 @@ pub(crate) enum TapCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         config: PathBuf,
-    },
-    #[command(about = "Execute a standard TAP skill through its active DAG endpoint.")]
-    Execute {
-        #[arg(long, help = "On-chain generated agent ID.", value_name = "OBJECT_ID")]
-        agent_id: sui::types::Address,
-        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
-        skill_id: u64,
-        #[arg(
-            long = "entry-group",
-            short = 'e',
-            help = "DAG entry group to invoke.",
-            value_name = "NAME",
-            default_value = DEFAULT_ENTRY_GROUP,
-        )]
-        entry_group: String,
-        #[arg(
-            long = "input-json",
-            short = 'i',
-            help = "Initial DAG input data as a JSON object.",
-            value_parser = ValueParser::from(parse_json_string),
-            value_name = "DATA"
-        )]
-        input_json: serde_json::Value,
-        #[arg(
-            long = "remote",
-            short = 'r',
-            help = "Comma-separated {vertex}.{port} inputs to store remotely.",
-            value_delimiter = ',',
-            value_name = "VERTEX.PORT"
-        )]
-        remote: Vec<String>,
-        #[arg(
-            long = "priority-fee-per-gas-unit",
-            help = "Priority fee per gas unit for the DAG execution. Defaults to 0 when omitted.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        priority_fee_per_gas_unit: u64,
-        #[arg(
-            long = "payment-source-hex",
-            help = "Payment source bytes as hex.",
-            value_name = "HEX",
-            default_value = ""
-        )]
-        payment_source_hex: String,
-        #[arg(
-            long = "payment-max-budget",
-            help = "Maximum standard TAP payment budget.",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        payment_max_budget: u64,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(about = "Create a scheduled task for a TAP skill and attach TAP payment.")]
-    ScheduleTask {
-        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
-        agent_id: sui::types::Address,
-        #[arg(long, help = "Agent-local generated skill index.", value_name = "U64")]
-        skill_id: u64,
-        #[arg(
-            long = "entry-group",
-            short = 'e',
-            help = "DAG entry group to invoke.",
-            value_name = "NAME",
-            default_value = DEFAULT_ENTRY_GROUP,
-        )]
-        entry_group: String,
-        #[arg(
-            long = "dag-id",
-            help = "Optional DAG selection for runtime-selected skills. Pinned skills validate this against their pinned DAG when provided.",
-            value_name = "OBJECT_ID"
-        )]
-        dag_id: Option<sui::types::Address>,
-        #[arg(
-            long = "input-json",
-            short = 'i',
-            help = "Initial DAG input data as a JSON object.",
-            value_parser = ValueParser::from(parse_json_string),
-            value_name = "DATA"
-        )]
-        input_json: Option<serde_json::Value>,
-        #[arg(
-            long = "remote",
-            short = 'r',
-            help = "Comma-separated {vertex}.{port} inputs to store remotely.",
-            value_delimiter = ',',
-            value_name = "VERTEX.PORT"
-        )]
-        remote: Vec<String>,
-        #[arg(long = "metadata", short = 'm', value_name = "KEY=VALUE")]
-        metadata: Vec<String>,
-        #[arg(
-            long = "execution-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        execution_priority_fee_per_gas_unit: u64,
-        #[command(flatten)]
-        schedule_start: crate::scheduler::task::ScheduleStartOptions,
-        #[command(flatten)]
-        schedule_deadline: crate::scheduler::task::ScheduleDeadlineOptions,
-        #[arg(
-            long = "schedule-priority-fee-per-gas-unit",
-            value_name = "AMOUNT",
-            default_value_t = 0u64
-        )]
-        schedule_priority_fee_per_gas_unit: u64,
-        #[arg(
-            long = "generator",
-            value_enum,
-            default_value_t = crate::scheduler::task::TaskGeneratorArg::Queue,
-            value_name = "KIND"
-        )]
-        generator: crate::scheduler::task::TaskGeneratorArg,
-        #[arg(long = "payment-source", value_enum, value_name = "SOURCE")]
-        payment_source: TapTaskPaymentSourceArg,
-        #[arg(long = "prepay-amount", value_name = "AMOUNT")]
-        prepay_amount: u64,
-        #[arg(long = "refund-recipient", value_name = "ADDRESS")]
-        refund_recipient: Option<sui::types::Address>,
-        #[arg(long = "occurrence-budget", value_name = "AMOUNT")]
-        occurrence_budget: u64,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(
-        subcommand,
-        about = "Operate an existing explicit-agent TAP scheduled task."
-    )]
-    ScheduledTask(ScheduledTaskCommand),
-}
-
-#[derive(Subcommand)]
-pub(crate) enum ScheduledTaskCommand {
-    #[command(about = "Pause a TAP scheduled task.")]
-    Pause {
-        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::types::Address,
-        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
-        agent_id: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(about = "Resume a TAP scheduled task.")]
-    Resume {
-        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::types::Address,
-        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
-        agent_id: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-    #[command(about = "Cancel a TAP scheduled task.")]
-    Cancel {
-        #[arg(long = "task-id", short = 't', value_name = "OBJECT_ID")]
-        task_id: sui::types::Address,
-        #[arg(long, help = "Talus agent object ID.", value_name = "OBJECT_ID")]
-        agent_id: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
     },
 }
 
@@ -538,62 +355,6 @@ pub(crate) enum PaymentsCommand {
         )]
         poll_secs: u64,
     },
-    #[command(about = "List wallet-owned and optional agent-vault execution payment receipts.")]
-    List {
-        #[arg(
-            long,
-            help = "Local agent alias.",
-            value_name = "NAME",
-            conflicts_with = "agent_id"
-        )]
-        alias: Option<String>,
-        #[arg(
-            long,
-            help = "Talus agent object ID for vault history.",
-            value_name = "OBJECT_ID"
-        )]
-        agent_id: Option<sui::types::Address>,
-        #[arg(
-            long,
-            help = "Show only completed/resolved receipts.",
-            conflicts_with = "pending"
-        )]
-        completed: bool,
-        #[arg(
-            long,
-            help = "Show only pending/unresolved receipts.",
-            conflicts_with = "completed"
-        )]
-        pending: bool,
-        #[arg(long, help = "Show all receipts. This is the default.")]
-        all: bool,
-    },
-    #[command(
-        about = "Resolve a standard TAP payment by returning funds to the invoker given the execution is finished. Routes through `accomplish_tap_execution_payment_from_agent_vault` when `--alias`/`--agent-id` is supplied, otherwise calls `accomplish_tap_execution_payment`."
-    )]
-    Resolve {
-        #[arg(
-            long = "execution-id",
-            help = "Shared `DAGExecution` object ID whose TAP payment should be accomplished.",
-            value_name = "OBJECT_ID"
-        )]
-        execution_id: sui::types::Address,
-        #[arg(
-            long,
-            help = "Local agent alias whose vault funds the settlement.",
-            value_name = "NAME",
-            conflicts_with = "agent_id"
-        )]
-        alias: Option<String>,
-        #[arg(
-            long,
-            help = "Talus agent object ID whose vault funds the settlement.",
-            value_name = "OBJECT_ID"
-        )]
-        agent_id: Option<sui::types::Address>,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
     #[command(
         about = "Refill a live TAP execution payment. Uses a coin top-up by default, or the agent vault when `--alias`/`--agent-id` is supplied."
     )]
@@ -636,13 +397,13 @@ pub(crate) enum ExecutionCommand {
         execution_id: sui::types::Address,
         #[arg(long = "walk-index", help = "Expired walk index to resolve.")]
         walk_index: u64,
-        /// Optional ToolGas object ID to require when the selected branch needs ToolGas-assisted abort.
+        /// Optional Tool cashier object ID required by the selected abort branch.
         #[arg(
-            long = "tool-gas-id",
-            help = "ToolGas object ID to use when the walk requires ToolGas-assisted abort.",
+            long = "tool-cashier-id",
+            help = "ToolCashier object ID to use when the walk requires a ToolCashier abort.",
             value_name = "OBJECT_ID"
         )]
-        tool_gas_id: Option<sui::types::Address>,
+        tool_cashier_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -684,11 +445,10 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             dag_id,
             interface_revision,
             payment_mode,
-            agent_funded_max_budget,
+            agent_funded_max_budget_mist,
             recurrence_kind,
             min_interval_ms,
             max_occurrences,
-            allow_recursive,
             fixed_tool,
             out,
         } => {
@@ -697,11 +457,10 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
                 dag_id,
                 interface_revision,
                 payment_mode,
-                agent_funded_max_budget,
+                agent_funded_max_budget_mist,
                 recurrence_kind,
                 min_interval_ms,
                 max_occurrences,
-                allow_recursive,
                 fixed_tool,
                 out,
             )
@@ -741,97 +500,6 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
             fetch_requirements(agent_id, skill_id).await
         }
         TapCommand::DryRun { config } => dry_run_skill(config).await,
-        TapCommand::Execute {
-            agent_id,
-            skill_id,
-            entry_group,
-            input_json,
-            remote,
-            priority_fee_per_gas_unit,
-            payment_source_hex,
-            payment_max_budget,
-            gas,
-        } => {
-            execute_agent_dag_skill(
-                agent_id,
-                skill_id,
-                entry_group,
-                input_json,
-                remote,
-                priority_fee_per_gas_unit,
-                payment_source_hex,
-                payment_max_budget,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
-        TapCommand::ScheduleTask {
-            agent_id,
-            skill_id,
-            entry_group,
-            dag_id,
-            input_json,
-            remote,
-            metadata,
-            execution_priority_fee_per_gas_unit,
-            schedule_start,
-            schedule_deadline,
-            schedule_priority_fee_per_gas_unit,
-            generator,
-            payment_source,
-            prepay_amount,
-            refund_recipient,
-            occurrence_budget,
-            gas,
-        } => {
-            let crate::scheduler::task::ScheduleStartOptions {
-                schedule_start_ms,
-                schedule_start_offset_ms,
-            } = schedule_start;
-            let crate::scheduler::task::ScheduleDeadlineOptions {
-                schedule_deadline_offset_ms,
-            } = schedule_deadline;
-            schedule_tap_task(
-                agent_id,
-                skill_id,
-                entry_group,
-                dag_id,
-                input_json,
-                remote,
-                metadata,
-                execution_priority_fee_per_gas_unit,
-                schedule_start_ms,
-                schedule_start_offset_ms,
-                schedule_deadline_offset_ms,
-                schedule_priority_fee_per_gas_unit,
-                generator.into(),
-                payment_source,
-                prepay_amount,
-                refund_recipient,
-                occurrence_budget,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
-        TapCommand::ScheduledTask(command) => match command {
-            ScheduledTaskCommand::Pause {
-                task_id,
-                agent_id,
-                gas,
-            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Pause).await,
-            ScheduledTaskCommand::Resume {
-                task_id,
-                agent_id,
-                gas,
-            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Resume).await,
-            ScheduledTaskCommand::Cancel {
-                task_id,
-                agent_id,
-                gas,
-            } => set_agent_task_state(task_id, agent_id, gas, AgentTaskStateAction::Cancel).await,
-        },
     }
 }
 
@@ -949,11 +617,10 @@ mod tests {
             dag_id: sui::types::Address::from_static("0xd"),
             interface_revision: 1,
             payment_mode: ArtifactPaymentMode::UserFunded,
-            agent_funded_max_budget: None,
+            agent_funded_max_budget_mist: None,
             recurrence_kind: "once".to_string(),
             min_interval_ms: 0,
             max_occurrences: 1,
-            allow_recursive: false,
             fixed_tool: Vec::new(),
             out: dispatch_artifact_path,
         })
@@ -1019,47 +686,6 @@ mod tests {
         .expect_err("vault dispatch resolves alias before RPC");
         assert!(vault_error.to_string().contains("No Talus agent alias"));
 
-        let payments_error = handle(TapCommand::Payments(PaymentsCommand::List {
-            alias: Some("missing".to_string()),
-            agent_id: None,
-            completed: false,
-            pending: true,
-            all: false,
-        }))
-        .await
-        .expect_err("payments dispatch resolves alias before RPC");
-        assert!(payments_error.to_string().contains("No Talus agent alias"));
-
-        let resolve_error = handle(TapCommand::Payments(PaymentsCommand::Resolve {
-            execution_id: sui::types::Address::from_static("0xee"),
-            alias: None,
-            agent_id: None,
-            gas: gas_args(),
-        }))
-        .await
-        .expect_err("payments resolve dispatch reaches missing RPC");
-        assert!(
-            resolve_error
-                .to_string()
-                .contains("Sui RPC URL is not configured"),
-            "unexpected error: {resolve_error}"
-        );
-
-        let resolve_vault_error = handle(TapCommand::Payments(PaymentsCommand::Resolve {
-            execution_id: sui::types::Address::from_static("0xee"),
-            alias: Some("missing".to_string()),
-            agent_id: None,
-            gas: gas_args(),
-        }))
-        .await
-        .expect_err("payments resolve --alias resolves before RPC");
-        assert!(
-            resolve_vault_error
-                .to_string()
-                .contains("No Talus agent alias"),
-            "unexpected error: {resolve_vault_error}"
-        );
-
         let refill_error = handle(TapCommand::Payments(PaymentsCommand::Refill {
             execution_id: sui::types::Address::from_static("0xee"),
             amount: 100,
@@ -1110,7 +736,7 @@ mod tests {
             ExecutionCommand::ResolveExpiredWalk {
                 execution_id: sui::types::Address::from_static("0xee"),
                 walk_index: 0,
-                tool_gas_id: None,
+                tool_cashier_id: None,
                 gas: gas_args(),
             },
         ))
@@ -1158,23 +784,6 @@ mod tests {
         })
         .await
         .expect("dry-run dispatch succeeds");
-
-        let execute_error = handle(TapCommand::Execute {
-            agent_id: sui::types::Address::from_static("0xa"),
-            skill_id: 11,
-            entry_group: DEFAULT_ENTRY_GROUP.to_string(),
-            input_json: serde_json::json!({}),
-            remote: Vec::new(),
-            priority_fee_per_gas_unit: 0,
-            payment_source_hex: "0xinvalid".to_string(),
-            payment_max_budget: 0,
-            gas: gas_args(),
-        })
-        .await
-        .expect_err("execute dispatch decodes payment source first");
-        assert!(execute_error
-            .to_string()
-            .contains("invalid payment-source hex"));
 
         let vault_deposit_error = handle(TapCommand::Vault(VaultCommand::Deposit {
             alias: None,
@@ -1227,7 +836,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             Vec::new(),
             artifact_path.clone(),
         )
@@ -1654,21 +1262,5 @@ public struct WeatherSkill has drop {}
             .unwrap_err()
             .to_string()
             .contains("provide either"));
-    }
-
-    #[test]
-    fn agent_execute_options_decode_payment_args() {
-        let options =
-            agent_execute_options_from_cli("0x0102".to_string(), 99).expect("valid options");
-
-        assert_eq!(options.payment_source, vec![1, 2]);
-        assert_eq!(options.payment_max_budget, 99);
-    }
-
-    #[test]
-    fn agent_execute_options_accept_empty_payment_source() {
-        let options = agent_execute_options_from_cli(String::new(), 0).expect("valid defaults");
-
-        assert_eq!(options.payment_source, Vec::<u8>::new());
     }
 }

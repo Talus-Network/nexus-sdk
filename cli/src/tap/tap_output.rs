@@ -10,11 +10,9 @@
 use {
     super::*,
     nexus_sdk::{
-        move_bindings::interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
+        move_bindings::interface::payment::ExecutionPayment,
         nexus::{
-            scheduler::CreateTaskResult,
             tap::{
-                AccomplishExecutionPaymentResult,
                 BindAgentSkillResult,
                 DepositAgentVaultResult,
                 RefillExecutionPaymentResult,
@@ -23,7 +21,6 @@ use {
             workflow::{
                 AbortExecutionResult,
                 CommittedToolResultSettlementResult,
-                ExecuteResult,
                 ExpiredWalkResolutionResult,
             },
         },
@@ -146,28 +143,6 @@ pub(crate) fn update_skill_result_json(
 // Skill execution + requirements
 // ============================================================================
 
-pub(crate) fn agent_execute_result_json(
-    agent_id: AgentId,
-    skill_id: SkillId,
-    result: &ExecuteResult,
-) -> serde_json::Value {
-    json!({
-        "agent_dag": true,
-        "agent_id": agent_id,
-        "skill_id": skill_id,
-        "execution_id": result.execution_object_id,
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "submit": result.tap_execution.as_ref().map(|submit| json!({
-            "agent_id": submit.agent_id,
-            "skill_id": submit.skill_id,
-            "dag_id": submit.dag_id,
-            "skill_revision_key": submit.skill_revision_key,
-            "payment_max_budget": submit.payment_max_budget,
-        }))
-    })
-}
-
 pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> serde_json::Value {
     json!({
         "function": nexus_sdk::move_bindings::registry::agent_registry::get_skill_requirements_target()
@@ -178,32 +153,6 @@ pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> se
         "skill_id": result.skill_id,
         "active_skill_revision_key": result.active_skill_revision_key,
         "requirements": result.requirements,
-    })
-}
-
-pub(crate) fn schedule_task_result_json(
-    result: &CreateTaskResult,
-    agent_id: sui::types::Address,
-    skill_id: SkillId,
-    dag_id: sui::types::Address,
-) -> serde_json::Value {
-    json!({
-        "function": "schedule_task",
-        "digest": result.tx_digest,
-        "scheduled_task_id": result.task_id,
-        "agent_id": agent_id,
-        "skill_id": skill_id,
-        "dag_id": dag_id,
-        "tap_payment": result.tap_payment.as_ref().map(|payment| json!({
-            "agent_id": payment.agent_id,
-            "skill_id": payment.skill_id,
-            "prepay_amount": payment.prepay_amount,
-            "occurrence_budget": payment.occurrence_budget,
-        })),
-        "initial_schedule": result.initial_schedule.as_ref().map(|schedule| json!({
-            "digest": schedule.tx_digest,
-            "event": schedule.event,
-        })),
     })
 }
 
@@ -259,8 +208,8 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
         "interface_revision": payment.interface_revision,
         "payment_policy": payment.payment_policy,
         "source_kind": payment.source_kind,
-        "max_budget": payment.max_budget,
-        "locked_budget": payment.locked_budget,
+        "max_budget_mist": payment.max_budget_mist,
+        "locked_budget_mist": payment.locked_budget_mist,
         "funds": payment.funds,
         "consumed": payment.consumed,
         "accomplished": payment.accomplished,
@@ -278,41 +227,6 @@ pub(crate) fn payment_wait_result_json(result: &WaitForPaymentResult) -> serde_j
     object.insert("timed_out".to_string(), json!(result.timed_out));
     object.insert("terminal".to_string(), json!(result.terminal));
     base
-}
-
-pub(crate) fn payments_list_result_json(
-    owner: sui::types::Address,
-    agent_id: Option<sui::types::Address>,
-    wallet_receipts: &[ExecutionPaymentReceipt],
-    vault_receipts: &[ExecutionPaymentReceipt],
-    unresolved_execution_ids: &[sui::types::Address],
-    resolved_execution_ids: &[sui::types::Address],
-) -> serde_json::Value {
-    json!({
-        "owner": owner,
-        "agent_id": agent_id,
-        "wallet_receipts": wallet_receipts,
-        "vault_receipts": vault_receipts,
-        "unresolved_execution_ids": unresolved_execution_ids,
-        "resolved_execution_ids": resolved_execution_ids,
-    })
-}
-
-pub(crate) fn payment_resolve_result_json(
-    result: &AccomplishExecutionPaymentResult,
-) -> serde_json::Value {
-    let function = if result.agent_id.is_some() {
-        "accomplish_tap_execution_payment_from_agent_vault"
-    } else {
-        "accomplish_tap_execution_payment"
-    };
-    json!({
-        "function": function,
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "execution_id": result.execution_id,
-        "agent_id": result.agent_id,
-    })
 }
 
 pub(crate) fn payment_refill_result_json(
@@ -362,7 +276,9 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
 
 pub(crate) fn vault_balance_result_json(
     agent_id: AgentId,
-    vault: &nexus_sdk::nexus::crawler::Response<AgentPaymentVault>,
+    vault: &nexus_sdk::nexus::crawler::Response<
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+    >,
 ) -> serde_json::Value {
     json!({
         "agent_id": agent_id,
@@ -429,7 +345,7 @@ mod tests {
             },
             nexus::{
                 tap::TapPackagePublishResult,
-                workflow::{ExpiredWalkResolutionKind, PublishResult, TapExecutionSubmitMetadata},
+                workflow::{ExpiredWalkResolutionKind, PublishResult},
             },
             types::{
                 DefaultDagExecutorTarget,
@@ -471,6 +387,7 @@ mod tests {
             id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0xaa"),
             ),
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xcc"),
@@ -483,8 +400,10 @@ mod tests {
                 nexus_sdk::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                     sui::types::Address::from_static("0xee"),
                 ),
-            max_budget: 1_000,
-            locked_budget: 0,
+            max_budget_mist: 1_000,
+            gas_budget_mist: 333,
+            priority_fee_reserve_mist: 666,
+            locked_budget_mist: 0,
             funds: nexus_sdk::move_bindings::sui_framework::balance::Balance {
                 value: 1_000,
                 phantom_t0: std::marker::PhantomData,
@@ -497,6 +416,9 @@ mod tests {
             refunded,
             final_state,
             locked_vertices: vec![],
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 200,
         }
     }
 
@@ -620,46 +542,6 @@ mod tests {
     // ---- execute + requirements + schedule ----
 
     #[test]
-    fn agent_execute_result_json_includes_submit_metadata() {
-        let result = ExecuteResult {
-            tx_digest: sui::types::Digest::from([7; 32]),
-            execution_object_id: sui::types::Address::from_static("0xc"),
-            tx_checkpoint: 42,
-            tap_execution: Some(TapExecutionSubmitMetadata {
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-                dag_id: sui::types::Address::from_static("0xd"),
-                skill_revision_key: SkillRevisionLookupKey {
-                    agent_id: sui::types::Address::from_static("0xa"),
-                    skill_id: 11,
-                    interface_revision: InterfaceVersion::new(3),
-                },
-                payment_max_budget: 99,
-            }),
-        };
-
-        let output =
-            agent_execute_result_json(sui::types::Address::from_static("0xa"), 11, &result);
-
-        assert_eq!(
-            output["execution_id"],
-            serde_json::json!(sui::types::Address::from_static("0xc").to_string())
-        );
-        assert_eq!(
-            output["submit"]["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["submit"]["skill_revision_key"]["interface_revision"],
-            serde_json::json!({ "inner": 3 })
-        );
-        assert_eq!(
-            output["submit"]["payment_max_budget"],
-            serde_json::json!(99)
-        );
-    }
-
-    #[test]
     fn tap_requirements_result_json_exposes_live_state() {
         let requirements = SkillRequirement {
             input_commitment: vec![1],
@@ -688,47 +570,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn schedule_task_result_json_is_schedule_output_replacement() {
-        let result = CreateTaskResult {
-            tx_digest: sui::types::Digest::from([8; 32]),
-            task_id: sui::types::Address::from_static("0x77"),
-            initial_schedule: None,
-            tap_payment: Some(nexus_sdk::nexus::scheduler::CreateTaskTapPaymentResult {
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-                prepay_amount: 500,
-                occurrence_budget: 50,
-            }),
-        };
-
-        let output = schedule_task_result_json(
-            &result,
-            sui::types::Address::from_static("0xa"),
-            11,
-            sui::types::Address::from_static("0xd"),
-        );
-
-        assert_eq!(output["function"], serde_json::json!("schedule_task"));
-        assert_eq!(
-            output["scheduled_task_id"],
-            serde_json::json!(sui::types::Address::from_static("0x77").to_string())
-        );
-        assert_eq!(
-            output["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["tap_payment"]["prepay_amount"],
-            serde_json::json!(500)
-        );
-        assert_eq!(
-            output["tap_payment"]["occurrence_budget"],
-            serde_json::json!(50)
-        );
-        assert!(output["initial_schedule"].is_null());
-    }
-
     // ---- payments ----
 
     #[test]
@@ -753,47 +594,6 @@ mod tests {
         assert_eq!(json["elapsed_ms"], serde_json::json!(1234));
         assert_eq!(json["timed_out"], serde_json::Value::Bool(true));
         assert_eq!(json["terminal"], serde_json::Value::Bool(false));
-    }
-
-    #[test]
-    fn payment_resolve_result_json_exposes_execution_id_and_digest() {
-        let result = AccomplishExecutionPaymentResult {
-            tx_digest: sui::types::Digest::from([3u8; 32]),
-            tx_checkpoint: 77,
-            execution_id: sui::types::Address::from_static("0xee"),
-            agent_id: None,
-        };
-        let json = payment_resolve_result_json(&result);
-        assert!(json.get("standard_tap").is_none());
-        assert_eq!(
-            json["function"],
-            serde_json::json!("accomplish_tap_execution_payment")
-        );
-        assert_eq!(
-            json["execution_id"],
-            serde_json::json!(sui::types::Address::from_static("0xee").to_string())
-        );
-        assert_eq!(json["tx_checkpoint"], serde_json::json!(77));
-        assert!(json["agent_id"].is_null());
-    }
-
-    #[test]
-    fn payment_resolve_result_json_reports_vault_function_when_agent_supplied() {
-        let result = AccomplishExecutionPaymentResult {
-            tx_digest: sui::types::Digest::from([4u8; 32]),
-            tx_checkpoint: 88,
-            execution_id: sui::types::Address::from_static("0xee"),
-            agent_id: Some(sui::types::Address::from_static("0xa")),
-        };
-        let json = payment_resolve_result_json(&result);
-        assert_eq!(
-            json["function"],
-            serde_json::json!("accomplish_tap_execution_payment_from_agent_vault")
-        );
-        assert_eq!(
-            json["agent_id"],
-            serde_json::json!(sui::types::Address::from_static("0xa").to_string())
-        );
     }
 
     #[test]

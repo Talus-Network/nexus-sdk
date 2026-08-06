@@ -5,7 +5,7 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
         VaultCommand::Balance { alias, agent_id } => {
             let conf = CliConf::load().await.unwrap_or_default();
             let agent_id = agent_id_from_alias_or_arg(&conf, alias, agent_id)?;
-            let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+            let nexus_client = get_read_only_nexus_client().await?;
             ensure_cli_agent_owner(&nexus_client, agent_id).await?;
             let vault = fetch_agent_payment_vault_for_agent(nexus_client.crawler(), agent_id)
                 .await
