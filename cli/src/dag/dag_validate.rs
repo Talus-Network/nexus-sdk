@@ -47,7 +47,7 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<DagSpec, NexusCliEr
             validation_handle.error();
 
             Err(NexusCliError::Any(anyhow!(
-                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus/wiki/Package:-Workflow#rules>",
             )))
         }
     }

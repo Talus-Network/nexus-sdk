@@ -73,6 +73,7 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
     let binding_id = derivation_client
         .network_auth()
         .binding_object_id(&identity)
+        .await
         .expect("leader binding id");
     let key_table_id = sui::types::Address::from_static("0x72");
     let network_auth_state_id = sui::types::Address::from_static("0x73");
@@ -85,6 +86,7 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
     let network_auth_state = NetworkAuthStateV1::new(
         ID::new(sui::types::Address::ZERO),
         1,
+        UID::new(sui::types::Address::from_static("0x75")),
         VecSet {
             contents: vec![identity.clone()],
         },

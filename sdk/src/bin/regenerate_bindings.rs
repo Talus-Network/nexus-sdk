@@ -23,8 +23,8 @@ const CANONICAL_PACKAGE_VERSION: u64 = 1;
 const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("primitives", "0xa1"),
     ("interface", "0xa2"),
+    ("tool", "0xa7"),
     ("registry", "0xa3"),
-    ("gas", "0xa7"),
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
@@ -275,7 +275,7 @@ mod tests {
             r#"storage_id = "0x14""#,
             r#"[packages.scheduler]"#,
             r#"storage_id = "0x15""#,
-            r#"[packages.gas]"#,
+            r#"[packages.tool]"#,
             r#"storage_id = "0x17""#,
             r#"[us_token]"#,
             r#"package_id = "0x16""#,
@@ -289,8 +289,8 @@ mod tests {
             vec![
                 ("primitives".to_string(), Address::from_str("0x11").unwrap()),
                 ("interface".to_string(), Address::from_str("0x12").unwrap()),
+                ("tool".to_string(), Address::from_str("0x17").unwrap()),
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
-                ("gas".to_string(), Address::from_str("0x17").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
@@ -315,7 +315,7 @@ mod tests {
             r#"storage_id = "0x14""#,
             r#"[packages.scheduler]"#,
             r#"storage_id = "0x15""#,
-            r#"[packages.gas]"#,
+            r#"[packages.tool]"#,
             r#"storage_id = "0x17""#,
         ]
         .join("\n");
@@ -357,13 +357,13 @@ mod tests {
             Inputs::from_args([
                 "objects.toml".to_string(),
                 "--source-root".to_string(),
-                "../nexus-next/sui".to_string(),
+                "../nexus/sui".to_string(),
             ])
             .unwrap(),
             Inputs {
                 objects_file: PathBuf::from("objects.toml"),
                 grpc_url: DEFAULT_GRPC_URL.to_string(),
-                source_root: Some(PathBuf::from("../nexus-next/sui")),
+                source_root: Some(PathBuf::from("../nexus/sui")),
             }
         );
 
@@ -372,13 +372,13 @@ mod tests {
                 "objects.toml".to_string(),
                 "http://localhost:9000".to_string(),
                 "--source-root".to_string(),
-                "../nexus-next/sui".to_string(),
+                "../nexus/sui".to_string(),
             ])
             .unwrap(),
             Inputs {
                 objects_file: PathBuf::from("objects.toml"),
                 grpc_url: "http://localhost:9000".to_string(),
-                source_root: Some(PathBuf::from("../nexus-next/sui")),
+                source_root: Some(PathBuf::from("../nexus/sui")),
             }
         );
     }

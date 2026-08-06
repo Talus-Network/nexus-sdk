@@ -8,7 +8,7 @@ pub mod address_balance;
 pub mod client;
 pub mod crawler;
 pub mod error;
-pub mod gas;
+pub mod network;
 pub mod network_auth;
 pub mod protocol;
 pub mod registered_key;

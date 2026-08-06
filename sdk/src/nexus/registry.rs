@@ -5,22 +5,18 @@ use {
         move_bindings::{
             interface::verifier::ToolVerifierSupport,
             primitives,
-            registry::{
-                self,
-                leader::LeaderRegistryStateV1,
-                tool_registry::{ToolRegistry, ToolRegistryStateV1},
-                verifier_registry::{
-                    ExternalVerifierRecord,
-                    VerifierRegistry,
-                    VerifierRegistryStateV1,
-                },
-            },
+            registry::{self, leader::LeaderRegistryStateV1},
             sui_framework::object::ID,
+            tool::{
+                external_verifier::ExternalVerifier,
+                tool_registry::{ToolRegistry, ToolRegistryStateV1},
+            },
         },
         nexus::crawler::Crawler,
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
         transactions::tool::{ExternalVerifierObjectInput, ExternalVerifierRegistrationInput},
         types::{ExternalVerifierRuntimeCall, NexusObjects},
+        ToolFqn,
     },
     anyhow::{anyhow, bail},
     std::collections::HashMap,
@@ -102,7 +98,7 @@ pub async fn fetch_current_tool_registration(
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<CurrentToolRegistration>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id())
+        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
         .await?;
 
     if registry.data.registered_tools.size() == 0 {
@@ -132,28 +128,44 @@ pub async fn fetch_current_tool_registration(
     Ok(Some(CurrentToolRegistration { verifier_support }))
 }
 
+/// Return the invocation price retained for one Tool FQN, when present.
+pub async fn fetch_tool_invocation_cost(
+    crawler: &Crawler,
+    registry_ref: &sui::types::ObjectReference,
+    tool_fqn: &ToolFqn,
+) -> anyhow::Result<Option<u64>> {
+    let registry = crawler
+        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
+        .await?;
+    if registry.data.invocation_costs_mist.size() == 0 {
+        return Ok(None);
+    }
+    crawler
+        .get_optional_dynamic_field(
+            registry.data.invocation_costs_mist.id(),
+            crate::move_bindings::move_std::ascii::String::from(tool_fqn.to_string()),
+        )
+        .await
+}
+
 /// Current Tool-bound external verifier record, when one exists.
 pub async fn fetch_external_verifier_record(
     crawler: &Crawler,
     registry_ref: &sui::types::ObjectReference,
     tool_id: sui::types::Address,
-) -> anyhow::Result<Option<ExternalVerifierRecord>> {
+) -> anyhow::Result<Option<ExternalVerifier>> {
     let registry = crawler
-        .get_versioned_object::<VerifierRegistry, VerifierRegistryStateV1>(
-            *registry_ref.object_id(),
-        )
+        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
         .await?;
-    if registry.data.external_methods.size() == 0 {
+    if registry.data.external_verifiers.size() == 0 {
         return Ok(None);
     }
     let record = crawler
-        .get_dynamic_fields::<ID, ExternalVerifierRecord>(
-            registry.data.external_methods.id(),
-            registry.data.external_methods.size(),
+        .get_optional_dynamic_field::<ID, ExternalVerifier>(
+            registry.data.external_verifiers.id(),
+            ID::new(tool_id),
         )
-        .await?
-        .into_iter()
-        .find_map(|(id, record)| (id.bytes == tool_id).then_some(record));
+        .await?;
     if let Some(record) = record.as_ref() {
         validate_external_record(tool_id, record)?;
     }
@@ -194,8 +206,8 @@ pub async fn fetch_external_verifier_runtime_call(
         .collect::<anyhow::Result<Vec<_>>>()?;
 
     Ok(ExternalVerifierRuntimeCall {
-        method_id: record.method_id.clone(),
-        witness_id: record.witness_id.bytes,
+        method_id: record.method.clone(),
+        witness_id: record.witness.bytes,
         immutable_shared_objects,
     })
 }
@@ -464,16 +476,16 @@ fn signature_body_to_type_tag(
 
 fn validate_external_record(
     tool_id: sui::types::Address,
-    record: &ExternalVerifierRecord,
+    record: &ExternalVerifier,
 ) -> anyhow::Result<()> {
-    if record.method_id.tool_id.bytes != tool_id {
+    if record.method.tool_id.bytes != tool_id {
         bail!("External verifier method is bound to a different Tool ID");
     }
     let first = record
         .immutable_shared_objects
         .first()
         .ok_or_else(|| anyhow!("External verifier record has no witness object"))?;
-    if first.bytes != record.witness_id.bytes {
+    if first.bytes != record.witness.bytes {
         bail!("External verifier witness must be immutable object zero");
     }
     if record
@@ -513,6 +525,13 @@ mod tests {
             open_signature_body::Type,
         },
     };
+
+    #[derive(Clone, serde::Serialize)]
+    struct DynamicFieldFixture<K, V> {
+        id: sui::types::Address,
+        name: K,
+        value: V,
+    }
 
     fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
         let object_id = sui::types::Address::generate(rand::thread_rng());
@@ -691,6 +710,8 @@ mod tests {
         registry_id: sui::types::Address,
         registered_tools_id: sui::types::Address,
         registered_tools_size: u64,
+        external_verifiers_id: sui::types::Address,
+        external_verifiers_size: u64,
     ) -> ToolRegistryStateV1 {
         let id = sui::types::Address::from_static;
         ToolRegistryStateV1::new(
@@ -700,6 +721,8 @@ mod tests {
             Table::<ID, bool>::new(registered_tools_id, registered_tools_size),
             LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
             Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
+            Table::<ID, ExternalVerifier>::new(external_verifiers_id, external_verifiers_size),
+            Table::<ascii::String, u64>::new(id("0x108"), 0),
             LinkedTable::<ascii::String, ID>::new(id("0x105"), 0),
             LinkedTable::<ascii::String, bool>::new(id("0x106"), 0),
             0,
@@ -708,13 +731,6 @@ mod tests {
     }
 
     async fn current_registration_fixture(registered: bool) -> Option<CurrentToolRegistration> {
-        #[derive(Clone, serde::Serialize)]
-        struct DynamicFieldFixture<K, V> {
-            id: sui::types::Address,
-            name: K,
-            value: V,
-        }
-
         let registry_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x201"));
         let registered_tools_id = sui::types::Address::from_static("0x202");
         let tool_id = sui::types::Address::from_static("0x203");
@@ -722,6 +738,8 @@ mod tests {
             *registry_ref.object_id(),
             registered_tools_id,
             u64::from(registered),
+            sui::types::Address::from_static("0x206"),
+            0,
         );
         let state_id = sui::types::Address::from_static("0x205");
         let registry = ToolRegistry::new(
@@ -799,15 +817,16 @@ mod tests {
         let witness = sui::types::Address::from_static("0x305");
         let config = sui::types::Address::from_static("0x306");
         let state_id = sui::types::Address::from_static("0x308");
-        let registry = VerifierRegistry::new(
+        let registry = ToolRegistry::new(
             UID::new(*registry_ref.object_id()),
             Versioned::new(UID::new(state_id), 1),
         );
-        let registry_state = VerifierRegistryStateV1::new(
-            ID::new(sui::types::Address::ZERO),
+        let registry_state = tool_registry_fixture(
+            *registry_ref.object_id(),
+            sui::types::Address::from_static("0x307"),
+            0,
+            methods_table_id,
             1,
-            UID::new(sui::types::Address::from_static("0x307")),
-            Table::<ID, ExternalVerifierRecord>::new(methods_table_id, 1),
         );
         let record = external_record(tool_id, witness, &[witness, config]);
 
@@ -819,14 +838,16 @@ mod tests {
             bcs::to_bytes(&registry).unwrap(),
         );
         sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 1, registry_state);
-        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service,
-            vec![(
-                field_ref,
-                sui::types::Owner::Shared(1),
-                ID::new(tool_id),
-                record,
-            )],
+            field_ref.clone(),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&DynamicFieldFixture {
+                id: *field_ref.object_id(),
+                name: ID::new(tool_id),
+                value: record,
+            })
+            .unwrap(),
         );
         sui_mocks::grpc::mock_get_objects_metadata(&mut ledger_service, metadata);
 
@@ -1354,15 +1375,15 @@ mod tests {
         tool_id: sui::types::Address,
         witness_id: sui::types::Address,
         object_ids: &[sui::types::Address],
-    ) -> ExternalVerifierRecord {
-        ExternalVerifierRecord {
-            method_id: crate::move_bindings::interface::verifier::VerifierMethodId {
+    ) -> ExternalVerifier {
+        ExternalVerifier {
+            method: crate::move_bindings::interface::verifier::VerifierMethodId {
                 tool_id: ID::new(tool_id),
                 package_id: ID::new(sui::types::Address::from_static("0x44")),
                 module_name: ascii::String::from("verifier"),
                 function_name: ascii::String::from("verify"),
             },
-            witness_id: ID::new(witness_id),
+            witness: ID::new(witness_id),
             immutable_shared_objects: object_ids.iter().copied().map(ID::new).collect(),
         }
     }

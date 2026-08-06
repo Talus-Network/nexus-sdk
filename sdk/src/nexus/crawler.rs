@@ -1017,13 +1017,25 @@ impl Crawler {
     ///
     /// # Errors
     ///
-    /// Returns an error when the field cannot be fetched or decoded, or when
-    /// the container points at a payload that does not exist.
-    pub async fn get_versioned_state<V>(&self, state: &Versioned) -> anyhow::Result<V>
+    /// Returns an error when the schema is not the expected schema, when the
+    /// field cannot be fetched or decoded, or when the container points at a
+    /// payload that does not exist.
+    pub async fn get_versioned_state<V>(
+        &self,
+        state: &Versioned,
+        expected_schema: u64,
+    ) -> anyhow::Result<V>
     where
         V: DeserializeOwned,
     {
         let parent_id = state.id.id.bytes;
+        if state.version != expected_schema {
+            bail!(
+                "Versioned container '{parent_id}' uses unsupported state schema '{}'; expected \
+                 state schema '{expected_schema}'",
+                state.version,
+            );
+        }
         self.get_dynamic_field_by_key(parent_id, state.version, &sui::types::TypeTag::U64)
             .await?
             .ok_or_else(|| {
@@ -1048,13 +1060,14 @@ impl Crawler {
     pub async fn get_versioned_object<A, V>(
         &self,
         object_id: sui::types::Address,
+        expected_schema: u64,
     ) -> anyhow::Result<Response<V>>
     where
         A: DeserializeOwned + VersionedAnchor,
         V: DeserializeOwned,
     {
         let anchor = self.get_object::<A>(object_id).await?;
-        self.load_versioned_payload(anchor).await
+        self.load_versioned_payload(anchor, expected_schema).await
     }
 
     /// Replace a fetched anchor value with its selected versioned payload.
@@ -1064,6 +1077,7 @@ impl Crawler {
     pub async fn load_versioned_payload<A, V>(
         &self,
         anchor: Response<A>,
+        expected_schema: u64,
     ) -> anyhow::Result<Response<V>>
     where
         A: VersionedAnchor,
@@ -1075,7 +1089,7 @@ impl Crawler {
             bail!("Versioned anchor '{object_id}' contains embedded object ID '{embedded_id}'");
         }
         let data = self
-            .get_versioned_state::<V>(anchor.data.versioned_state())
+            .get_versioned_state::<V>(anchor.data.versioned_state(), expected_schema)
             .await?;
 
         Ok(Response {
@@ -2058,6 +2072,31 @@ mod tests {
         let mut object = object_with_bcs(object_ref, owner, value);
         object.set_object_type(object_type.to_string());
         object
+    }
+
+    #[tokio::test]
+    async fn versioned_state_rejects_unknown_schema_before_rpc() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = sui::grpc::client(rpc_url).expect("mock client");
+        let crawler = Crawler::new(Arc::new(client));
+        let state_id = sui::types::Address::from_static("0x91");
+        let state = Versioned::new(
+            crate::move_bindings::sui_framework::object::UID::new(state_id),
+            2,
+        );
+
+        let error = crawler
+            .get_versioned_state::<TestValue>(&state, 1)
+            .await
+            .expect_err("unknown schema must be rejected");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Versioned container '{state_id}' uses unsupported state schema '2'; expected \
+                 state schema '1'"
+            )
+        );
     }
 
     fn coin_object(

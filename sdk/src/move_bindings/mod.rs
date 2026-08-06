@@ -50,15 +50,15 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                                         objects.packages.interface.initial_id,
                                         &objects.packages.interface.type_origins,
                                         || {
-                                            registry::with_package_context(
-                                                objects.packages.registry.storage_id,
-                                                objects.packages.registry.initial_id,
-                                                &objects.packages.registry.type_origins,
+                                            tool::with_package_context(
+                                                objects.packages.tool.storage_id,
+                                                objects.packages.tool.initial_id,
+                                                &objects.packages.tool.type_origins,
                                                 || {
-                                                    gas::with_package_context(
-                                                        objects.packages.gas.storage_id,
-                                                        objects.packages.gas.initial_id,
-                                                        &objects.packages.gas.type_origins,
+                                                    registry::with_package_context(
+                                                        objects.packages.registry.storage_id,
+                                                        objects.packages.registry.initial_id,
+                                                        &objects.packages.registry.type_origins,
                                                         || {
                                                             workflow::with_package_context(
                                                                 objects
@@ -158,7 +158,7 @@ where
     tag.module() == expected.module() && tag.name() == expected.name()
 }
 
-/// Derive the on chain [`registry::tool_registry::Tool`] object ID for a tool FQN.
+/// Derive the onchain [`tool::tool_registry::Tool`] object ID for a Tool FQN.
 pub fn derive_tool_id(
     tool_registry: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -172,18 +172,22 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the onchain [`gas::gas::ToolGas`] object ID for a tool FQN.
-pub fn derive_tool_gas_id(
-    gas_service: sui::types::Address,
-    tool_fqn: &crate::ToolFqn,
+/// Derive the onchain [`tool::tool_payment::ToolPayment`] object ID for a Tool.
+///
+/// The key value must use the generated [`tool::tool_payment::ToolPaymentKey`]
+/// layout. Move represents its empty declaration with a `false` dummy field,
+/// and that byte is part of the derived object hash.
+pub fn derive_tool_payment_id(
+    tool_type_origin: sui::types::Address,
+    tool: sui::types::Address,
 ) -> anyhow::Result<sui::types::Address> {
-    use sui_move::MoveType as _;
-
-    derive_object_id(
-        gas_service,
-        &move_std::ascii::String::type_tag_static(),
-        tool_fqn,
-    )
+    let key = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        tool_type_origin,
+        sui::types::Identifier::from_static("tool_payment"),
+        sui::types::Identifier::from_static("ToolPaymentKey"),
+        vec![],
+    )));
+    derive_object_id(tool, &key, &tool::tool_payment::ToolPaymentKey::new(false))
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
@@ -260,7 +264,7 @@ pub mod move_std {
     include!(concat!(env!("OUT_DIR"), "/move_std_types.rs"));
 }
 
-pub mod gas {
+pub mod tool {
     #![allow(
         clippy::all,
         dead_code,
@@ -268,7 +272,7 @@ pub mod gas {
         private_interfaces,
         unused_imports
     )]
-    include!(concat!(env!("OUT_DIR"), "/gas_types.rs"));
+    include!(concat!(env!("OUT_DIR"), "/tool_types.rs"));
 }
 
 pub mod primitives {
@@ -342,6 +346,7 @@ mod tests {
     use {
         super::{
             derive_task_execution_id,
+            derive_tool_payment_id,
             derive_walk_execution_event_task_id,
             interface::graph::RuntimeVertex,
             registry,
@@ -388,5 +393,20 @@ mod tests {
         let expected = task.derive_object_id(&sui::types::TypeTag::U64, &7_u64.to_le_bytes());
 
         assert_eq!(derive_task_execution_id(task, 7).unwrap(), expected);
+    }
+
+    #[test]
+    fn tool_payment_id_matches_the_move_derived_object_key() {
+        let package = sui::types::Address::from_static(
+            "0xb9b0f588a28d41b7f40a8cc11e9ad5bb96f65f4da5f93d886db69519642fbebb",
+        );
+        let tool = sui::types::Address::from_static(
+            "0x015002c6cb4dca09fecf1f52a09e5e92bc7b878ce6386a83cc021fb4df67b0ec",
+        );
+        let expected = sui::types::Address::from_static(
+            "0x6cf649dec0ed9740402ae6ea23c1a13b2ac6b8d41dddb313d3c10a03e8d6a626",
+        );
+
+        assert_eq!(derive_tool_payment_id(package, tool).unwrap(), expected);
     }
 }

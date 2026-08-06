@@ -23,9 +23,9 @@ enum AgentBorrow {
 impl ResolvedAuthority {
     pub(crate) fn lower<T>(
         &self,
-        tx: &mut NexusPtbBuilder<'_>,
-        address: impl FnOnce(&mut NexusPtbBuilder<'_>) -> Result<T, SchedulerError>,
-        agent: impl FnOnce(&mut NexusPtbBuilder<'_>, AgentInput) -> Result<T, SchedulerError>,
+        tx: &mut NexusPtbBuilder,
+        address: impl FnOnce(&mut NexusPtbBuilder) -> Result<T, SchedulerError>,
+        agent: impl FnOnce(&mut NexusPtbBuilder, AgentInput) -> Result<T, SchedulerError>,
     ) -> Result<T, SchedulerError> {
         match self {
             Self::Address => address(tx),
@@ -35,7 +35,7 @@ impl ResolvedAuthority {
 
     pub(crate) fn call(
         &self,
-        tx: &mut NexusPtbBuilder<'_>,
+        tx: &mut NexusPtbBuilder,
         address_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         agent_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         task: Argument,
@@ -53,7 +53,7 @@ impl ResolvedAuthority {
 
     pub(crate) fn call_mutably(
         &self,
-        tx: &mut NexusPtbBuilder<'_>,
+        tx: &mut NexusPtbBuilder,
         address_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         agent_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         task: Argument,
@@ -71,7 +71,7 @@ impl ResolvedAuthority {
 
     fn call_with_agent_borrow(
         &self,
-        tx: &mut NexusPtbBuilder<'_>,
+        tx: &mut NexusPtbBuilder,
         address_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         agent_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         task: Argument,

@@ -397,13 +397,13 @@ pub(crate) enum ExecutionCommand {
         execution_id: sui::types::Address,
         #[arg(long = "walk-index", help = "Expired walk index to resolve.")]
         walk_index: u64,
-        /// Optional ToolGas object ID to require when the selected branch needs ToolGas-assisted abort.
+        /// Optional Tool payment object ID required by the selected abort branch.
         #[arg(
-            long = "tool-gas-id",
-            help = "ToolGas object ID to use when the walk requires ToolGas-assisted abort.",
+            long = "tool-payment-id",
+            help = "ToolPayment object ID to use when the walk requires a ToolPayment abort.",
             value_name = "OBJECT_ID"
         )]
-        tool_gas_id: Option<sui::types::Address>,
+        tool_payment_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -736,7 +736,7 @@ mod tests {
             ExecutionCommand::ResolveExpiredWalk {
                 execution_id: sui::types::Address::from_static("0xee"),
                 walk_index: 0,
-                tool_gas_id: None,
+                tool_payment_id: None,
                 gas: gas_args(),
             },
         ))

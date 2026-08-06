@@ -2521,9 +2521,112 @@
               ]
             }
           }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "proof_of_uid",
+            "name": "UIDRequirements"
+          },
+          "module": "proof_of_uid",
+          "name": "UIDRequirements",
+          "abilities": [],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "proof",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "ProofOfUID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "remaining",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_set",
+                        "name": "VecSet"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
         }
       ],
       "functions": [
+        {
+          "name": "complete",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "proof_of_uid",
+                    "name": "UIDRequirements"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "vec_map",
+                  "name": "VecMap"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  },
+                  {
+                    "Vector": "U8"
+                  }
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "consume",
           "visibility": "Public",
@@ -2558,66 +2661,6 @@
                       "type_arguments": []
                     }
                   }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "vec_map",
-                  "name": "VecMap"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  },
-                  {
-                    "Vector": "U8"
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "consume_by_id",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa1",
-                    "module": "proof_of_uid",
-                    "name": "ProofOfUID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "uid",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
                 }
               }
             }
@@ -2783,6 +2826,81 @@
           ]
         },
         {
+          "name": "into_requirements",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "proof_of_uid",
+                    "name": "ProofOfUID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "uid",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "remaining",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_set",
+                    "name": "VecSet"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "proof_of_uid",
+                  "name": "UIDRequirements"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "new",
           "visibility": "Public",
           "is_entry": false,
@@ -2877,6 +2995,49 @@
           ]
         },
         {
+          "name": "proof",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "UIDRequirements"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "proof_of_uid",
+                      "name": "ProofOfUID"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "read_stamp_data_of_id",
           "visibility": "Public",
           "is_entry": false,
@@ -2930,6 +3091,51 @@
               }
             }
           ]
+        },
+        {
+          "name": "satisfy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "proof_of_uid",
+                        "name": "UIDRequirements"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "uid",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "stamp",
@@ -3572,10 +3778,10 @@
           "type_name": {
             "address": "0xa1",
             "module": "protocol",
-            "name": "ProtocolVersionActivatedV1"
+            "name": "ProtocolVersionActivatedV1Event"
           },
           "module": "protocol",
-          "name": "ProtocolVersionActivatedV1",
+          "name": "ProtocolVersionActivatedV1Event",
           "abilities": [
             "Copy",
             "Drop"
@@ -3796,7 +4002,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ProtocolVersionActivatedV1"
+                        "name": "ProtocolVersionActivatedV1Event"
                       },
                       "type_arguments": []
                     }
@@ -3832,7 +4038,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ProtocolVersionActivatedV1"
+                        "name": "ProtocolVersionActivatedV1Event"
                       },
                       "type_arguments": []
                     }
@@ -3870,7 +4076,7 @@
                       "type_name": {
                         "address": "0xa1",
                         "module": "protocol",
-                        "name": "ProtocolVersionActivatedV1"
+                        "name": "ProtocolVersionActivatedV1Event"
                       },
                       "type_arguments": []
                     }
@@ -4585,6 +4791,66 @@
           "return_types": []
         },
         {
+          "name": "claim_root",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Copy",
+                "Drop",
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "Protocol"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "admin",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "protocol",
+                        "name": "ProtocolAdminCap"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "key",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "config_hash",
           "visibility": "Public",
           "is_entry": false,
@@ -4618,26 +4884,6 @@
                 }
               }
             }
-          ]
-        },
-        {
-          "name": "gas_package_role",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            "U8"
-          ]
-        },
-        {
-          "name": "gas_service_role",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            "U8"
           ]
         },
         {
@@ -5309,7 +5555,7 @@
           ]
         },
         {
-          "name": "tool_registry_role",
+          "name": "tool_package_role",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5319,7 +5565,7 @@
           ]
         },
         {
-          "name": "verifier_registry_role",
+          "name": "tool_registry_role",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],

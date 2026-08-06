@@ -217,7 +217,7 @@ mod tests {
         assert!(move_toml_contents.contains(r#"name = "test_tool""#));
         assert!(move_toml_contents.contains("edition = \"2024.beta\""));
         assert!(move_toml_contents.contains("nexus_primitives"));
-        assert!(move_toml_contents.contains("nexus_workflow"));
+        assert!(move_toml_contents.contains(r#"nexus_interface = { local = "../../interface"}"#));
 
         // Check that the main Move file was written with correct contents.
         let move_file_path = tempdir.join("test_tool/sources/test_tool.move");
@@ -238,11 +238,12 @@ mod tests {
             "use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};"
         ));
         assert!(move_contents.contains("authorization: ProvenValue<AgentVertexAuthorization>"));
-        assert!(move_contents.contains("worksheet: ProofOfUID"));
+        assert!(move_contents.contains("requirements: UIDRequirements"));
         assert!(move_contents.contains("result: OnchainToolResult"));
-        assert!(move_contents.contains("worksheet.stamp_with_data(&state.witness().id"));
-        assert!(move_contents
-            .contains("onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);"));
+        assert!(move_contents.contains("requirements.satisfy(&state.witness().id"));
+        assert!(move_contents.contains(
+            "onchain_tool_result::finalize_and_share(result, requirements, output, ctx);"
+        ));
         assert!(move_contents.contains("public fun tool_witness_id(self: &TestToolState): ID"));
         assert!(
             move_contents.contains("public fun init_for_test(otw: TEST_TOOL, ctx: &mut TxContext)")

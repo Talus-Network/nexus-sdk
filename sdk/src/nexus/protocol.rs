@@ -9,7 +9,7 @@ use {
                 ProtocolConfigHashInputV1,
                 ProtocolConfigV1,
                 ProtocolStateV1,
-                ProtocolVersionActivatedV1,
+                ProtocolVersionActivatedV1Event,
                 SharedObjectInfo,
             },
             registry::leader::{LeaderRegistry, LeaderRegistryStateV1},
@@ -42,25 +42,32 @@ use {
 };
 
 /// Newest Nexus protocol version whose behavior this SDK understands.
+///
+/// The repository defines the initial consumer for protocol version one.
+/// The `upgrade_test` feature raises this boundary only for the version two release
+/// fixture.
+#[cfg(not(feature = "upgrade_test"))]
+pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 1;
+
+/// Protocol support boundary used by the version two release fixture.
+#[cfg(feature = "upgrade_test")]
 pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 2;
 
 const PACKAGE_ROLES: [(u8, &str); 6] = [
     (0, "primitives"),
     (1, "interface"),
-    (2, "registry"),
-    (3, "gas"),
+    (2, "tool"),
+    (3, "registry"),
     (4, "workflow"),
     (5, "scheduler"),
 ];
 
-const SHARED_OBJECT_ROLES: [(u8, &str); 7] = [
+const SHARED_OBJECT_ROLES: [(u8, &str); 5] = [
     (0, "ToolRegistry"),
-    (1, "VerifierRegistry"),
-    (2, "NetworkAuth"),
-    (3, "AgentRegistry"),
-    (4, "GasService"),
-    (5, "LeaderRegistry"),
-    (6, "PriorityFeeVault"),
+    (1, "NetworkAuth"),
+    (2, "AgentRegistry"),
+    (3, "LeaderRegistry"),
+    (4, "PriorityFeeVault"),
 ];
 
 /// Runtime configuration that is intentionally outside [`ProtocolConfigV1`].
@@ -154,7 +161,7 @@ impl ProtocolResolver {
     /// Resolve an activation after confirming it still names the active configuration.
     pub async fn resolve_activation(
         &self,
-        activation: &ProtocolVersionActivatedV1,
+        activation: &ProtocolVersionActivatedV1Event,
     ) -> Result<NexusObjects, NexusError> {
         let (protocol, state) = self.protocol_state().await?;
         let active = active_config(state)?;
@@ -184,7 +191,7 @@ impl ProtocolResolver {
             .map_err(NexusError::Rpc)?;
         validate_protocol_root(protocol_id, &protocol)?;
         let state = crawler
-            .get_versioned_state::<ProtocolStateV1>(&protocol.data.state)
+            .get_versioned_state::<ProtocolStateV1>(&protocol.data.state, 1)
             .await
             .map_err(NexusError::Rpc)?;
         if state.active.vec.len() > 1 {
@@ -220,7 +227,7 @@ impl ProtocolResolver {
             &mut refs,
             *protocol.object_ref().object_id(),
             protocol_version,
-            &config.shared_objects.contents[5].value,
+            &config.shared_objects.contents[3].value,
         )
         .await?;
         let default_dag_executor =
@@ -241,11 +248,9 @@ impl ProtocolResolver {
             config_hash: config.config_hash.clone(),
             network_id,
             tool_registry: refs.tool_registry,
-            verifier_registry: refs.verifier_registry,
             network_auth: refs.network_auth,
             agent_registry: refs.agent_registry,
             default_dag_executor,
-            gas_service: refs.gas_service,
             leader_registry: refs.leader_registry,
             priority_fee_vault: refs.priority_fee_vault,
             priority_fee_vault_owner_cap,
@@ -260,15 +265,15 @@ impl ProtocolResolver {
         let bindings = &config.packages.contents;
         let primitives = package_version(&bindings[0].value);
         let interface = package_version(&bindings[1].value);
-        let registry = package_version(&bindings[2].value);
-        let gas = package_version(&bindings[3].value);
+        let tool = package_version(&bindings[2].value);
+        let registry = package_version(&bindings[3].value);
         let workflow = package_version(&bindings[4].value);
         let scheduler = package_version(&bindings[5].value);
-        let (primitives, interface, registry, gas, workflow, scheduler) = tokio::try_join!(
+        let (primitives, interface, tool, registry, workflow, scheduler) = tokio::try_join!(
             resolve_package_version_metadata(&self.client, &primitives, "primitives"),
             resolve_package_version_metadata(&self.client, &interface, "interface"),
+            resolve_package_version_metadata(&self.client, &tool, "tool"),
             resolve_package_version_metadata(&self.client, &registry, "registry"),
-            resolve_package_version_metadata(&self.client, &gas, "gas"),
             resolve_package_version_metadata(&self.client, &workflow, "workflow"),
             resolve_package_version_metadata(&self.client, &scheduler, "scheduler"),
         )
@@ -277,8 +282,8 @@ impl ProtocolResolver {
         let families = [
             ("primitives", &primitives.package),
             ("interface", &interface.package),
+            ("tool", &tool.package),
             ("registry", &registry.package),
-            ("gas", &gas.package),
             ("workflow", &workflow.package),
             ("scheduler", &scheduler.package),
         ];
@@ -290,8 +295,8 @@ impl ProtocolResolver {
             &families,
         )?;
         validate_package_linkage(
-            "registry",
-            &registry,
+            "tool",
+            &tool,
             &[
                 ("primitives", &primitives.package),
                 ("interface", &interface.package),
@@ -299,12 +304,12 @@ impl ProtocolResolver {
             &families,
         )?;
         validate_package_linkage(
-            "gas",
-            &gas,
+            "registry",
+            &registry,
             &[
                 ("primitives", &primitives.package),
                 ("interface", &interface.package),
-                ("registry", &registry.package),
+                ("tool", &tool.package),
             ],
             &families,
         )?;
@@ -314,8 +319,8 @@ impl ProtocolResolver {
             &[
                 ("primitives", &primitives.package),
                 ("interface", &interface.package),
+                ("tool", &tool.package),
                 ("registry", &registry.package),
-                ("gas", &gas.package),
             ],
             &families,
         )?;
@@ -325,6 +330,7 @@ impl ProtocolResolver {
             &[
                 ("primitives", &primitives.package),
                 ("interface", &interface.package),
+                ("tool", &tool.package),
                 ("registry", &registry.package),
                 ("workflow", &workflow.package),
             ],
@@ -334,8 +340,8 @@ impl ProtocolResolver {
         Ok(NexusPackages {
             primitives: primitives.package,
             interface: interface.package,
+            tool: tool.package,
             registry: registry.package,
-            gas: gas.package,
             workflow: workflow.package,
             scheduler: scheduler.package,
         })
@@ -684,10 +690,8 @@ fn validate_origin_package(
 
 struct SharedReferences {
     tool_registry: sui::types::ObjectReference,
-    verifier_registry: sui::types::ObjectReference,
     network_auth: sui::types::ObjectReference,
     agent_registry: sui::types::ObjectReference,
-    gas_service: sui::types::ObjectReference,
     leader_registry: sui::types::ObjectReference,
     priority_fee_vault: sui::types::ObjectReference,
 }
@@ -699,12 +703,10 @@ async fn resolve_shared_objects(
     let bindings = &config.shared_objects.contents;
     let entries = [
         ("ToolRegistry", &bindings[0].value),
-        ("VerifierRegistry", &bindings[1].value),
-        ("NetworkAuth", &bindings[2].value),
-        ("AgentRegistry", &bindings[3].value),
-        ("GasService", &bindings[4].value),
-        ("LeaderRegistry", &bindings[5].value),
-        ("PriorityFeeVault", &bindings[6].value),
+        ("NetworkAuth", &bindings[1].value),
+        ("AgentRegistry", &bindings[2].value),
+        ("LeaderRegistry", &bindings[3].value),
+        ("PriorityFeeVault", &bindings[4].value),
     ];
     let ids = entries
         .iter()
@@ -721,12 +723,10 @@ async fn resolve_shared_objects(
 
     Ok(SharedReferences {
         tool_registry: resolve_shared_object(&by_id, "ToolRegistry", &bindings[0].value)?,
-        verifier_registry: resolve_shared_object(&by_id, "VerifierRegistry", &bindings[1].value)?,
-        network_auth: resolve_shared_object(&by_id, "NetworkAuth", &bindings[2].value)?,
-        agent_registry: resolve_shared_object(&by_id, "AgentRegistry", &bindings[3].value)?,
-        gas_service: resolve_shared_object(&by_id, "GasService", &bindings[4].value)?,
-        leader_registry: resolve_shared_object(&by_id, "LeaderRegistry", &bindings[5].value)?,
-        priority_fee_vault: resolve_shared_object(&by_id, "PriorityFeeVault", &bindings[6].value)?,
+        network_auth: resolve_shared_object(&by_id, "NetworkAuth", &bindings[1].value)?,
+        agent_registry: resolve_shared_object(&by_id, "AgentRegistry", &bindings[2].value)?,
+        leader_registry: resolve_shared_object(&by_id, "LeaderRegistry", &bindings[3].value)?,
+        priority_fee_vault: resolve_shared_object(&by_id, "PriorityFeeVault", &bindings[4].value)?,
     })
 }
 
@@ -760,7 +760,7 @@ async fn resolve_network_id(
         )));
     }
     let state = crawler
-        .get_versioned_state::<LeaderRegistryStateV1>(&registry.data.state)
+        .get_versioned_state::<LeaderRegistryStateV1>(&registry.data.state, 1)
         .await
         .map_err(NexusError::Rpc)?;
     if state.protocol_id.bytes != protocol_id {
@@ -843,6 +843,18 @@ mod tests {
         },
     };
 
+    #[cfg(not(feature = "upgrade_test"))]
+    #[test]
+    fn initial_consumer_supports_protocol_version_one() {
+        assert_eq!(MAX_SUPPORTED_PROTOCOL_VERSION, 1);
+    }
+
+    #[cfg(feature = "upgrade_test")]
+    #[test]
+    fn upgrade_fixture_consumer_supports_protocol_version_two() {
+        assert_eq!(MAX_SUPPORTED_PROTOCOL_VERSION, 2);
+    }
+
     fn address(value: &'static str) -> sui::types::Address {
         sui::types::Address::from_static(value)
     }
@@ -865,7 +877,7 @@ mod tests {
                 .collect(),
         );
         let shared_objects = VecMap::new(
-            ["0x21", "0x22", "0x23", "0x24", "0x25", "0x26", "0x27"]
+            ["0x21", "0x22", "0x23", "0x24", "0x25"]
                 .into_iter()
                 .zip(SHARED_OBJECT_ROLES)
                 .map(|(id, (role, _))| Entry::new(role, shared(id)))
@@ -1193,9 +1205,10 @@ mod tests {
         assert!(matches!(
             error,
             NexusError::UnsupportedProtocolVersion {
-                protocol_version: 3,
-                maximum: 2,
-            }
+                protocol_version,
+                maximum,
+            } if protocol_version == MAX_SUPPORTED_PROTOCOL_VERSION + 1
+                && maximum == MAX_SUPPORTED_PROTOCOL_VERSION
         ));
     }
 

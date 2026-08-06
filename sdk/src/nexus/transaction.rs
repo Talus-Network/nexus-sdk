@@ -24,23 +24,24 @@ use {
 ///
 /// Dropping an unfinished value has no external effect.
 #[must_use = "dropping a Nexus transaction discards its commands"]
-pub struct NexusTransaction<'client> {
-    client: &'client NexusClient,
-    transaction: NexusPtbBuilder<'client>,
+pub struct NexusTransaction {
+    client: NexusClient,
+    transaction: NexusPtbBuilder,
 }
 
-impl<'client> NexusTransaction<'client> {
-    pub(super) fn new(client: &'client NexusClient) -> Self {
+impl NexusTransaction {
+    pub(super) fn new(client: NexusClient) -> Self {
+        let objects = client.get_nexus_objects();
         Self {
             client,
-            transaction: NexusPtbBuilder::new(&client.nexus_objects),
+            transaction: NexusPtbBuilder::new(objects),
         }
     }
 
     /// Borrows the scheduler command composer.
-    pub fn scheduler(&mut self) -> SchedulerTransaction<'_, 'client> {
+    pub fn scheduler(&mut self) -> SchedulerTransaction<'_> {
         SchedulerTransaction {
-            client: self.client,
+            client: &self.client,
             transaction: &mut self.transaction,
         }
     }
@@ -58,19 +59,18 @@ impl<'client> NexusTransaction<'client> {
     /// Returns [`NexusError`] when signing, submission, or confirmation fails.
     pub async fn submit(self) -> Result<ExecutedTransaction, NexusError> {
         let sender = self.client.owner()?;
-        let client = self.client;
         let transaction = self.transaction.finish();
-        client.submit_transaction(transaction, sender).await
+        self.client.submit_transaction(transaction, sender).await
     }
 }
 
 /// Scheduler commands appended to one [`NexusTransaction`].
-pub struct SchedulerTransaction<'builder, 'client> {
-    client: &'client NexusClient,
-    transaction: &'builder mut NexusPtbBuilder<'client>,
+pub struct SchedulerTransaction<'transaction> {
+    client: &'transaction NexusClient,
+    transaction: &'transaction mut NexusPtbBuilder,
 }
 
-impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
+impl SchedulerTransaction<'_> {
     /// Creates an unshared Task draft.
     ///
     /// Call [`TaskDraft::share`] after adding any desired Schedule.
@@ -82,7 +82,7 @@ impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
     pub async fn create_task<'draft>(
         &'draft mut self,
         task: &TaskSpec,
-    ) -> Result<TaskDraft<'draft, 'client>, SchedulerError> {
+    ) -> Result<TaskDraft<'draft>, SchedulerError> {
         let prepared = resolve::prepare_task(self.client, task).await?;
         let compiler = TaskDraftCompiler::create(self.transaction, &prepared)?;
         Ok(TaskDraft {
@@ -91,7 +91,8 @@ impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
         })
     }
 
-    /// Appends dispatch of one advertised occurrence.
+    /// Appends dispatch of one advertised occurrence with an explicit leader submission gas charge.
+    /// Pass zero when the leader waives reimbursement.
     ///
     /// # Errors
     ///
@@ -103,7 +104,8 @@ impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
         task: &sui::types::ObjectReference,
         dag: &sui::types::ObjectReference,
         leader_cap: &sui::types::ObjectReference,
-        tools_gas: &HashSet<(sui::types::Address, sui::types::Version)>,
+        gas_charge: u64,
+        tool_payments: &HashSet<(sui::types::Address, sui::types::Version)>,
     ) -> Result<(), SchedulerError> {
         if offer.occurrence().task_id() != *task.object_id() {
             return Err(SchedulerError::InvalidRequest {
@@ -120,7 +122,8 @@ impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
             dag,
             leader_cap,
             offer.occurrence().occurrence_id(),
-            tools_gas,
+            gas_charge,
+            tool_payments,
         )
     }
 
@@ -150,12 +153,12 @@ impl<'builder, 'client> SchedulerTransaction<'builder, 'client> {
 
 /// An unshared Task being composed in one transaction.
 #[must_use = "a Task draft must be shared before its transaction is finished"]
-pub struct TaskDraft<'builder, 'client> {
-    client: &'client NexusClient,
-    compiler: TaskDraftCompiler<'builder, 'client>,
+pub struct TaskDraft<'builder> {
+    client: &'builder NexusClient,
+    compiler: TaskDraftCompiler<'builder>,
 }
 
-impl<'builder, 'client> TaskDraft<'builder, 'client> {
+impl TaskDraft<'_> {
     /// Appends a complete Schedule before the Task is shared.
     ///
     /// Empty Schedules are valid and append no commands.

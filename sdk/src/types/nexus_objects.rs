@@ -2,11 +2,11 @@
 
 #[cfg(test)]
 use crate::move_bindings::{
-    gas::gas as gas_move,
     interface::dag as dag_move,
     primitives::event as event_move,
     registry::agent_registry as agent_registry_move,
     scheduler::task as scheduler_task_move,
+    tool::tool_payment as tool_payment_move,
     workflow::execution as execution_move,
 };
 #[cfg(feature = "nexus")]
@@ -105,16 +105,12 @@ pub struct NexusObjects {
     pub network_id: sui::types::Address,
     /// Canonical shared `ToolRegistry`.
     pub tool_registry: sui::types::ObjectReference,
-    /// Canonical shared `VerifierRegistry`.
-    pub verifier_registry: sui::types::ObjectReference,
     /// Canonical shared `NetworkAuth`.
     pub network_auth: sui::types::ObjectReference,
     /// Canonical shared `AgentRegistry`.
     pub agent_registry: sui::types::ObjectReference,
     /// Current default DAG executor derived from the configured `AgentRegistry`.
     pub default_dag_executor: DefaultDagExecutorTarget,
-    /// Canonical shared gas service.
-    pub gas_service: sui::types::ObjectReference,
     /// Canonical shared `LeaderRegistry`.
     pub leader_registry: sui::types::ObjectReference,
     /// Canonical shared priority fee vault.
@@ -139,19 +135,19 @@ impl NexusObjects {
         &mut self,
         client: &Arc<sui::grpc::Client>,
     ) -> anyhow::Result<()> {
-        let (primitives, interface, registry, gas, workflow, scheduler) = tokio::try_join!(
+        let (primitives, interface, tool, registry, workflow, scheduler) = tokio::try_join!(
             resolve_package_version(client, &self.packages.primitives, "primitives"),
             resolve_package_version(client, &self.packages.interface, "interface"),
+            resolve_package_version(client, &self.packages.tool, "tool"),
             resolve_package_version(client, &self.packages.registry, "registry"),
-            resolve_package_version(client, &self.packages.gas, "gas"),
             resolve_package_version(client, &self.packages.workflow, "workflow"),
             resolve_package_version(client, &self.packages.scheduler, "scheduler"),
         )?;
         self.packages = NexusPackages {
             primitives,
             interface,
+            tool,
             registry,
-            gas,
             workflow,
             scheduler,
         };
@@ -166,12 +162,12 @@ impl NexusObjects {
         self.packages.interface.storage_id
     }
 
-    pub fn registry_pkg_id(&self) -> sui::types::Address {
-        self.packages.registry.storage_id
+    pub fn tool_pkg_id(&self) -> sui::types::Address {
+        self.packages.tool.storage_id
     }
 
-    pub fn gas_pkg_id(&self) -> sui::types::Address {
-        self.packages.gas.storage_id
+    pub fn registry_pkg_id(&self) -> sui::types::Address {
+        self.packages.registry.storage_id
     }
 
     pub fn workflow_pkg_id(&self) -> sui::types::Address {
@@ -192,14 +188,16 @@ impl NexusObjects {
         self.packages.interface.type_origin("graph", "Vertex")
     }
 
+    pub fn tool_type_origin_pkg_id(&self) -> sui::types::Address {
+        self.packages
+            .tool
+            .type_origin("tool_payment", "ToolPayment")
+    }
+
     pub fn registry_type_origin_pkg_id(&self) -> sui::types::Address {
         self.packages
             .registry
             .type_origin("network_auth", "IdentityKey")
-    }
-
-    pub fn gas_type_origin_pkg_id(&self) -> sui::types::Address {
-        self.packages.gas.type_origin("gas", "ToolGas")
     }
 
     pub fn workflow_type_origin_pkg_id(&self) -> sui::types::Address {
@@ -220,12 +218,12 @@ impl NexusObjects {
         self.packages.interface.contains_package(address)
     }
 
-    pub fn is_registry_package(&self, address: sui::types::Address) -> bool {
-        self.packages.registry.contains_package(address)
+    pub fn is_tool_package(&self, address: sui::types::Address) -> bool {
+        self.packages.tool.contains_package(address)
     }
 
-    pub fn is_gas_package(&self, address: sui::types::Address) -> bool {
-        self.packages.gas.contains_package(address)
+    pub fn is_registry_package(&self, address: sui::types::Address) -> bool {
+        self.packages.registry.contains_package(address)
     }
 
     pub fn is_workflow_package(&self, address: sui::types::Address) -> bool {
@@ -412,7 +410,7 @@ impl NexusObjects {
             return false;
         };
 
-        if self.is_gas_package(*inner_tag.address())
+        if self.is_tool_package(*inner_tag.address())
             || self.is_workflow_package(*inner_tag.address())
             || self.is_scheduler_package(*inner_tag.address())
             || self.is_registry_package(*inner_tag.address())
@@ -862,14 +860,12 @@ mod tests {
             config_hash: vec![7; 32],
             network_id: address("0x20"),
             tool_registry: object_ref("0x21"),
-            verifier_registry: object_ref("0x22"),
             network_auth: object_ref("0x23"),
             agent_registry: object_ref("0x24"),
             default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: address("0x25"),
                 skill_id: 1,
             },
-            gas_service: object_ref("0x26"),
             leader_registry: object_ref("0x27"),
             priority_fee_vault: object_ref("0x28"),
             priority_fee_vault_owner_cap: object_ref("0x29"),
@@ -1081,7 +1077,7 @@ mod tests {
             crate::move_bindings::struct_tag::<scheduler_task_move::Task>(&objects),
             crate::move_bindings::struct_tag::<agent_registry_move::SkillRegisteredEvent>(&objects),
             crate::move_bindings::struct_tag::<dag_move::DAG>(&objects),
-            crate::move_bindings::struct_tag::<gas_move::ToolGas>(&objects),
+            crate::move_bindings::struct_tag::<tool_payment_move::ToolPayment>(&objects),
         ];
         for tag in cases {
             assert!(objects.is_event_from_nexus(&wrap_event(&objects, tag)));
@@ -1095,7 +1091,7 @@ mod tests {
             (&mut objects.packages.primitives, address("0xa1")),
             (&mut objects.packages.interface, address("0xa2")),
             (&mut objects.packages.registry, address("0xa3")),
-            (&mut objects.packages.gas, address("0xa4")),
+            (&mut objects.packages.tool, address("0xa4")),
             (&mut objects.packages.workflow, address("0xa5")),
             (&mut objects.packages.scheduler, address("0xa6")),
         ] {
@@ -1121,8 +1117,11 @@ mod tests {
             .unwrap();
         objects
             .packages
-            .gas
-            .insert_type_origin(DatatypeKey::new("gas", "ToolGas"), address("0xb4"))
+            .tool
+            .insert_type_origin(
+                DatatypeKey::new("tool_payment", "ToolPayment"),
+                address("0xb4"),
+            )
             .unwrap();
         objects
             .packages
@@ -1141,20 +1140,20 @@ mod tests {
         assert_eq!(objects.primitives_pkg_id(), address("0xa1"));
         assert_eq!(objects.interface_pkg_id(), address("0xa2"));
         assert_eq!(objects.registry_pkg_id(), address("0xa3"));
-        assert_eq!(objects.gas_pkg_id(), address("0xa4"));
+        assert_eq!(objects.tool_pkg_id(), address("0xa4"));
         assert_eq!(objects.workflow_pkg_id(), address("0xa5"));
         assert_eq!(objects.scheduler_pkg_id(), address("0xa6"));
         assert_eq!(objects.primitives_type_origin_pkg_id(), address("0xb1"));
         assert_eq!(objects.interface_type_origin_pkg_id(), address("0xb2"));
         assert_eq!(objects.registry_type_origin_pkg_id(), address("0xb3"));
-        assert_eq!(objects.gas_type_origin_pkg_id(), address("0xb4"));
+        assert_eq!(objects.tool_type_origin_pkg_id(), address("0xb4"));
         assert_eq!(objects.workflow_type_origin_pkg_id(), address("0xb5"));
         assert_eq!(objects.scheduler_type_origin_pkg_id(), address("0xb6"));
 
         assert!(objects.is_primitives_package(address("0xb1")));
         assert!(objects.is_interface_package(address("0xb2")));
         assert!(objects.is_registry_package(address("0xb3")));
-        assert!(objects.is_gas_package(address("0xb4")));
+        assert!(objects.is_tool_package(address("0xb4")));
         assert!(objects.is_workflow_package(address("0xb5")));
         assert!(objects.is_scheduler_package(address("0xb6")));
         assert!(objects.is_nexus_package(address("0xb6")));

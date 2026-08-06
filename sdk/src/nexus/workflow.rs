@@ -47,7 +47,7 @@ use {
             tap,
         },
         sui,
-        transactions::{dag, gas},
+        transactions::{dag, tool_payment},
         types::{DagSpec, NexusObjects, ToolAnchor, ToolRef, ToolStateV1},
     },
     anyhow::anyhow,
@@ -90,14 +90,14 @@ pub struct DagSnapshot {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct ToolGasAbortCandidate {
+pub struct ToolPaymentAbortCandidate {
     pub tool_fqn: crate::ToolFqn,
-    pub tool_gas_ref: sui::types::ObjectReference,
-    pub matching_walks: Vec<ToolGasAbortCandidateWalk>,
+    pub tool_payment_ref: sui::types::ObjectReference,
+    pub matching_walks: Vec<ToolPaymentAbortCandidateWalk>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-pub struct ToolGasAbortCandidateWalk {
+pub struct ToolPaymentAbortCandidateWalk {
     pub walk_index: usize,
     pub vertex: RuntimeVertex,
     pub payment_vertex_key: Vec<u8>,
@@ -109,7 +109,7 @@ pub struct AbortExpiredExecutionResult {
     pub tx_checkpoint: u64,
     pub dag_id: sui::types::Address,
     pub dag_execution_id: sui::types::Address,
-    pub selected_candidate: ToolGasAbortCandidate,
+    pub selected_candidate: ToolPaymentAbortCandidate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -131,7 +131,7 @@ pub struct SettleCommittedToolResultParams {
 pub struct ResolveExpiredWalkParams {
     pub dag_execution_id: sui::types::Address,
     pub walk_index: u64,
-    pub tool_gas_id: Option<sui::types::Address>,
+    pub tool_payment_id: Option<sui::types::Address>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -145,8 +145,8 @@ pub enum ExpiredWalkResolutionKind {
         finalize_tx_digest: Vec<u8>,
     },
     Aborted,
-    AbortedWithToolGas {
-        selected_candidate: ToolGasAbortCandidate,
+    AbortedWithToolPayment {
+        selected_candidate: ToolPaymentAbortCandidate,
     },
     Skipped {
         reason: String,
@@ -159,14 +159,14 @@ impl ExpiredWalkResolutionKind {
             Self::Settled => "settled",
             Self::SettledOnchainResult { .. } => "settled_onchain_result",
             Self::Aborted => "aborted",
-            Self::AbortedWithToolGas { .. } => "aborted_with_tool_gas",
+            Self::AbortedWithToolPayment { .. } => "aborted_with_tool_payment",
             Self::Skipped { .. } => "skipped",
         }
     }
 
-    pub fn selected_candidate(&self) -> Option<&ToolGasAbortCandidate> {
+    pub fn selected_candidate(&self) -> Option<&ToolPaymentAbortCandidate> {
         match self {
-            Self::AbortedWithToolGas { selected_candidate } => Some(selected_candidate),
+            Self::AbortedWithToolPayment { selected_candidate } => Some(selected_candidate),
             _ => None,
         }
     }
@@ -619,7 +619,7 @@ pub(crate) async fn fetch_dag_snapshot(
     dag_id: sui::types::Address,
 ) -> anyhow::Result<DagSnapshot> {
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_id)
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_id, 1)
         .await?;
     let entry_groups = dag
         .data
@@ -739,7 +739,7 @@ pub async fn inspect_expired_walk_resolution_at(
         }
         OnchainToolResultState::Finalized { result, object_ref } => {
             let dag = crawler
-                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id())
+                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
                 .await?;
             let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
             let kind = finalized_onchain_result_resolution_kind(
@@ -805,7 +805,7 @@ pub async fn inspect_expired_walk_resolution_at(
         .await?
         .data;
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id())
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
         .await?;
     let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
     let vertex_info = vertices.get(abort_vertex.vertex()).ok_or_else(|| {
@@ -831,24 +831,26 @@ pub async fn inspect_expired_walk_resolution_at(
         });
     }
 
-    let candidate_walk = ToolGasAbortCandidateWalk {
+    let candidate_walk = ToolPaymentAbortCandidateWalk {
         walk_index: usize::try_from(params.walk_index)?,
         vertex: abort_vertex.clone(),
         payment_vertex_key: vertex_key,
     };
-    let candidates = fetch_tool_gas_refs_for_abort_candidates(
+    let candidates = fetch_tool_payment_refs_for_abort_candidates(
         crawler,
-        *objects.gas_service.object_id(),
+        *objects.tool_registry.object_id(),
+        objects.tool_type_origin_pkg_id(),
         HashMap::from([(tool_fqn, vec![candidate_walk])]),
     )
     .await?;
-    let selected_candidate = select_tool_gas_abort_candidate(candidates, params.tool_gas_id)?;
+    let selected_candidate =
+        select_tool_payment_abort_candidate(candidates, params.tool_payment_id)?;
 
     Ok(ExpiredWalkResolutionPlan {
         dag_id: execution.dag_id(),
         dag_execution_id: params.dag_execution_id,
         walk_index: params.walk_index,
-        kind: ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate },
+        kind: ExpiredWalkResolutionKind::AbortedWithToolPayment { selected_candidate },
     })
 }
 
@@ -879,7 +881,7 @@ async fn finalized_onchain_result_resolution_kind(
     let tool_id =
         crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)?;
     let tool = crawler
-        .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id)
+        .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
         .await?
         .data;
     let ToolRef::Sui {
@@ -928,6 +930,7 @@ async fn broken_onchain_result_cleanups_for_abort(
                     let dag = crawler
                         .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(
                             execution.dag_id(),
+                            1,
                         )
                         .await?;
                     vertices = Some(fetch_dag_vertices_bcs(crawler, &dag.data).await?);
@@ -995,11 +998,13 @@ fn onchain_tool_result_has_required_stamps(
     let execution_id = ID::new(execution_id);
     let leader_registry_id = ID::new(leader_registry_id);
     let tool_witness_id = ID::new(tool_witness_id);
+    let result_id = ID::new(result.id.id.bytes);
 
-    stamps
-        .contents
-        .iter()
-        .any(|entry| entry.key == execution_id)
+    stamps.contents.len() == 4
+        && stamps
+            .contents
+            .iter()
+            .any(|entry| entry.key == execution_id)
         && stamps
             .contents
             .iter()
@@ -1008,6 +1013,7 @@ fn onchain_tool_result_has_required_stamps(
             .contents
             .iter()
             .any(|entry| entry.key == tool_witness_id)
+        && stamps.contents.iter().any(|entry| entry.key == result_id)
 }
 
 pub async fn fetch_onchain_tool_result_state_for_walk(
@@ -1119,7 +1125,7 @@ pub async fn offchain_success_requires_tool_verification(
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_object_id)
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_object_id, 1)
         .await?;
     let mut vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
     let vertex_name = next_vertex.vertex();
@@ -1394,7 +1400,7 @@ impl WorkflowActions {
     /// Submit the current permissionless expired-execution abort entry.
     ///
     /// This wraps `execution_settlement::abort_expired_execution`; it does not
-    /// discover or submit ToolGas candidates.
+    /// discover or submit ToolPayment candidates.
     ///
     /// If a double-expired active walk is blocked by a finalized on-chain
     /// result whose required stamps are insufficient, this returns a local
@@ -1405,6 +1411,15 @@ impl WorkflowActions {
         dag_execution_id: sui::types::Address,
     ) -> Result<AbortExecutionResult, NexusError> {
         let client = self.operation_client().await?;
+        self.abort_expired_execution_with(&client, dag_execution_id)
+            .await
+    }
+
+    async fn abort_expired_execution_with(
+        &self,
+        client: &NexusClient,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<AbortExecutionResult, NexusError> {
         let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
@@ -1468,6 +1483,15 @@ impl WorkflowActions {
         params: SettleCommittedToolResultParams,
     ) -> Result<CommittedToolResultSettlementResult, NexusError> {
         let client = self.operation_client().await?;
+        self.settle_committed_tool_result_for_walk_with(&client, params)
+            .await
+    }
+
+    async fn settle_committed_tool_result_for_walk_with(
+        &self,
+        client: &NexusClient,
+        params: SettleCommittedToolResultParams,
+    ) -> Result<CommittedToolResultSettlementResult, NexusError> {
         let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(params.dag_execution_id)
@@ -1637,6 +1661,15 @@ impl WorkflowActions {
         params: ResolveExpiredWalkParams,
     ) -> Result<ExpiredWalkResolutionPlan, NexusError> {
         let client = self.operation_client().await?;
+        self.inspect_expired_walk_resolution_with(&client, params)
+            .await
+    }
+
+    async fn inspect_expired_walk_resolution_with(
+        &self,
+        client: &NexusClient,
+        params: ResolveExpiredWalkParams,
+    ) -> Result<ExpiredWalkResolutionPlan, NexusError> {
         inspect_expired_walk_resolution(client.crawler(), &client.nexus_objects, params)
             .await
             .map_err(NexusError::Rpc)
@@ -1647,7 +1680,10 @@ impl WorkflowActions {
         &self,
         params: ResolveExpiredWalkParams,
     ) -> Result<ExpiredWalkResolutionResult, NexusError> {
-        let plan = self.inspect_expired_walk_resolution(params).await?;
+        let client = self.operation_client().await?;
+        let plan = self
+            .inspect_expired_walk_resolution_with(&client, params)
+            .await?;
         let base = |resolution_kind| ExpiredWalkResolutionResult {
             tx_digest: None,
             tx_checkpoint: None,
@@ -1660,10 +1696,13 @@ impl WorkflowActions {
         match plan.kind {
             ExpiredWalkResolutionKind::Settled => {
                 let settled = self
-                    .settle_committed_tool_result_for_walk(SettleCommittedToolResultParams {
-                        dag_execution_id: plan.dag_execution_id,
-                        walk_index: plan.walk_index,
-                    })
+                    .settle_committed_tool_result_for_walk_with(
+                        &client,
+                        SettleCommittedToolResultParams {
+                            dag_execution_id: plan.dag_execution_id,
+                            walk_index: plan.walk_index,
+                        },
+                    )
                     .await?;
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(settled.tx_digest),
@@ -1677,7 +1716,6 @@ impl WorkflowActions {
                 tool_witness_id,
                 finalize_tx_digest,
             } => {
-                let client = self.operation_client().await?;
                 let crawler = client.crawler();
                 let dag_ref = crawler
                     .get_object_metadata(plan.dag_id)
@@ -1727,22 +1765,28 @@ impl WorkflowActions {
                 })
             }
             ExpiredWalkResolutionKind::Aborted => {
-                let aborted = self.abort_expired_execution(plan.dag_execution_id).await?;
+                let aborted = self
+                    .abort_expired_execution_with(&client, plan.dag_execution_id)
+                    .await?;
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(aborted.tx_digest),
                     tx_checkpoint: Some(aborted.tx_checkpoint),
                     ..base(ExpiredWalkResolutionKind::Aborted)
                 })
             }
-            ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate } => {
-                let tool_gas_id = *selected_candidate.tool_gas_ref.object_id();
+            ExpiredWalkResolutionKind::AbortedWithToolPayment { selected_candidate } => {
+                let tool_payment_id = *selected_candidate.tool_payment_ref.object_id();
                 let aborted = self
-                    .abort_expired_execution_with_tool_gas(plan.dag_execution_id, Some(tool_gas_id))
+                    .abort_expired_execution_with_tool_payment_with(
+                        &client,
+                        plan.dag_execution_id,
+                        Some(tool_payment_id),
+                    )
                     .await?;
                 Ok(ExpiredWalkResolutionResult {
                     tx_digest: Some(aborted.tx_digest),
                     tx_checkpoint: Some(aborted.tx_checkpoint),
-                    ..base(ExpiredWalkResolutionKind::AbortedWithToolGas { selected_candidate })
+                    ..base(ExpiredWalkResolutionKind::AbortedWithToolPayment { selected_candidate })
                 })
             }
             ExpiredWalkResolutionKind::Skipped { reason } => {
@@ -1751,15 +1795,24 @@ impl WorkflowActions {
         }
     }
 
-    /// Return ToolGas refs that can be passed to
-    /// `gas_adapter::abort_expired_execution_with_tool_gas` for the current
+    /// Return ToolPayment refs that can be passed to
+    /// `tool_payment_adapter::abort_expired_execution_with_tool_payment` for the current
     /// execution state. This is an advisory snapshot; Move still verifies
     /// timeout and lock state on chain.
-    pub async fn abort_expired_execution_tool_gas_candidates(
+    pub async fn abort_expired_execution_tool_payment_candidates(
         &self,
         dag_execution_id: sui::types::Address,
-    ) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
+    ) -> Result<Vec<ToolPaymentAbortCandidate>, NexusError> {
         let client = self.operation_client().await?;
+        self.abort_expired_execution_tool_payment_candidates_with(&client, dag_execution_id)
+            .await
+    }
+
+    async fn abort_expired_execution_tool_payment_candidates_with(
+        &self,
+        client: &NexusClient,
+        dag_execution_id: sui::types::Address,
+    ) -> Result<Vec<ToolPaymentAbortCandidate>, NexusError> {
         let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
@@ -1767,7 +1820,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .data;
         let dag = crawler
-            .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id())
+            .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
             .await
             .map_err(NexusError::Rpc)?;
         let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
@@ -1783,11 +1836,11 @@ impl WorkflowActions {
             .await
             .map_err(NexusError::Rpc)?
             .data;
-        let gas_service_id = *client.nexus_objects.gas_service.object_id();
-        let refs = fetch_tool_gas_refs_for_abort_candidates(
+        let refs = fetch_tool_payment_refs_for_abort_candidates(
             crawler,
-            gas_service_id,
-            filter_tool_gas_abort_candidate_walks(
+            *client.nexus_objects.tool_registry.object_id(),
+            client.nexus_objects.tool_type_origin_pkg_id(),
+            filter_tool_payment_abort_candidate_walks(
                 dag_execution_id,
                 &vertices,
                 &execution.walks,
@@ -1801,19 +1854,33 @@ impl WorkflowActions {
         Ok(refs)
     }
 
-    /// Submit `gas_adapter::abort_expired_execution_with_tool_gas` for one
-    /// eligible ToolGas candidate. Candidate discovery is advisory; Move still
+    /// Submit `tool_payment_adapter::abort_expired_execution_with_tool_payment` for one
+    /// eligible ToolPayment candidate. Candidate discovery is advisory; Move still
     /// verifies timeout and lock state on chain.
-    pub async fn abort_expired_execution_with_tool_gas(
+    pub async fn abort_expired_execution_with_tool_payment(
         &self,
         dag_execution_id: sui::types::Address,
-        tool_gas_id: Option<sui::types::Address>,
+        tool_payment_id: Option<sui::types::Address>,
+    ) -> Result<AbortExpiredExecutionResult, NexusError> {
+        let client = self.operation_client().await?;
+        self.abort_expired_execution_with_tool_payment_with(
+            &client,
+            dag_execution_id,
+            tool_payment_id,
+        )
+        .await
+    }
+
+    async fn abort_expired_execution_with_tool_payment_with(
+        &self,
+        client: &NexusClient,
+        dag_execution_id: sui::types::Address,
+        tool_payment_id: Option<sui::types::Address>,
     ) -> Result<AbortExpiredExecutionResult, NexusError> {
         let candidates = self
-            .abort_expired_execution_tool_gas_candidates(dag_execution_id)
+            .abort_expired_execution_tool_payment_candidates_with(client, dag_execution_id)
             .await?;
-        let selected_candidate = select_tool_gas_abort_candidate(candidates, tool_gas_id)?;
-        let client = self.operation_client().await?;
+        let selected_candidate = select_tool_payment_abort_candidate(candidates, tool_payment_id)?;
         let crawler = client.crawler();
         let execution = crawler
             .get_object::<DAGExecution>(dag_execution_id)
@@ -1833,9 +1900,9 @@ impl WorkflowActions {
 
         let address = client.owner()?;
         let nexus_objects = &client.nexus_objects;
-        let tx = gas::abort_expired_execution_with_tool_gas_ptb(
+        let tx = tool_payment::abort_expired_execution_with_tool_payment_ptb(
             nexus_objects,
-            &selected_candidate.tool_gas_ref,
+            &selected_candidate.tool_payment_ref,
             &dag_ref,
             &execution_ref,
         )
@@ -1852,23 +1919,23 @@ impl WorkflowActions {
     }
 }
 
-fn select_tool_gas_abort_candidate(
-    candidates: Vec<ToolGasAbortCandidate>,
-    tool_gas_id: Option<sui::types::Address>,
-) -> Result<ToolGasAbortCandidate, NexusError> {
-    if let Some(tool_gas_id) = tool_gas_id {
+fn select_tool_payment_abort_candidate(
+    candidates: Vec<ToolPaymentAbortCandidate>,
+    tool_payment_id: Option<sui::types::Address>,
+) -> Result<ToolPaymentAbortCandidate, NexusError> {
+    if let Some(tool_payment_id) = tool_payment_id {
         candidates
             .into_iter()
-            .find(|candidate| *candidate.tool_gas_ref.object_id() == tool_gas_id)
+            .find(|candidate| *candidate.tool_payment_ref.object_id() == tool_payment_id)
             .ok_or_else(|| {
                 NexusError::Parsing(anyhow!(
-                    "ToolGas '{tool_gas_id}' is not currently eligible to abort this execution"
+                    "ToolPayment '{tool_payment_id}' is not currently eligible to abort this execution"
                 ))
             })
     } else {
         candidates.into_iter().next().ok_or_else(|| {
             NexusError::Parsing(anyhow!(
-                "No ToolGas abort candidates are currently eligible for this execution"
+                "No ToolPayment abort candidates are currently eligible for this execution"
             ))
         })
     }
@@ -1901,14 +1968,14 @@ fn payment_vertex_key(
     Ok(Sha256::digest(bytes).to_vec())
 }
 
-fn filter_tool_gas_abort_candidate_walks(
+fn filter_tool_payment_abort_candidate_walks(
     execution_id: sui::types::Address,
     vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
     walks: &[DAGWalk],
     locks: &[ExecutionPaymentVertexLock],
     clock_ms: u64,
-) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>> {
-    let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>::new();
+) -> anyhow::Result<HashMap<crate::ToolFqn, Vec<ToolPaymentAbortCandidateWalk>>> {
+    let mut candidates = HashMap::<crate::ToolFqn, Vec<ToolPaymentAbortCandidateWalk>>::new();
     for (walk_index, walk) in walks.iter().enumerate() {
         let Some(vertex) = walk.abortable_timeout_expired_vertex(clock_ms) else {
             continue;
@@ -1929,7 +1996,7 @@ fn filter_tool_gas_abort_candidate_walks(
             candidates
                 .entry(tool_fqn)
                 .or_default()
-                .push(ToolGasAbortCandidateWalk {
+                .push(ToolPaymentAbortCandidateWalk {
                     walk_index,
                     vertex: vertex.clone(),
                     payment_vertex_key: vertex_key,
@@ -1939,23 +2006,27 @@ fn filter_tool_gas_abort_candidate_walks(
     Ok(candidates)
 }
 
-async fn fetch_tool_gas_refs_for_abort_candidates(
+async fn fetch_tool_payment_refs_for_abort_candidates(
     crawler: &Crawler,
-    gas_service_id: sui::types::Address,
-    candidates: HashMap<crate::ToolFqn, Vec<ToolGasAbortCandidateWalk>>,
-) -> Result<Vec<ToolGasAbortCandidate>, NexusError> {
+    tool_registry_id: sui::types::Address,
+    tool_type_origin: sui::types::Address,
+    candidates: HashMap<crate::ToolFqn, Vec<ToolPaymentAbortCandidateWalk>>,
+) -> Result<Vec<ToolPaymentAbortCandidate>, NexusError> {
     let mut result = Vec::new();
     for (tool_fqn, matching_walks) in candidates {
-        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(gas_service_id, &tool_fqn)
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, &tool_fqn)
             .map_err(NexusError::Parsing)?;
-        let tool_gas_ref = crawler
-            .get_object_metadata(tool_gas_id)
+        let tool_payment_id =
+            crate::move_bindings::derive_tool_payment_id(tool_type_origin, tool_id)
+                .map_err(NexusError::Parsing)?;
+        let tool_payment_ref = crawler
+            .get_object_metadata(tool_payment_id)
             .await
             .map_err(NexusError::Rpc)?
             .object_ref();
-        result.push(ToolGasAbortCandidate {
+        result.push(ToolPaymentAbortCandidate {
             tool_fqn,
-            tool_gas_ref,
+            tool_payment_ref,
             matching_walks,
         });
     }
@@ -1998,7 +2069,7 @@ mod tests {
                         ExecutionPaymentRefilledEvent,
                         SubmissionFailureEvidenceRecordedEvent,
                         TerminalErrEvalRecordedEvent,
-                        ToolVerificationResolved,
+                        ToolVerificationResolvedEvent,
                         WalkAdvancedEvent,
                         WalkPendingAbortEvent,
                     },
@@ -2249,7 +2320,7 @@ mod tests {
             walk_request_authorities: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
-            pending_gas_settlements: crate::move_bindings::sui_framework::vec_map::VecMap {
+            pending_payment_settlements: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
             active_walks: walks
@@ -2288,7 +2359,6 @@ mod tests {
     fn offchain_vertex_info(tool_fqn: &crate::ToolFqn) -> graph_move::VertexInfo {
         graph_move::VertexInfo {
             kind: graph_move::VertexKind::OffChain {
-                _variant_name: "OffChain".into(),
                 tool_fqn: tool_fqn.to_string().into(),
             },
             input_ports: VecSet { contents: vec![] },
@@ -3506,7 +3576,7 @@ mod tests {
     #[test]
     fn test_event_execution_id_supports_tool_verification_resolved() {
         let execution = sui::types::Address::TWO;
-        let event = NexusEventKind::ToolVerificationResolved(ToolVerificationResolved {
+        let event = NexusEventKind::ToolVerificationResolved(ToolVerificationResolvedEvent {
             dag: object_id(sui::types::Address::ZERO),
             execution: object_id(execution),
             walk_index: 2,
@@ -3821,7 +3891,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_abort_expired_execution_tool_gas_candidates_returns_empty_snapshot() {
+    async fn test_abort_expired_execution_tool_payment_candidates_returns_empty_snapshot() {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let execution_ref = sui_mocks::mock_sui_object_ref();
         let dag_ref = sui_mocks::mock_sui_object_ref();
@@ -3918,7 +3988,7 @@ mod tests {
 
         let candidates = client
             .workflow()
-            .abort_expired_execution_tool_gas_candidates(*execution_ref.object_id())
+            .abort_expired_execution_tool_payment_candidates(*execution_ref.object_id())
             .await
             .expect("empty candidate snapshot should parse");
 
@@ -3926,7 +3996,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_abort_expired_execution_with_tool_gas_submits_selected_candidate() {
+    async fn test_abort_expired_execution_with_tool_payment_submits_selected_candidate() {
         let mut rng = rand::thread_rng();
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let gas_coin_ref = sui_mocks::mock_sui_object_ref();
@@ -3934,12 +4004,17 @@ mod tests {
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let payment_ref = sui_mocks::mock_sui_object_ref();
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_gas_id = crate::move_bindings::derive_tool_gas_id(
-            *nexus_objects.gas_service.object_id(),
+        let tool_id = crate::move_bindings::derive_tool_id(
+            *nexus_objects.tool_registry.object_id(),
             &tool_fqn,
         )
         .unwrap();
-        let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
+        let tool_payment_id = crate::move_bindings::derive_tool_payment_id(
+            nexus_objects.tool_type_origin_pkg_id(),
+            tool_id,
+        )
+        .unwrap();
+        let tool_payment_ref = sui_mocks::object_ref_for_id(tool_payment_id);
         let vertex = RuntimeVertex::plain("payable");
         let field_ref = sui_mocks::mock_sui_object_ref();
         let dag = dag_bcs(1);
@@ -4047,8 +4122,8 @@ mod tests {
         );
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_gas_ref.clone(),
-            sui::types::Owner::Shared(tool_gas_ref.version()),
+            tool_payment_ref.clone(),
+            sui::types::Owner::Shared(tool_payment_ref.version()),
             None,
         );
         mock_get_dag_execution_bcs(
@@ -4098,7 +4173,10 @@ mod tests {
 
         let result = client
             .workflow()
-            .abort_expired_execution_with_tool_gas(*execution_ref.object_id(), Some(tool_gas_id))
+            .abort_expired_execution_with_tool_payment(
+                *execution_ref.object_id(),
+                Some(tool_payment_id),
+            )
             .await
             .expect("abort transaction should submit");
 
@@ -4107,7 +4185,7 @@ mod tests {
         assert_eq!(result.dag_id, *dag_ref.object_id());
         assert_eq!(result.dag_execution_id, *execution_ref.object_id());
         assert_eq!(result.selected_candidate.tool_fqn, tool_fqn);
-        assert_eq!(result.selected_candidate.tool_gas_ref, tool_gas_ref);
+        assert_eq!(result.selected_candidate.tool_payment_ref, tool_payment_ref);
         assert_eq!(result.selected_candidate.matching_walks.len(), 1);
         assert_eq!(
             result.selected_candidate.matching_walks[0].payment_vertex_key,
@@ -4499,7 +4577,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_gas_abort_filter_returns_exact_expired_locked_tool_vertices() {
+    fn tool_payment_abort_filter_returns_exact_expired_locked_tool_vertices() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
@@ -4539,9 +4617,14 @@ mod tests {
             settlement_kind: VertexExecutionPaymentSettlementKind::Paid,
         }];
 
-        let candidates =
-            filter_tool_gas_abort_candidate_walks(execution_id, &vertices, &walks, &locks, 61_000)
-                .unwrap();
+        let candidates = filter_tool_payment_abort_candidate_walks(
+            execution_id,
+            &vertices,
+            &walks,
+            &locks,
+            61_000,
+        )
+        .unwrap();
         let matching = candidates
             .get(&tool_fqn)
             .expect("candidate for locked tool");
@@ -4554,7 +4637,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_gas_abort_filter_ignores_nonmatching_payment_locks() {
+    fn tool_payment_abort_filter_ignores_nonmatching_payment_locks() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
@@ -4586,15 +4669,20 @@ mod tests {
             },
         ];
 
-        let candidates =
-            filter_tool_gas_abort_candidate_walks(execution_id, &vertices, &walks, &locks, 61_000)
-                .unwrap();
+        let candidates = filter_tool_payment_abort_candidate_walks(
+            execution_id,
+            &vertices,
+            &walks,
+            &locks,
+            61_000,
+        )
+        .unwrap();
 
         assert!(candidates.is_empty());
     }
 
     #[test]
-    fn tool_gas_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
+    fn tool_payment_abort_filter_errors_when_expired_vertex_is_missing_from_dag() {
         let execution_id = sui::types::Address::from_static("0xabc");
         let walks = vec![DAGWalk::Active {
             next_vertex: RuntimeVertex::plain("missing"),
@@ -4603,7 +4691,7 @@ mod tests {
             created_at: 1_000,
         }];
 
-        let error = filter_tool_gas_abort_candidate_walks(
+        let error = filter_tool_payment_abort_candidate_walks(
             execution_id,
             &HashMap::new(),
             &walks,
@@ -4618,13 +4706,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_tool_gas_refs_for_abort_candidates_derives_metadata_refs() {
-        let gas_service_id = sui::types::Address::from_static("0xabc");
+    async fn fetch_tool_payment_refs_for_abort_candidates_derives_metadata_refs() {
+        let tool_registry_id = sui::types::Address::from_static("0xabc");
+        let tool_type_origin = sui::types::Address::from_static("0xdef");
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
-        let tool_gas_id =
-            crate::move_bindings::derive_tool_gas_id(gas_service_id, &tool_fqn).unwrap();
-        let tool_gas_ref = sui_mocks::object_ref_for_id(tool_gas_id);
-        let candidate_walk = ToolGasAbortCandidateWalk {
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_id, &tool_fqn).unwrap();
+        let tool_payment_id =
+            crate::move_bindings::derive_tool_payment_id(tool_type_origin, tool_id).unwrap();
+        let tool_payment_ref = sui_mocks::object_ref_for_id(tool_payment_id);
+        let candidate_walk = ToolPaymentAbortCandidateWalk {
             walk_index: 2,
             vertex: RuntimeVertex::plain("payable"),
             payment_vertex_key: vec![1, 2, 3],
@@ -4633,8 +4723,8 @@ mod tests {
 
         sui_mocks::grpc::mock_get_object_metadata(
             &mut ledger_service_mock,
-            tool_gas_ref.clone(),
-            sui::types::Owner::Shared(tool_gas_ref.version()),
+            tool_payment_ref.clone(),
+            sui::types::Owner::Shared(tool_payment_ref.version()),
             None,
         );
 
@@ -4644,9 +4734,10 @@ mod tests {
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(Arc::new(client));
-        let candidates = fetch_tool_gas_refs_for_abort_candidates(
+        let candidates = fetch_tool_payment_refs_for_abort_candidates(
             &crawler,
-            gas_service_id,
+            tool_registry_id,
+            tool_type_origin,
             HashMap::from([(tool_fqn.clone(), vec![candidate_walk.clone()])]),
         )
         .await
@@ -4654,27 +4745,27 @@ mod tests {
 
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].tool_fqn, tool_fqn);
-        assert_eq!(candidates[0].tool_gas_ref, tool_gas_ref);
+        assert_eq!(candidates[0].tool_payment_ref, tool_payment_ref);
         assert_eq!(candidates[0].matching_walks, vec![candidate_walk]);
     }
 
     #[test]
-    fn select_tool_gas_abort_candidate_uses_first_or_required_candidate() {
+    fn select_tool_payment_abort_candidate_uses_first_or_required_candidate() {
         let first_id = sui::types::Address::from_static("0x111");
         let second_id = sui::types::Address::from_static("0x222");
         let candidates = vec![
-            ToolGasAbortCandidate {
+            ToolPaymentAbortCandidate {
                 tool_fqn: fqn!("xyz.taluslabs.first@1"),
-                tool_gas_ref: sui::types::ObjectReference::new(
+                tool_payment_ref: sui::types::ObjectReference::new(
                     first_id,
                     1,
                     sui::types::Digest::default(),
                 ),
                 matching_walks: Vec::new(),
             },
-            ToolGasAbortCandidate {
+            ToolPaymentAbortCandidate {
                 tool_fqn: fqn!("xyz.taluslabs.second@1"),
-                tool_gas_ref: sui::types::ObjectReference::new(
+                tool_payment_ref: sui::types::ObjectReference::new(
                     second_id,
                     1,
                     sui::types::Digest::default(),
@@ -4683,22 +4774,22 @@ mod tests {
             },
         ];
 
-        let selected = select_tool_gas_abort_candidate(candidates.clone(), None).unwrap();
-        assert_eq!(*selected.tool_gas_ref.object_id(), first_id);
+        let selected = select_tool_payment_abort_candidate(candidates.clone(), None).unwrap();
+        assert_eq!(*selected.tool_payment_ref.object_id(), first_id);
 
         let selected =
-            select_tool_gas_abort_candidate(candidates.clone(), Some(second_id)).unwrap();
-        assert_eq!(*selected.tool_gas_ref.object_id(), second_id);
+            select_tool_payment_abort_candidate(candidates.clone(), Some(second_id)).unwrap();
+        assert_eq!(*selected.tool_payment_ref.object_id(), second_id);
 
         let missing = sui::types::Address::from_static("0x333");
-        let error = select_tool_gas_abort_candidate(candidates, Some(missing)).unwrap_err();
+        let error = select_tool_payment_abort_candidate(candidates, Some(missing)).unwrap_err();
         assert!(error
             .to_string()
             .contains("is not currently eligible to abort this execution"));
 
-        let error = select_tool_gas_abort_candidate(Vec::new(), None).unwrap_err();
+        let error = select_tool_payment_abort_candidate(Vec::new(), None).unwrap_err();
         assert!(error
             .to_string()
-            .contains("No ToolGas abort candidates are currently eligible"));
+            .contains("No ToolPayment abort candidates are currently eligible"));
     }
 }

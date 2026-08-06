@@ -350,9 +350,9 @@ pub(crate) enum OccurrenceCommand {
         #[arg(
             long,
             value_name = "OBJECT_ID",
-            help = "Select the ToolGas assisted abort path"
+            help = "Select the ToolPayment assisted abort path"
         )]
-        tool_gas_id: Option<sui::types::Address>,
+        tool_payment_id: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },

@@ -4,7 +4,7 @@ use nexus_interface::authorization::AgentVertexAuthorization;
 use nexus_primitives::authorization::{Self as primitive_authorization, ProvenValue};
 use nexus_primitives::data;
 use nexus_interface::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
-use nexus_primitives::proof_of_uid::ProofOfUID;
+use nexus_primitives::proof_of_uid::UIDRequirements;
 use nexus_primitives::tagged_output;
 use sui::bag::{Self, Bag};
 use sui::clock::Clock;
@@ -14,7 +14,7 @@ use std::ascii::String as AsciiString;
 /// One-time witness for package initialization.
 public struct {{ name_uppercase }} has drop {}
 
-/// Witness object used as the worksheet stamp locator for this tool.
+/// Witness object used to satisfy this tool's execution requirement.
 public struct {{ name_pascal_case }}Witness has key, store {
     id: UID,
 }
@@ -22,7 +22,7 @@ public struct {{ name_pascal_case }}Witness has key, store {
 /// Your tool's state object (customize as needed).
 public struct {{ name_pascal_case }}State has key {
     id: UID,
-    /// Store the independent witness object that identifies this tool's stamp.
+    /// Store the independent witness object that identifies this tool.
     witness: Bag,
     // Add your application-specific fields here.
     // Example: value: u64,
@@ -66,14 +66,14 @@ fun init(_otw: {{ name_uppercase }}, ctx: &mut TxContext) {
 ///
 /// CRITICAL REQUIREMENTS:
 /// 1. Internal authorization parameter: _authorization: ProvenValue<AgentVertexAuthorization>
-/// 2. Internal workflow proof parameter: worksheet: ProofOfUID
+/// 2. Internal workflow requirements parameter: requirements: UIDRequirements
 /// 3. Internal result parameter: result: OnchainToolResult
 /// 4. Last parameter: ctx: &mut TxContext
 /// 5. No return value; finalize and share result
-/// 6. Must stamp worksheet with tool witness ID
+/// 6. Must satisfy the tool witness requirement
 entry fun execute(
     authorization: ProvenValue<AgentVertexAuthorization>,
-    worksheet: ProofOfUID,
+    requirements: UIDRequirements,
     result: OnchainToolResult,
     state: &mut {{ name_pascal_case }}State,
     // Add your custom parameters here.
@@ -82,9 +82,9 @@ entry fun execute(
     ctx: &mut TxContext,
 ) {
     primitive_authorization::drop(authorization);
-    let mut worksheet = worksheet;
-    // REQUIRED: Stamp the worksheet with the tool witness ID to prove execution.
-    worksheet.stamp_with_data(&state.witness().id, b"{{ name_snake_case }}_executed");
+    let mut requirements = requirements;
+    // REQUIRED: Satisfy the requirement with this tool's witness UID.
+    requirements.satisfy(&state.witness().id);
 
     // Implement your tool logic here.
     let output = if (input_value == 0) {
@@ -102,7 +102,7 @@ entry fun execute(
         tagged_output::new(b"ok")
             .with_named_payload(b"result", data::inline_one(computed.to_string().into_bytes()))
     };
-    onchain_tool_result::finalize_and_share(result, worksheet, output, ctx);
+    onchain_tool_result::finalize_and_share(result, requirements, output, ctx);
 }
 
 // === Getters and Helper Functions ===

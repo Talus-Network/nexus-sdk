@@ -9,7 +9,7 @@ pub(crate) async fn configure_priority_fee_vault(
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let tx_handle = loading!("Crafting and executing transaction...");
     let response = match nexus_client
-        .gas()
+        .network()
         .configure_priority_fee_vault(exchange_rate_million_mists_us)
         .await
     {
@@ -38,7 +38,7 @@ pub(crate) async fn swap_us_for_sui(
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let tx_handle = loading!("Crafting and executing transaction...");
     let response = match nexus_client
-        .gas()
+        .network()
         .swap_us_for_sui(us_coin, min_sui_out)
         .await
     {
@@ -71,7 +71,7 @@ pub(crate) async fn drain_priority_fee_vault_sui(
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let tx_handle = loading!("Querying vault state and executing drain swap...");
     let response = match nexus_client
-        .gas()
+        .network()
         .drain_priority_fee_vault_sui(us_coin)
         .await
     {
@@ -91,7 +91,7 @@ pub(crate) async fn drain_priority_fee_vault_sui(
 }
 
 fn drain_priority_fee_vault_sui_result_json(
-    response: &nexus_sdk::nexus::gas::DrainPriorityFeeVaultSuiResult,
+    response: &nexus_sdk::nexus::network::DrainPriorityFeeVaultSuiResult,
 ) -> serde_json::Value {
     json!({
         "digest": response.tx_digest,
@@ -113,7 +113,7 @@ pub(crate) async fn withdraw_priority_fee(
         Some(share_to_withdraw) => share_to_withdraw,
         None => {
             let query_handle = loading!("Querying leader vault share...");
-            match nexus_client.gas().priority_fee_share(leader_cap).await {
+            match nexus_client.network().priority_fee_share(leader_cap).await {
                 Ok(share_to_withdraw) => {
                     query_handle.success();
                     share_to_withdraw
@@ -127,7 +127,7 @@ pub(crate) async fn withdraw_priority_fee(
     };
     let tx_handle = loading!("Crafting and executing transaction...");
     let response = match nexus_client
-        .gas()
+        .network()
         .withdraw_priority_fee(leader_cap, share_to_withdraw)
         .await
     {
@@ -151,7 +151,7 @@ pub(crate) async fn withdraw_priority_fee(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::nexus::gas::DrainPriorityFeeVaultSuiResult};
+    use {super::*, nexus_sdk::nexus::network::DrainPriorityFeeVaultSuiResult};
 
     #[test]
     fn drain_result_json_uses_million_mists_exchange_rate_key() {

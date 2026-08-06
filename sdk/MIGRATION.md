@@ -29,14 +29,57 @@ The main invariant is simple: every value that crosses the Move boundary must
 come from `nexus_sdk::move_bindings` or from an SDK helper that returns such a
 value. Old local mirror types are no longer the authority.
 
+The active `Protocol` root is the authority for package and shared object
+bindings. A standard `NexusClient` action resolves that configuration once at
+the start of an operation and uses the resulting immutable snapshot throughout
+the operation.
+
+## Protocol Resolution
+
+Build normal clients from the stable `Protocol` object rather than from a saved
+set of package and shared object references. Every standard action resolves the
+active supported protocol before reading state or building a transaction, then
+uses one immutable snapshot for all nested work.
+
+`NexusClient::refresh_protocol` returns a new client when explicit snapshot
+control is needed. It does not mutate the original client.
+
+Creating a custom `NexusTransaction` is an operation boundary. Call
+`client.transaction().await?`; the returned transaction owns the resolved
+snapshot and uses it for every call added to that transaction.
+
+If activation occurs after an operation has been built but before submission,
+submission returns `NexusError::StaleProtocol`. The next standard action uses
+the active protocol automatically. The SDK does not repeat the failed action
+because an ambiguous submission may already have executed. The caller must
+inspect transaction or object state before deciding whether a retry is safe.
+
+`NexusError::UnsupportedProtocolVersion` means the active protocol is newer
+than this SDK understands. Install a newer SDK or CLI. Selecting an older live
+protocol is not supported.
+
+Protocol support does not imply that the SDK can decode every future object
+schema. Each versioned state read checks the exact schema before decoding it.
+`NexusError::UnsupportedStateSchema` means the operation requires a state
+binding that this SDK does not contain. Install the SDK built for that state
+schema. The SDK never attempts to decode the payload as an older type.
+
+The initial NetworkAuth reader supports schema one and rejects schema two
+before decoding. Supporting a new schema requires its generated binding, an
+explicit projection in the reader, and a consumer release whose protocol
+support includes that change. The end to end release fixture prepares such a
+consumer for schema two without changing the initial release boundary.
+
 ## Migration Order
 
-1. Replace imports from removed mirror modules with generated bindings.
-2. Rebuild TAP skill inputs around `TapPublishArtifact`.
-3. Replace endpoint revision flows with current skill update flows.
-4. Replace scheduled execution helpers with scheduled task APIs.
-5. Replace old payment source bytes with typed payment source helpers.
-6. Run SDK checks, then fix any remaining compile errors at the import boundary.
+1. Build the client from the stable `Protocol` root.
+2. Replace imports from removed mirror modules with generated bindings.
+3. Move Tool registration and payment code from `gas` to `tool`.
+4. Rebuild TAP skill inputs around `TapPublishArtifact`.
+5. Replace endpoint revision flows with current skill update flows.
+6. Replace scheduled execution helpers with scheduled task APIs.
+7. Replace old payment source bytes with typed payment source helpers.
+8. Run SDK checks, then fix any remaining compile errors at the import boundary.
 
 ## Import Map
 
@@ -50,6 +93,12 @@ value. Old local mirror types are no longer the authority.
 | Shared object requirement fields in TAP artifacts | No direct replacement in active TAP flows |
 | Scheduled execution request helpers | `TaskSpec` plus `Schedule` through `NexusClient::scheduler()` |
 | `WorkflowActions::inspect_execution(execution, timeout)` | `WorkflowActions::inspect_execution(execution, InspectExecutionOptions { timeout, poll_interval })` |
+| `move_bindings::gas` | `move_bindings::tool` |
+| Nexus fee operations through `NexusClient::gas()` | `NexusClient::network()` |
+| Tool price and ticket operations through gas APIs | `NexusClient::tool()` |
+| Nexus GasService transaction builders | `transactions::tool_payment` or `transactions::network` according to state ownership |
+| Shared `GasService` Tool payment state | The `ToolPayment` object derived from each `Tool` |
+| `VerifierRegistry` | Tool verifier records in `ToolRegistry` and registered keys in `NetworkAuth` |
 
 Use this import style for new TAP code:
 
@@ -138,6 +187,31 @@ let agent_source = bcs::to_bytes(&PaymentSourceKind::agent_funded(agent_id))?;
 For the common user funded path, the SDK also accepts an empty source where the
 active sender is the payer.
 
+Tool invocation price, earnings, settings, and tickets now belong to the Tool
+domain. Every registered Tool has one derived `ToolPayment` object. Tool
+registration returns an `OverTool` owner capability and a separate
+`OverToolPayment` administration capability.
+
+Use the Tool owner capability for Tool identity and earnings. Use the payment
+administration capability for invocation price and ticket configuration.
+
+```rust
+client
+    .tool()
+    .set_invocation_cost(&tool_fqn, payment_admin, 1_000_000)
+    .await?;
+
+client
+    .tool()
+    .enable_expiry_tickets(&tool_fqn, payment_admin, 100_000)
+    .await?;
+```
+
+`transactions::gas` now contains only Sui transaction gas helpers such as
+depositing SUI into an address balance. Nexus network economics live in
+`transactions::network`. Tool payment builders live in
+`transactions::tool_payment`.
+
 ## Scheduled Task Migration
 
 Scheduling now has one public request model:
@@ -209,7 +283,7 @@ Generated bindings are built from committed normalized Move package IR under
 `sdk/src/move_bindings/ir/*.json`. Normal SDK builds render Rust bindings from
 that IR through `build.rs`.
 
-Normal regeneration refreshes the five Nexus package files and preserves the reduced Move standard
+Normal regeneration refreshes the six Nexus package files and preserves the reduced Move standard
 library and Sui framework support IR. Update those framework files explicitly only when the pinned
 Sui version changes.
 

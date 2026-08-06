@@ -231,6 +231,17 @@ pub enum NexusError {
         current: u64,
         required: u64,
     },
+    /// The selected [`Versioned`] payload schema has no matching SDK binding.
+    ///
+    /// [`Versioned`]: crate::move_bindings::sui_framework::versioned::Versioned
+    #[error(
+        "Object '{object}' uses state schema {actual}, but this SDK expects state schema {expected}"
+    )]
+    UnsupportedStateSchema {
+        object: crate::sui::types::Address,
+        actual: u64,
+        expected: u64,
+    },
 }
 
 impl From<TransactionError> for NexusError {

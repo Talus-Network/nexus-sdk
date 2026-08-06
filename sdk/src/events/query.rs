@@ -9,7 +9,7 @@ use {
             primitives::{
                 data::NexusData as MoveNexusData,
                 event as event_move,
-                protocol::ProtocolVersionActivatedV1,
+                protocol::ProtocolVersionActivatedV1Event,
             },
         },
         sui::{
@@ -173,7 +173,7 @@ pub struct ProtocolActivation {
     /// Exact primitives package that emitted this notification.
     pub emitting_package: sui::types::Address,
     /// Decoded protocol activation payload.
-    pub event: ProtocolVersionActivatedV1,
+    pub event: ProtocolVersionActivatedV1Event,
 }
 
 impl ProtocolActivation {
@@ -189,7 +189,7 @@ impl ProtocolActivation {
     }
 }
 
-/// Event query for the `protocol::ProtocolVersionActivatedV1` datatype.
+/// Event query for the [`ProtocolVersionActivatedV1Event`] datatype.
 #[derive(Clone)]
 pub struct ProtocolActivationQuery {
     objects: Arc<NexusObjects>,
@@ -209,7 +209,7 @@ impl ProtocolActivationQuery {
         event_type: &sui::types::StructTag,
         contents: &[u8],
     ) -> Result<Option<ProtocolActivation>, NexusEventDecodeError> {
-        type ActivationWrapper = event_move::EventWrapper<ProtocolVersionActivatedV1>;
+        type ActivationWrapper = event_move::EventWrapper<ProtocolVersionActivatedV1Event>;
 
         let expected = crate::move_bindings::struct_tag::<ActivationWrapper>(&self.objects);
         if event_type != &expected {
@@ -232,7 +232,7 @@ impl EventQuery for ProtocolActivationQuery {
 
     fn filter(&self) -> sui::grpc::EventFilter {
         let wrapper = crate::move_bindings::struct_tag::<
-            event_move::EventWrapper<ProtocolVersionActivatedV1>,
+            event_move::EventWrapper<ProtocolVersionActivatedV1Event>,
         >(&self.objects);
         sui::grpc::EventFilter::any([event_filter::event_type(format!(
             "{}::{}::{}",
@@ -294,7 +294,7 @@ mod tests {
     use {
         super::*,
         crate::move_bindings::{
-            primitives::{event::EventWrapper, protocol::ProtocolVersionActivatedV1},
+            primitives::{event::EventWrapper, protocol::ProtocolVersionActivatedV1Event},
             sui_framework::object::ID,
         },
     };
@@ -306,7 +306,7 @@ mod tests {
         let activation = ProtocolActivation {
             id: (sui::types::Digest::ZERO, 0),
             emitting_package: objects.primitives_pkg_id(),
-            event: ProtocolVersionActivatedV1::new(
+            event: ProtocolVersionActivatedV1Event::new(
                 ID::new(*objects.protocol.object_id()),
                 objects.protocol_version,
                 objects.config_hash.clone(),
@@ -330,10 +330,11 @@ mod tests {
     fn activation_query_decodes_the_nexus_event_wrapper() {
         let (objects, activation) = activation_fixture();
         let objects = Arc::new(objects);
-        let wrapper: EventWrapper<ProtocolVersionActivatedV1> =
+        let wrapper: EventWrapper<ProtocolVersionActivatedV1Event> =
             EventWrapper::new(activation.event.clone());
-        let wrapper_type =
-            crate::move_bindings::struct_tag::<EventWrapper<ProtocolVersionActivatedV1>>(&objects);
+        let wrapper_type = crate::move_bindings::struct_tag::<
+            EventWrapper<ProtocolVersionActivatedV1Event>,
+        >(&objects);
         let decoded = ProtocolActivationQuery::new(Arc::clone(&objects))
             .decode_parts(
                 activation.id.1,

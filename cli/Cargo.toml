@@ -16,6 +16,9 @@ categories.workspace = true
 name = "nexus"
 path = "src/main.rs"
 
+[features]
+upgrade_test = ["nexus-sdk/upgrade_test"]
+
 [dependencies]
 anyhow.workspace = true
 base64.workspace = true

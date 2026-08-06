@@ -52,9 +52,9 @@ pub(crate) async fn handle(command: OccurrenceCommand) -> AnyResult<(), NexusCli
         OccurrenceCommand::AbortExpired {
             task_id,
             occurrence_id,
-            tool_gas_id,
+            tool_payment_id,
             gas,
-        } => abort_expired(task_id, occurrence_id, tool_gas_id, gas).await,
+        } => abort_expired(task_id, occurrence_id, tool_payment_id, gas).await,
     }
 }
 
@@ -215,7 +215,7 @@ async fn cost(task_id: sui::types::Address, occurrence_id: u64) -> AnyResult<(),
 async fn abort_expired(
     task_id: sui::types::Address,
     occurrence_id: u64,
-    tool_gas_id: Option<sui::types::Address>,
+    tool_payment_id: Option<sui::types::Address>,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Aborting expired occurrence");
@@ -225,7 +225,7 @@ async fn abort_expired(
         .scheduler()
         .task(task_id)
         .occurrence(occurrence_id)
-        .abort_expired(tool_gas_id)
+        .abort_expired(tool_payment_id)
         .await?;
     progress.success();
     notify_success!(

@@ -612,7 +612,7 @@ mod tests {
                 storage_id = "0x1"
                 version = 1
 
-                [packages.gas]
+                [packages.tool]
                 initial_id = "0x15"
                 storage_id = "0x15"
                 version = 1
@@ -656,11 +656,6 @@ mod tests {
                 agent_id = "0xa1"
                 skill_id = 177
 
-                [gas_service]
-                object_id = "0x8"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-
                 [leader_registry]
                 object_id = "0x10"
                 version = 1
@@ -671,10 +666,6 @@ mod tests {
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [verifier_registry]
-                object_id = "0x12"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
             "#
         .to_string();
 
@@ -698,7 +689,7 @@ mod tests {
         let objects = res.expect("mock object document should match NexusObjects");
 
         assert_eq!(objects.primitives_pkg_id(), "0x1".parse().unwrap());
-        assert_eq!(objects.gas_pkg_id(), "0x15".parse().unwrap());
+        assert_eq!(objects.tool_pkg_id(), "0x15".parse().unwrap());
         assert_eq!(objects.workflow_pkg_id(), "0x2".parse().unwrap());
         assert_eq!(objects.interface_pkg_id(), "0x3".parse().unwrap());
         assert_eq!(objects.scheduler_pkg_id(), "0x13".parse().unwrap());
@@ -715,7 +706,7 @@ mod tests {
             objects.registry_type_origin_pkg_id(),
             objects.registry_pkg_id()
         );
-        assert_eq!(objects.gas_type_origin_pkg_id(), objects.gas_pkg_id());
+        assert_eq!(objects.tool_type_origin_pkg_id(), objects.tool_pkg_id());
         assert_eq!(
             objects.workflow_type_origin_pkg_id(),
             objects.workflow_pkg_id()
@@ -753,15 +744,6 @@ mod tests {
         );
         assert_eq!(objects.default_dag_executor.skill_id, 177);
         assert_eq!(
-            *objects.gas_service.object_id(),
-            sui::types::Address::from_static("0x8")
-        );
-        assert_eq!(objects.gas_service.version(), 1);
-        assert_eq!(
-            *objects.gas_service.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-        );
-        assert_eq!(
             *objects.leader_registry.object_id(),
             sui::types::Address::from_static("0x10")
         );
@@ -775,11 +757,6 @@ mod tests {
             sui::types::Address::from_static("0x14")
         );
         assert_eq!(objects.priority_fee_vault.version(), 1);
-        assert_eq!(
-            *objects.verifier_registry.object_id(),
-            sui::types::Address::from_static("0x12")
-        );
-
         mock.assert_async().await;
     }
 

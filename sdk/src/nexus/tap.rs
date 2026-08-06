@@ -288,8 +288,9 @@ impl TapActions {
             .validate()
             .map_err(|error| NexusError::TransactionBuilding(anyhow::anyhow!(error)))?;
 
-        let tap_package = self.publish_tap_package(package_options).await?;
-        let dag = self.client.workflow().publish(dag).await?;
+        let client = self.client.operation_client().await?;
+        let tap_package = client.tap().publish_tap_package(package_options).await?;
+        let dag = client.workflow().publish(dag).await?;
         let artifact = TapPublishArtifact::from_config(config, dag.dag_object_id)
             .map_err(NexusError::TransactionBuilding)?;
 
@@ -659,7 +660,8 @@ impl TapActions {
             ));
         }
 
-        let crawler = self.client.crawler();
+        let client = self.client.operation_client().await?;
+        let crawler = client.crawler();
         let started_at = Instant::now();
 
         loop {
@@ -740,7 +742,7 @@ async fn fetch_agent_registry_tables(
     registry_id: sui::types::Address,
 ) -> anyhow::Result<Response<AgentRegistrySnapshot>> {
     let raw = crawler
-        .get_versioned_object::<AgentRegistry, AgentRegistryStateV1>(registry_id)
+        .get_versioned_object::<AgentRegistry, AgentRegistryStateV1>(registry_id, 1)
         .await?;
     let agent_records = crawler
         .get_dynamic_fields::<sui::types::Address, AgentRecord>(
@@ -986,7 +988,7 @@ pub async fn fetch_agent_payment_vault(
     vault_id: sui::types::Address,
 ) -> anyhow::Result<Response<AgentPaymentVaultStateV1>> {
     crawler
-        .get_versioned_object::<AgentPaymentVault, AgentPaymentVaultStateV1>(vault_id)
+        .get_versioned_object::<AgentPaymentVault, AgentPaymentVaultStateV1>(vault_id, 1)
         .await
 }
 
@@ -1001,7 +1003,7 @@ pub async fn fetch_agent_payment_vault_for_agent(
             AgentVaultFieldKey::default(),
         )
         .await?;
-    crawler.load_versioned_payload(anchor).await
+    crawler.load_versioned_payload(anchor, 1).await
 }
 
 /// Resolve a fresh execution skill revision from already fetched records.

@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added canonical protocol configuration resolution with package lineage, dependency linkage, shared object bindings, configuration hash validation, and datatype origin validation.
 - Added versioned state loading for every Nexus root and exact datatype origin scoping for generated Move bindings.
 - Added protocol activation event queries that preserve both stable datatype identity and the package version that emitted each event.
-- Added generated bindings and package metadata for the Nexus gas package.
+- Added generated bindings and package metadata for the Nexus tool package.
 - Added one composable Task creation model covering default execution, Agent skill execution, address funding, Agent vault funding, manual occurrences, recurrence, and failure behavior.
 - Task creation now returns and transfers an owned `TaskPointer` containing the shared Task ID, and `Scheduler::task_pointers` lists those pointers through exact type filtered gRPC pagination.
 - Added `NexusClient::clone_grpc_client` for independently owned gRPC transports that do not acquire the crawler-owned client mutex.
@@ -28,10 +28,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Scheduler dispatch bindings and transaction builders now use one `dispatch_next` target with an explicit leader submission gas charge.
+- Generated Move bindings now expose `consume_task_payment_reserve_for_sender`, making mutable reserve access and the fixed sender recipient explicit.
+- Generated Move event bindings now use the `Event` suffix consistently across primitives, registry, and workflow.
 - Nexus clients and CLI commands can now discover the active coherent protocol configuration from one stable protocol object.
-- Protocol resolution now reads one exact active configuration, validates package origin IDs against Sui metadata, and adopts versioned activation event records only when they match canonical state.
+- Every standard action now resolves one exact active configuration at its operation boundary, validates package origin IDs against Sui metadata, and uses one immutable snapshot for all nested work. Activation event queries remain observational only.
+- `NexusClient::transaction` is now asynchronous so transaction creation resolves and owns one active protocol snapshot before any calls are added.
+- Every versioned state read now checks its exact schema before decoding. Network auth operations return `NexusError::UnsupportedStateSchema` when the active payload is newer than the SDK binding.
+- NetworkAuth readers support schema one in the initial release and return `NexusError::UnsupportedStateSchema` before decoding any unknown payload. The end to end upgrade fixture enables an explicit schema two branch only for its prepared version two consumer.
 - Event consumers can reject direct calls from inactive Nexus package versions while accepting user packages only when their transitive Nexus linkage exactly matches the captured protocol configuration.
-- Gas types, ticket calls, and payment events now use the gas package, while execution settlement calls use the workflow gas adapter.
+- Tool pricing, ticket calls, and payment events now use the tool package, while execution settlement calls use the workflow tool payment adapter. Network fee operations use the network facade.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
 - Renamed priority fee exchange-rate fields and CLI inputs to `exchange_rate_million_mists_us`, measured as `$US` atomic units per one million MIST.
 - Onchain Tool schema inspection now validates the fixed `execute` prefix, derives an `OnchainToolMode`, and uses that mode to select the registry entrypoint.
@@ -42,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `NexusClientBuilder` now supports keyless query-only clients, while owner, gas, signing, and submission operations return a typed missing-private-key error when no signer is configured.
 - `NexusClientBuilder` can now build clients without gas for read-only use, while `NexusClient::set_gas_source` supports shared write-once transaction gas attachment after construction.
 - Replaced the Nexus specific event poller with typed Sui event queries and a generic ingestor that shares filters and read masks across replay and live subscriptions.
+- Event replay gaps are terminal by default and return a typed error with the missing checkpoint range. Explicit recovery reports the gap and resumes the existing live subscription for disposable environments.
 - Tool registration PTBs now withdraw and refund address balance collateral in the configured `$US` type.
 - Leader registration PTBs now preserve any `$US` balance above the chosen stake instead of requiring the input coin to reach zero.
 - Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
@@ -58,6 +65,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Local test faucet requests now use the current object payload and report rejection details.
+- Tool payment ID derivation now hashes the generated [`ToolPaymentKey`](sdk/src/move_bindings/mod.rs) value, matching the exact Move layout used by `derived_object::claim`.
 - Scheduler dispatch transactions now pass the active protocol root required by the protocol aware scheduler ABI.
 - Protocol activation queries now decode the canonical Nexus event wrapper and reject wrappers for unrelated events.
 - Package metadata validation now distinguishes the runtime package address in RPC type names from immutable datatype defining origins.
@@ -79,12 +88,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Added `NEXUS_CLI_CONF` for selecting an isolated CLI configuration file.
 - Added `nexus task occurrence settle` for settling finished executions into their Task records.
 - `nexus task list` discovers the configured signer's Tasks by listing owned `TaskPointer` objects with opaque cursor pagination.
-- `nexus gas priority-fee-vault` commands for configuring the priority-fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority-fee shares.
+- `nexus network priority-fee-vault` commands for configuring the priority fee vault, swapping `$US` for SUI, draining vault SUI with a strict quote, and withdrawing leader `$US` priority fee shares.
 - Added support for new priority fee system in commands.
 - Added `tool configure-verifier` commands for configuring built-in RegisteredKey verification or registering an External verifier with its package, module, function, witness, and immutable shared objects.
 
 #### Changed
 
+- Generated Move Tool manifests now declare `nexus_interface` directly instead of the unused `nexus_workflow` dependency.
+- Generated TAP manifests now declare all six canonical Nexus package dependencies.
 - Read only commands no longer require a configured private key.
 - The priority fee vault configure flag is now `--exchange-rate-million-mists-us`, and drain JSON reports `exchange_rate_million_mists_us`.
 - Onchain Tool registration now derives workflow authorization from the normalized `execute` signature instead of accepting a manual mode.
@@ -93,6 +104,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - CLI read commands now leave gas unattached, while transaction commands attach explicit coin-object gas or address-balance gas when `--sui-gas-coin` is omitted; `dag execute` fetches only its required payment coin by default.
 - Tool registration, inspection, validation, and unregistration now expose and maintain the simplified Tool verifier configuration and nested onchain Tool reference shape.
 - Generated Move Tool templates now place encoded JSON directly in `NexusData`.
+
+#### Fixed
+
+- Tool registration now decides repeated and raced submissions from canonical chain state, so retries succeed without depending on Move error text.
+- Offchain Tool registration now returns a failing process status after reporting any transaction failure, while batch registration still reports every attempted Tool.
 
 #### Removed
 

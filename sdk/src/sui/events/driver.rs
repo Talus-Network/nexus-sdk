@@ -89,7 +89,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
 
         let live_start_cursor = Self::response_cursor(first.watermark.as_ref())?.to_vec();
         if let Some(start_checkpoint) = *resume_checkpoint {
-            let replay_complete = self
+            let replay_result = self
                 .replay_events(
                     &mut client,
                     start_checkpoint,
@@ -98,7 +98,18 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     highest_output_checkpoint,
                     send_page,
                 )
-                .await?;
+                .await;
+            let replay_complete = match replay_result {
+                Ok(replay_complete) => replay_complete,
+                Err(error) if self.recover_replay_gap && error.is_replay_gap() => {
+                    *resume_checkpoint = None;
+                    if !self.send_error(error, send_page).await {
+                        return Ok(());
+                    }
+                    true
+                }
+                Err(error) => return Err(error),
+            };
             if !replay_complete {
                 return Ok(());
             }
@@ -176,7 +187,9 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 _ = send_page.closed() => return Ok(false),
                 response = ledger_client.list_events(request) => response,
             }
-            .map_err(|status| EventIngestionError::rpc("requesting event replay", status))?;
+            .map_err(|status| {
+                EventIngestionError::replay_rpc(start_checkpoint, "requesting event replay", status)
+            })?;
             let mut stream = response.into_inner();
 
             let terminal_reason = loop {
@@ -186,7 +199,11 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     response = stream.try_next() => response,
                 }
                 .map_err(|status| {
-                    EventIngestionError::rpc("receiving an event replay frame", status)
+                    EventIngestionError::replay_rpc(
+                        start_checkpoint,
+                        "receiving an event replay frame",
+                        status,
+                    )
                 })?
                 .ok_or_else(|| {
                     EventIngestionError::Protocol(

@@ -9,7 +9,7 @@ use {
         sui::get_read_only_nexus_client,
     },
     nexus_sdk::{
-        nexus::tool::ToolInspection,
+        nexus::{client::NexusClient, tool::ToolInspection},
         types::{ToolRef, ToolStateV1},
     },
 };
@@ -40,13 +40,52 @@ pub(crate) fn inspect_tool_result_json(
 
     Ok(json!({
         "tool_id": inspection.tool_id,
-        "tool_gas_id": inspection.tool_gas_id,
+        "tool_payment_id": inspection.tool_payment_id,
         "exists": inspection.exists,
         "tool_ref": tool_ref,
         "tool": inspection.tool,
         "verifier_support": inspection.verifier_support,
         "external_verifier": inspection.external_verifier,
+        "invocation_cost_mist": inspection.invocation_cost_mist,
     }))
+}
+
+/// Inspects canonical chain state for a completed registration.
+///
+/// A missing Tool returns `None`. An existing Tool returns the same stable
+/// projection used by [`inspect_tool_result_json`] with registration status.
+pub(crate) async fn inspect_registration_result(
+    nexus_client: &NexusClient,
+    fqn: &ToolFqn,
+) -> AnyResult<Option<serde_json::Value>, NexusCliError> {
+    let inspection = nexus_client
+        .tool()
+        .inspect_tool(fqn)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    registration_result_json(&inspection)
+}
+
+/// Converts an existing [`ToolInspection`] into a registration result.
+///
+/// Registration uses this canonical state projection before submission and
+/// after submission errors. Transaction error text is not a state contract.
+pub(crate) fn registration_result_json(
+    inspection: &ToolInspection,
+) -> AnyResult<Option<serde_json::Value>, NexusCliError> {
+    if !inspection.exists {
+        return Ok(None);
+    }
+
+    let mut result = inspect_tool_result_json(inspection)?;
+    let object = result.as_object_mut().ok_or_else(|| {
+        NexusCliError::Any(anyhow!("Tool inspection must serialize as an object"))
+    })?;
+    object.insert("tool_fqn".to_owned(), json!(inspection.fqn));
+    object.insert("already_registered".to_owned(), json!(true));
+
+    Ok(Some(result))
 }
 
 pub(crate) fn normalized_tool_ref_json(
@@ -97,8 +136,11 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
             id = inspection.tool_id.to_string().truecolor(100, 100, 100)
         );
         item!(
-            "Derived ToolGas ID: {id}",
-            id = inspection.tool_gas_id.to_string().truecolor(100, 100, 100)
+            "Derived ToolPayment ID: {id}",
+            id = inspection
+                .tool_payment_id
+                .to_string()
+                .truecolor(100, 100, 100)
         );
         return Ok(());
     };
@@ -126,8 +168,11 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
         id = inspection.tool_id.to_string().truecolor(100, 100, 100)
     );
     item!(
-        "ToolGas ID: {id}",
-        id = inspection.tool_gas_id.to_string().truecolor(100, 100, 100)
+        "ToolPayment ID: {id}",
+        id = inspection
+            .tool_payment_id
+            .to_string()
+            .truecolor(100, 100, 100)
     );
     print_tool_reference(tool)?;
     match inspection.verifier_support.as_ref() {
@@ -147,7 +192,7 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
         }
     }
     if let Some(record) = inspection.external_verifier.as_ref() {
-        item!("Verifier witness: {id}", id = record.witness_id.bytes);
+        item!("Verifier witness: {id}", id = record.witness.bytes);
         item!(
             "Verifier objects: {objects}",
             objects = record
@@ -157,6 +202,10 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+    }
+    match inspection.invocation_cost_mist {
+        Some(cost) => item!("Invocation cost: {cost} MIST"),
+        None => item!("Invocation cost: unavailable"),
     }
     item!(
         "Cap-gated (WAC): {cap_first}",
@@ -244,11 +293,12 @@ mod tests {
         let inspection = ToolInspection {
             fqn: fqn!("xyz.taluslabs.example@1"),
             tool_id: sui::types::Address::from_static("0xaa"),
-            tool_gas_id: sui::types::Address::from_static("0xbb"),
+            tool_payment_id: sui::types::Address::from_static("0xbb"),
             exists: false,
             tool: None,
             verifier_support: None,
             external_verifier: None,
+            invocation_cost_mist: None,
         };
 
         let json = inspect_tool_result_json(&inspection).expect("inspection JSON should build");
@@ -263,6 +313,49 @@ mod tests {
         assert!(json["external_verifier"].is_null());
     }
 
+    /// Verifies that registration treats canonical chain existence as success.
+    #[test]
+    fn registration_result_json_reports_existing_tool() {
+        let inspection = ToolInspection {
+            fqn: fqn!("xyz.taluslabs.example@1"),
+            tool_id: sui::types::Address::from_static("0xaa"),
+            tool_payment_id: sui::types::Address::from_static("0xbb"),
+            exists: true,
+            tool: None,
+            verifier_support: None,
+            external_verifier: None,
+            invocation_cost_mist: None,
+        };
+
+        let json = registration_result_json(&inspection)
+            .expect("registration JSON should build")
+            .expect("the Tool exists");
+
+        assert_eq!(json["already_registered"], serde_json::Value::Bool(true));
+        assert_eq!(json["tool_fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(
+            json["tool_payment_id"],
+            serde_json::json!(sui::types::Address::from_static("0xbb").to_string())
+        );
+    }
+
+    /// Verifies that registration can distinguish an unused name.
+    #[test]
+    fn registration_result_json_reports_missing_tool() {
+        let inspection = ToolInspection {
+            fqn: fqn!("xyz.taluslabs.example@1"),
+            tool_id: sui::types::Address::from_static("0xaa"),
+            tool_payment_id: sui::types::Address::from_static("0xbb"),
+            exists: false,
+            tool: None,
+            verifier_support: None,
+            external_verifier: None,
+            invocation_cost_mist: None,
+        };
+
+        assert!(registration_result_json(&inspection).unwrap().is_none());
+    }
+
     #[test]
     fn normalized_tool_ref_json_reports_missing_reference() {
         assert_eq!(
@@ -274,7 +367,6 @@ mod tests {
     #[test]
     fn normalized_tool_ref_json_reports_http_reference() {
         let reference = ToolRef::Http {
-            _variant_name: ascii("Http"),
             url: b"https://example.com/tool".to_vec(),
         };
 
@@ -292,7 +384,6 @@ mod tests {
         let package_id = sui::types::Address::from_static("0x1234");
         let witness_id = sui::types::Address::from_static("0xabcd");
         let reference = ToolRef::Sui {
-            _variant_name: ascii("Sui"),
             package_address: package_id,
             module_name: ascii("demo_tool"),
             tool_witness_id: ID::new(witness_id),
@@ -311,16 +402,12 @@ mod tests {
 
     #[test]
     fn normalized_tool_ref_json_rejects_invalid_generated_strings() {
-        let invalid_http = ToolRef::Http {
-            _variant_name: ascii("Http"),
-            url: vec![0xff],
-        };
+        let invalid_http = ToolRef::Http { url: vec![0xff] };
         assert!(normalized_tool_ref_json(Some(&invalid_http)).is_err());
 
         let mut invalid_module = ascii("demo_tool");
         invalid_module.bytes = vec![0xff];
         let invalid_sui = ToolRef::Sui {
-            _variant_name: ascii("Sui"),
             package_address: sui::types::Address::from_static("0x1234"),
             module_name: invalid_module,
             tool_witness_id: ID::new(sui::types::Address::from_static("0xabcd")),

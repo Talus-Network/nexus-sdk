@@ -79,11 +79,18 @@ async fn resolves_active_config_from_fresh_publication() {
         configured.agent_registry.object_id()
     );
     assert_eq!(
-        resolved.gas_service.object_id(),
-        configured.gas_service.object_id()
+        resolved.network_auth.object_id(),
+        configured.network_auth.object_id()
     );
     assert_eq!(
         resolved.leader_registry.object_id(),
         configured.leader_registry.object_id()
     );
+
+    let leader_cap_ids = client
+        .network_auth()
+        .list_leader_cap_ids_from_network_auth()
+        .await
+        .expect("the current SDK must decode the active NetworkAuth schema");
+    assert!(!leader_cap_ids.is_empty());
 }

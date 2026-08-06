@@ -43,7 +43,6 @@ Relevant helpers include:
 - `TapPaymentSource::invoker(...)` and `TapPaymentSource::agent_vault(...)` for typed payment-source payloads used by SDK models and non-direct policy surfaces.
 - `TapAgentPaymentVault` plus `fetch_agent_payment_vault(...)`.
 - `tap::deposit_agent_payment_vault(...)` and `tap::withdraw_agent_payment_vault(...)` PTB builders.
-- `gas::add_agent_budget(...)` for standard Talus agent-scoped gas funding.
 
 Direct standard TAP payment creation currently follows the Move policy exactly: user-funded sources are empty or payer-address BCS, and agent-funded direct sources are agent-id address BCS. Agent-vault settlement uses the dedicated vault payment builder rather than typed source bytes in the direct builder.
 

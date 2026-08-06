@@ -190,7 +190,7 @@ pub(super) async fn fetch_task(
         .ok_or(SchedulerError::TaskNotFound { task_id })?;
     client
         .crawler()
-        .load_versioned_payload(anchor)
+        .load_versioned_payload(anchor, 1)
         .await
         .map_err(SchedulerError::transport)
 }

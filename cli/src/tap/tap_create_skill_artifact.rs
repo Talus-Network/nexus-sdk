@@ -112,7 +112,9 @@ async fn fetch_input_commitment_with_client(
 ) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
     let dag = crawler
-        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGStateV1>(dag_id)
+        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGStateV1>(
+            dag_id, 1,
+        )
         .await
         .map_err(|error| {
             NexusCliError::Any(anyhow!(

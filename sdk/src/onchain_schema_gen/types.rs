@@ -176,6 +176,7 @@ pub fn is_tx_context_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
 pub fn is_hidden_internal_tool_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
     is_onchain_tool_result_param(move_type)
         || is_proof_of_uid_param(move_type)
+        || is_uid_requirements_param(move_type)
         || is_tx_context_param(move_type)
         || is_agent_vertex_authorization_proof_param(move_type)
 }
@@ -202,6 +203,19 @@ pub(super) fn is_proof_of_uid_param(move_type: &sui::grpc::OpenSignatureBody) ->
     };
 
     struct_tag.module().as_str() == "proof_of_uid" && struct_tag.name().as_str() == "ProofOfUID"
+}
+
+pub(super) fn is_uid_requirements_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
+    let Some(type_name) = move_type.type_name_opt() else {
+        return false;
+    };
+
+    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
+        return false;
+    };
+
+    struct_tag.module().as_str() == "proof_of_uid"
+        && struct_tag.name().as_str() == "UIDRequirements"
 }
 
 pub fn is_agent_vertex_authorization_proof_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
@@ -377,6 +391,11 @@ mod tests {
             "0x42",
             "proof_of_uid",
             "ProofOfUID"
+        )));
+        assert!(is_hidden_internal_tool_param(&make_struct(
+            "0x42",
+            "proof_of_uid",
+            "UIDRequirements"
         )));
         assert!(is_hidden_internal_tool_param(&make_struct(
             "0x42",

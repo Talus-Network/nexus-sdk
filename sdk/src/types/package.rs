@@ -115,10 +115,10 @@ pub struct NexusPackages {
     pub primitives: PackageVersion,
     /// Package version that defines shared Nexus interfaces.
     pub interface: PackageVersion,
+    /// Package version that owns Tool registration and payment state.
+    pub tool: PackageVersion,
     /// Package version that owns Nexus registries.
     pub registry: PackageVersion,
-    /// Package version that implements gas accounting.
-    pub gas: PackageVersion,
     /// Package version that implements workflow execution.
     pub workflow: PackageVersion,
     /// Package version that implements scheduled execution.
@@ -130,16 +130,16 @@ impl NexusPackages {
     pub fn first_publication(
         primitives: sui::types::Address,
         interface: sui::types::Address,
+        tool: sui::types::Address,
         registry: sui::types::Address,
-        gas: sui::types::Address,
         workflow: sui::types::Address,
         scheduler: sui::types::Address,
     ) -> Self {
         Self {
             primitives: PackageVersion::first_publication(primitives),
             interface: PackageVersion::first_publication(interface),
+            tool: PackageVersion::first_publication(tool),
             registry: PackageVersion::first_publication(registry),
-            gas: PackageVersion::first_publication(gas),
             workflow: PackageVersion::first_publication(workflow),
             scheduler: PackageVersion::first_publication(scheduler),
         }
@@ -150,8 +150,8 @@ impl NexusPackages {
         [
             &self.primitives,
             &self.interface,
+            &self.tool,
             &self.registry,
-            &self.gas,
             &self.workflow,
             &self.scheduler,
         ]

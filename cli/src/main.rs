@@ -6,6 +6,7 @@ mod display;
 mod error;
 mod execution;
 mod gas;
+mod network;
 mod nexus_data_json;
 mod prelude;
 mod sui;
@@ -47,8 +48,10 @@ enum Command {
     Task(Box<task::TaskCommand>),
     #[command(subcommand, about = "Inspect workflow executions")]
     Execution(execution::ExecutionCommand),
-    #[command(subcommand, about = "Manage Nexus gas budgets and tickets")]
+    #[command(subcommand, about = "Manage Sui transaction gas")]
     Gas(gas::GasCommand),
+    #[command(subcommand, about = "Manage Nexus network fees")]
+    Network(network::NetworkCommand),
     #[command(subcommand, about = "Prepare and operate standard TAP skills")]
     Tap(tap::TapCommand),
     #[command(about = "Provide shell completions")]
@@ -127,6 +130,7 @@ async fn main() {
         Command::Conf(conf) => conf::handle(conf).await,
         Command::Dag(dag) => dag::handle(dag).await,
         Command::Gas(gas) => gas::handle(gas).await,
+        Command::Network(network) => network::handle(network).await,
         Command::Tap(tap) => tap::handle(tap).await,
         Command::Task(task) => task::handle(*task).await,
         Command::Execution(execution) => execution::handle(execution).await,

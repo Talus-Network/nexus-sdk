@@ -1,11 +1,11 @@
 module onchain_tool::proof_of_uid;
 
-/// Placeholder for the worksheet proof supplied by the Nexus framework.
-public struct ProofOfUID {
+/// Placeholder for the execution requirements supplied by the Nexus framework.
+public struct UIDRequirements {
     id: UID,
 }
 
-public fun delete(proof: ProofOfUID) {
-    let ProofOfUID { id } = proof;
+public fun delete(requirements: UIDRequirements) {
+    let UIDRequirements { id } = requirements;
     id.delete();
 }

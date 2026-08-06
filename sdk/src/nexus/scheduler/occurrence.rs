@@ -136,7 +136,8 @@ impl OccurrenceHandle {
             .ok_or_else(|| SchedulerError::InvalidRequest {
                 message: "watch timeout exceeds the supported duration".to_owned(),
             })?;
-        let mut snapshot = self.snapshot().await?;
+        let client = self.operation_client().await?;
+        let mut snapshot = self.snapshot_with(&client).await?;
 
         loop {
             if stop(&snapshot) {
@@ -157,7 +158,7 @@ impl OccurrenceHandle {
                     last_snapshot: Box::new(snapshot),
                 });
             }
-            snapshot = self.snapshot().await?;
+            snapshot = self.snapshot_with(&client).await?;
         }
     }
 
@@ -247,7 +248,7 @@ impl OccurrenceHandle {
 
     /// Aborts expired runtime work.
     ///
-    /// Supplying `tool_gas_id` selects the ToolGas abort path. Without one,
+    /// Supplying `tool_payment_id` selects the ToolPayment abort path. Without one,
     /// the permissionless workflow abort path is used.
     ///
     /// # Errors
@@ -257,14 +258,14 @@ impl OccurrenceHandle {
     /// fails.
     pub async fn abort_expired(
         &self,
-        tool_gas_id: Option<sui::types::Address>,
+        tool_payment_id: Option<sui::types::Address>,
     ) -> Result<AbortReceipt, SchedulerError> {
         let client = self.operation_client().await?;
         let execution_id = dispatched_execution_id(&self.snapshot_with(&client).await?)?;
-        let transaction = if let Some(tool_gas_id) = tool_gas_id {
+        let transaction = if let Some(tool_payment_id) = tool_payment_id {
             let result = client
                 .workflow()
-                .abort_expired_execution_with_tool_gas(execution_id, Some(tool_gas_id))
+                .abort_expired_execution_with_tool_payment(execution_id, Some(tool_payment_id))
                 .await
                 .map_err(SchedulerError::from)?;
             TransactionReference::new(result.tx_digest, result.tx_checkpoint)

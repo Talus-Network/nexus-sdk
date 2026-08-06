@@ -3,8 +3,8 @@ use {
     nexus_sdk::{
         move_bindings::{
             move_std::ascii::String as MoveAsciiString,
-            registry::tool_registry::{ToolRegistry, ToolRegistryStateV1},
             sui_framework::linked_table::Node as LinkedTableNode,
+            tool::tool_registry::{ToolRegistry, ToolRegistryStateV1},
         },
         types::{Tool, ToolAnchor, ToolStateV1},
     },
@@ -83,6 +83,7 @@ async fn fetch_tools_with_client(
     let tool_registry = crawler
         .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(
             *nexus_objects.tool_registry.object_id(),
+            1,
         )
         .await
         .map_err(NexusCliError::Any)?
@@ -110,7 +111,7 @@ async fn fetch_tools_with_client(
     for tool_id in tool_ids {
         tools.push(
             crawler
-                .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id)
+                .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
                 .await
                 .map_err(NexusCliError::Any)?
                 .data,
@@ -133,6 +134,7 @@ mod tests {
                     table::Table as MoveTable,
                     versioned::Versioned,
                 },
+                tool::external_verifier::ExternalVerifier,
             },
             test_utils::{nexus_mocks, sui_mocks},
         },
@@ -152,6 +154,8 @@ mod tests {
             MoveTable::<ID, bool>::new(sui::types::Address::from_static("0x102"), 0),
             LinkedTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x103"), 0),
             MoveTable::<ID, ToolVerifierSupport>::new(sui::types::Address::from_static("0x104"), 0),
+            MoveTable::<ID, ExternalVerifier>::new(sui::types::Address::from_static("0x108"), 0),
+            MoveTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x109"), 0),
             LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x105"), 0),
             LinkedTable::<MoveAsciiString, bool>::new(sui::types::Address::from_static("0x106"), 0),
             0,

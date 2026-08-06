@@ -39,10 +39,8 @@ impl_versioned_anchor!(
     crate::move_bindings::registry::network_auth::KeyBinding,
     crate::move_bindings::registry::network_auth::NetworkAuth,
     crate::move_bindings::registry::priority_fee_vault::PriorityFeeVault,
-    crate::move_bindings::registry::tool_registry::Tool,
-    crate::move_bindings::registry::tool_registry::ToolRegistry,
-    crate::move_bindings::registry::verifier_registry::VerifierRegistry,
-    crate::move_bindings::gas::gas::GasService,
-    crate::move_bindings::gas::gas::ToolGas,
+    crate::move_bindings::tool::tool_payment::ToolPayment,
+    crate::move_bindings::tool::tool_registry::Tool,
+    crate::move_bindings::tool::tool_registry::ToolRegistry,
     crate::move_bindings::scheduler::task::Task,
 );

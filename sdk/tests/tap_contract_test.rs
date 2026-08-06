@@ -75,7 +75,7 @@ fn generated_function(
 }
 
 fn append_standard_runtime_worksheet(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     leader_cap: sui::types::Argument,
@@ -103,7 +103,7 @@ fn append_standard_runtime_worksheet(
 }
 
 fn tap_agent_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     mutable: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry_ref = tx.objects().agent_registry.clone();
@@ -111,14 +111,14 @@ fn tap_agent_registry_arg(
 }
 
 fn tap_tool_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry_ref = tx.objects().tool_registry.clone();
     Ok(tx.shared_object(&registry_ref, false)?)
 }
 
 fn tap_payment_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     payment_policy: &SkillPaymentPolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match payment_policy {
@@ -136,7 +136,7 @@ fn tap_payment_policy_arg(
 }
 
 fn tap_schedule_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match schedule_policy {
@@ -163,7 +163,7 @@ fn tap_schedule_policy_arg(
 
 #[allow(clippy::too_many_arguments)]
 fn append_tap_register_skill(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
     dag: sui::types::Argument,
@@ -231,14 +231,12 @@ fn nexus_objects() -> NexusObjects {
         config_hash: vec![0; 32],
         network_id: addr("0x4"),
         tool_registry: object_ref("0x6", 1, 6),
-        verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
         agent_registry: object_ref("0xc", 1, 12),
         default_dag_executor: DefaultDagExecutorTarget {
             agent_id: addr("0xa1"),
             skill_id: 177,
         },
-        gas_service: object_ref("0xd", 1, 13),
         leader_registry: object_ref("0xe", 1, 14),
         priority_fee_vault: object_ref("0xf", 1, 15),
         priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),

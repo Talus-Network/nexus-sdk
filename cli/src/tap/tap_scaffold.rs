@@ -104,13 +104,10 @@ mod tests {
     }
 
     #[test]
-    fn scaffolded_move_toml_declares_all_five_nexus_dependencies() {
-        // The scaffold ships with all five published Nexus packages
-        // (primitives, interface, registry, gas, workflow) declared so authors
-        // who reach for any standard-TAP surface beyond the minimal vertex
-        // tool — cap-gated authorization, scheduler interactions, registry
-        // lookups — don't have to discover and add deps mid-build. Authors
-        // who want a leaner manifest can drop unused entries themselves.
+    fn scaffolded_move_toml_declares_all_six_nexus_dependencies() {
+        // The scaffold declares the complete six package graph so authors can
+        // use capability authorization, registry lookup, workflow, and
+        // scheduler surfaces without changing the generated manifest.
         let files = scaffold_files(
             "tutorial transfer",
             "tutorial_transfer",
@@ -126,9 +123,10 @@ mod tests {
         for dep in [
             "nexus_primitives = { local = \"deps/primitives\" }",
             "nexus_interface  = { local = \"deps/interface\" }",
+            "nexus_tool       = { local = \"deps/tool\" }",
             "nexus_registry   = { local = \"deps/registry\" }",
-            "nexus_gas = { local = \"deps/gas\" }",
             "nexus_workflow   = { local = \"deps/workflow\" }",
+            "nexus_scheduler  = { local = \"deps/scheduler\" }",
         ] {
             assert!(
                 move_toml.contains(dep),

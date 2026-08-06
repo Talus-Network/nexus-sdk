@@ -8,7 +8,7 @@ use {
             address_balance::{fetch_submission_context, finish_transaction, NonceAllocator},
             crawler::Crawler,
             error::NexusError,
-            gas::GasActions,
+            network::NetworkActions,
             protocol::{ProtocolExtras, ProtocolResolver},
             scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
@@ -337,9 +337,9 @@ impl NexusClient {
         NexusClientBuilder::new()
     }
 
-    /// Return a [`GasActions`] instance for performing gas-related operations.
-    pub fn gas(&self) -> GasActions {
-        GasActions {
+    /// Return a [`NetworkActions`] instance for Nexus network fee operations.
+    pub fn network(&self) -> NetworkActions {
+        NetworkActions {
             client: self.clone(),
         }
     }
@@ -358,9 +358,13 @@ impl NexusClient {
         }
     }
 
-    /// Starts one client scoped programmable transaction.
-    pub fn transaction(&self) -> NexusTransaction<'_> {
-        NexusTransaction::new(self)
+    /// Starts one programmable transaction from the active protocol snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when the active protocol cannot be resolved.
+    pub async fn transaction(&self) -> Result<NexusTransaction, NexusError> {
+        Ok(NexusTransaction::new(self.operation_client().await?))
     }
 
     /// Returns a
@@ -611,8 +615,8 @@ impl NexusClient {
     /// Return a new immutable client bound to the active protocol configuration.
     ///
     /// The original client remains bound to its existing configuration.
-    /// Standard action methods refresh automatically before beginning an
-    /// operation.
+    /// Standard action methods resolve [`crate::move_bindings::primitives::protocol::Protocol`]
+    /// before beginning an operation.
     pub async fn refresh_protocol(&self) -> Result<NexusClient, NexusError> {
         let Some(resolver) = &self.protocol_resolver else {
             return Ok(self.clone());
@@ -765,23 +769,26 @@ impl NexusClient {
         Ok(tool.object_ref())
     }
 
-    /// Derive and fetch a [`ToolGas`] object based on the provided tool FQN.
-    pub(crate) async fn fetch_tool_gas(
+    /// Derive and fetch a [`ToolPayment`] object based on the provided tool FQN.
+    pub(crate) async fn fetch_tool_payment(
         &self,
         tool_fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
         let crawler = self.crawler();
         let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
-
-        let tool_gas_id =
-            crate::move_bindings::derive_tool_gas_id(tool_registry_object_id, tool_fqn)
-                .map_err(NexusError::Parsing)?;
-        let tool_gas = crawler
-            .get_object_metadata(tool_gas_id)
+        let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let tool_payment_id = crate::move_bindings::derive_tool_payment_id(
+            self.nexus_objects.tool_type_origin_pkg_id(),
+            tool_id,
+        )
+        .map_err(NexusError::Parsing)?;
+        let tool_payment = crawler
+            .get_object_metadata(tool_payment_id)
             .await
             .map_err(NexusError::Rpc)?;
 
-        Ok(tool_gas.object_ref())
+        Ok(tool_payment.object_ref())
     }
 }
 
@@ -1195,7 +1202,7 @@ mod tests {
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let client = keyless_client(&rpc_url).await;
 
-        let result = client.gas().configure_priority_fee_vault(1).await;
+        let result = client.network().configure_priority_fee_vault(1).await;
 
         assert!(matches!(result, Err(NexusError::MissingPrivateKey)));
     }

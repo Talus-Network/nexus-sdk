@@ -25,6 +25,19 @@ pub enum EventIngestionError {
         #[source]
         status: tonic::Status,
     },
+    /// Sui no longer retains the requested replay checkpoint.
+    #[error(
+        "Sui cannot replay events from checkpoint {start_checkpoint} while {operation}: {status}"
+    )]
+    ReplayGap {
+        /// Inclusive checkpoint requested from Sui.
+        start_checkpoint: u64,
+        /// Replay operation that failed.
+        operation: &'static str,
+        /// Status returned by Sui.
+        #[source]
+        status: tonic::Status,
+    },
     /// A Sui response violated the event stream contract.
     #[error("Sui event stream protocol failed: {0}")]
     Protocol(String),
@@ -49,6 +62,26 @@ pub enum EventIngestionError {
 impl EventIngestionError {
     pub(super) fn rpc(operation: &'static str, status: tonic::Status) -> Self {
         Self::Rpc { operation, status }
+    }
+
+    pub(super) fn replay_rpc(
+        start_checkpoint: u64,
+        operation: &'static str,
+        status: tonic::Status,
+    ) -> Self {
+        if status.code() == tonic::Code::OutOfRange {
+            Self::ReplayGap {
+                start_checkpoint,
+                operation,
+                status,
+            }
+        } else {
+            Self::rpc(operation, status)
+        }
+    }
+
+    pub(super) fn is_replay_gap(&self) -> bool {
+        matches!(self, Self::ReplayGap { .. })
     }
 
     pub(super) fn is_retryable(&self) -> bool {
@@ -89,6 +122,7 @@ pub struct EventIngestor<Q: EventQuery> {
     pub(super) read_mask: sui::grpc::FieldMask,
     pub(super) channel_capacity: usize,
     pub(super) cancellation_token: CancellationToken,
+    pub(super) recover_replay_gap: bool,
 }
 
 impl<Q: EventQuery> EventIngestor<Q> {
@@ -104,6 +138,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
             read_mask,
             channel_capacity: DEFAULT_CHANNEL_CAPACITY,
             cancellation_token: CancellationToken::new(),
+            recover_replay_gap: false,
         }
     }
 
@@ -116,6 +151,16 @@ impl<Q: EventQuery> EventIngestor<Q> {
     /// Sets the token used to stop ingestion.
     pub fn with_cancellation_token(mut self, cancellation_token: CancellationToken) -> Self {
         self.cancellation_token = cancellation_token;
+        self
+    }
+
+    /// Resumes at the live cursor when Sui no longer retains replay history.
+    ///
+    /// The ingestor reports [`EventIngestionError::ReplayGap`] before
+    /// it resumes. Leave this disabled when the consumer requires every event
+    /// from the requested checkpoint.
+    pub fn with_replay_gap_recovery(mut self) -> Self {
+        self.recover_replay_gap = true;
         self
     }
 

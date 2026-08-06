@@ -7,10 +7,12 @@
 //! and accessors used by SDK services while preserving the enum variants, table metadata, and
 //! optional fields generated from normalized package IR.
 
+#[cfg(any(test, feature = "upgrade_test"))]
+use crate::move_bindings::registry::network_auth::NetworkAuthStateV2;
 #[cfg(test)]
 use crate::move_bindings::{
     move_std::option::Option as MoveOption,
-    sui_framework::{table::Table as MoveTable, vec_set::VecSet},
+    sui_framework::{object::UID, table::Table as MoveTable, vec_set::VecSet},
 };
 use crate::{
     move_bindings::{
@@ -143,9 +145,34 @@ impl NetworkAuthStateV1 {
         Self {
             protocol_id: ID::new(sui::types::Address::ZERO),
             minimum_protocol_version: 1,
+            registered_key_witness: UID::new(sui::types::Address::ZERO),
             identities: VecSet {
                 contents: identities,
             },
+        }
+    }
+}
+
+#[cfg(any(test, feature = "upgrade_test"))]
+impl NetworkAuthStateV2 {
+    /// Iterates the leader capability IDs stored in this payload.
+    pub fn leader_cap_ids(&self) -> impl Iterator<Item = sui::types::Address> + '_ {
+        self.identities
+            .contents
+            .iter()
+            .filter_map(IdentityKey::leader_cap_id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_for_test(identities: Vec<IdentityKey>, migration_marker: u64) -> Self {
+        Self {
+            protocol_id: ID::new(sui::types::Address::ZERO),
+            minimum_protocol_version: 1,
+            registered_key_witness: UID::new(sui::types::Address::ZERO),
+            identities: VecSet {
+                contents: identities,
+            },
+            migration_marker,
         }
     }
 }
@@ -223,5 +250,19 @@ mod tests {
             .leader_cap_ids()
             .next()
             .is_none());
+    }
+
+    #[test]
+    fn network_auth_state_v2_preserves_identity_projection() {
+        let mut rng = rand::thread_rng();
+        let leader = sui::types::Address::generate(&mut rng);
+        let tool = sui::types::Address::generate(&mut rng);
+        let state = NetworkAuthStateV2::new_for_test(
+            vec![IdentityKey::leader(leader), IdentityKey::tool(tool)],
+            2,
+        );
+
+        assert_eq!(state.leader_cap_ids().collect::<Vec<_>>(), vec![leader]);
+        assert_eq!(state.migration_marker, 2);
     }
 }
