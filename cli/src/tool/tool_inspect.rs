@@ -1,4 +1,5 @@
 use {
+    super::tool_output::{ExternalVerifierOutput, ToolOutput, ToolVerifierSupportOutput},
     crate::{
         command_title,
         display::json_output,
@@ -30,22 +31,40 @@ pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
 
 /// Stable JSON contract for `nexus tool inspect`.
 ///
-/// `tool_ref` is a CLI-owned projection that hides generated Move enum and
-/// byte-string details. The fully decoded on-chain `tool` remains available
-/// for callers that need the complete record.
+/// `tool_ref` and `tool` expose semantic values instead of generated Move
+/// storage wrappers. `tool` contains the complete CLI record.
 pub(crate) fn inspect_tool_result_json(
     inspection: &ToolInspection,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
     let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolStateV1::reference))?;
+    let tool = inspection
+        .tool
+        .as_ref()
+        .map(|tool| ToolOutput::try_from_state(tool, None))
+        .transpose()
+        .map_err(NexusCliError::Any)?;
+    let verifier_support = inspection
+        .verifier_support
+        .as_ref()
+        .map(ToolVerifierSupportOutput::try_from)
+        .transpose()
+        .map_err(NexusCliError::Any)?;
+    let external_verifier = inspection
+        .external_verifier
+        .as_ref()
+        .map(ExternalVerifierOutput::try_from)
+        .transpose()
+        .map_err(NexusCliError::Any)?;
 
     Ok(json!({
+        "fqn": inspection.fqn,
         "tool_id": inspection.tool_id,
         "tool_cashier_id": inspection.tool_cashier_id,
         "exists": inspection.exists,
         "tool_ref": tool_ref,
-        "tool": inspection.tool,
-        "verifier_support": inspection.verifier_support,
-        "external_verifier": inspection.external_verifier,
+        "tool": tool,
+        "verifier_support": verifier_support,
+        "external_verifier": external_verifier,
         "invocation_cost_mist": inspection.invocation_cost_mist,
     }))
 }
@@ -86,6 +105,33 @@ pub(crate) fn registration_result_json(
     object.insert("already_registered".to_owned(), json!(true));
 
     Ok(Some(result))
+}
+
+/// Adds transaction evidence to the semantic result from [`inspect_tool_result_json`].
+pub(crate) fn registration_submission_result_json(
+    inspection: &ToolInspection,
+    digest: &sui::types::Digest,
+    tx_checkpoint: u64,
+    owner_cap_over_tool_id: sui::types::Address,
+    cashier_admin_cap_id: Option<sui::types::Address>,
+) -> AnyResult<serde_json::Value, NexusCliError> {
+    let mut result = inspect_tool_result_json(inspection)?;
+    let object = result.as_object_mut().ok_or_else(|| {
+        NexusCliError::Any(anyhow!("Tool inspection must serialize as an object"))
+    })?;
+    object.insert("already_registered".to_owned(), json!(false));
+    object.insert("digest".to_owned(), json!(digest));
+    object.insert("tx_checkpoint".to_owned(), json!(tx_checkpoint));
+    object.insert(
+        "owner_cap_over_tool_id".to_owned(),
+        json!(owner_cap_over_tool_id),
+    );
+    object.insert(
+        "cashier_admin_cap_id".to_owned(),
+        json!(cashier_admin_cap_id),
+    );
+
+    Ok(result)
 }
 
 pub(crate) fn normalized_tool_ref_json(
@@ -280,12 +326,141 @@ mod tests {
         super::*,
         nexus_sdk::{
             fqn,
-            move_bindings::{move_std::ascii, sui_framework::object::ID},
+            move_bindings::{
+                interface::verifier::{ToolVerifierSupport, VerifierMethodId},
+                move_std::{ascii, option::Option as MoveOption},
+                sui_framework::{balance::Balance, object::ID},
+                tool::external_verifier::ExternalVerifier,
+            },
         },
     };
 
     fn ascii(value: &str) -> ascii::String {
         ascii::String::from(value)
+    }
+
+    fn fixture_tool() -> ToolStateV1 {
+        ToolStateV1 {
+            minimum_protocol_version: 1,
+            registry: ID::new(sui::types::Address::from_static("0x42")),
+            fqn: ascii("xyz.taluslabs.example@1"),
+            r#ref: ToolRef::Http {
+                url: b"https://example.com/tool".to_vec(),
+            },
+            description: b"Example tool".to_vec(),
+            input_schema: br#"{"type":"object"}"#.to_vec(),
+            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+            verified: true,
+            vault: Balance {
+                value: 25,
+                phantom_t0: std::marker::PhantomData,
+            },
+            workflow_authorization_cap_first: false,
+            lock_duration_ms: 5_000,
+            registered_at_ms: 0,
+            unregistered_at_ms: MoveOption::from(None),
+        }
+    }
+
+    #[test]
+    fn inspect_tool_result_json_uses_the_semantic_tool_contract() {
+        let inspection = ToolInspection {
+            fqn: fqn!("xyz.taluslabs.example@1"),
+            tool_id: sui::types::Address::from_static("0xaa"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
+            exists: true,
+            tool: Some(fixture_tool()),
+            verifier_support: None,
+            external_verifier: None,
+            invocation_cost_mist: Some(7),
+        };
+
+        let json = inspect_tool_result_json(&inspection).expect("inspection JSON should build");
+
+        assert_eq!(json["fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(json["tool"]["fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(json["tool"]["description"], "Example tool");
+        assert_eq!(json["tool"]["input_schema"]["type"], "object");
+        assert!(!json.to_string().contains("\"bytes\""));
+    }
+
+    #[test]
+    fn inspect_tool_result_json_uses_semantic_verifier_values() {
+        let method = VerifierMethodId::new(
+            ID::new(sui::types::Address::from_static("0xaa")),
+            ID::new(sui::types::Address::from_static("0xcc")),
+            ascii("verifier"),
+            ascii("verify"),
+        );
+        let inspection = ToolInspection {
+            fqn: fqn!("xyz.taluslabs.example@1"),
+            tool_id: sui::types::Address::from_static("0xaa"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
+            exists: true,
+            tool: Some(fixture_tool()),
+            verifier_support: Some(ToolVerifierSupport::External {
+                method_id: method.clone(),
+            }),
+            external_verifier: Some(ExternalVerifier::new(
+                method,
+                ID::new(sui::types::Address::from_static("0xdd")),
+                vec![ID::new(sui::types::Address::from_static("0xee"))],
+            )),
+            invocation_cost_mist: Some(7),
+        };
+
+        let json = inspect_tool_result_json(&inspection).expect("inspection JSON should build");
+
+        assert_eq!(json["verifier_support"]["kind"], "external");
+        assert_eq!(json["verifier_support"]["method"]["module"], "verifier");
+        assert_eq!(json["verifier_support"]["method"]["function"], "verify");
+        assert_eq!(
+            json["external_verifier"]["witness_id"],
+            sui::types::Address::from_static("0xdd").to_string()
+        );
+        assert_eq!(
+            json["external_verifier"]["immutable_shared_object_ids"][0],
+            sui::types::Address::from_static("0xee").to_string()
+        );
+        assert!(!json.to_string().contains("\"bytes\""));
+    }
+
+    #[test]
+    fn registration_submission_reuses_the_inspection_contract() {
+        let inspection = ToolInspection {
+            fqn: fqn!("xyz.taluslabs.example@1"),
+            tool_id: sui::types::Address::from_static("0xaa"),
+            tool_cashier_id: sui::types::Address::from_static("0xbb"),
+            exists: true,
+            tool: Some(fixture_tool()),
+            verifier_support: None,
+            external_verifier: None,
+            invocation_cost_mist: Some(7),
+        };
+        let digest = sui::types::Digest::from([3; 32]);
+
+        let json = registration_submission_result_json(
+            &inspection,
+            &digest,
+            9,
+            sui::types::Address::from_static("0xcc"),
+            Some(sui::types::Address::from_static("0xdd")),
+        )
+        .expect("registration JSON should build");
+
+        assert_eq!(json["fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(json["tool"]["fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(json["digest"], digest.to_string());
+        assert_eq!(json["tx_checkpoint"], 9);
+        assert_eq!(
+            json["owner_cap_over_tool_id"],
+            sui::types::Address::from_static("0xcc").to_string()
+        );
+        assert_eq!(
+            json["cashier_admin_cap_id"],
+            sui::types::Address::from_static("0xdd").to_string()
+        );
+        assert!(!json.to_string().contains("\"bytes\""));
     }
 
     #[test]

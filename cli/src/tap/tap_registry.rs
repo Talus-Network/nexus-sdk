@@ -10,12 +10,6 @@ pub(crate) async fn show_registry() -> AnyResult<(), NexusCliError> {
         .map_err(NexusCliError::Any)?
         .data;
 
-    notify_success!(
-        "Registry {id} ({agents} agents, {skills} skills)",
-        id = registry.id.to_string().truecolor(100, 100, 100),
-        agents = registry.agents.len(),
-        skills = registry.skills.len(),
-    );
-
+    human_output(&render_registry(&registry));
     json_output(&registry_show_result_json(&registry))
 }

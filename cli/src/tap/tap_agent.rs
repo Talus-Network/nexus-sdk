@@ -13,12 +13,14 @@ pub(crate) async fn handle_agent_command(command: AgentCommand) -> AnyResult<(),
             let conf = CliConf::load().await.unwrap_or_default();
             let mut agents = conf.agents.into_iter().collect::<Vec<_>>();
             agents.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+            human_output(&render_agent_list(&agents));
             json_output(&agent_list_result_json(&agents))
         }
         AgentCommand::Remove { name } => {
             let mut conf = CliConf::load().await.unwrap_or_default();
             let removed = conf.agents.remove(&name);
             conf.save().await.map_err(NexusCliError::Any)?;
+            human_output(&render_agent_remove(&name, removed));
             json_output(&agent_remove_result_json(&name, removed))
         }
     }

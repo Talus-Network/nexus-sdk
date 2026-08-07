@@ -1,5 +1,5 @@
 use {
-    crate::{command_title, display::json_output, loading, prelude::*},
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*},
     convert_case::{Case, Casing},
     minijinja::{context, Environment},
     tokio::fs::create_dir_all,
@@ -155,6 +155,7 @@ pub(crate) async fn create_new_tool(
     }
 
     writing_file.success();
+    notify_success!("Created Tool scaffold at {}", root_directory.display());
 
     json_output(&json!({
         "path": root_directory,

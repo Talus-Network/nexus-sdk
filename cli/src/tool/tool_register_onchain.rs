@@ -21,7 +21,7 @@ use {
         types::OnchainToolMode,
     },
     serde::{Deserialize, Serialize},
-    serde_json::{json, Map, Value},
+    serde_json::{Map, Value},
     std::{
         collections::HashMap,
         io::{self, Write},
@@ -155,20 +155,14 @@ pub(crate) async fn register_onchain_tool(
         .inspect_tool(&fqn)
         .await
         .map_err(NexusCliError::Nexus)?;
-    let tool_ref = super::tool_inspect::normalized_tool_ref_json(
-        inspection.tool.as_ref().map(|tool| tool.reference()),
+    let result = super::tool_inspect::registration_submission_result_json(
+        &inspection,
+        &response.digest,
+        response.checkpoint,
+        over_tool_id,
+        cashier_admin_id,
     )?;
-
-    json_output(&json!({
-        "digest": response.digest,
-        "tx_checkpoint": response.checkpoint,
-        "tool_id": inspection.tool_id,
-        "tool_cashier_id": inspection.tool_cashier_id,
-        "owner_cap_over_tool_id": over_tool_id,
-        "cashier_admin_cap_id": cashier_admin_id,
-        "tool_ref": tool_ref,
-        "tool": inspection.tool,
-    }))?;
+    json_output(&result)?;
 
     Ok(())
 }

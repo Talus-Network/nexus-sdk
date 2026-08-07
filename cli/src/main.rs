@@ -134,7 +134,7 @@ async fn main() {
         Command::Tap(tap) => tap::handle(tap).await,
         Command::Task(task) => task::handle(*task).await,
         Command::Execution(execution) => execution::handle(execution).await,
-        Command::Completion(completion) => completion::handle(completion),
+        Command::Completion(completion) => completion::handle(completion, cli.json),
     };
 
     // Handle any errors that occurred during command execution.
@@ -176,5 +176,11 @@ mod tests {
         };
 
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn completion_rejects_json_mode() {
+        let cli = Cli::try_parse_from(["nexus", "--json", "completion", "bash"]).unwrap();
+        assert!(cli.json);
     }
 }

@@ -251,9 +251,12 @@ pub(crate) async fn validate_skill(config_path: PathBuf) -> AnyResult<SkillConfi
     }
 
     handle.success();
-    json_output(&validate_skill_result_json(&config))?;
-
     Ok(config)
+}
+
+pub(crate) async fn validate_skill_command(config_path: PathBuf) -> AnyResult<(), NexusCliError> {
+    let config = validate_skill(config_path).await?;
+    json_output(&validate_skill_result_json(&config))
 }
 
 #[cfg(test)]

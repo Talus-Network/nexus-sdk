@@ -27,7 +27,7 @@ use tap_validate_skill::{
 use {
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
@@ -74,6 +74,14 @@ use {
         publish_skill_result_json,
         register_skill_result_json,
         registry_show_result_json,
+        render_agent_list,
+        render_agent_remove,
+        render_default_agent,
+        render_payment,
+        render_payment_wait,
+        render_registry,
+        render_requirements,
+        render_vault_balance,
         requirements_result_json,
         scaffold_result_json,
         update_skill_result_json,
@@ -89,7 +97,7 @@ use {
     tap_scaffold::scaffold_tap_skill,
     tap_settle::handle_execution_command,
     tap_update_skill::update_skill_from_artifact,
-    tap_validate_skill::{resolve_relative, validate_skill},
+    tap_validate_skill::{resolve_relative, validate_skill, validate_skill_command},
     tap_vault::handle_vault_command,
     tap_vault_deposit::deposit_agent_vault,
     tokio::fs::create_dir_all,
@@ -436,7 +444,7 @@ pub(crate) enum ExecutionCommand {
 pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> {
     match command {
         TapCommand::Scaffold { name, target } => scaffold_tap_skill(name, target).await,
-        TapCommand::ValidateSkill { config } => validate_skill(config).await.map(|_| ()),
+        TapCommand::ValidateSkill { config } => validate_skill_command(config).await,
         TapCommand::PublishSkill { config, out, gas } => {
             publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
         }
@@ -881,10 +889,7 @@ mod tests {
         );
 
         assert_eq!(output["function"], "update_skill");
-        assert_eq!(
-            output["current_interface_revision"],
-            serde_json::json!({ "inner": 3 })
-        );
+        assert_eq!(output["current_interface_revision"], serde_json::json!(3));
         assert!(output.get("config_digest_hex").is_none());
     }
 
