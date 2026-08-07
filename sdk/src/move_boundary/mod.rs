@@ -13,7 +13,10 @@ use crate::{
     types::NexusObjects,
 };
 #[cfg(feature = "transactions")]
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 #[cfg(feature = "transactions")]
 use sui_move_call::CallTarget;
 #[cfg(feature = "transactions")]
@@ -49,21 +52,20 @@ pub(crate) fn publish_dependency_ids_or_framework_defaults(
     }
 }
 
-/// Nexus scoped PTB builder.
+/// A PTB builder bound to one Nexus deployment.
 ///
-/// This is the single transaction building form inside the SDK: it carries the canonical
-/// `sui_move_ptb::PtbBuilder` together with the Nexus deployment object/package scope.
-/// Generic PTB input/command operations come from `PtbBuilder`; this type only adds
-/// Nexus scoped generated calls and domain constructors.
+/// The builder owns the canonical [`PtbBuilder`] and the [`NexusObjects`] that
+/// define package identity. Generated call targets and generic Move types are
+/// resolved through that same deployment.
 #[cfg(feature = "transactions")]
-pub struct NexusPtbBuilder<'a> {
-    objects: &'a NexusObjects,
+pub struct NexusPtbBuilder {
+    objects: Arc<NexusObjects>,
     tx: PtbBuilder,
 }
 
 #[cfg(feature = "transactions")]
-impl<'a> NexusPtbBuilder<'a> {
-    fn new(objects: &'a NexusObjects) -> Self {
+impl NexusPtbBuilder {
+    pub(crate) fn new(objects: Arc<NexusObjects>) -> Self {
         Self {
             objects,
             tx: PtbBuilder::new(),
@@ -71,8 +73,8 @@ impl<'a> NexusPtbBuilder<'a> {
     }
 
     /// Deployment object/package IDs associated with this PTB.
-    pub fn objects(&self) -> &'a NexusObjects {
-        self.objects
+    pub fn objects(&self) -> &NexusObjects {
+        self.objects.as_ref()
     }
 
     /// Add a generated Move call target to this PTB.
@@ -81,7 +83,8 @@ impl<'a> NexusPtbBuilder<'a> {
         target: impl FnOnce() -> Result<CallTarget, sui_move_call::CallSpecError>,
         arguments: Vec<Argument>,
     ) -> anyhow::Result<Argument> {
-        Ok(self.tx.call_target(target()?, arguments)?)
+        let target = crate::move_bindings::with_nexus_scope(self.objects.as_ref(), target)?;
+        Ok(self.tx.call_target(target, arguments)?)
     }
 
     /// Add an already built Move call target to this PTB.
@@ -110,6 +113,20 @@ impl<'a> NexusPtbBuilder<'a> {
         )?)
     }
 
+    /// Add a runtime owned Move call with already validated type arguments.
+    pub fn call_function_with_type_args(
+        &mut self,
+        package: sui::types::Address,
+        module: impl AsRef<str>,
+        function: impl AsRef<str>,
+        type_arguments: Vec<sui::types::TypeTag>,
+        arguments: Vec<Argument>,
+    ) -> anyhow::Result<Argument> {
+        let mut target = CallTarget::new(package, module.as_ref(), function.as_ref())?;
+        target.type_arguments = type_arguments;
+        Ok(self.tx.call_target(target, arguments)?)
+    }
+
     /// Build a Move `0x1::ascii::String` from bytes.
     pub fn ascii_string(&mut self, value: impl AsRef<str>) -> Result<Argument, BuildError> {
         ascii_string(&mut self.tx, value)
@@ -122,6 +139,71 @@ impl<'a> NexusPtbBuilder<'a> {
             sui_framework::object::id_from_address_target()?,
             vec![address],
         )
+    }
+
+    /// Withdraws the requested asset from the sender address balance and
+    /// redeems it as a coin of the same type.
+    ///
+    /// Callers must use this same type when returning any remaining balance.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
+    /// be built.
+    pub fn withdraw_coin_from_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        amount: u64,
+    ) -> Result<Argument, BuildError> {
+        self.tx.funds_withdrawal_coin(coin_type, amount)
+    }
+
+    /// Withdraws SUI from the sender address balance and redeems it as a coin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError`] if the withdrawal input or redemption call cannot
+    /// be built.
+    pub fn withdraw_sui_coin(&mut self, amount: u64) -> Result<Argument, BuildError> {
+        let sui_type =
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
+        self.withdraw_coin_from_address_balance(sui_type, amount)
+    }
+
+    /// Consumes a coin and credits its value to the recipient address balance
+    /// using the same asset type.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipient input or transfer call cannot be
+    /// built.
+    pub fn send_coin_to_address_balance(
+        &mut self,
+        coin_type: sui::types::TypeTag,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        let recipient = self.tx.arg(&recipient)?;
+        let mut target = CallTarget::new(sui::types::Address::TWO, "coin", "send_funds")?;
+        target.type_arguments = vec![coin_type];
+        self.call_raw_target(target, vec![coin, recipient])?;
+        Ok(())
+    }
+
+    /// Consumes a SUI coin and credits its value to an address balance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recipient input or transfer call cannot be
+    /// built.
+    pub fn send_sui_to_address_balance(
+        &mut self,
+        coin: Argument,
+        recipient: sui::types::Address,
+    ) -> anyhow::Result<()> {
+        let sui_type =
+            crate::move_bindings::type_tag::<sui_framework::sui::SUI>(self.objects.as_ref());
+        self.send_coin_to_address_balance(sui_type, coin, recipient)
     }
 
     fn call_target_with_ascii(
@@ -209,81 +291,20 @@ impl<'a> NexusPtbBuilder<'a> {
         self.call_target(target, vec![])
     }
 
-    /// Build a generated `interface::verifier::VerifierMode`.
-    pub(crate) fn verifier_mode(
+    /// Build a generated `interface::verifier::ToolVerifierMode`.
+    pub(crate) fn tool_verifier_mode(
         &mut self,
-        mode: &interface::verifier::VerifierMode,
+        mode: &interface::verifier::ToolVerifierMode,
     ) -> anyhow::Result<Argument> {
         let target = match mode {
-            interface::verifier::VerifierMode::None => {
+            interface::verifier::ToolVerifierMode::None => {
                 interface::verifier::verifier_mode_none_target
             }
-            interface::verifier::VerifierMode::LeaderRegisteredKey => {
-                interface::verifier::verifier_mode_authenticated_communication_target
+            interface::verifier::ToolVerifierMode::RegisteredKey => {
+                interface::verifier::verifier_mode_registered_key_target
             }
-            interface::verifier::VerifierMode::ToolVerifierContract => {
-                interface::verifier::verifier_mode_tool_verifier_contract_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerifierConfig`.
-    pub(crate) fn verifier_config(
-        &mut self,
-        config: &interface::verifier::VerifierConfig,
-    ) -> anyhow::Result<Argument> {
-        let mode = self.verifier_mode(&config.mode)?;
-        let method = self.ascii_string(&config.method)?;
-        self.call_target(
-            interface::verifier::verifier_config_target,
-            vec![mode, method],
-        )
-    }
-
-    /// Build a generated `interface::verifier::FailureEvidenceKind`.
-    pub(crate) fn failure_evidence_kind(
-        &mut self,
-        evidence_kind: &interface::verifier::FailureEvidenceKind,
-    ) -> anyhow::Result<Argument> {
-        let target = match evidence_kind {
-            interface::verifier::FailureEvidenceKind::ToolEvidence => {
-                interface::verifier::failure_evidence_kind_tool_evidence_target
-            }
-            interface::verifier::FailureEvidenceKind::LeaderEvidence => {
-                interface::verifier::failure_evidence_kind_leader_evidence_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerificationSubmissionKind`.
-    pub(crate) fn verification_submission_kind(
-        &mut self,
-        submission_kind: &interface::verifier::VerificationSubmissionKind,
-    ) -> anyhow::Result<Argument> {
-        let target = match submission_kind {
-            interface::verifier::VerificationSubmissionKind::Success => {
-                interface::verifier::verification_submission_kind_success_target
-            }
-            interface::verifier::VerificationSubmissionKind::ErrEval => {
-                interface::verifier::verification_submission_kind_err_eval_target
-            }
-        };
-        self.call_target(target, vec![])
-    }
-
-    /// Build a generated `interface::verifier::VerifierDecision`.
-    pub(crate) fn verifier_decision(
-        &mut self,
-        decision: &interface::verifier::VerifierDecision,
-    ) -> anyhow::Result<Argument> {
-        let target = match decision {
-            interface::verifier::VerifierDecision::Accept => {
-                interface::verifier::verifier_decision_accept_target
-            }
-            interface::verifier::VerifierDecision::Reject => {
-                interface::verifier::verifier_decision_reject_target
+            interface::verifier::ToolVerifierMode::External => {
+                interface::verifier::verifier_mode_external_target
             }
         };
         self.call_target(target, vec![])
@@ -382,12 +403,23 @@ impl<'a> NexusPtbBuilder<'a> {
         self.call_target(one_target, vec![one])
     }
 
+    /// Build a typed Move `vector<T>` from existing PTB arguments.
+    pub fn move_vector<T>(&mut self, elements: Vec<Argument>) -> Result<Argument, BuildError>
+    where
+        T: sui_move::MoveType,
+    {
+        let element_type = crate::move_bindings::type_tag::<T>(self.objects.as_ref());
+        self.tx.make_move_vector(Some(element_type), elements)
+    }
+
     /// Build a Move `0x1::option::Option<T>` from an optional PTB argument.
     pub fn option<T>(&mut self, value: Option<Argument>) -> Result<Argument, BuildError>
     where
         T: sui_move::MoveType,
     {
-        option::<T>(&mut self.tx, value)
+        crate::move_bindings::with_nexus_scope(self.objects.as_ref(), || {
+            option::<T>(&mut self.tx, value)
+        })
     }
 
     /// Finish and return the canonical programmable transaction.
@@ -402,17 +434,17 @@ impl<'a> NexusPtbBuilder<'a> {
 /// scoped builder type used by reusable fragments, while this function owns package scoping and
 /// finalization.
 #[cfg(feature = "transactions")]
-pub fn ptb<'a>(
-    objects: &'a NexusObjects,
-    build: impl FnOnce(&mut NexusPtbBuilder<'a>) -> anyhow::Result<()>,
+pub fn ptb(
+    objects: &NexusObjects,
+    build: impl FnOnce(&mut NexusPtbBuilder) -> anyhow::Result<()>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
-    let mut tx = NexusPtbBuilder::new(objects);
+    let mut tx = NexusPtbBuilder::new(Arc::new(objects.clone()));
     crate::move_bindings::with_nexus_scope(objects, || build(&mut tx))?;
     Ok(tx.finish())
 }
 
 #[cfg(feature = "transactions")]
-impl Deref for NexusPtbBuilder<'_> {
+impl Deref for NexusPtbBuilder {
     type Target = PtbBuilder;
 
     fn deref(&self) -> &Self::Target {
@@ -421,7 +453,7 @@ impl Deref for NexusPtbBuilder<'_> {
 }
 
 #[cfg(feature = "transactions")]
-impl DerefMut for NexusPtbBuilder<'_> {
+impl DerefMut for NexusPtbBuilder {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.tx
     }
@@ -451,11 +483,15 @@ mod tests {
     use {
         super::*,
         crate::{
-            move_bindings::workflow::gas::{deescalate_target, GasService},
+            move_bindings::{
+                interface::agent::FixedTool,
+                tool::tool_cashier::{settle_payment_vertex_target, ToolCashier},
+            },
             sui,
-            types::DefaultDagExecutorTarget,
+            types::{DefaultDagExecutorTarget, UsTokenConfig},
         },
         sui_move::MoveStruct,
+        sui_move_call::CallArg,
     };
 
     fn addr(byte: u8) -> sui::types::Address {
@@ -467,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn derives_tool_object_ids_match_snapshots() {
+    fn derives_tool_and_payment_ids_from_their_respective_parents() {
         let registry_id = sui::types::Address::from_static(
             "0x940f0dd81d4e4ae2cd476ff61ca5699e0d9356e1874d6c4ba3a5bdf28e67b9e9",
         );
@@ -479,12 +515,10 @@ mod tests {
                 "0x63152163bf12d54f38742656cba5d37a05e89d3ef5df7e9d22062e7bff0aed35"
             )
         );
-        assert_eq!(
-            crate::move_bindings::derive_tool_gas_id(registry_id, &fqn).unwrap(),
-            sui::types::Address::from_static(
-                "0x63152163bf12d54f38742656cba5d37a05e89d3ef5df7e9d22062e7bff0aed35"
-            )
-        );
+        let add_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
+        let add_payment =
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), add_tool).unwrap();
+        assert_ne!(add_payment, add_tool);
 
         let fqn = crate::fqn!("xyz.taluslabs.math.i64.mul@1");
         assert_eq!(
@@ -493,12 +527,11 @@ mod tests {
                 "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da"
             )
         );
-        assert_eq!(
-            crate::move_bindings::derive_tool_gas_id(registry_id, &fqn).unwrap(),
-            sui::types::Address::from_static(
-                "0xc841b225a7e79c76942f3df05f1fcf17c2b259626ed51cb84e562cb3403604da"
-            )
-        );
+        let mul_tool = crate::move_bindings::derive_tool_id(registry_id, &fqn).unwrap();
+        let mul_payment =
+            crate::move_bindings::derive_tool_cashier_id(addr(0xa7), mul_tool).unwrap();
+        assert_ne!(mul_payment, mul_tool);
+        assert_ne!(mul_payment, add_payment);
     }
 
     #[test]
@@ -529,24 +562,59 @@ mod tests {
 
     fn objects() -> NexusObjects {
         NexusObjects {
-            workflow_pkg_id: addr(0x44),
-            scheduler_pkg_id: addr(0x55),
-            primitives_pkg_id: addr(0x11),
-            interface_pkg_id: addr(0x22),
+            protocol_version: 1,
+            protocol: obj(10),
+            packages: crate::types::NexusPackages {
+                primitives: crate::types::PackageVersion::new(
+                    addr(0x10),
+                    addr(0x11),
+                    2,
+                    Default::default(),
+                ),
+                interface: crate::types::PackageVersion::new(
+                    addr(0x20),
+                    addr(0x22),
+                    2,
+                    Default::default(),
+                ),
+                tool: crate::types::PackageVersion::new(
+                    addr(0x80),
+                    addr(0x88),
+                    2,
+                    Default::default(),
+                ),
+                registry: crate::types::PackageVersion::new(
+                    addr(0x30),
+                    addr(0x33),
+                    2,
+                    Default::default(),
+                ),
+                workflow: crate::types::PackageVersion::new(
+                    addr(0x40),
+                    addr(0x44),
+                    2,
+                    Default::default(),
+                ),
+                scheduler: crate::types::PackageVersion::new(
+                    addr(0x50),
+                    addr(0x55),
+                    2,
+                    Default::default(),
+                ),
+            },
+            config_hash: vec![0; 32],
             network_id: addr(0x77),
-            registry_pkg_id: addr(0x33),
             tool_registry: obj(1),
-            verifier_registry: obj(2),
             network_auth: obj(3),
             agent_registry: obj(4),
             default_dag_executor: DefaultDagExecutorTarget {
                 agent_id: addr(5),
                 skill_id: 1,
             },
-            gas_service: obj(6),
             leader_registry: obj(7),
-            workflow_original_pkg_id: Some(addr(0x40)),
-            scheduler_original_pkg_id: Some(addr(0x50)),
+            priority_fee_vault: obj(8),
+            priority_fee_vault_owner_cap: obj(9),
+            us_token: UsTokenConfig::new(addr(0x66)),
         }
     }
 
@@ -556,12 +624,124 @@ mod tests {
 
         let (target, tag) = crate::move_bindings::with_nexus_scope(&objects, || {
             (
-                deescalate_target().unwrap(),
-                GasService::struct_tag_static(),
+                settle_payment_vertex_target().unwrap(),
+                ToolCashier::struct_tag_static(),
             )
         });
 
-        assert_eq!(target.package, objects.workflow_pkg_id);
-        assert_eq!(*tag.address(), objects.workflow_type_origin_pkg_id());
+        assert_eq!(target.package, objects.tool_pkg_id());
+        assert_eq!(*tag.address(), objects.tool_cashier_type_origin_pkg_id());
+    }
+
+    #[test]
+    fn scopes_generated_generic_types() {
+        let objects = objects();
+
+        let mut transaction = NexusPtbBuilder::new(Arc::new(objects.clone()));
+        transaction.move_vector::<FixedTool>(vec![]).unwrap();
+        transaction.option::<FixedTool>(None).unwrap();
+        let transaction = transaction.finish();
+
+        let sui::types::Command::MakeMoveVector(vector) = &transaction.commands[0] else {
+            panic!("expected a Move vector command");
+        };
+        let Some(sui::types::TypeTag::Struct(element_type)) = &vector.type_ else {
+            panic!("expected a generated struct element type");
+        };
+
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
+
+        let sui::types::Command::MoveCall(option) = &transaction.commands[1] else {
+            panic!("expected an Option constructor call");
+        };
+        let sui::types::TypeTag::Struct(element_type) = &option.type_arguments[0] else {
+            panic!("expected a generated Option element type");
+        };
+
+        assert_eq!(
+            *element_type.address(),
+            objects.interface_type_origin_pkg_id()
+        );
+    }
+
+    #[test]
+    fn verifier_modes_call_the_matching_move_constructors() {
+        use crate::move_bindings::interface::verifier::ToolVerifierMode;
+
+        for (mode, expected_function) in [
+            (ToolVerifierMode::None, "verifier_mode_none"),
+            (
+                ToolVerifierMode::RegisteredKey,
+                "verifier_mode_registered_key",
+            ),
+            (ToolVerifierMode::External, "verifier_mode_external"),
+        ] {
+            let transaction = ptb(&objects(), |tx| {
+                tx.tool_verifier_mode(&mode)?;
+                Ok(())
+            })
+            .unwrap();
+            let call = transaction
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    sui::types::Command::MoveCall(call) => Some(call),
+                    _ => None,
+                })
+                .expect("mode constructor emits one Move call");
+            assert_eq!(call.function.as_str(), expected_function);
+        }
+    }
+
+    #[test]
+    fn withdraw_sui_coin_uses_sender_address_balance() {
+        let objects = objects();
+
+        let ptb = ptb(&objects, |tx| {
+            tx.withdraw_sui_coin(42)?;
+            Ok(())
+        })
+        .unwrap();
+
+        let CallArg::FundsWithdrawal(withdrawal) = &ptb.inputs[0] else {
+            panic!("expected funds withdrawal input");
+        };
+        assert_eq!(withdrawal.amount(), Some(42));
+        assert_eq!(withdrawal.source(), sui::types::WithdrawFrom::Sender);
+        assert_eq!(
+            withdrawal.coin_type(),
+            &crate::move_bindings::type_tag::<crate::move_bindings::sui_framework::sui::SUI>(
+                &objects
+            )
+        );
+        let sui::types::Command::MoveCall(redeem) = &ptb.commands[0] else {
+            panic!("expected redeem funds call");
+        };
+        assert_eq!(redeem.package, sui::types::Address::from_static("0x2"));
+        assert_eq!(redeem.module.as_str(), "coin");
+        assert_eq!(redeem.function.as_str(), "redeem_funds");
+    }
+
+    #[test]
+    fn send_sui_to_address_balance_consumes_the_coin() {
+        let objects = objects();
+        let recipient = addr(9);
+
+        let ptb = ptb(&objects, |tx| {
+            let coin = tx.withdraw_sui_coin(42)?;
+            tx.send_sui_to_address_balance(coin, recipient)?;
+            Ok(())
+        })
+        .unwrap();
+
+        let sui::types::Command::MoveCall(send) = &ptb.commands[1] else {
+            panic!("expected send_funds call");
+        };
+        assert_eq!(send.package, sui::types::Address::TWO);
+        assert_eq!(send.module.as_str(), "coin");
+        assert_eq!(send.function.as_str(), "send_funds");
     }
 }

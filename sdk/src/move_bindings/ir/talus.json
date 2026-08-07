@@ -1,0 +1,325 @@
+{
+  "storage_id": "0xa6",
+  "original_id": "0xa6",
+  "version": 1,
+  "modules": {
+    "us": {
+      "name": "us",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa6",
+            "module": "us",
+            "name": "ProtectedTreasury"
+          },
+          "module": "us",
+          "name": "ProtectedTreasury",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa6",
+            "module": "us",
+            "name": "TreasuryCapKey"
+          },
+          "module": "us",
+          "name": "TreasuryCapKey",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa6",
+            "module": "us",
+            "name": "US"
+          },
+          "module": "us",
+          "name": "US",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "borrow_cap",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "ProtectedTreasury"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "coin",
+                      "name": "TreasuryCap"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa6",
+                            "module": "us",
+                            "name": "US"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "borrow_cap_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "ProtectedTreasury"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "coin",
+                      "name": "TreasuryCap"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa6",
+                            "module": "us",
+                            "name": "US"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "burn",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "ProtectedTreasury"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa6",
+                          "module": "us",
+                          "name": "US"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "init",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa6",
+                    "module": "us",
+                    "name": "US"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "total_supply",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa6",
+                        "module": "us",
+                        "name": "ProtectedTreasury"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        }
+      ]
+    }
+  }
+}

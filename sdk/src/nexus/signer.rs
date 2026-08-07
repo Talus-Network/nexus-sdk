@@ -2,14 +2,17 @@
 //! on Sui in Nexus context.
 use {
     crate::{
-        events::{FromSuiGrpcEvent, NexusEvent},
-        nexus::{crawler::Crawler, error::NexusError},
+        events::{NexusEvent, NexusEventQuery},
+        nexus::{
+            crawler::Crawler,
+            error::{NexusError, TransactionError},
+        },
         sui::{self, traits::*},
         types::NexusObjects,
     },
-    futures::TryStreamExt,
     std::sync::Arc,
-    tokio::{sync::Mutex, time::Duration},
+    sui_rpc::client::ExecuteAndWaitError,
+    tokio::time::Duration,
 };
 
 /// Resulting struct from executing a transaction.
@@ -25,7 +28,7 @@ pub struct ExecutedTransaction {
 /// provided [`sui::crypto::Ed25519PrivateKey`].
 #[derive(Clone)]
 pub struct Signer {
-    pub(super) client: Arc<Mutex<sui::grpc::Client>>,
+    pub(super) client: Arc<sui::grpc::Client>,
     pub(super) pk: sui::crypto::Ed25519PrivateKey,
     pub(super) transaction_timeout: Duration,
     pub(super) nexus_objects: Arc<NexusObjects>,
@@ -33,7 +36,7 @@ pub struct Signer {
 
 impl Signer {
     pub fn new(
-        client: Arc<Mutex<sui::grpc::Client>>,
+        client: Arc<sui::grpc::Client>,
         pk: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
         nexus_objects: Arc<NexusObjects>,
@@ -61,12 +64,46 @@ impl Signer {
             .map_err(|e| NexusError::Wallet(anyhow::anyhow!(e)))
     }
 
-    /// Execute a transaction block and return the response.
+    /// Executes a coin based transaction and refreshes its owned gas coin.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when execution fails or the updated gas coin
+    /// cannot be fetched.
     pub async fn execute_tx(
         &self,
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
         gas_coin: &mut sui::types::ObjectReference,
+    ) -> Result<ExecutedTransaction, NexusError> {
+        let executed = self.execute_tx_without_gas_coin(tx, signature).await?;
+
+        // Fetch the gas coin reference produced by execution.
+        let crawler = Crawler::new(Arc::clone(&self.client));
+        let gas_coin_ref = crawler
+            .get_object_metadata(*gas_coin.object_id())
+            .await
+            .map_err(NexusError::Rpc)?
+            .object_ref();
+
+        *gas_coin = gas_coin_ref;
+
+        Ok(executed)
+    }
+
+    /// Executes a transaction without refreshing an owned gas coin.
+    ///
+    /// This is the address balance based execution boundary and is also useful
+    /// when callers do not own the gas object lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError`] when execution fails or the response cannot be
+    /// decoded.
+    pub async fn execute_tx_without_gas_coin(
+        &self,
+        tx: sui::types::Transaction,
+        signature: sui::types::UserSignature,
     ) -> Result<ExecutedTransaction, NexusError> {
         let (response, digest, checkpoint) = self
             .execute_tx_and_wait_for_checkpoint(tx, signature)
@@ -82,9 +119,13 @@ impl Signer {
         };
 
         if let sui::types::ExecutionStatus::Failure { error, command } = effects.status() {
-            return Err(NexusError::Wallet(anyhow::anyhow!(
-                "Transaction execution failed: {error:?} in command: {command:?}"
-            )));
+            return Err(TransactionError::execution_failed(
+                digest,
+                checkpoint,
+                error.clone(),
+                *command,
+            )
+            .into());
         }
 
         // Deserialize events.
@@ -94,9 +135,18 @@ impl Signer {
             )));
         };
 
-        let nexus_events = events.0.iter().enumerate().filter_map(|(index, event)| {
-            NexusEvent::from_sui_grpc_event(index as u64, digest, event, &self.nexus_objects).ok()
-        });
+        let event_query = NexusEventQuery::new(Arc::clone(&self.nexus_objects));
+        let nexus_events = events
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                event_query
+                    .decode_sui_event(index as u64, digest, event)
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| NexusError::Parsing(error.into()))?;
 
         // Deserialize objects.
         let Ok(objects) = response
@@ -111,38 +161,23 @@ impl Signer {
             )));
         };
 
-        // Re-fetch the gas coin's new reference.
-        let crawler = Crawler::new(self.client.clone());
-
-        let gas_coin_ref = crawler
-            .get_object_metadata(*gas_coin.object_id())
-            .await
-            .map_err(NexusError::Rpc)?
-            .object_ref();
-
-        *gas_coin = gas_coin_ref;
-
         Ok(ExecutedTransaction {
             effects: *effects,
-            events: nexus_events.collect(),
+            events: nexus_events,
             objects,
             digest,
             checkpoint,
         })
     }
 
-    /// Execute a transaction while subscribing to a checkpoint stream to confirm
-    /// its inclusion in a checkpoint.
+    /// Executes a transaction and waits for its checkpoint confirmation.
     async fn execute_tx_and_wait_for_checkpoint(
         &self,
         tx: sui::types::Transaction,
         signature: sui::types::UserSignature,
     ) -> Result<(sui::grpc::ExecutedTransaction, sui::types::Digest, u64), NexusError> {
-        let mut client = self.client.lock().await;
-
-        let checkpoints_request = sui::grpc::SubscribeCheckpointsRequest::default().with_read_mask(
-            sui::grpc::FieldMask::from_paths(["transactions.digest", "sequence_number"]),
-        );
+        let mut client = self.client.as_ref().clone();
+        let digest = tx.digest();
 
         let tx_request = sui::grpc::ExecuteTransactionRequest::default()
             .with_transaction(tx)
@@ -154,62 +189,188 @@ impl Signer {
                 "digest",
             ]));
 
-        // Subscribe to checkpoint stream before execution.
-        let mut checkpoint_stream = match client
-            .subscription_client()
-            .subscribe_checkpoints(checkpoints_request)
+        let response = client
+            .execute_transaction_and_wait_for_checkpoint(tx_request, self.transaction_timeout)
             .await
-        {
-            Ok(stream) => stream.into_inner(),
-            Err(e) => return Err(NexusError::Rpc(e.into())),
-        };
+            .map_err(|error| map_execute_and_wait_error(digest, self.transaction_timeout, error))?
+            .into_inner();
 
-        let response = match client
-            .execution_client()
-            .execute_transaction(tx_request)
-            .await
-        {
-            Ok(resp) => resp.into_inner().transaction.ok_or_else(|| {
-                NexusError::Wallet(anyhow::anyhow!("No transaction in execution response"))
-            })?,
-            Err(e) => return Err(NexusError::Rpc(e.into())),
-        };
+        let (executed, checkpoint) = validated_execution_response(digest, response)?;
+        Ok((executed, digest, checkpoint))
+    }
+}
 
-        // Get the executed transaction digest to find it in the checkpoint
-        // stream.
-        let digest: sui::types::Digest = response
-            .digest()
-            .parse()
-            .map_err(|e: sui::types::DigestParseError| NexusError::Parsing(e.into()))?;
+fn validated_execution_response(
+    digest: sui::types::Digest,
+    mut response: sui::grpc::ExecuteTransactionResponse,
+) -> Result<(sui::grpc::ExecutedTransaction, u64), NexusError> {
+    let Some(executed) = response.transaction.as_ref() else {
+        return Err(TransactionError::confirmation_response_invalid(
+            digest,
+            response,
+            "transaction is missing",
+        )
+        .into());
+    };
+    if executed.digest.as_deref() != Some(digest.to_string().as_str()) {
+        return Err(TransactionError::confirmation_response_invalid(
+            digest,
+            response,
+            "transaction digest does not match the submitted transaction",
+        )
+        .into());
+    }
+    let Some(checkpoint) = executed.checkpoint else {
+        return Err(TransactionError::confirmation_response_invalid(
+            digest,
+            response,
+            "checkpoint is missing",
+        )
+        .into());
+    };
 
-        // Wait for the transaction to appear in a checkpoint.
-        let timeout_future = tokio::time::sleep(self.transaction_timeout);
-        let checkpoint_future = async {
-            while let Some(response) = checkpoint_stream.try_next().await? {
-                let checkpoint = response.checkpoint();
+    Ok((
+        response
+            .transaction
+            .take()
+            .expect("the transaction was validated before extraction"),
+        checkpoint,
+    ))
+}
 
-                for tx in checkpoint.transactions() {
-                    if tx.digest() == digest.to_string() {
-                        return Ok(checkpoint.sequence_number());
-                    }
-                }
-            }
-
-            Err(anyhow::anyhow!(
-                "Checkpoint stream closed before transaction was confirmed."
-            ))
-        };
-
-        tokio::select! {
-            result = checkpoint_future => {
-                match result {
-                    Ok(sequence_number) => Ok((response, digest, sequence_number)),
-                    Err(e) => Err(NexusError::Rpc(e))
-                }
-            },
-            _ = timeout_future => {
-                Err(NexusError::Timeout(anyhow::anyhow!("Transaction confirmation timed out")))
-            }
+fn map_execute_and_wait_error(
+    digest: sui::types::Digest,
+    timeout: Duration,
+    error: ExecuteAndWaitError,
+) -> NexusError {
+    match error {
+        ExecuteAndWaitError::RpcError(source) if is_submission_rejection(source.code()) => {
+            TransactionError::submission_rejected(digest, source).into()
         }
+        ExecuteAndWaitError::RpcError(source) => {
+            TransactionError::submission_unknown(digest, source).into()
+        }
+        ExecuteAndWaitError::MissingTransaction => NexusError::TransactionBuilding(
+            anyhow::anyhow!("transaction {digest} request is missing the transaction"),
+        ),
+        ExecuteAndWaitError::ProtoConversionError(source) => NexusError::TransactionBuilding(
+            anyhow::anyhow!("transaction {digest} request could not be decoded: {source}"),
+        ),
+        ExecuteAndWaitError::CheckpointTimeout(response) => {
+            TransactionError::confirmation_timed_out(digest, timeout, response.into_inner()).into()
+        }
+        ExecuteAndWaitError::CheckpointStreamError { response, error } => {
+            TransactionError::confirmation_failed(digest, response.into_inner(), error).into()
+        }
+        other => NexusError::TransactionBuilding(anyhow::anyhow!(
+            "transaction {digest} could not be executed: {other}"
+        )),
+    }
+}
+
+fn is_submission_rejection(code: tonic::Code) -> bool {
+    matches!(
+        code,
+        tonic::Code::InvalidArgument
+            | tonic::Code::NotFound
+            | tonic::Code::AlreadyExists
+            | tonic::Code::PermissionDenied
+            | tonic::Code::Unauthenticated
+            | tonic::Code::FailedPrecondition
+            | tonic::Code::OutOfRange
+            | tonic::Code::Unimplemented
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::{map_execute_and_wait_error, validated_execution_response},
+        crate::{
+            nexus::error::{NexusError, TransactionErrorState},
+            sui,
+        },
+        std::time::Duration,
+        sui_rpc::client::ExecuteAndWaitError,
+    };
+
+    #[test]
+    fn checkpoint_timeout_retains_the_execution_response() {
+        let digest = sui::types::Digest::new([9; 32]);
+        let response = sui::grpc::ExecuteTransactionResponse::default().with_transaction(
+            sui::grpc::ExecutedTransaction::default().with_digest(digest.to_string()),
+        );
+
+        let error = map_execute_and_wait_error(
+            digest,
+            Duration::from_secs(30),
+            ExecuteAndWaitError::CheckpointTimeout(tonic::Response::new(response.clone())),
+        );
+
+        let NexusError::Transaction(error) = error else {
+            panic!("expected a transaction error");
+        };
+        assert_eq!(error.state(), TransactionErrorState::ConfirmationUnknown);
+        assert_eq!(error.digest(), &digest);
+        assert_eq!(error.response(), Some(&response));
+    }
+
+    #[test]
+    fn rpc_failure_preserves_unknown_submission_state() {
+        let digest = sui::types::Digest::new([9; 32]);
+
+        let error = map_execute_and_wait_error(
+            digest,
+            Duration::from_secs(30),
+            ExecuteAndWaitError::RpcError(tonic::Status::unavailable("connection closed")),
+        );
+
+        let NexusError::Transaction(error) = error else {
+            panic!("expected a transaction error");
+        };
+        assert_eq!(error.state(), TransactionErrorState::SubmissionUnknown);
+        assert_eq!(error.digest(), &digest);
+        assert!(error.response().is_none());
+    }
+
+    #[test]
+    fn rpc_rejection_preserves_known_submission_state() {
+        let digest = sui::types::Digest::new([9; 32]);
+
+        let error = map_execute_and_wait_error(
+            digest,
+            Duration::from_secs(30),
+            ExecuteAndWaitError::RpcError(tonic::Status::invalid_argument(
+                "invalid gas reservation",
+            )),
+        );
+
+        let NexusError::Transaction(error) = error else {
+            panic!("expected a transaction error");
+        };
+        assert_eq!(error.state(), TransactionErrorState::SubmissionRejected);
+        assert_eq!(error.digest(), &digest);
+        assert!(!error.to_string().contains("unknown"));
+    }
+
+    #[test]
+    fn confirmation_rejects_a_different_transaction_digest() {
+        let digest = sui::types::Digest::new([9; 32]);
+        let response = sui::grpc::ExecuteTransactionResponse::default().with_transaction(
+            sui::grpc::ExecutedTransaction::default()
+                .with_digest(sui::types::Digest::new([8; 32]).to_string())
+                .with_checkpoint(42),
+        );
+
+        let error = validated_execution_response(digest, response.clone()).unwrap_err();
+
+        let NexusError::Transaction(error) = error else {
+            panic!("expected a transaction error");
+        };
+
+        assert_eq!(error.state(), TransactionErrorState::ConfirmationUnknown);
+        assert_eq!(error.digest(), &digest);
+        assert_eq!(error.response(), Some(&response));
+        assert!(error.to_string().contains("digest does not match"));
     }
 }

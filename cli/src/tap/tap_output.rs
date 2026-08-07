@@ -10,11 +10,18 @@
 use {
     super::*,
     nexus_sdk::{
-        move_bindings::interface::{agent::AgentPaymentVault, payment::ExecutionPayment},
+        move_bindings::interface::{
+            agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
+            payment::{
+                ExecutionPayment,
+                ExecutionPaymentFinalState,
+                PaymentSourceKind,
+                SkillPaymentPolicy,
+                VertexExecutionPaymentSettlementKind,
+            },
+        },
         nexus::{
-            scheduler::CreateTaskResult,
             tap::{
-                AccomplishExecutionPaymentResult,
                 BindAgentSkillResult,
                 DepositAgentVaultResult,
                 RefillExecutionPaymentResult,
@@ -23,13 +30,268 @@ use {
             workflow::{
                 AbortExecutionResult,
                 CommittedToolResultSettlementResult,
-                ExecuteResult,
                 ExpiredWalkResolutionResult,
             },
         },
         types::{AgentId, AgentRegistrySnapshot, DefaultDagExecutorRecord, SkillConfig},
     },
+    std::fmt::Write as _,
 };
+
+const FIELD_WIDTH: usize = 20;
+
+fn write_field(output: &mut String, label: &str, value: impl std::fmt::Display) {
+    writeln!(output, "{label:<FIELD_WIDTH$}{value}").expect("writing to a String cannot fail");
+}
+
+fn payment_policy_label(policy: &SkillPaymentPolicy) -> String {
+    match policy {
+        SkillPaymentPolicy::UserFunded => "user funded".to_owned(),
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => {
+            format!("agent funded, maximum {max_budget_mist} MIST")
+        }
+    }
+}
+
+fn schedule_policy_label(policy: &SkillSchedulePolicy) -> String {
+    match policy {
+        SkillSchedulePolicy::Once => "once".to_owned(),
+        SkillSchedulePolicy::Recurring {
+            min_interval_ms,
+            max_occurrences,
+        } => format!(
+            "recurring every {min_interval_ms} ms, maximum {}",
+            max_occurrences
+                .as_option()
+                .map_or_else(|| "unlimited".to_owned(), |value| value.to_string())
+        ),
+    }
+}
+
+fn dag_binding_label(binding: &SkillDagBinding) -> String {
+    match binding {
+        SkillDagBinding::Pinned { dag_id } => format!("pinned to {dag_id}"),
+        SkillDagBinding::RuntimeSelected => "selected at runtime".to_owned(),
+    }
+}
+
+pub(crate) fn render_requirements(result: &GetSkillRequirementResult) -> String {
+    let mut output = String::new();
+    write_field(&mut output, "Agent", result.agent_id);
+    write_field(&mut output, "Skill", result.skill_id);
+    write_field(
+        &mut output,
+        "Interface revision",
+        result.active_skill_revision_key.interface_revision,
+    );
+    write_field(
+        &mut output,
+        "Input commitment",
+        hex::encode(&result.requirements.input_commitment),
+    );
+    write_field(
+        &mut output,
+        "Payment",
+        payment_policy_label(&result.requirements.payment_policy),
+    );
+    write_field(
+        &mut output,
+        "Schedule",
+        schedule_policy_label(&result.requirements.schedule_policy),
+    );
+    write_field(
+        &mut output,
+        "Fixed tools",
+        result.requirements.fixed_tools.len(),
+    );
+    for tool in &result.requirements.fixed_tools {
+        writeln!(
+            output,
+            "  {} in registry {}",
+            tool.tool_fqn_string(),
+            tool.tool_registry_address(),
+        )
+        .expect("writing to a String cannot fail");
+    }
+    output
+}
+
+pub(crate) fn render_payment(payment: &ExecutionPayment) -> String {
+    let mut output = String::new();
+    let source = match &payment.source_kind {
+        PaymentSourceKind::UserFunded { user } => format!("user {user}"),
+        PaymentSourceKind::AgentFunded { agent_id } => format!("agent {}", agent_id.bytes),
+    };
+    let final_state = match payment.final_state {
+        ExecutionPaymentFinalState::Pending => "pending",
+        ExecutionPaymentFinalState::Accomplished => "accomplished",
+        ExecutionPaymentFinalState::Refunded => "refunded",
+    };
+
+    write_field(&mut output, "Payment", payment.payment_id());
+    write_field(&mut output, "Execution", payment.execution_id);
+    write_field(&mut output, "Agent", payment.agent_id.bytes);
+    write_field(&mut output, "Skill", payment.skill_id);
+    write_field(
+        &mut output,
+        "Interface revision",
+        payment.interface_revision,
+    );
+    write_field(&mut output, "State", final_state);
+    write_field(&mut output, "Source", source);
+    write_field(
+        &mut output,
+        "Policy",
+        payment_policy_label(&payment.payment_policy),
+    );
+    write_field(
+        &mut output,
+        "Available funds",
+        format_args!("{} MIST", payment.funds.value),
+    );
+    write_field(
+        &mut output,
+        "Locked budget",
+        format_args!("{} MIST", payment.locked_budget_mist),
+    );
+    write_field(
+        &mut output,
+        "Consumed",
+        format_args!("{} MIST", payment.consumed),
+    );
+    write_field(
+        &mut output,
+        "Locked vertices",
+        payment.locked_vertices.len(),
+    );
+    output
+}
+
+pub(crate) fn render_payment_wait(result: &WaitForPaymentResult) -> String {
+    let mut output = render_payment(&result.payment);
+    write_field(
+        &mut output,
+        "Elapsed",
+        format_args!("{} ms", result.elapsed_ms),
+    );
+    write_field(&mut output, "Timed out", result.timed_out);
+    output
+}
+
+pub(crate) fn render_registry(registry: &AgentRegistrySnapshot) -> String {
+    let mut output = String::new();
+    write_field(&mut output, "Registry", registry.id);
+    write_field(&mut output, "Agents", registry.agents.len());
+    write_field(&mut output, "Skills", registry.skills.len());
+    if let Some(default_executor) = &registry.default_executor {
+        let target = default_executor.target();
+        write_field(&mut output, "Default agent", target.agent_id);
+        write_field(&mut output, "Default skill", target.skill_id);
+    } else {
+        write_field(&mut output, "Default executor", "none");
+    }
+
+    for agent in &registry.agents {
+        output.push('\n');
+        write_field(&mut output, "Agent", agent.agent_id);
+        write_field(&mut output, "Active", agent.active());
+        write_field(&mut output, "Skill count", agent.record.skills.size());
+    }
+    for skill in &registry.skills {
+        output.push('\n');
+        write_field(
+            &mut output,
+            "Skill",
+            format_args!("{}:{}", skill.agent_id, skill.skill_id),
+        );
+        write_field(
+            &mut output,
+            "Description",
+            String::from_utf8_lossy(&skill.record.description),
+        );
+        write_field(&mut output, "Active", skill.active());
+        write_field(
+            &mut output,
+            "Interface revision",
+            skill.current_interface_revision(),
+        );
+        write_field(&mut output, "DAG", dag_binding_label(skill.dag_binding()));
+    }
+    output
+}
+
+pub(crate) fn render_default_agent(record: &DefaultDagExecutorRecord) -> String {
+    let mut output = String::new();
+    write_field(&mut output, "Agent", record.target.agent_id);
+    write_field(&mut output, "Skill", record.target.skill_id);
+    write_field(
+        &mut output,
+        "Interface revision",
+        record.skill_revision.key.interface_revision,
+    );
+    write_field(
+        &mut output,
+        "DAG",
+        dag_binding_label(record.skill.dag_binding()),
+    );
+    write_field(
+        &mut output,
+        "Payment",
+        payment_policy_label(&record.skill_revision.requirements.payment_policy),
+    );
+    write_field(
+        &mut output,
+        "Schedule",
+        schedule_policy_label(&record.skill_revision.requirements.schedule_policy),
+    );
+    output
+}
+
+pub(crate) fn render_agent_list(agents: &[(String, AgentId)]) -> String {
+    if agents.is_empty() {
+        return "No saved Talus agent aliases.\n".to_owned();
+    }
+
+    let mut output = String::new();
+    for (name, agent_id) in agents {
+        write_field(&mut output, name, agent_id);
+    }
+    output
+}
+
+pub(crate) fn render_agent_remove(name: &str, removed: Option<AgentId>) -> String {
+    match removed {
+        Some(agent_id) => format!("Removed Talus agent alias {name} ({agent_id}).\n"),
+        None => format!("No Talus agent alias named {name}.\n"),
+    }
+}
+
+pub(crate) fn render_vault_balance(
+    agent_id: AgentId,
+    vault: &nexus_sdk::nexus::crawler::Response<
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+    >,
+) -> String {
+    let mut output = String::new();
+    write_field(&mut output, "Agent", agent_id);
+    write_field(&mut output, "Vault", vault.object_id);
+    write_field(
+        &mut output,
+        "Available balance",
+        format_args!("{} MIST", vault.data.available_balance_value()),
+    );
+    write_field(
+        &mut output,
+        "Locked amount",
+        format_args!("{} MIST", vault.data.locked_amount),
+    );
+    write_field(
+        &mut output,
+        "Unlocked balance",
+        format_args!("{} MIST", vault.data.unlocked_balance_value()),
+    );
+    output
+}
 
 // ============================================================================
 // Local-only commands: scaffold, validate-skill, dry-run
@@ -43,7 +305,7 @@ pub(crate) fn validate_skill_result_json(config: &SkillConfig) -> serde_json::Va
     json!({
         "valid": true,
         "skill_name": config.name,
-        "interface_revision": config.interface_revision,
+        "interface_revision": config.interface_revision.inner,
     })
 }
 
@@ -52,7 +314,7 @@ pub(crate) fn dry_run_result_json(config: &SkillConfig) -> serde_json::Value {
         "dry_run": true,
         "valid": true,
         "skill_name": config.name,
-        "interface_revision": config.interface_revision,
+        "interface_revision": config.interface_revision.inner,
         "next_step": "publish TAP plus DAG, then create-agent and register-skill",
     })
 }
@@ -60,7 +322,67 @@ pub(crate) fn dry_run_result_json(config: &SkillConfig) -> serde_json::Value {
 pub(crate) fn create_skill_artifact_result_json(
     artifact: &TapPublishArtifact,
 ) -> serde_json::Value {
-    json!(artifact)
+    artifact_result_json(artifact)
+}
+
+fn artifact_result_json(artifact: &TapPublishArtifact) -> serde_json::Value {
+    json!({
+        "skill_name": artifact.skill_name,
+        "dag_id": artifact.dag_id,
+        "interface_revision": artifact.interface_revision.inner,
+        "requirements": skill_requirements_json(&artifact.requirements),
+    })
+}
+
+fn skill_requirements_json(requirements: &SkillRequirement) -> serde_json::Value {
+    let schedule_policy = match &requirements.schedule_policy {
+        SkillSchedulePolicy::Once => json!({ "kind": "once" }),
+        SkillSchedulePolicy::Recurring {
+            min_interval_ms,
+            max_occurrences,
+        } => json!({
+            "kind": "recurring",
+            "min_interval_ms": min_interval_ms,
+            "max_occurrences": max_occurrences.as_option(),
+        }),
+    };
+    let fixed_tools = requirements
+        .fixed_tools
+        .iter()
+        .map(|tool| {
+            json!({
+                "tool_registry_id": tool.tool_registry_address(),
+                "tool_fqn": tool.tool_fqn_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "input_commitment_hex": hex::encode(&requirements.input_commitment),
+        "payment_policy": skill_payment_policy_json(&requirements.payment_policy),
+        "schedule_policy": schedule_policy,
+        "fixed_tools": fixed_tools,
+    })
+}
+
+fn skill_payment_policy_json(policy: &SkillPaymentPolicy) -> serde_json::Value {
+    match policy {
+        SkillPaymentPolicy::UserFunded => json!({ "kind": "user_funded" }),
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => json!({
+            "kind": "agent_funded",
+            "max_budget_mist": max_budget_mist,
+        }),
+    }
+}
+
+fn skill_dag_binding_json(binding: &SkillDagBinding) -> serde_json::Value {
+    match binding {
+        SkillDagBinding::Pinned { dag_id } => json!({
+            "kind": "pinned",
+            "dag_id": dag_id,
+        }),
+        SkillDagBinding::RuntimeSelected => json!({ "kind": "runtime_selected" }),
+    }
 }
 
 // ============================================================================
@@ -88,7 +410,7 @@ pub(crate) fn publish_skill_result_json(result: &PublishSkillResult) -> serde_js
         "dag_id": result.dag.dag_object_id,
         "dag_digest": result.dag.tx_digest,
         "dag_checkpoint": result.dag.tx_checkpoint,
-        "artifact": result.artifact,
+        "artifact": artifact_result_json(&result.artifact),
     })
 }
 
@@ -135,38 +457,16 @@ pub(crate) fn update_skill_result_json(
         "tx_checkpoint": result.tx_checkpoint,
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
-        "current_interface_revision": result.current_interface_revision,
+        "current_interface_revision": result.current_interface_revision.inner,
         "dag_id": artifact.dag_id,
-        "dag_binding": result.dag_binding,
-        "requirements": result.requirements,
+        "dag_binding": skill_dag_binding_json(&result.dag_binding),
+        "requirements": skill_requirements_json(&result.requirements),
     })
 }
 
 // ============================================================================
 // Skill execution + requirements
 // ============================================================================
-
-pub(crate) fn agent_execute_result_json(
-    agent_id: AgentId,
-    skill_id: SkillId,
-    result: &ExecuteResult,
-) -> serde_json::Value {
-    json!({
-        "agent_dag": true,
-        "agent_id": agent_id,
-        "skill_id": skill_id,
-        "execution_id": result.execution_object_id,
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "submit": result.tap_execution.as_ref().map(|submit| json!({
-            "agent_id": submit.agent_id,
-            "skill_id": submit.skill_id,
-            "dag_id": submit.dag_id,
-            "skill_revision_key": submit.skill_revision_key,
-            "payment_max_budget": submit.payment_max_budget,
-        }))
-    })
-}
 
 pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> serde_json::Value {
     json!({
@@ -176,34 +476,12 @@ pub(crate) fn requirements_result_json(result: &GetSkillRequirementResult) -> se
             .to_string(),
         "agent_id": result.agent_id,
         "skill_id": result.skill_id,
-        "active_skill_revision_key": result.active_skill_revision_key,
-        "requirements": result.requirements,
-    })
-}
-
-pub(crate) fn schedule_task_result_json(
-    result: &CreateTaskResult,
-    agent_id: sui::types::Address,
-    skill_id: SkillId,
-    dag_id: sui::types::Address,
-) -> serde_json::Value {
-    json!({
-        "function": "schedule_task",
-        "digest": result.tx_digest,
-        "scheduled_task_id": result.task_id,
-        "agent_id": agent_id,
-        "skill_id": skill_id,
-        "dag_id": dag_id,
-        "tap_payment": result.tap_payment.as_ref().map(|payment| json!({
-            "agent_id": payment.agent_id,
-            "skill_id": payment.skill_id,
-            "prepay_amount": payment.prepay_amount,
-            "occurrence_budget": payment.occurrence_budget,
-        })),
-        "initial_schedule": result.initial_schedule.as_ref().map(|schedule| json!({
-            "digest": schedule.tx_digest,
-            "event": schedule.event,
-        })),
+        "active_skill_revision_key": {
+            "agent_id": result.active_skill_revision_key.agent_id,
+            "skill_id": result.active_skill_revision_key.skill_id,
+            "interface_revision": result.active_skill_revision_key.interface_revision.inner,
+        },
+        "requirements": skill_requirements_json(&result.requirements),
     })
 }
 
@@ -251,23 +529,74 @@ pub(crate) fn execution_abort_result_json(result: &AbortExecutionResult) -> serd
 // ============================================================================
 
 pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json::Value {
+    let source = match &payment.source_kind {
+        PaymentSourceKind::UserFunded { user } => json!({
+            "kind": "user_funded",
+            "user": user,
+        }),
+        PaymentSourceKind::AgentFunded { agent_id } => json!({
+            "kind": "agent_funded",
+            "agent_id": agent_id.bytes,
+        }),
+    };
+    let final_state = match payment.final_state {
+        ExecutionPaymentFinalState::Pending => "pending",
+        ExecutionPaymentFinalState::Accomplished => "accomplished",
+        ExecutionPaymentFinalState::Refunded => "refunded",
+    };
+    let tool_costs = payment
+        .tool_cost_snapshot
+        .contents
+        .iter()
+        .map(|entry| {
+            json!({
+                "tool_fqn": String::from_utf8_lossy(&entry.key),
+                "cost_mist": entry.value,
+            })
+        })
+        .collect::<Vec<_>>();
+    let locked_vertices = payment
+        .locked_vertices
+        .iter()
+        .map(|lock| {
+            let settlement_kind = match lock.settlement_kind {
+                VertexExecutionPaymentSettlementKind::Free => "free",
+                VertexExecutionPaymentSettlementKind::Ticket => "ticket",
+                VertexExecutionPaymentSettlementKind::Paid => "paid",
+            };
+            json!({
+                "vertex_key": String::from_utf8_lossy(&lock.vertex_key),
+                "tool_fqn": String::from_utf8_lossy(&lock.tool_fqn),
+                "amount_mist": lock.amount,
+                "settlement_kind": settlement_kind,
+            })
+        })
+        .collect::<Vec<_>>();
+
     json!({
         "payment_id": payment.payment_id(),
+        "protocol_version": payment.protocol_version,
         "execution_id": payment.execution_id,
         "agent_id": payment.agent_id.bytes,
         "skill_id": payment.skill_id,
-        "interface_revision": payment.interface_revision,
-        "payment_policy": payment.payment_policy,
-        "source_kind": payment.source_kind,
-        "max_budget": payment.max_budget,
-        "locked_budget": payment.locked_budget,
-        "funds": payment.funds,
-        "consumed": payment.consumed,
+        "interface_revision": payment.interface_revision.inner,
+        "payment_policy": skill_payment_policy_json(&payment.payment_policy),
+        "source": source,
+        "max_budget_mist": payment.max_budget_mist,
+        "gas_budget_mist": payment.gas_budget_mist,
+        "priority_fee_reserve_mist": payment.priority_fee_reserve_mist,
+        "locked_budget_mist": payment.locked_budget_mist,
+        "available_funds_mist": payment.funds.value,
+        "consumed_mist": payment.consumed,
+        "tool_fee_charged_mist": payment.tool_fee_charged,
+        "priority_fee_charged_mist": payment.priority_fee_charged,
+        "priority_fee_percentage": payment.priority_fee_percentage,
         "accomplished": payment.accomplished,
         "refunded": payment.refunded,
-        "final_state": payment.final_state,
+        "final_state": final_state,
         "terminal": nexus_sdk::nexus::tap::payment_is_terminal(payment),
-        "locked_vertices": payment.locked_vertices,
+        "tool_costs": tool_costs,
+        "locked_vertices": locked_vertices,
     })
 }
 
@@ -278,41 +607,6 @@ pub(crate) fn payment_wait_result_json(result: &WaitForPaymentResult) -> serde_j
     object.insert("timed_out".to_string(), json!(result.timed_out));
     object.insert("terminal".to_string(), json!(result.terminal));
     base
-}
-
-pub(crate) fn payments_list_result_json(
-    owner: sui::types::Address,
-    agent_id: Option<sui::types::Address>,
-    wallet_receipts: &[ExecutionPaymentReceipt],
-    vault_receipts: &[ExecutionPaymentReceipt],
-    unresolved_execution_ids: &[sui::types::Address],
-    resolved_execution_ids: &[sui::types::Address],
-) -> serde_json::Value {
-    json!({
-        "owner": owner,
-        "agent_id": agent_id,
-        "wallet_receipts": wallet_receipts,
-        "vault_receipts": vault_receipts,
-        "unresolved_execution_ids": unresolved_execution_ids,
-        "resolved_execution_ids": resolved_execution_ids,
-    })
-}
-
-pub(crate) fn payment_resolve_result_json(
-    result: &AccomplishExecutionPaymentResult,
-) -> serde_json::Value {
-    let function = if result.agent_id.is_some() {
-        "accomplish_tap_execution_payment_from_agent_vault"
-    } else {
-        "accomplish_tap_execution_payment"
-    };
-    json!({
-        "function": function,
-        "digest": result.tx_digest,
-        "tx_checkpoint": result.tx_checkpoint,
-        "execution_id": result.execution_id,
-        "agent_id": result.agent_id,
-    })
 }
 
 pub(crate) fn payment_refill_result_json(
@@ -337,11 +631,48 @@ pub(crate) fn payment_refill_result_json(
 // ============================================================================
 
 pub(crate) fn registry_show_result_json(registry: &AgentRegistrySnapshot) -> serde_json::Value {
+    let agents = registry
+        .agents
+        .iter()
+        .map(|agent| {
+            json!({
+                "agent_id": agent.agent_id,
+                "active": agent.active(),
+                "skill_count": agent.record.skills.size(),
+            })
+        })
+        .collect::<Vec<_>>();
+    let skills = registry
+        .skills
+        .iter()
+        .map(|skill| {
+            json!({
+                "agent_id": skill.agent_id,
+                "skill_id": skill.skill_id,
+                "description": String::from_utf8_lossy(&skill.record.description),
+                "active": skill.active(),
+                "dag_binding": skill_dag_binding_json(skill.dag_binding()),
+                "interface_revision": skill.current_interface_revision().inner,
+                "scheduled_task_count": skill.record.scheduled_task_count,
+                "requirements": skill_requirements_json(skill.requirements()),
+            })
+        })
+        .collect::<Vec<_>>();
+    let default_executor = registry.default_executor.as_ref().map(|executor| {
+        let target = executor.target();
+        json!({
+            "agent_id": target.agent_id,
+            "skill_id": target.skill_id,
+        })
+    });
+
     json!({
         "id": registry.id,
-        "default_executor": registry.default_executor,
-        "agents": registry.agents,
-        "skills": registry.skills,
+        "agent_count": agents.len(),
+        "skill_count": skills.len(),
+        "default_executor": default_executor,
+        "agents": agents,
+        "skills": skills,
     })
 }
 
@@ -349,10 +680,10 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
     json!({
         "agent_id": record.target.agent_id,
         "skill_id": record.target.skill_id,
-        "dag_binding": record.skill.dag_binding(),
+        "dag_binding": skill_dag_binding_json(record.skill.dag_binding()),
         "dag_id": record.skill.dag_binding().pinned_dag_id(),
-        "interface_revision": record.skill_revision.key.interface_revision,
-        "requirements": record.skill_revision.requirements,
+        "interface_revision": record.skill_revision.key.interface_revision.inner,
+        "requirements": skill_requirements_json(&record.skill_revision.requirements),
     })
 }
 
@@ -362,7 +693,9 @@ pub(crate) fn default_agent_result_json(record: &DefaultDagExecutorRecord) -> se
 
 pub(crate) fn vault_balance_result_json(
     agent_id: AgentId,
-    vault: &nexus_sdk::nexus::crawler::Response<AgentPaymentVault>,
+    vault: &nexus_sdk::nexus::crawler::Response<
+        nexus_sdk::move_bindings::interface::agent::AgentPaymentVaultStateV1,
+    >,
 ) -> serde_json::Value {
     json!({
         "agent_id": agent_id,
@@ -421,17 +754,19 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 interface::{
-                    agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
+                    agent::{Agent, SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
                     payment::{ExecutionPaymentFinalState, SkillPaymentPolicy},
                     version::InterfaceVersion,
                 },
-                registry::agent_registry::SkillRecord,
+                registry::agent_registry::{AgentRecord, DefaultDagExecutor, SkillRecord},
+                sui_framework::table::Table as MoveTable,
             },
             nexus::{
                 tap::TapPackagePublishResult,
-                workflow::{ExpiredWalkResolutionKind, PublishResult, TapExecutionSubmitMetadata},
+                workflow::{ExpiredWalkResolutionKind, PublishResult},
             },
             types::{
+                AgentRecordContext,
                 DefaultDagExecutorTarget,
                 SkillRecordContext,
                 SkillRevisionContext,
@@ -471,6 +806,7 @@ mod tests {
             id: nexus_sdk::move_bindings::sui_framework::object::UID::new(
                 sui::types::Address::from_static("0xaa"),
             ),
+            protocol_version: 1,
             execution_id: sui::types::Address::from_static("0xbb"),
             agent_id: nexus_sdk::move_bindings::sui_framework::object::ID::new(
                 sui::types::Address::from_static("0xcc"),
@@ -483,8 +819,10 @@ mod tests {
                 nexus_sdk::move_bindings::interface::payment::PaymentSourceKind::user_funded(
                     sui::types::Address::from_static("0xee"),
                 ),
-            max_budget: 1_000,
-            locked_budget: 0,
+            max_budget_mist: 1_000,
+            gas_budget_mist: 333,
+            priority_fee_reserve_mist: 666,
+            locked_budget_mist: 0,
             funds: nexus_sdk::move_bindings::sui_framework::balance::Balance {
                 value: 1_000,
                 phantom_t0: std::marker::PhantomData,
@@ -497,6 +835,9 @@ mod tests {
             refunded,
             final_state,
             locked_vertices: vec![],
+            tool_fee_charged: 0,
+            priority_fee_charged: 0,
+            priority_fee_percentage: 200,
         }
     }
 
@@ -565,8 +906,9 @@ mod tests {
         );
         assert_eq!(
             output["artifact"]["interface_revision"],
-            serde_json::json!({ "inner": 1 })
+            serde_json::json!(1)
         );
+        assert!(!output.to_string().contains("\"bytes\""));
     }
 
     #[test]
@@ -610,54 +952,15 @@ mod tests {
         let json = update_skill_result_json(&artifact, &result);
         assert_eq!(json["function"], "update_skill");
         assert_eq!(json["skill_id"], serde_json::json!(7));
-        assert_eq!(
-            json["current_interface_revision"],
-            serde_json::json!({ "inner": 2 })
-        );
+        assert_eq!(json["current_interface_revision"], serde_json::json!(2));
+        assert_eq!(json["dag_binding"]["kind"], "pinned");
+        assert_eq!(json["requirements"]["input_commitment_hex"], "01");
+        assert!(!json.to_string().contains("\"inner\""));
+        assert!(!json.to_string().contains("\"bytes\""));
         assert!(json.get("config_digest_hex").is_none());
     }
 
     // ---- execute + requirements + schedule ----
-
-    #[test]
-    fn agent_execute_result_json_includes_submit_metadata() {
-        let result = ExecuteResult {
-            tx_digest: sui::types::Digest::from([7; 32]),
-            execution_object_id: sui::types::Address::from_static("0xc"),
-            tx_checkpoint: 42,
-            tap_execution: Some(TapExecutionSubmitMetadata {
-                agent_id: sui::types::Address::from_static("0xa"),
-                skill_id: 11,
-                dag_id: sui::types::Address::from_static("0xd"),
-                skill_revision_key: SkillRevisionLookupKey {
-                    agent_id: sui::types::Address::from_static("0xa"),
-                    skill_id: 11,
-                    interface_revision: InterfaceVersion::new(3),
-                },
-                payment_max_budget: 99,
-            }),
-        };
-
-        let output =
-            agent_execute_result_json(sui::types::Address::from_static("0xa"), 11, &result);
-
-        assert_eq!(
-            output["execution_id"],
-            serde_json::json!(sui::types::Address::from_static("0xc").to_string())
-        );
-        assert_eq!(
-            output["submit"]["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["submit"]["skill_revision_key"]["interface_revision"],
-            serde_json::json!({ "inner": 3 })
-        );
-        assert_eq!(
-            output["submit"]["payment_max_budget"],
-            serde_json::json!(99)
-        );
-    }
 
     #[test]
     fn tap_requirements_result_json_exposes_live_state() {
@@ -680,53 +983,32 @@ mod tests {
         });
         assert_eq!(
             requirements_output["active_skill_revision_key"]["interface_revision"],
-            serde_json::json!({ "inner": 3 })
+            serde_json::json!(3)
         );
         assert_eq!(
-            requirements_output["requirements"]["input_commitment"],
-            serde_json::json!([1])
+            requirements_output["requirements"]["input_commitment_hex"],
+            serde_json::json!("01")
         );
-    }
+        assert!(!requirements_output.to_string().contains("\"inner\""));
+        assert!(!requirements_output.to_string().contains("\"bytes\""));
 
-    #[test]
-    fn schedule_task_result_json_is_schedule_output_replacement() {
-        let result = CreateTaskResult {
-            tx_digest: sui::types::Digest::from([8; 32]),
-            task_id: sui::types::Address::from_static("0x77"),
-            initial_schedule: None,
-            tap_payment: Some(nexus_sdk::nexus::scheduler::CreateTaskTapPaymentResult {
+        let report = render_requirements(&GetSkillRequirementResult {
+            agent_id: sui::types::Address::from_static("0xa"),
+            skill_id: 11,
+            active_skill_revision_key: SkillRevisionLookupKey {
                 agent_id: sui::types::Address::from_static("0xa"),
                 skill_id: 11,
-                prepay_amount: 500,
-                occurrence_budget: 50,
-            }),
-        };
-
-        let output = schedule_task_result_json(
-            &result,
-            sui::types::Address::from_static("0xa"),
-            11,
-            sui::types::Address::from_static("0xd"),
-        );
-
-        assert_eq!(output["function"], serde_json::json!("schedule_task"));
-        assert_eq!(
-            output["scheduled_task_id"],
-            serde_json::json!(sui::types::Address::from_static("0x77").to_string())
-        );
-        assert_eq!(
-            output["dag_id"],
-            serde_json::json!(sui::types::Address::from_static("0xd").to_string())
-        );
-        assert_eq!(
-            output["tap_payment"]["prepay_amount"],
-            serde_json::json!(500)
-        );
-        assert_eq!(
-            output["tap_payment"]["occurrence_budget"],
-            serde_json::json!(50)
-        );
-        assert!(output["initial_schedule"].is_null());
+                interface_revision: InterfaceVersion::new(3),
+            },
+            requirements: SkillRequirement {
+                input_commitment: vec![1],
+                payment_policy: SkillPaymentPolicy::default(),
+                schedule_policy: SkillSchedulePolicy::default(),
+                fixed_tools: Vec::new(),
+            },
+        });
+        assert!(report.contains("Interface revision  3"));
+        assert!(report.contains("Payment             user funded"));
     }
 
     // ---- payments ----
@@ -739,6 +1021,24 @@ mod tests {
         assert_eq!(json["refunded"], serde_json::Value::Bool(false));
         assert_eq!(json["terminal"], serde_json::Value::Bool(true));
         assert_eq!(json["skill_id"], serde_json::json!(11));
+        assert_eq!(json["interface_revision"], serde_json::json!(2));
+        assert_eq!(json["payment_policy"]["kind"], "user_funded");
+        assert_eq!(json["source"]["kind"], "user_funded");
+        assert_eq!(
+            json["source"]["user"],
+            sui::types::Address::from_static("0xee").to_string()
+        );
+        assert_eq!(json["available_funds_mist"], serde_json::json!(1_000));
+        assert_eq!(json["final_state"], "accomplished");
+        assert_eq!(json["tool_costs"], serde_json::json!([]));
+        assert_eq!(json["locked_vertices"], serde_json::json!([]));
+        assert!(!json.to_string().contains("\"inner\""));
+        assert!(!json.to_string().contains("\"bytes\""));
+        assert!(!json.to_string().contains("\"phantom_t0\""));
+
+        let report = render_payment(&fixture_payment(true, false));
+        assert!(report.contains("State               accomplished"));
+        assert!(report.contains("Available funds     1000 MIST"));
     }
 
     #[test]
@@ -753,47 +1053,6 @@ mod tests {
         assert_eq!(json["elapsed_ms"], serde_json::json!(1234));
         assert_eq!(json["timed_out"], serde_json::Value::Bool(true));
         assert_eq!(json["terminal"], serde_json::Value::Bool(false));
-    }
-
-    #[test]
-    fn payment_resolve_result_json_exposes_execution_id_and_digest() {
-        let result = AccomplishExecutionPaymentResult {
-            tx_digest: sui::types::Digest::from([3u8; 32]),
-            tx_checkpoint: 77,
-            execution_id: sui::types::Address::from_static("0xee"),
-            agent_id: None,
-        };
-        let json = payment_resolve_result_json(&result);
-        assert!(json.get("standard_tap").is_none());
-        assert_eq!(
-            json["function"],
-            serde_json::json!("accomplish_tap_execution_payment")
-        );
-        assert_eq!(
-            json["execution_id"],
-            serde_json::json!(sui::types::Address::from_static("0xee").to_string())
-        );
-        assert_eq!(json["tx_checkpoint"], serde_json::json!(77));
-        assert!(json["agent_id"].is_null());
-    }
-
-    #[test]
-    fn payment_resolve_result_json_reports_vault_function_when_agent_supplied() {
-        let result = AccomplishExecutionPaymentResult {
-            tx_digest: sui::types::Digest::from([4u8; 32]),
-            tx_checkpoint: 88,
-            execution_id: sui::types::Address::from_static("0xee"),
-            agent_id: Some(sui::types::Address::from_static("0xa")),
-        };
-        let json = payment_resolve_result_json(&result);
-        assert_eq!(
-            json["function"],
-            serde_json::json!("accomplish_tap_execution_payment_from_agent_vault")
-        );
-        assert_eq!(
-            json["agent_id"],
-            serde_json::json!(sui::types::Address::from_static("0xa").to_string())
-        );
     }
 
     #[test]
@@ -915,6 +1174,60 @@ mod tests {
     // ---- registry + default-agent inspection ----
 
     #[test]
+    fn registry_show_result_json_exposes_domain_records() {
+        let agent_id = sui::types::Address::from_static("0xad");
+        let dag_id = sui::types::Address::from_static("0xd");
+        let registry = AgentRegistrySnapshot {
+            id: sui::types::Address::from_static("0xa0"),
+            agents: vec![AgentRecordContext {
+                agent_id,
+                record: AgentRecord {
+                    active: true,
+                    skills: MoveTable::new(sui::types::Address::from_static("0xa2"), 1),
+                },
+            }],
+            skills: vec![SkillRecordContext {
+                agent_id,
+                skill_id: 7,
+                record: SkillRecord {
+                    description: b"default agent".to_vec(),
+                    active: true,
+                    dag_binding: SkillDagBinding::pinned(dag_id),
+                    requirements: SkillRequirement {
+                        input_commitment: vec![1],
+                        payment_policy: SkillPaymentPolicy::default(),
+                        schedule_policy: SkillSchedulePolicy::default(),
+                        fixed_tools: Vec::new(),
+                    },
+                    current_interface_revision: InterfaceVersion::new(3),
+                    scheduled_task_count: 2,
+                },
+            }],
+            default_executor: Some(DefaultDagExecutor {
+                agent: Agent::from_anchor(agent_id, sui::types::Address::from_static("0xa3"), 1),
+                skill_id: 7,
+            }),
+        };
+
+        let json = registry_show_result_json(&registry);
+
+        assert_eq!(json["agent_count"], 1);
+        assert_eq!(json["skill_count"], 1);
+        assert_eq!(json["agents"][0]["agent_id"], agent_id.to_string());
+        assert_eq!(json["agents"][0]["skill_count"], 1);
+        assert_eq!(json["skills"][0]["description"], "default agent");
+        assert_eq!(json["skills"][0]["interface_revision"], 3);
+        assert_eq!(json["skills"][0]["dag_binding"]["kind"], "pinned");
+        assert_eq!(json["default_executor"]["agent_id"], agent_id.to_string());
+        assert!(!json.to_string().contains("\"inner\""));
+        assert!(!json.to_string().contains("\"bytes\""));
+
+        let report = render_registry(&registry);
+        assert!(report.contains("default agent"));
+        assert!(report.contains(&agent_id.to_string()));
+    }
+
+    #[test]
     fn default_agent_result_json_keeps_flat_agent_schema() {
         let agent_id = sui::types::Address::from_static("0xad");
         let dag_id = sui::types::Address::from_static("0xd");
@@ -957,12 +1270,16 @@ mod tests {
         assert_eq!(json["agent_id"], serde_json::json!(agent_id.to_string()));
         assert_eq!(json["skill_id"], serde_json::json!(7));
         assert_eq!(json["dag_id"], serde_json::json!(dag_id.to_string()));
-        assert_eq!(
-            json["interface_revision"],
-            serde_json::json!({ "inner": 3 })
-        );
-        assert!(json.get("requirements").is_some());
+        assert_eq!(json["interface_revision"], serde_json::json!(3));
+        assert_eq!(json["dag_binding"]["kind"], "pinned");
+        assert_eq!(json["requirements"]["input_commitment_hex"], "010203");
+        assert!(!json.to_string().contains("\"inner\""));
+        assert!(!json.to_string().contains("\"bytes\""));
         assert!(json.get("target").is_none());
+
+        let report = render_default_agent(&record);
+        assert!(report.contains("Interface revision  3"));
+        assert!(report.contains(&dag_id.to_string()));
     }
 
     // ---- agent aliases ----
@@ -978,6 +1295,7 @@ mod tests {
         let entries = list["agents"].as_array().expect("agents must be an array");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0]["name"], serde_json::json!("primary"));
+        assert!(render_agent_list(&[("primary".to_string(), agent_id)]).contains("primary"));
 
         let removed = agent_remove_result_json("primary", Some(agent_id));
         assert_eq!(removed["removed"], serde_json::json!(agent_id.to_string()));
@@ -1027,31 +1345,34 @@ mod tests {
 
         let validate = validate_skill_result_json(&config);
         assert_eq!(validate["valid"], serde_json::Value::Bool(true));
-        assert_eq!(
-            validate["interface_revision"],
-            serde_json::json!({ "inner": 7 })
-        );
+        assert_eq!(validate["interface_revision"], serde_json::json!(7));
 
         let dry_run = dry_run_result_json(&config);
         assert_eq!(dry_run["dry_run"], serde_json::Value::Bool(true));
+        assert_eq!(dry_run["interface_revision"], serde_json::json!(7));
         assert!(dry_run.get("config_digest_hex_with_zero_package").is_none());
     }
 
     #[test]
-    fn create_skill_artifact_result_json_is_raw_artifact_shape() {
+    fn create_skill_artifact_result_json_is_semantic_artifact_shape() {
         let artifact = fixture_artifact();
         let output = create_skill_artifact_result_json(&artifact);
 
         assert_eq!(output["skill_name"], serde_json::json!("weather skill"));
-        assert_eq!(
-            output["interface_revision"],
-            serde_json::json!({ "inner": 1 })
-        );
+        assert_eq!(output["interface_revision"], serde_json::json!(1));
         assert_eq!(
             output["dag_id"],
             serde_json::json!(sui::types::Address::from_static("0xd").to_string())
         );
         assert!(output.get("requirements").is_some());
+        assert_eq!(output["requirements"]["input_commitment_hex"], "01");
+        assert_eq!(
+            output["requirements"]["payment_policy"]["kind"],
+            "user_funded"
+        );
+        assert_eq!(output["requirements"]["schedule_policy"]["kind"], "once");
+        assert!(!output.to_string().contains("\"inner\""));
+        assert!(!output.to_string().contains("\"bytes\""));
         assert!(output.get("standard_tap").is_none());
         assert!(output.get("function").is_none());
         assert!(output.get("out").is_none());

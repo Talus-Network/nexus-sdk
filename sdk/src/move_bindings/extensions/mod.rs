@@ -10,9 +10,12 @@ mod network_auth;
 mod nexus_data;
 mod payment;
 mod ports_data;
+mod priority_fee_vault;
 mod runtime_vertex;
-mod scheduler_models;
 mod shared_object_ref;
 mod support;
 mod tap;
+mod versioned;
 mod workflow;
+
+pub use versioned::VersionedAnchor;

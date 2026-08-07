@@ -1,39 +1,15 @@
-//! Signed HTTP requests/responses.
+//! Leader-to-Tool signing transport.
 //!
-//! This module implements a simple, deployment agnostic signing format designed
-//! for Nexus Leader <=> Tool communication:
-//! - Payload stays as the regular HTTP body (e.g., tool input/output JSON).
-//! - A small JSON "claims" blob is serialized to bytes and bound to Ed25519 signatures.
-//! - The signed bytes are shipped in `X-Nexus-Sig-Input` (base64url) alongside
-//!   the signature in `X-Nexus-Sig` (base64url).
+//! The offchain tool prepares signature consumed by the onchain RegisteredKey
+//! verifier:
+//! - the Leader signs `SHA-256(BCS(canonical_tool_inputs))`;
+//! - the Tool signs `domain || leader_signature || deterministic_nonce || SHA-256(result_bytes)`;
+//! - `result_bytes` is the exact BCS `TaggedOutput` submitted onchain.
 //!
-//! This avoids brittle HTTP canonicalization and keeps tool schemas unchanged.
-//!
-//! "Claims" here means signed assertions about the HTTP message (who is calling, what is being
-//! called, which body bytes are being sent, and within what time/nonce window), not the tool's
-//! application payload itself.
-//!
-//! # Why an "envelope" header design?
-//! Many HTTP signing schemes require canonicalizing the request target, headers, and body.
-//! In practice this becomes fragile when requests traverse heterogeneous infrastructure
-//! (reverse proxies, load balancers, gateways) that may normalize or rewrite parts of the
-//! request/response.
-//!
-//! Instead, Nexus signs a small, explicit JSON claims blob that contains:
-//! - the HTTP method + path + query string,
-//! - a SHA 256 hash of the raw body bytes,
-//! - a time window (`iat_ms`/`exp_ms`) and `nonce`,
-//! - the `LeaderId`/`ToolId` identifiers and key ids.
-//!
-//! The request signature covers the request claims hash; response signatures cover the request
-//! binding, response body hash, status, and outcome used by on chain verification. This ensures:
-//! - tool input and output schemas remain unchanged,
-//! - no bespoke body canonicalization is required,
-//! - the signature is stable and auditable (store claims bytes + signature).
-//!
-//! # Versions
-//! - [`v1`] is the currently implemented protocol version.
-
-pub mod v1;
+//! Leader identity and active-key selection remain offchain transport concerns. The deterministic
+//! nonce is bound by the Tool signature and verified against authoritative execution context
+//! onchain. Authenticated HTTPS must still protect the request body and unsigned headers on every
+//! network hop; these minimal onchain signatures do not make plaintext HTTP safe.
 
 pub mod keys;
+pub mod v2;

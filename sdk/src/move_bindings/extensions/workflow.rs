@@ -6,10 +6,7 @@
 
 use crate::{
     move_bindings::{
-        interface::{
-            graph::{PostFailureAction, RuntimeVertex},
-            verifier::{VerifierConfig, VerifierMode},
-        },
+        interface::graph::{PostFailureAction, RuntimeVertex},
         workflow::{
             execution::{DAGExecution, DAGWalk},
             execution_events::RequestWalkExecutionEvent,
@@ -20,19 +17,10 @@ use crate::{
     types::{RequestWalkContext, SkillRevisionLookupKey},
 };
 
-impl Default for VerifierConfig {
-    fn default() -> Self {
-        Self {
-            mode: VerifierMode::None,
-            method: "".into(),
-        }
-    }
-}
-
 impl RequestWalkExecutionEvent {
     pub fn skill_revision_key(&self) -> Option<SkillRevisionLookupKey> {
         Some(SkillRevisionLookupKey {
-            agent_id: self.agent_id.clone().into(),
+            agent_id: self.agent_id.into(),
             skill_id: self.skill_id,
             interface_revision: self.interface_version,
         })
@@ -40,11 +28,11 @@ impl RequestWalkExecutionEvent {
 
     pub fn to_context(&self) -> anyhow::Result<Option<RequestWalkContext>> {
         Ok(Some(RequestWalkContext {
-            agent_id: self.agent_id.clone().into(),
+            agent_id: self.agent_id.into(),
             skill_id: self.skill_id,
             interface_revision: self.interface_version,
-            scheduled_task_id: self.scheduled_task_id.as_option().map(|id| id.bytes),
-            scheduled_occurrence_index: self.scheduled_occurrence_index.copied_option(),
+            task_id: self.task_id.bytes,
+            occurrence_id: self.occurrence_id,
         }))
     }
 }
@@ -85,12 +73,12 @@ impl DAGExecution {
         self.agent_id.bytes
     }
 
-    pub fn scheduled_task_id_address(&self) -> Option<sui::types::Address> {
-        self.scheduled_task_id.as_option().map(|id| id.bytes)
+    pub fn task_id_address(&self) -> sui::types::Address {
+        self.task_id.bytes
     }
 
-    pub fn scheduled_occurrence_index_value(&self) -> Option<u64> {
-        self.scheduled_occurrence_index.copied_option()
+    pub fn occurrence_id_value(&self) -> u64 {
+        self.occurrence_id
     }
 
     pub fn skill_revision_key(&self) -> Option<SkillRevisionLookupKey> {
@@ -106,8 +94,8 @@ impl DAGExecution {
             agent_id: self.agent_id_address(),
             skill_id: self.skill_id,
             interface_revision: self.interface_version,
-            scheduled_task_id: self.scheduled_task_id_address(),
-            scheduled_occurrence_index: self.scheduled_occurrence_index_value(),
+            task_id: self.task_id_address(),
+            occurrence_id: self.occurrence_id_value(),
         }))
     }
 }

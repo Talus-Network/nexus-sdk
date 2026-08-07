@@ -5,9 +5,11 @@
 //! selected modules, but they should not duplicate Move ABI logic.
 
 mod extensions;
-
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
+pub use extensions::VersionedAnchor;
+#[cfg(feature = "transactions")]
+pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {
     self::interface::graph::RuntimeVertex,
     crate::{sui, types::NexusObjects},
@@ -23,8 +25,8 @@ fn derive_object_id<T: sui::traits::ToBcs>(
 
 /// Run `f` with all Nexus generated bindings scoped to the package IDs in `objects`.
 ///
-/// Current package IDs are used for Move call targets. Original package IDs are used for type
-/// identity where Sui package upgrades keep type tags pinned to the defining package.
+/// Storage IDs are used for Move call targets. Exact datatype origins are
+/// used for type identity, including types introduced by later upgrades.
 pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R) -> R {
     move_std::with_packages(
         sui::types::Address::from_static("0x1"),
@@ -34,26 +36,62 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
                 sui::types::Address::from_static("0x2"),
                 sui::types::Address::from_static("0x2"),
                 || {
-                    primitives::with_packages(
-                        objects.primitives_pkg_id,
-                        objects.primitives_pkg_id,
+                    talus::with_packages(
+                        objects.us_token.package_id,
+                        objects.us_token.package_id,
                         || {
-                            interface::with_packages(
-                                objects.interface_pkg_id,
-                                objects.interface_pkg_id,
+                            primitives::with_package_context(
+                                objects.packages.primitives.storage_id,
+                                objects.packages.primitives.initial_id,
+                                &objects.packages.primitives.type_origins,
                                 || {
-                                    registry::with_packages(
-                                        objects.registry_pkg_id,
-                                        objects.registry_pkg_id,
+                                    interface::with_package_context(
+                                        objects.packages.interface.storage_id,
+                                        objects.packages.interface.initial_id,
+                                        &objects.packages.interface.type_origins,
                                         || {
-                                            workflow::with_packages(
-                                                objects.workflow_pkg_id,
-                                                objects.workflow_type_origin_pkg_id(),
+                                            tool::with_package_context(
+                                                objects.packages.tool.storage_id,
+                                                objects.packages.tool.initial_id,
+                                                &objects.packages.tool.type_origins,
                                                 || {
-                                                    scheduler::with_packages(
-                                                        objects.scheduler_pkg_id,
-                                                        objects.scheduler_type_origin_pkg_id(),
-                                                        f,
+                                                    registry::with_package_context(
+                                                        objects.packages.registry.storage_id,
+                                                        objects.packages.registry.initial_id,
+                                                        &objects.packages.registry.type_origins,
+                                                        || {
+                                                            workflow::with_package_context(
+                                                                objects
+                                                                    .packages
+                                                                    .workflow
+                                                                    .storage_id,
+                                                                objects
+                                                                    .packages
+                                                                    .workflow
+                                                                    .initial_id,
+                                                                &objects
+                                                                    .packages
+                                                                    .workflow
+                                                                    .type_origins,
+                                                                || {
+                                                                    scheduler::with_package_context(
+                                                                        objects
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .storage_id,
+                                                                        objects
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .initial_id,
+                                                                        &objects
+                                                                            .packages
+                                                                            .scheduler
+                                                                            .type_origins,
+                                                                        f,
+                                                                    )
+                                                                },
+                                                            )
+                                                        },
                                                     )
                                                 },
                                             )
@@ -78,11 +116,15 @@ where
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
-fn registry_type_tag<T>(registry_pkg_id: sui::types::Address) -> sui::types::TypeTag
+fn registry_type_tag<T>(registry_type_origin_pkg_id: sui::types::Address) -> sui::types::TypeTag
 where
     T: sui_move::MoveType,
 {
-    registry::with_packages(registry_pkg_id, registry_pkg_id, T::type_tag_static)
+    registry::with_packages(
+        registry_type_origin_pkg_id,
+        registry_type_origin_pkg_id,
+        T::type_tag_static,
+    )
 }
 
 /// Build a generated Move struct tag scoped to this Nexus deployment.
@@ -116,47 +158,7 @@ where
     tag.module() == expected.module() && tag.name() == expected.name()
 }
 
-/// Build a generated Move struct tag with a specific package address.
-pub(crate) fn struct_tag_with_package<T>(
-    objects: &NexusObjects,
-    package: sui::types::Address,
-) -> sui::types::StructTag
-where
-    T: sui_move::MoveStruct,
-{
-    let tag = struct_tag::<T>(objects);
-    sui::types::StructTag::new(
-        package,
-        tag.module().clone(),
-        tag.name().clone(),
-        tag.type_params().to_vec(),
-    )
-}
-
-/// Qualified generated Move struct name scoped to this Nexus deployment.
-pub(crate) fn struct_type_name<T>(objects: &NexusObjects) -> String
-where
-    T: sui_move::MoveStruct,
-{
-    qualified_struct_name(&struct_tag::<T>(objects))
-}
-
-/// Qualified generated Move struct name with a specific package address.
-pub(crate) fn struct_type_name_with_package<T>(
-    objects: &NexusObjects,
-    package: sui::types::Address,
-) -> String
-where
-    T: sui_move::MoveStruct,
-{
-    qualified_struct_name(&struct_tag_with_package::<T>(objects, package))
-}
-
-fn qualified_struct_name(tag: &sui::types::StructTag) -> String {
-    format!("{}::{}::{}", tag.address(), tag.module(), tag.name())
-}
-
-/// Derive the on chain [`registry::tool_registry::Tool`] object ID for a tool FQN.
+/// Derive the onchain [`tool::tool_registry::Tool`] object ID for a Tool FQN.
 pub fn derive_tool_id(
     tool_registry: sui::types::Address,
     tool_fqn: &crate::ToolFqn,
@@ -170,65 +172,74 @@ pub fn derive_tool_id(
     )
 }
 
-/// Derive the on chain [`workflow::gas::ToolGas`] object ID for a tool FQN.
-pub fn derive_tool_gas_id(
-    gas_service: sui::types::Address,
-    tool_fqn: &crate::ToolFqn,
+/// Derive the onchain [`tool::tool_cashier::ToolCashier`] object ID for a Tool.
+///
+/// The key value must use the generated [`tool::tool_cashier::ToolCashierKey`]
+/// layout. Move represents its empty declaration with a `false` dummy field,
+/// and that byte is part of the derived object hash.
+pub fn derive_tool_cashier_id(
+    tool_cashier_type_origin: sui::types::Address,
+    tool: sui::types::Address,
 ) -> anyhow::Result<sui::types::Address> {
-    use sui_move::MoveType as _;
-
-    derive_object_id(
-        gas_service,
-        &move_std::ascii::String::type_tag_static(),
-        tool_fqn,
-    )
+    let key = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        tool_cashier_type_origin,
+        sui::types::Identifier::from_static("tool_cashier"),
+        sui::types::Identifier::from_static("ToolCashierKey"),
+        vec![],
+    )));
+    derive_object_id(tool, &key, &tool::tool_cashier::ToolCashierKey::new(false))
 }
 
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 pub(crate) fn derive_network_auth_binding_id(
-    registry_pkg_id: sui::types::Address,
+    registry_type_origin_pkg_id: sui::types::Address,
     network_auth_object_id: sui::types::Address,
     identity: &IdentityKey,
 ) -> anyhow::Result<sui::types::Address> {
-    let key_type = registry_type_tag::<IdentityKey>(registry_pkg_id);
+    let key_type = registry_type_tag::<IdentityKey>(registry_type_origin_pkg_id);
     derive_object_id(network_auth_object_id, &key_type, identity)
 }
 
 /// Derive the task ID associated with a walk execution request event.
+///
+/// Pass [`NexusObjects::interface_type_origin_pkg_id`] so the derived ID
+/// remains stable after an interface package upgrade.
 pub fn derive_walk_execution_event_task_id(
-    interface_pkg_id: sui::types::Address,
+    interface_type_origin_pkg_id: sui::types::Address,
     execution: sui::types::Address,
     vertex: &RuntimeVertex,
 ) -> anyhow::Result<sui::types::Address> {
     use sui_move::MoveStruct;
 
-    let (name, iteration) = match vertex {
-        RuntimeVertex::Plain { vertex } => (vertex, &0),
+    let (name, repetitive, iteration) = match vertex {
+        RuntimeVertex::Plain { vertex } => (vertex, false, 0),
         RuntimeVertex::WithIterator {
             vertex, iteration, ..
-        } => (vertex, iteration),
+        } => (vertex, true, *iteration),
     };
     let vertex_shape = interface::graph::Vertex::struct_tag_static();
     let vertex_tag = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
-        interface_pkg_id,
+        interface_type_origin_pkg_id,
         vertex_shape.module().clone(),
         vertex_shape.name().clone(),
         vec![],
     )));
 
-    derive_object_id(
-        derive_object_id(execution, &vertex_tag, name)?,
-        &sui::types::TypeTag::U64,
-        iteration,
-    )
+    let vertex_task_id = derive_object_id(execution, &vertex_tag, name)?;
+    let runtime_task_id = if repetitive {
+        derive_object_id(vertex_task_id, &sui::types::TypeTag::Bool, &true)?
+    } else {
+        vertex_task_id
+    };
+    derive_object_id(runtime_task_id, &sui::types::TypeTag::U64, &iteration)
 }
 
-/// Derive the task ID associated with a scheduled occurrence event.
-pub fn derive_occurrence_scheduled_event_task_id(
+/// Derives the [`workflow::execution::DAGExecution`] ID for one [`scheduler::task::Task`] occurrence.
+pub fn derive_task_execution_id(
     task: sui::types::Address,
-    start_time_ms: &u64,
+    occurrence_id: u64,
 ) -> anyhow::Result<sui::types::Address> {
-    derive_object_id(task, &sui::types::TypeTag::U64, start_time_ms)
+    derive_object_id(task, &sui::types::TypeTag::U64, &occurrence_id)
 }
 
 pub mod interface {
@@ -251,6 +262,17 @@ pub mod move_std {
         unused_imports
     )]
     include!(concat!(env!("OUT_DIR"), "/move_std_types.rs"));
+}
+
+pub mod tool {
+    #![allow(
+        clippy::all,
+        dead_code,
+        non_camel_case_types,
+        private_interfaces,
+        unused_imports
+    )]
+    include!(concat!(env!("OUT_DIR"), "/tool_types.rs"));
 }
 
 pub mod primitives {
@@ -297,6 +319,17 @@ pub mod sui_framework {
     include!(concat!(env!("OUT_DIR"), "/sui_framework_types.rs"));
 }
 
+pub mod talus {
+    #![allow(
+        clippy::all,
+        dead_code,
+        non_camel_case_types,
+        private_interfaces,
+        unused_imports
+    )]
+    include!(concat!(env!("OUT_DIR"), "/talus_types.rs"));
+}
+
 pub mod workflow {
     #![allow(
         clippy::all,
@@ -310,10 +343,70 @@ pub mod workflow {
 
 #[cfg(test)]
 mod tests {
-    use super::registry;
-
+    use {
+        super::{
+            derive_task_execution_id,
+            derive_tool_cashier_id,
+            derive_walk_execution_event_task_id,
+            interface::graph::RuntimeVertex,
+            registry,
+        },
+        crate::sui,
+        sui_move::MoveType,
+    };
     #[test]
     fn generated_bindings_expose_calls() {
         let _ = registry::leader::claim_unstaked_for_self_target;
+        let _ = super::talus::us::US::type_tag_static;
+    }
+
+    #[test]
+    fn walk_task_id_distinguishes_plain_from_zero_based_repetitive_execution() {
+        let interface = sui::types::Address::from_static("0x1");
+        let execution = sui::types::Address::from_static("0x2");
+        let plain = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::plain("vertex"),
+        )
+        .unwrap();
+        let repetitive_zero = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::with_iterator("vertex", 0, 2),
+        )
+        .unwrap();
+        let repetitive_one = derive_walk_execution_event_task_id(
+            interface,
+            execution,
+            &RuntimeVertex::with_iterator("vertex", 1, 2),
+        )
+        .unwrap();
+
+        assert_ne!(plain, repetitive_zero);
+        assert_ne!(repetitive_zero, repetitive_one);
+    }
+
+    #[test]
+    fn task_execution_id_uses_the_occurrence_identity() {
+        let task = sui::types::Address::from_static("0x51");
+        let expected = task.derive_object_id(&sui::types::TypeTag::U64, &7_u64.to_le_bytes());
+
+        assert_eq!(derive_task_execution_id(task, 7).unwrap(), expected);
+    }
+
+    #[test]
+    fn tool_cashier_id_matches_the_move_derived_object_key() {
+        let package = sui::types::Address::from_static(
+            "0xb9b0f588a28d41b7f40a8cc11e9ad5bb96f65f4da5f93d886db69519642fbebb",
+        );
+        let tool = sui::types::Address::from_static(
+            "0x015002c6cb4dca09fecf1f52a09e5e92bc7b878ce6386a83cc021fb4df67b0ec",
+        );
+        let expected = sui::types::Address::from_static(
+            "0x6d6d6f4789bef43ac69883d713e63fe34ed2aa9e012c14d3da9ede3cb3b57e78",
+        );
+
+        assert_eq!(derive_tool_cashier_id(package, tool).unwrap(), expected);
     }
 }

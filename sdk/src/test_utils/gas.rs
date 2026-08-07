@@ -5,7 +5,7 @@ pub async fn fetch_gas_coins(
     rpc_url: &str,
     owner: sui::types::Address,
 ) -> anyhow::Result<Vec<(sui::types::ObjectReference, u64)>> {
-    let mut client = sui::grpc::Client::new(rpc_url)?;
+    let mut client = sui::grpc::client(rpc_url)?;
 
     let request = sui::grpc::ListOwnedObjectsRequest::default()
         .with_owner(owner)

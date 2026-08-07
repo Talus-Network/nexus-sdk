@@ -2,25 +2,70 @@ use {
     super::ToolAuthCommand,
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
-        sui::{build_sui_grpc_client, get_nexus_client, get_nexus_objects},
+        sui::{get_nexus_client, get_read_only_nexus_client},
     },
     nexus_sdk::{
-        nexus::network_auth::NetworkAuthReader,
+        nexus::{client::NexusClient, network_auth::ToolKeyList},
         signed_http::{
             keys::{parse_ed25519_signing_key, Ed25519Keypair},
-            v1::wire::AllowedLeadersFileV1,
+            v2::wire::AllowedLeadersFileV1,
         },
         ToolFqn,
     },
     std::{
+        fmt::Write as _,
         path::{Path, PathBuf},
         time::{Duration, SystemTime, UNIX_EPOCH},
     },
 };
+
+fn render_generated_key(private_key_hex: &str, public_key_hex: &str) -> String {
+    format!(
+        "{:<20}{}\n{:<20}{}\n",
+        "Private key", private_key_hex, "Public key", public_key_hex,
+    )
+}
+
+fn render_tool_keys(tool_fqn: &ToolFqn, list: Option<&ToolKeyList>) -> String {
+    let mut output = String::new();
+    writeln!(output, "{:<20}{tool_fqn}", "Tool").expect("writing to a String cannot fail");
+    let Some(list) = list else {
+        output.push_str("No message signing keys are registered.\n");
+        return output;
+    };
+
+    writeln!(output, "{:<20}{}", "Binding", list.binding_object_id)
+        .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "{:<20}{}",
+        "Active key",
+        list.active_key_id
+            .map_or_else(|| "none".to_owned(), |key| key.to_string()),
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(output, "{:<20}{}", "Next key", list.next_key_id)
+        .expect("writing to a String cannot fail");
+
+    for key in &list.keys {
+        let state = match (list.active_key_id == Some(key.kid), key.revoked) {
+            (true, true) => "active, revoked",
+            (true, false) => "active",
+            (false, true) => "revoked",
+            (false, false) => "available",
+        };
+        writeln!(output, "\nKey {} ({state})", key.kid).expect("writing to a String cannot fail");
+        writeln!(output, "{:<20}{}", "Public key", key.public_key_hex)
+            .expect("writing to a String cannot fail");
+        writeln!(output, "{:<20}{}", "Added at", key.added_at_ms)
+            .expect("writing to a String cannot fail");
+    }
+    output
+}
 
 pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
     match cmd {
@@ -72,6 +117,11 @@ async fn keygen(out: Option<PathBuf>) -> AnyResult<(), NexusCliError> {
             "Wrote keypair JSON to {path}",
             path = path.display().to_string().truecolor(100, 100, 100)
         );
+    } else {
+        human_output(&render_generated_key(
+            &keypair.private_key_hex(),
+            &keypair.public_key_hex(),
+        ));
     }
 
     json_output(&payload)?;
@@ -180,9 +230,16 @@ async fn register_key(
         .map_err(NexusCliError::Nexus)?;
     handle.success();
 
+    notify_success!(
+        "Registered key {kid} for Tool '{tool_fqn}' with public key {public_key}.",
+        kid = result.tool_kid,
+        public_key = hex::encode(result.public_key),
+    );
+
     json_output(&json!({
         "digest": result.tx_digest,
         "tool_fqn": tool_fqn,
+        "tool_id": result.tool_id,
         "binding_object_id": result.binding_object_id,
         "tool_kid": result.tool_kid,
         "public_key_hex": hex::encode(result.public_key),
@@ -195,7 +252,7 @@ async fn register_key(
 async fn list_keys(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
     command_title!("Listing keys for tool '{tool_fqn}'");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let handle = loading!("Fetching key binding...");
     let list = match nexus_client.network_auth().list_tool_keys(&tool_fqn).await {
@@ -208,6 +265,8 @@ async fn list_keys(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
             return Err(NexusCliError::Nexus(e));
         }
     };
+
+    human_output(&render_tool_keys(&tool_fqn, list.as_ref()));
 
     match list {
         None => {
@@ -245,7 +304,7 @@ async fn export_allowed_leaders(
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Exporting allowed leaders file");
 
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
 
     let handle = loading!("Resolving leader keys and writing allowlist...");
     let file = if all {
@@ -292,21 +351,22 @@ enum AllowedLeadersSyncOutcome {
 
 #[derive(Clone)]
 struct AllowedLeadersFileSyncerV1 {
-    reader: NetworkAuthReader,
+    client: NexusClient,
     out_path: PathBuf,
 }
 
 impl AllowedLeadersFileSyncerV1 {
-    fn new(reader: NetworkAuthReader, out_path: impl Into<PathBuf>) -> Self {
+    fn new(client: NexusClient, out_path: impl Into<PathBuf>) -> Self {
         Self {
-            reader,
+            client,
             out_path: out_path.into(),
         }
     }
 
     async fn sync_once(&self) -> AnyResult<AllowedLeadersSyncOutcome, NexusCliError> {
         let file = self
-            .reader
+            .client
+            .network_auth()
             .export_allowed_leaders_file_v1_for_all_leaders()
             .await
             .map_err(NexusCliError::Nexus)?;
@@ -379,19 +439,8 @@ async fn sync_allowed_leaders(
         )));
     }
 
-    let mut conf = CliConf::load().await.unwrap_or_default();
-    let client = build_sui_grpc_client(&conf).await?;
-    let rpc_url = client.lock().await.uri().to_string();
-    let objects = get_nexus_objects(&mut conf).await?;
-
-    let reader = NetworkAuthReader::from_rpc_url(
-        &rpc_url,
-        objects.registry_pkg_id,
-        *objects.network_auth.object_id(),
-    )
-    .map_err(NexusCliError::Nexus)?;
-
-    let syncer = AllowedLeadersFileSyncerV1::new(reader, out.clone());
+    let client = get_read_only_nexus_client().await?;
+    let syncer = AllowedLeadersFileSyncerV1::new(client, out.clone());
 
     if once {
         let handle = loading!("Syncing allowlist...");
@@ -440,7 +489,44 @@ async fn sync_allowed_leaders(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, clap::Parser};
+    use {
+        super::*,
+        clap::Parser,
+        nexus_sdk::{
+            nexus::network_auth::{ToolKeyEntry, ToolKeyList},
+            test_utils::nexus_mocks,
+        },
+    };
+
+    #[test]
+    fn key_generation_report_contains_both_keys() {
+        let report = render_generated_key("private", "public");
+
+        assert!(report.contains("Private key         private"));
+        assert!(report.contains("Public key          public"));
+    }
+
+    #[test]
+    fn key_list_report_marks_the_active_key() {
+        let tool_fqn = "xyz.demo.tool@1".parse().unwrap();
+        let list = ToolKeyList {
+            binding_object_id: sui::types::Address::from_static("0xb"),
+            active_key_id: Some(1),
+            next_key_id: 2,
+            keys: vec![ToolKeyEntry {
+                kid: 1,
+                public_key_hex: "abcd".to_owned(),
+                added_at_ms: 123,
+                revoked: false,
+            }],
+        };
+
+        let report = render_tool_keys(&tool_fqn, Some(&list));
+
+        assert!(report.contains("xyz.demo.tool@1"));
+        assert!(report.contains("Key 1 (active)"));
+        assert!(report.contains("abcd"));
+    }
 
     /// Verifies that clap correctly parses the humantime duration format for
     /// `sync-allowed-leaders --interval`. Guards against regressions where the
@@ -506,6 +592,27 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("invalid duration"));
+    }
+
+    #[tokio::test]
+    async fn sync_once_writes_allowlist_without_wallet_or_owned_coins() {
+        let out_dir = tempfile::tempdir().expect("temporary output directory");
+        let out_path = out_dir.path().join("allowed-leaders.json");
+        let client = nexus_mocks::mock_network_auth_client_without_wallet().await;
+        let syncer = AllowedLeadersFileSyncerV1::new(client, out_path.clone());
+
+        let outcome = syncer
+            .sync_once()
+            .await
+            .expect("read only client sync should not require wallet configuration");
+        let file: AllowedLeadersFileV1 = serde_json::from_slice(
+            &std::fs::read(out_path).expect("allowlist output should be written"),
+        )
+        .expect("allowlist output should decode");
+
+        assert_eq!(outcome, AllowedLeadersSyncOutcome::Updated);
+        assert_eq!(file.version, 1);
+        assert_eq!(file.leaders.len(), 1);
     }
 
     /// Verifies that `register-key --skip-if-active` is accepted by clap.

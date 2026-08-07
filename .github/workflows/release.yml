@@ -23,12 +23,6 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
   workflow_dispatch:
-    inputs:
-      release:
-        description: "Create a release"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -75,6 +69,14 @@ jobs:
           file: Cargo.toml
           field: workspace.package.version
 
+      - name: Validate release metadata
+        id: release_metadata
+        if: github.ref_type == 'tag'
+        run: |
+          .github/scripts/validate_release_tag.sh \
+            "${{ steps.get_version.outputs.value }}" \
+            "${{ github.ref_name }}"
+
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -97,7 +99,10 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build binary
-        run: cargo build --package=nexus-cli --release --locked --target=${{ matrix.target }} $BUILD_STD
+        run: |
+          # BUILD_STD is supplied by setup-cross-toolchain-action and must split into Cargo flags.
+          # shellcheck disable=SC2086
+          cargo build --package=nexus-cli --release --locked --target="${{ matrix.target }}" $BUILD_STD
 
       - name: Install cargo-deb
         uses: taiki-e/install-action@v2
@@ -127,10 +132,10 @@ jobs:
             *.zip
 
       - name: Create release
-        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ github.ref != format('refs/tags/v{0}', steps.get_version.outputs.value) }}
+          prerelease: ${{ steps.release_metadata.outputs.prerelease == 'true' }}
           draft: true
           files: |
             *.deb

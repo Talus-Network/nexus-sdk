@@ -7,8 +7,14 @@ pub(crate) mod agent_input;
 /// Transactions concerning operations around Nexus DAGs.
 pub mod dag;
 
-/// Transactions concerning operations around Nexus gas settlements.
+/// Transactions that use the Sui gas coin directly.
 pub mod gas;
+
+/// Transactions concerning Nexus network fees.
+pub mod network;
+
+/// Transactions concerning Tool cashier state and payment tickets.
+pub mod tool_cashier;
 
 /// Transactions concerning operations around the scheduler.
 pub mod scheduler;

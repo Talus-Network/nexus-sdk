@@ -14,7 +14,7 @@ use {
 };
 
 fn description_option(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
     let description = description
@@ -25,25 +25,25 @@ fn description_option(
 }
 
 fn proof_for_offchain_tool(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     tool: Argument,
     owner_cap: Argument,
 ) -> anyhow::Result<Argument> {
-    Ok(tx.call_target(
+    tx.call_target(
         network_auth_binding::prove_offchain_tool_target,
         vec![tool, owner_cap],
-    )?)
+    )
 }
 
 fn proof_for_leader(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     leader_cap: Argument,
 ) -> anyhow::Result<Argument> {
-    Ok(tx.call_target(network_auth_binding::prove_leader_target, vec![leader_cap])?)
+    tx.call_target(network_auth_binding::prove_leader_target, vec![leader_cap])
 }
 
 fn register_key(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     binding: Argument,
     proof: Argument,
     public_key: [u8; 32],
@@ -65,29 +65,43 @@ fn register_key(
 }
 
 fn create_binding(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     proof: Argument,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
-    let objects = tx.objects();
-    let network_auth = tx.shared_object(&objects.network_auth, true)?;
+    let network_auth = tx.objects().network_auth.clone();
+    let network_auth = tx.shared_object(&network_auth, true)?;
     let description = description_option(tx, description)?;
 
-    Ok(tx.call_target(
+    tx.call_target(
         network_auth_binding::create_binding_target,
         vec![network_auth, proof, description],
-    )?)
+    )
 }
 
-fn share_binding(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
-    binding: Argument,
-) -> anyhow::Result<()> {
+fn share_binding(tx: &mut move_boundary::NexusPtbBuilder, binding: Argument) -> anyhow::Result<()> {
     tx.call_target(
         transfer_binding::public_share_object_target::<network_auth_binding::KeyBinding>,
         vec![binding],
     )?;
     Ok(())
+}
+
+/// Composes a new tool binding and its initial key into the current transaction.
+pub(super) fn create_tool_binding_and_register_key(
+    tx: &mut move_boundary::NexusPtbBuilder,
+    tool: Argument,
+    owner_cap: Argument,
+    public_key: [u8; 32],
+    pop_signature: [u8; 64],
+    description: Option<Vec<u8>>,
+) -> anyhow::Result<()> {
+    let proof_for_binding = proof_for_offchain_tool(tx, tool, owner_cap)?;
+    let binding = create_binding(tx, proof_for_binding, description)?;
+
+    let proof_for_key = proof_for_offchain_tool(tx, tool, owner_cap)?;
+    register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
+    share_binding(tx, binding)
 }
 
 /// Create a new off chain tool key binding and register the first key.
@@ -105,13 +119,14 @@ pub(crate) fn create_tool_binding_and_register_key_ptb(
     move_boundary::ptb(objects, |tx| {
         let tool = tx.shared_object(tool, false)?;
         let owner_cap = tx.owned_object(owner_cap_over_tool)?;
-
-        let proof_for_binding = proof_for_offchain_tool(tx, tool, owner_cap)?;
-        let binding = create_binding(tx, proof_for_binding, description)?;
-
-        let proof_for_key = proof_for_offchain_tool(tx, tool, owner_cap)?;
-        register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
-        share_binding(tx, binding)
+        create_tool_binding_and_register_key(
+            tx,
+            tool,
+            owner_cap,
+            public_key,
+            pop_signature,
+            description,
+        )
     })
 }
 
@@ -178,4 +193,44 @@ pub fn register_leader_key_on_existing_binding_ptb(
         let proof = proof_for_leader(tx, leader_cap)?;
         register_key(tx, binding, proof, public_key, pop_signature)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::test_utils::sui_mocks};
+
+    #[test]
+    fn tool_binding_composition_matches_the_standalone_builder() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool = sui_mocks::mock_sui_object_ref();
+        let owner_cap = sui_mocks::mock_sui_object_ref();
+        let public_key = [3u8; 32];
+        let pop_signature = [5u8; 64];
+        let description = Some(b"atomic".to_vec());
+
+        let expected = create_tool_binding_and_register_key_ptb(
+            &objects,
+            &tool,
+            &owner_cap,
+            public_key,
+            pop_signature,
+            description.clone(),
+        )
+        .unwrap();
+        let actual = move_boundary::ptb(&objects, |tx| {
+            let tool = tx.shared_object(&tool, false)?;
+            let owner_cap = tx.owned_object(&owner_cap)?;
+            create_tool_binding_and_register_key(
+                tx,
+                tool,
+                owner_cap,
+                public_key,
+                pop_signature,
+                description,
+            )
+        })
+        .unwrap();
+
+        assert_eq!(actual, expected);
+    }
 }

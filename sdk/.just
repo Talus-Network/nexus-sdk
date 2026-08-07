@@ -20,27 +20,42 @@ check: _check-cargo
 test: _check-cargo
     cargo +stable test --all-features --package {{ package }}
 
-# Regenerate the committed Move binding IR (src/move_bindings/ir/*.json).
+# Regenerate the committed Nexus Move binding IR (src/move_bindings/ir/*.json).
 #
-# Requires a published Nexus objects TOML and a running Sui gRPC endpoint.
+# Accepts either a deployment objects TOML or a Nexus `sui` source directory and a running Sui
+# gRPC endpoint. A source directory resolves `bin/target/objects.localnet.toml` and restores source
+# parameter names automatically. Set source_root explicitly when using an objects TOML.
 # The wrapper does not start Sui or publish packages.
 #
 # The offline render happens automatically in build.rs on the next build.
-rebind nexus_sui='../nexus/sui' grpc='http://127.0.0.1:9000': _check-cargo
+rebind objects_file grpc='http://127.0.0.1:9000' source_root='': _check-cargo
     #!/usr/bin/env bash
     set -euo pipefail
 
-    nexus_sui="{{ nexus_sui }}"
-    case "$nexus_sui" in
+    objects_file="{{ objects_file }}"
+    case "$objects_file" in
     /*) ;;
-    *) nexus_sui="{{ invocation_directory() }}/$nexus_sui" ;;
+    *) objects_file="{{ invocation_directory() }}/$objects_file" ;;
     esac
 
-    cargo +stable run \
-        --package {{ package }} \
-        --features binding_codegen \
-        --bin regenerate_bindings \
-        -- "$nexus_sui/bin/target/objects.localnet.toml" "{{ grpc }}"
+    source_root="{{ source_root }}"
+    if [ -n "$source_root" ]; then
+        case "$source_root" in
+        /*) ;;
+        *) source_root="{{ invocation_directory() }}/$source_root" ;;
+        esac
+        cargo +stable run \
+            --package {{ package }} \
+            --features binding_codegen \
+            --bin regenerate_bindings \
+            -- "$objects_file" "{{ grpc }}" --source-root "$source_root"
+    else
+        cargo +stable run \
+            --package {{ package }} \
+            --features binding_codegen \
+            --bin regenerate_bindings \
+            -- "$objects_file" "{{ grpc }}"
+    fi
 
 # Run rustfmt on the Nexus SDK
 fmt-check: _check-cargo
