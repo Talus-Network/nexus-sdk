@@ -1,4 +1,5 @@
 use {
+    super::tool_output::ToolOutput,
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
     nexus_sdk::{
         move_bindings::{
@@ -30,9 +31,9 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
     tools_handle.success();
 
-    notify_success!("Successfully fetched {} tools", tools.len());
+    let tools = tool_list_output(&timeouts, &tools)?;
 
-    let mut tools_json = Vec::new();
+    notify_success!("Successfully fetched {} tools", tools.len());
 
     let mut table = Table::new();
 
@@ -44,25 +45,20 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         "Unregistered At"
     ]);
 
-    for tool in tools {
-        let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
-        let registered_at = tool.registered_at_datetime().map_err(NexusCliError::Any)?;
-        let unregistered_at = tool
-            .unregistered_at_datetime()
-            .map_err(NexusCliError::Any)?;
-        let timeout = timeouts
-            .get(&fqn)
+    for tool in &tools {
+        let timeout = tool
+            .timeout_ms
             .map(|timeout| format!("{timeout} ms"))
             .unwrap_or_else(|| "N/A".to_string());
 
-        tools_json.push(json!(tool));
-
         table.add_row(row![
-            fqn,
-            tool.r#ref.to_string(),
+            tool.fqn,
+            tool.reference.to_string(),
             timeout,
-            registered_at.to_string(),
-            unregistered_at.map_or("N/A".to_string(), |t| t.to_string())
+            tool.registered_at.to_string(),
+            tool.unregistered_at
+                .as_ref()
+                .map_or_else(|| "N/A".to_string(), ToString::to_string)
         ]);
     }
 
@@ -70,9 +66,23 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         table.printstd();
     }
 
-    json_output(&tools_json)?;
+    json_output(&tools)?;
 
     Ok(())
+}
+
+fn tool_list_output(
+    timeouts: &HashMap<String, u64>,
+    tools: &[ToolStateV1],
+) -> AnyResult<Vec<ToolOutput>, NexusCliError> {
+    tools
+        .iter()
+        .map(|tool| {
+            let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
+            ToolOutput::try_from_state(tool, timeouts.get(&fqn).copied())
+                .map_err(NexusCliError::Any)
+        })
+        .collect()
 }
 
 async fn fetch_tools_with_client(
@@ -129,6 +139,7 @@ mod tests {
             move_bindings::{
                 interface::verifier::ToolVerifierSupport,
                 sui_framework::{
+                    balance::Balance,
                     linked_table::LinkedTable,
                     object::{ID, UID},
                     table::Table as MoveTable,
@@ -137,8 +148,47 @@ mod tests {
                 tool::external_verifier::ExternalVerifier,
             },
             test_utils::{nexus_mocks, sui_mocks},
+            types::ToolRef,
         },
     };
+
+    fn fixture_tool() -> ToolStateV1 {
+        ToolStateV1 {
+            minimum_protocol_version: 1,
+            registry: ID::new(sui::types::Address::from_static("0x42")),
+            fqn: MoveAsciiString::from("xyz.taluslabs.example@1"),
+            r#ref: ToolRef::Http {
+                url: b"https://example.com/tool".to_vec(),
+            },
+            description: b"Example tool".to_vec(),
+            input_schema: br#"{"type":"object"}"#.to_vec(),
+            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+            verified: true,
+            vault: Balance {
+                value: 25,
+                phantom_t0: std::marker::PhantomData,
+            },
+            workflow_authorization_cap_first: false,
+            lock_duration_ms: 5_000,
+            registered_at_ms: 0,
+            unregistered_at_ms: nexus_sdk::move_bindings::move_std::option::Option::from(None),
+        }
+    }
+
+    #[test]
+    fn tool_list_output_uses_the_semantic_tool_contract() {
+        let tools = tool_list_output(
+            &HashMap::from([("xyz.taluslabs.example@1".to_owned(), 10_000)]),
+            &[fixture_tool()],
+        )
+        .expect("valid tools should project");
+        let value = serde_json::to_value(tools).expect("tool list should serialize");
+
+        assert_eq!(value[0]["fqn"], "xyz.taluslabs.example@1");
+        assert_eq!(value[0]["timeout_ms"], 10_000);
+        assert_eq!(value[0]["reference"]["url"], "https://example.com/tool");
+        assert!(!value.to_string().contains("\"bytes\""));
+    }
 
     #[tokio::test]
     async fn fetch_tools_succeeds_without_owned_coins() {

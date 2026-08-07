@@ -9,14 +9,21 @@ pub(crate) struct CompletionCommand {
     pub(crate) shell: clap_complete::Shell,
 }
 
-pub(crate) fn handle(command: CompletionCommand) -> AnyResult<(), NexusCliError> {
-    handle_with_writer(command, &mut io::stdout())
+pub(crate) fn handle(command: CompletionCommand, json: bool) -> AnyResult<(), NexusCliError> {
+    handle_with_writer(command, json, &mut io::stdout())
 }
 
 fn handle_with_writer(
     command: CompletionCommand,
+    json: bool,
     writer: &mut dyn Write,
 ) -> AnyResult<(), NexusCliError> {
+    if json {
+        return Err(NexusCliError::Any(anyhow!(
+            "completion emits shell source and does not support --json"
+        )));
+    }
+
     let mut cli_command = Cli::command();
     let bin_name = env!("CARGO_CRATE_NAME").to_string();
 
@@ -46,10 +53,24 @@ mod tests {
             match cli.command {
                 Command::Completion(cc) => {
                     let mut sink = std::io::sink();
-                    handle_with_writer(cc, &mut sink).unwrap();
+                    handle_with_writer(cc, false, &mut sink).unwrap();
                 }
                 _ => unreachable!("This should have been a completion command!"),
             }
         }
+    }
+
+    #[test]
+    fn completion_rejects_json_mode() {
+        let error = handle_with_writer(
+            CompletionCommand {
+                shell: clap_complete::Shell::Bash,
+            },
+            true,
+            &mut std::io::sink(),
+        )
+        .expect_err("completion emits shell source");
+
+        assert!(error.to_string().contains("does not support --json"));
     }
 }

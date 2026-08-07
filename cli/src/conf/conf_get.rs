@@ -62,4 +62,22 @@ mod tests {
 
         assert_eq!(result, conf);
     }
+
+    #[tokio::test]
+    async fn older_configuration_without_agent_aliases_still_loads() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let path = tempdir.path().join("conf.toml");
+        tokio::fs::write(
+            &path,
+            "[sui]\nrpc_url = \"https://rpc.example.com\"\n\n[secrets]\nmode = \"auto\"\n",
+        )
+        .await
+        .unwrap();
+
+        let conf = get_nexus_conf(path)
+            .await
+            .expect("older config should load");
+
+        assert!(conf.agents.is_empty());
+    }
 }

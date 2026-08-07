@@ -48,6 +48,7 @@ async fn show_payment(payment_id: sui::types::Address) -> AnyResult<(), NexusCli
         .map_err(NexusCliError::Any)?
         .data;
 
+    human_output(&render_payment(&payment));
     json_output(&payment_show_result_json(&payment))
 }
 
@@ -75,6 +76,7 @@ async fn wait_payment(
         .await
         .map_err(NexusCliError::Nexus)?;
 
+    human_output(&render_payment_wait(&result));
     json_output(&payment_wait_result_json(&result))
 }
 

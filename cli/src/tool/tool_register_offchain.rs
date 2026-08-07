@@ -237,22 +237,15 @@ async fn register_one_tool(
         .inspect_tool(&meta.fqn)
         .await
         .map_err(NexusCliError::Nexus)?;
-    let tool_ref = super::tool_inspect::normalized_tool_ref_json(
-        inspection.tool.as_ref().map(|tool| tool.reference()),
+    let result = super::tool_inspect::registration_submission_result_json(
+        &inspection,
+        &response.digest,
+        response.checkpoint,
+        over_tool_id,
+        Some(cashier_admin_id),
     )?;
 
-    Ok((
-        json!({
-            "digest": response.digest,
-            "tool_id": inspection.tool_id,
-            "tool_cashier_id": inspection.tool_cashier_id,
-            "owner_cap_over_tool_id": over_tool_id,
-            "cashier_admin_cap_id": cashier_admin_id,
-            "tool_ref": tool_ref,
-            "tool": inspection.tool,
-        }),
-        Some((meta.fqn, caps)),
-    ))
+    Ok((result, Some((meta.fqn, caps))))
 }
 
 /// Ensures every [`register_one_tool`] result represents success.

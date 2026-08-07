@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- TAP Agent record loading now preserves the dynamic field key as the Agent ID.
 - Local test faucet requests now use the current object payload and report rejection details.
 - Tool cashier ID derivation now hashes the generated [`ToolCashierKey`](sdk/src/move_bindings/mod.rs) value, matching the exact Move layout used by `derived_object::claim`.
 - Scheduler dispatch transactions now pass the active protocol root required by the protocol aware scheduler ABI.
@@ -95,6 +96,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- CLI commands now provide readable terminal reports and stable semantic JSON documents across Tool, DAG, TAP, execution, authentication, and configuration workflows.
 - Generated Move Tool manifests now declare `nexus_interface` directly instead of the unused `nexus_workflow` dependency.
 - Generated TAP manifests now declare all six canonical Nexus package dependencies.
 - Read only commands no longer require a configured private key.
@@ -108,6 +110,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- JSON output no longer exposes generated Move storage wrappers such as byte arrays for Tool names and references.
+- JSON configuration output now redacts private keys, validation commands report explicit success, and failed Tool registration batches return a failing process status.
 - Tool registration now decides repeated and raced submissions from canonical chain state, so retries succeed without depending on Move error text.
 - Offchain Tool registration now returns a failing process status after reporting any transaction failure, while batch registration still reports every attempted Tool.
 

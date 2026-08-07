@@ -1,11 +1,13 @@
 mod conf_get;
 mod conf_set;
+mod output;
 
 use {
     crate::{cli_conf::StorageKind, display::json_output, prelude::*},
     conf_get::*,
     conf_set::*,
     nexus_sdk::walrus::WALRUS_MAX_EPOCHS,
+    output::ConfOutput,
 };
 
 #[allow(clippy::large_enum_variant)]
@@ -95,12 +97,13 @@ pub(crate) async fn handle(command: ConfCommand) -> AnyResult<(), NexusCliError>
     match command {
         ConfCommand::Get { conf_path } => {
             let conf = get_nexus_conf(conf_path).await?;
+            let output = ConfOutput::from(&conf);
 
-            json_output(&conf)?;
+            json_output(&output)?;
 
             if !JSON_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-                let conf = toml::to_string_pretty(&conf).map_err(|e| {
-                    NexusCliError::Any(anyhow!("Failed to serialize configuration to JSON: {e}"))
+                let conf = toml::to_string_pretty(&output).map_err(|e| {
+                    NexusCliError::Any(anyhow!("Failed to serialize configuration: {e}"))
                 })?;
 
                 println!("{conf}");

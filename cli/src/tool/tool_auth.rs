@@ -2,14 +2,14 @@ use {
     super::ToolAuthCommand,
     crate::{
         command_title,
-        display::json_output,
+        display::{human_output, json_output},
         loading,
         notify_success,
         prelude::*,
         sui::{get_nexus_client, get_read_only_nexus_client},
     },
     nexus_sdk::{
-        nexus::client::NexusClient,
+        nexus::{client::NexusClient, network_auth::ToolKeyList},
         signed_http::{
             keys::{parse_ed25519_signing_key, Ed25519Keypair},
             v2::wire::AllowedLeadersFileV1,
@@ -17,10 +17,55 @@ use {
         ToolFqn,
     },
     std::{
+        fmt::Write as _,
         path::{Path, PathBuf},
         time::{Duration, SystemTime, UNIX_EPOCH},
     },
 };
+
+fn render_generated_key(private_key_hex: &str, public_key_hex: &str) -> String {
+    format!(
+        "{:<20}{}\n{:<20}{}\n",
+        "Private key", private_key_hex, "Public key", public_key_hex,
+    )
+}
+
+fn render_tool_keys(tool_fqn: &ToolFqn, list: Option<&ToolKeyList>) -> String {
+    let mut output = String::new();
+    writeln!(output, "{:<20}{tool_fqn}", "Tool").expect("writing to a String cannot fail");
+    let Some(list) = list else {
+        output.push_str("No message signing keys are registered.\n");
+        return output;
+    };
+
+    writeln!(output, "{:<20}{}", "Binding", list.binding_object_id)
+        .expect("writing to a String cannot fail");
+    writeln!(
+        output,
+        "{:<20}{}",
+        "Active key",
+        list.active_key_id
+            .map_or_else(|| "none".to_owned(), |key| key.to_string()),
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(output, "{:<20}{}", "Next key", list.next_key_id)
+        .expect("writing to a String cannot fail");
+
+    for key in &list.keys {
+        let state = match (list.active_key_id == Some(key.kid), key.revoked) {
+            (true, true) => "active, revoked",
+            (true, false) => "active",
+            (false, true) => "revoked",
+            (false, false) => "available",
+        };
+        writeln!(output, "\nKey {} ({state})", key.kid).expect("writing to a String cannot fail");
+        writeln!(output, "{:<20}{}", "Public key", key.public_key_hex)
+            .expect("writing to a String cannot fail");
+        writeln!(output, "{:<20}{}", "Added at", key.added_at_ms)
+            .expect("writing to a String cannot fail");
+    }
+    output
+}
 
 pub(crate) async fn handle_tool_auth(cmd: ToolAuthCommand) -> AnyResult<(), NexusCliError> {
     match cmd {
@@ -72,6 +117,11 @@ async fn keygen(out: Option<PathBuf>) -> AnyResult<(), NexusCliError> {
             "Wrote keypair JSON to {path}",
             path = path.display().to_string().truecolor(100, 100, 100)
         );
+    } else {
+        human_output(&render_generated_key(
+            &keypair.private_key_hex(),
+            &keypair.public_key_hex(),
+        ));
     }
 
     json_output(&payload)?;
@@ -180,6 +230,12 @@ async fn register_key(
         .map_err(NexusCliError::Nexus)?;
     handle.success();
 
+    notify_success!(
+        "Registered key {kid} for Tool '{tool_fqn}' with public key {public_key}.",
+        kid = result.tool_kid,
+        public_key = hex::encode(result.public_key),
+    );
+
     json_output(&json!({
         "digest": result.tx_digest,
         "tool_fqn": tool_fqn,
@@ -209,6 +265,8 @@ async fn list_keys(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
             return Err(NexusCliError::Nexus(e));
         }
     };
+
+    human_output(&render_tool_keys(&tool_fqn, list.as_ref()));
 
     match list {
         None => {
@@ -431,7 +489,44 @@ async fn sync_allowed_leaders(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, clap::Parser, nexus_sdk::test_utils::nexus_mocks};
+    use {
+        super::*,
+        clap::Parser,
+        nexus_sdk::{
+            nexus::network_auth::{ToolKeyEntry, ToolKeyList},
+            test_utils::nexus_mocks,
+        },
+    };
+
+    #[test]
+    fn key_generation_report_contains_both_keys() {
+        let report = render_generated_key("private", "public");
+
+        assert!(report.contains("Private key         private"));
+        assert!(report.contains("Public key          public"));
+    }
+
+    #[test]
+    fn key_list_report_marks_the_active_key() {
+        let tool_fqn = "xyz.demo.tool@1".parse().unwrap();
+        let list = ToolKeyList {
+            binding_object_id: sui::types::Address::from_static("0xb"),
+            active_key_id: Some(1),
+            next_key_id: 2,
+            keys: vec![ToolKeyEntry {
+                kid: 1,
+                public_key_hex: "abcd".to_owned(),
+                added_at_ms: 123,
+                revoked: false,
+            }],
+        };
+
+        let report = render_tool_keys(&tool_fqn, Some(&list));
+
+        assert!(report.contains("xyz.demo.tool@1"));
+        assert!(report.contains("Key 1 (active)"));
+        assert!(report.contains("abcd"));
+    }
 
     /// Verifies that clap correctly parses the humantime duration format for
     /// `sync-allowed-leaders --interval`. Guards against regressions where the
