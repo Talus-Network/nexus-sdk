@@ -3,10 +3,10 @@
 # * checks for a Git Tag in the format v*
 # * builds artifacts (archives, installers, hashes)
 # * uploads artifacts to workflow
-# * on success, uploads the artifacts to a GitHub Release
+# * creates a draft GitHub Release only when explicitly requested for an existing tag
 #
-# The GitHub Release will be created with a generated
-# title/body based on the changelog.
+# When requested, the GitHub Release is created with a generated title/body
+# based on the changelog.
 
 name: Release
 
@@ -23,6 +23,12 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Create a draft GitHub Release from the selected tag"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -68,6 +74,16 @@ jobs:
         with:
           file: Cargo.toml
           field: workspace.package.version
+
+      - name: Resolve release intent
+        id: release_intent
+        env:
+          RELEASE_REQUESTED: ${{ inputs.create_release || false }}
+        run: |
+          .github/scripts/resolve_release_intent.sh \
+            "${{ github.event_name }}" \
+            "${{ github.ref_type }}" \
+            "$RELEASE_REQUESTED"
 
       - name: Validate release metadata
         id: release_metadata
@@ -132,7 +148,7 @@ jobs:
             *.zip
 
       - name: Create release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' && steps.release_intent.outputs.create_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ steps.release_metadata.outputs.prerelease == 'true' }}
