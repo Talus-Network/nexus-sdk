@@ -8,7 +8,6 @@ use {
                     self as agent_binding,
                     FixedTool,
                     SkillDagBinding,
-                    SkillRecurrenceKind,
                     SkillRequirement,
                     SkillSchedulePolicy,
                 },
@@ -34,6 +33,7 @@ use {
         test_utils::ptb as move_boundary,
         types::{
             resolve_active_tap_skill_revision,
+            AgentRecordContext,
             AgentRegistrySnapshot,
             DefaultDagExecutorTarget,
             NexusObjects,
@@ -42,6 +42,7 @@ use {
             SkillRevisionContext,
             SkillRevisionLookupError,
             SkillRevisionLookupKey,
+            UsTokenConfig,
         },
     },
     std::{path::PathBuf, str::FromStr},
@@ -75,7 +76,7 @@ fn generated_function(
 }
 
 fn append_standard_runtime_worksheet(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
     execution: sui::types::Argument,
     leader_cap: sui::types::Argument,
@@ -103,40 +104,45 @@ fn append_standard_runtime_worksheet(
 }
 
 fn tap_agent_registry_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     mutable: bool,
 ) -> anyhow::Result<sui::types::Argument> {
     let registry_ref = tx.objects().agent_registry.clone();
     Ok(tx.shared_object(&registry_ref, mutable)?)
 }
 
+fn tap_tool_registry_arg(
+    tx: &mut move_boundary::NexusPtbBuilder,
+) -> anyhow::Result<sui::types::Argument> {
+    let registry_ref = tx.objects().tool_registry.clone();
+    Ok(tx.shared_object(&registry_ref, false)?)
+}
+
 fn tap_payment_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     payment_policy: &SkillPaymentPolicy,
 ) -> anyhow::Result<sui::types::Argument> {
     match payment_policy {
         SkillPaymentPolicy::UserFunded => {
             tx.call_target(payment_binding::payment_policy_user_funded_target, vec![])
         }
-        SkillPaymentPolicy::AgentFunded { max_budget } => {
-            let max_budget = tx.arg(max_budget)?;
+        SkillPaymentPolicy::AgentFunded { max_budget_mist } => {
+            let max_budget_mist = tx.arg(max_budget_mist)?;
             tx.call_target(
                 payment_binding::payment_policy_agent_funded_target,
-                vec![max_budget],
+                vec![max_budget_mist],
             )
         }
     }
 }
 
 fn tap_schedule_policy_arg(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     schedule_policy: &SkillSchedulePolicy,
 ) -> anyhow::Result<sui::types::Argument> {
-    let recurrence = match &schedule_policy.recurrence {
-        SkillRecurrenceKind::Once => {
-            tx.call_target(agent_binding::recurrence_once_target, vec![])?
-        }
-        SkillRecurrenceKind::Recursive {
+    match schedule_policy {
+        SkillSchedulePolicy::Once => tx.call_target(agent_binding::schedule_once_target, vec![]),
+        SkillSchedulePolicy::Recurring {
             min_interval_ms,
             max_occurrences,
         } => {
@@ -149,32 +155,29 @@ fn tap_schedule_policy_arg(
                 None => tx.option::<u64>(None)?,
             };
             tx.call_target(
-                agent_binding::recurrence_recursive_target,
+                agent_binding::schedule_recurring_target,
                 vec![min_interval_ms, max_occurrences],
-            )?
+            )
         }
-    };
-    let allow_recursive = tx.arg(&schedule_policy.allow_recursive)?;
-
-    tx.call_target(
-        agent_binding::schedule_policy_target,
-        vec![recurrence, allow_recursive],
-    )
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_tap_register_skill(
-    tx: &mut move_boundary::NexusPtbBuilder<'_>,
+    tx: &mut move_boundary::NexusPtbBuilder,
     registry: sui::types::Argument,
     agent: sui::types::Argument,
-    dag_id: sui::types::Address,
+    dag: sui::types::Argument,
     description: Vec<u8>,
     input_commitment: Vec<u8>,
     payment_policy: &SkillPaymentPolicy,
     schedule_policy: &SkillSchedulePolicy,
+    fixed_tools: &[FixedTool],
 ) -> anyhow::Result<sui::types::Argument> {
+    let tool_registry = tap_tool_registry_arg(tx)?;
     let payment_policy = tap_payment_policy_arg(tx, payment_policy)?;
     let schedule_policy = tap_schedule_policy_arg(tx, schedule_policy)?;
-    let dag_id = tx.arg(&dag_id)?;
+    let fixed_tools = tx.arg(&fixed_tools.to_vec())?;
     let description = tx.arg(&description)?;
     let input_commitment = tx.arg(&input_commitment)?;
 
@@ -183,11 +186,13 @@ fn append_tap_register_skill(
         vec![
             registry,
             agent,
-            dag_id,
+            tool_registry,
+            dag,
             description,
             input_commitment,
             payment_policy,
             schedule_policy,
+            fixed_tools,
         ],
     )
 }
@@ -214,24 +219,29 @@ fn interface_version(inner: u64) -> nexus_sdk::move_bindings::interface::version
 
 fn nexus_objects() -> NexusObjects {
     NexusObjects {
-        workflow_pkg_id: addr("0x1"),
-        scheduler_pkg_id: addr("0x11"),
-        primitives_pkg_id: addr("0x2"),
-        interface_pkg_id: addr("0x3"),
+        protocol_version: 1,
+        protocol: object_ref("0x18", 1, 18),
+        packages: nexus_sdk::types::NexusPackages::first_publication(
+            addr("0x2"),
+            addr("0x3"),
+            addr("0x5"),
+            addr("0x13"),
+            addr("0x1"),
+            addr("0x11"),
+        ),
+        config_hash: vec![0; 32],
         network_id: addr("0x4"),
-        registry_pkg_id: addr("0x5"),
         tool_registry: object_ref("0x6", 1, 6),
-        verifier_registry: object_ref("0x7", 1, 7),
         network_auth: object_ref("0x8", 1, 8),
         agent_registry: object_ref("0xc", 1, 12),
         default_dag_executor: DefaultDagExecutorTarget {
             agent_id: addr("0xa1"),
             skill_id: 177,
         },
-        gas_service: object_ref("0xd", 1, 13),
         leader_registry: object_ref("0xe", 1, 14),
-        workflow_original_pkg_id: None,
-        scheduler_original_pkg_id: None,
+        priority_fee_vault: object_ref("0xf", 1, 15),
+        priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+        us_token: UsTokenConfig::new(addr("0x12")),
     }
 }
 
@@ -276,16 +286,19 @@ fn registry_with_active_revision(active_revision: u64) -> AgentRegistrySnapshot 
 
     AgentRegistrySnapshot {
         id: addr("0x91"),
-        agents: vec![AgentRecord {
-            active: true,
-            skills: MoveTable::new(addr("0x95"), 1),
+        agents: vec![AgentRecordContext {
+            agent_id,
+            record: AgentRecord {
+                active: true,
+                skills: MoveTable::new(addr("0x95"), 1),
+            },
         }],
         skills: vec![skill(agent_id, skill_id, active_revision)],
         default_executor: Some(DefaultDagExecutor {
-            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_ids(
+            agent: nexus_sdk::move_bindings::interface::agent::Agent::from_anchor(
                 agent_id,
+                addr("0xa2"),
                 1,
-                Some(addr("0x91")),
             ),
             skill_id,
         }),
@@ -322,7 +335,7 @@ fn wrap_event(objects: &NexusObjects, inner: sui::types::StructTag) -> sui::type
         vec![sui::types::TypeTag::Struct(Box::new(inner))],
     );
     sui::types::Event {
-        package_id: objects.primitives_pkg_id,
+        package_id: objects.primitives_pkg_id(),
         module: wrapper.module().clone(),
         sender: addr("0xf3"),
         type_: wrapper,
@@ -405,16 +418,21 @@ fn request_walk_event() -> RequestWalkExecutionEvent {
         agent_id: object_id(addr("0xa1")),
         skill_id: 177,
         interface_version: interface_version(7),
-        scheduled_task_id: nexus_sdk::move_bindings::move_std::option::Option::from_option(None),
-        scheduled_occurrence_index: nexus_sdk::move_bindings::move_std::option::Option::from_option(
-            None,
-        ),
+        task_id: object_id(addr("0x55")),
+        occurrence_id: 9,
     }
 }
 
 #[test]
 fn request_walk_context_uses_required_agent_fields() {
     let event = request_walk_event();
+    let key = event
+        .skill_revision_key()
+        .expect("standard request must identify a skill revision");
+    assert_eq!(key.agent_id, addr("0xa1"));
+    assert_eq!(key.skill_id, 177);
+    assert_eq!(key.interface_revision, InterfaceVersion::new(7));
+
     let context = event
         .to_context()
         .expect("complete context should parse")
@@ -423,8 +441,8 @@ fn request_walk_context_uses_required_agent_fields() {
     assert_eq!(context.agent_id, addr("0xa1"));
     assert_eq!(context.skill_id, 177);
     assert_eq!(context.interface_revision, InterfaceVersion::new(7));
-    assert_eq!(context.scheduled_task_id, None);
-    assert_eq!(context.scheduled_occurrence_index, None);
+    assert_eq!(context.task_id, addr("0x55"));
+    assert_eq!(context.occurrence_id, 9);
 }
 
 #[test]
@@ -502,7 +520,9 @@ fn tap_payment_sources_validate_invoker_and_agent_vault_modes() {
     )
     .expect("user-funded payer address source validates");
 
-    let agent_funded = SkillPaymentPolicy::AgentFunded { max_budget: 100 };
+    let agent_funded = SkillPaymentPolicy::AgentFunded {
+        max_budget_mist: 100,
+    };
     assert!(
         nexus_sdk::types::validate_execution_payment_options(
             agent_id,
@@ -544,7 +564,7 @@ fn standard_tap_events_are_nexus_events() {
     let revisioned_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.registry_pkg_id,
+            objects.registry_pkg_id(),
             struct_tag::<AgentRecord>(&objects).module().clone(),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -556,7 +576,7 @@ fn standard_tap_events_are_nexus_events() {
     let execution_requested_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.workflow_pkg_id,
+            objects.workflow_pkg_id(),
             sui::types::Identifier::from_static("dag"),
             sui::types::Identifier::from_static("AgentSkillExecutionRequestedEvent"),
             vec![],
@@ -568,7 +588,7 @@ fn standard_tap_events_are_nexus_events() {
     let unrelated_interface_event = wrap_event(
         &objects,
         sui::types::StructTag::new(
-            objects.interface_pkg_id,
+            objects.interface_pkg_id(),
             sui::types::Identifier::from_static("unrelated"),
             sui::types::Identifier::from_static("SkillContractRevisionedEvent"),
             vec![],
@@ -582,6 +602,7 @@ fn standard_tap_events_are_nexus_events() {
 fn transaction_builders_select_tap_functions() {
     let objects = nexus_objects();
     let agent = object_ref("0xa1", 1, 0xa1);
+    let dag = object_ref("0xd1", 1, 0xd1);
     let tx = move_boundary::ptb(&objects, |tx| {
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
 
@@ -593,16 +614,18 @@ fn transaction_builders_select_tap_functions() {
 
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent = tx.shared_object(&agent, true)?;
+        let dag = tx.shared_object(&dag, false)?;
         let requirements = requirements();
         append_tap_register_skill(
             tx,
             registry,
             agent,
-            addr("0xd1"),
+            dag,
             b"demo".to_vec(),
             requirements.input_commitment,
             &requirements.payment_policy,
             &requirements.schedule_policy,
+            &requirements.fixed_tools,
         )
         .expect("register skill builder");
 
@@ -630,31 +653,35 @@ fn transaction_builders_select_tap_functions() {
 fn update_skill_compatibility_builds_dag_and_policy_calls() {
     let objects = nexus_objects();
     let agent = object_ref("0xa1", 1, 0xa1);
+    let dag = object_ref("0xd2", 1, 0xd2);
     let tx = move_boundary::ptb(&objects, |tx| {
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent_arg = tx.shared_object(&agent, true)?;
+        let tool_registry = tap_tool_registry_arg(tx)?;
+        let dag = tx.shared_object(&dag, false)?;
         let skill_id = tx.arg(&177_u64)?;
-        let dag_id = tx.arg(&addr("0xd2"))?;
         tx.call_target(
             agent_registry_binding::update_dag_target,
-            vec![registry, agent_arg, skill_id, dag_id],
+            vec![registry, agent_arg, tool_registry, dag, skill_id],
         )
         .expect("update dag builder");
 
         let registry = tap_agent_registry_arg(tx, true).expect("configured registry");
         let agent_arg = tx.shared_object(&agent, true)?;
         let skill_id = tx.arg(&177_u64)?;
-        let payment_policy =
-            tap_payment_policy_arg(tx, &SkillPaymentPolicy::AgentFunded { max_budget: 100 })?;
+        let payment_policy = tap_payment_policy_arg(
+            tx,
+            &SkillPaymentPolicy::AgentFunded {
+                max_budget_mist: 100,
+            },
+        )?;
         let schedule_policy = tap_schedule_policy_arg(
             tx,
-            &SkillSchedulePolicy {
-                recurrence: SkillRecurrenceKind::Recursive {
-                    min_interval_ms: 5000,
-                    max_occurrences:
-                        nexus_sdk::move_bindings::move_std::option::Option::from_option(Some(3)),
-                },
-                allow_recursive: true,
+            &SkillSchedulePolicy::Recurring {
+                min_interval_ms: 5000,
+                max_occurrences: nexus_sdk::move_bindings::move_std::option::Option::from_option(
+                    Some(3),
+                ),
             },
         )?;
         tx.call_target(
@@ -710,15 +737,17 @@ fn demo_tap_publish_and_bind_lifecycle_ptb() {
             .expect("create agent");
 
         let registry = tap_agent_registry_arg(tx, true).expect("registry");
+        let dag = tx.shared_object(&dag_ref, false)?;
         append_tap_register_skill(
             tx,
             registry,
             agent_object,
-            artifact.dag_id,
+            dag,
             artifact.skill_name.as_bytes().to_vec(),
             artifact.requirements.input_commitment.clone(),
             &artifact.requirements.payment_policy,
             &artifact.requirements.schedule_policy,
+            &artifact.requirements.fixed_tools,
         )
         .expect("register skill");
 
@@ -805,8 +834,8 @@ fn agent_payment_vault_builders_target_tap_functions() {
         })
         .expect("withdraw vault call");
 
-    assert_eq!(deposit.package, objects.interface_pkg_id);
-    assert_eq!(withdraw.package, objects.registry_pkg_id);
+    assert_eq!(deposit.package, objects.interface_pkg_id());
+    assert_eq!(withdraw.package, objects.registry_pkg_id());
     assert_eq!(
         deposit.arguments,
         vec![
@@ -833,9 +862,12 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
 
     let registry = AgentRegistrySnapshot {
         id: addr("0x91"),
-        agents: vec![AgentRecord {
-            active: true,
-            skills: MoveTable::new(addr("0x95"), 1),
+        agents: vec![AgentRecordContext {
+            agent_id,
+            record: AgentRecord {
+                active: true,
+                skills: MoveTable::new(addr("0x95"), 1),
+            },
         }],
         skills: vec![SkillRecordContext {
             agent_id,

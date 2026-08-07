@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn type_name_bcs_roundtrip() {
-        let value = TypeName::new("0xa5::scheduler::QueueGeneratorWitness");
+        let value = TypeName::new("0xa5::example::Witness");
         assert_eq!(
             bcs::from_bytes::<TypeName>(&bcs::to_bytes(&value).unwrap()).unwrap(),
             value
@@ -104,10 +104,10 @@ mod tests {
     #[test]
     fn id_and_uid_helpers_return_addresses_and_display_id() {
         let id = id("0x123");
-        let uid = UID { id: id.clone() };
+        let uid = UID { id };
 
         assert_eq!(format!("{id}"), id.bytes.to_string());
-        assert_eq!(sui::types::Address::from(id.clone()), id.bytes);
+        assert_eq!(sui::types::Address::from(id), id.bytes);
         assert_eq!(sui::types::Address::from(uid), id.bytes);
     }
 

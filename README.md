@@ -52,7 +52,7 @@ To install directly from the source using `cargo`, run:
 ```bash
 cargo install nexus-cli \
   --git https://github.com/talus-network/nexus-sdk \
-  --tag v2.0.0-rc.4 \
+  --tag v2.0.0-rc.5 \
   --locked
 ```
 
@@ -69,19 +69,35 @@ Usage: nexus [OPTIONS] <COMMAND>
 Commands:
   tool        Manage Nexus Tools
   conf        Manage Nexus Configuration
-  dag         Validate, publish and execute Nexus DAGs
-  scheduler   Manage scheduler tasks and occurrences
+  dag         Validate and publish Nexus DAGs
+  task        Create and operate scheduled Tasks
   gas         Manage Nexus gas budgets and tickets
-  network     Manage Nexus networks and leader caps
+  tap         Prepare and operate standard TAP skills
   completion  Provide shell completions
   help        Print this message or the help of the given subcommand(s)
 
 Options:
-      --json     Change the output format to JSON
-  -h, --help     Print help
-  -V, --version  Print version
+      --json        Emit machine readable JSON
+  -v, --verbose...  More output per occurrence
+  -q, --quiet...    Less output per occurrence
+  -h, --help        Print help
+  -V, --version     Print version
 
 ```
+
+Scheduled work follows one model:
+
+```text
+Task -> Schedule -> Occurrence
+```
+
+Create an empty Task when composing it across later transactions. Use
+`nexus task schedule` when the initial Schedule is already known; the command
+requires at least one occurrence or recurrence and applies the Schedule
+atomically. Run `nexus task --help` for timing, funding, recurrence, and object
+inspection examples. Use
+`nexus task occurrence list --task-id <OBJECT_ID> --json` to page through
+every retained occurrence record.
 
 For more detailed instructions, visit the [Nexus CLI documentation][nexus-cli-docs].
 

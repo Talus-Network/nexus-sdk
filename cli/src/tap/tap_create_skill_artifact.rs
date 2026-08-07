@@ -18,16 +18,16 @@ pub(crate) enum ArtifactPaymentMode {
     AgentFunded,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn create_skill_artifact(
     skill_name: String,
     dag_id: sui::types::Address,
     interface_revision: u64,
     payment_mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
-    allow_recursive: bool,
     fixed_tool: Vec<String>,
     out: PathBuf,
 ) -> AnyResult<(), NexusCliError> {
@@ -40,11 +40,10 @@ pub(crate) async fn create_skill_artifact(
         interface_revision,
         input_commitment,
         payment_mode,
-        agent_funded_max_budget,
+        agent_funded_max_budget_mist,
         recurrence_kind,
         min_interval_ms,
         max_occurrences,
-        allow_recursive,
         fixed_tool,
     )?;
     let artifact_json =
@@ -68,24 +67,19 @@ fn build_artifact(
     interface_revision: u64,
     input_commitment: Vec<u8>,
     payment_mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
     recurrence_kind: String,
     min_interval_ms: u64,
     max_occurrences: u64,
-    allow_recursive: bool,
     fixed_tool: Vec<String>,
 ) -> AnyResult<TapPublishArtifact, NexusCliError> {
     if skill_name.trim().is_empty() {
         return Err(NexusCliError::Any(anyhow!("skill name must not be empty")));
     }
 
-    let payment_policy = payment_policy_from_cli(payment_mode, agent_funded_max_budget)?;
-    let schedule_policy = schedule_policy_from_cli(
-        &recurrence_kind,
-        min_interval_ms,
-        max_occurrences,
-        allow_recursive,
-    )?;
+    let payment_policy = payment_policy_from_cli(payment_mode, agent_funded_max_budget_mist)?;
+    let schedule_policy =
+        schedule_policy_from_cli(&recurrence_kind, min_interval_ms, max_occurrences)?;
     let fixed_tools = fixed_tool
         .into_iter()
         .map(parse_fixed_tool)
@@ -108,13 +102,25 @@ fn build_artifact(
 }
 
 async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8>, NexusCliError> {
-    let nexus_client = get_nexus_client(None, DEFAULT_GAS_BUDGET).await?;
+    let nexus_client = get_read_only_nexus_client().await?;
+    fetch_input_commitment_with_client(&nexus_client, dag_id).await
+}
+
+async fn fetch_input_commitment_with_client(
+    nexus_client: &nexus_sdk::nexus::client::NexusClient,
+    dag_id: sui::types::Address,
+) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
-    let dag = crawler.get_object::<DAG>(dag_id).await.map_err(|error| {
-        NexusCliError::Any(anyhow!(
-            "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
-        ))
-    })?;
+    let dag = crawler
+        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGStateV1>(
+            dag_id, 1,
+        )
+        .await
+        .map_err(|error| {
+            NexusCliError::Any(anyhow!(
+                "failed to fetch DAG '{dag_id}' for TAP input commitment: {error}"
+            ))
+        })?;
     let vertices = fetch_dag_vertices_bcs(crawler, &dag.data)
         .await
         .map_err(|error| {
@@ -134,29 +140,29 @@ async fn fetch_input_commitment(dag_id: sui::types::Address) -> AnyResult<Vec<u8
 
 fn payment_policy_from_cli(
     mode: ArtifactPaymentMode,
-    agent_funded_max_budget: Option<u64>,
+    agent_funded_max_budget_mist: Option<u64>,
 ) -> AnyResult<SkillPaymentPolicy, NexusCliError> {
     match mode {
         ArtifactPaymentMode::UserFunded => {
-            if let Some(max_budget) = agent_funded_max_budget {
+            if let Some(max_budget_mist) = agent_funded_max_budget_mist {
                 return Err(NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget={max_budget} is only valid with --payment-mode agent-funded"
+                    "--agent-funded-max-budget-mist={max_budget_mist} is only valid with --payment-mode agent-funded"
                 )));
             }
             Ok(SkillPaymentPolicy::user_funded())
         }
         ArtifactPaymentMode::AgentFunded => {
-            let max_budget = agent_funded_max_budget.ok_or_else(|| {
+            let max_budget_mist = agent_funded_max_budget_mist.ok_or_else(|| {
                 NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget is required with --payment-mode agent-funded"
+                    "--agent-funded-max-budget-mist is required with --payment-mode agent-funded"
                 ))
             })?;
-            if max_budget == 0 {
+            if max_budget_mist == 0 {
                 return Err(NexusCliError::Any(anyhow!(
-                    "--agent-funded-max-budget must be greater than zero"
+                    "--agent-funded-max-budget-mist must be greater than zero"
                 )));
             }
-            Ok(SkillPaymentPolicy::agent_funded(max_budget))
+            Ok(SkillPaymentPolicy::agent_funded(max_budget_mist))
         }
     }
 }
@@ -182,7 +188,23 @@ fn parse_fixed_tool(value: String) -> AnyResult<FixedTool, NexusCliError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        nexus_sdk::{
+            move_bindings::{
+                interface::{dag::DAGStateV1, graph},
+                move_std::option::Option as MoveOption,
+                sui_framework::{
+                    linked_table::LinkedTable,
+                    object::UID,
+                    table::Table,
+                    vec_map::VecMap,
+                    versioned::Versioned,
+                },
+            },
+            test_utils::{nexus_mocks, sui_mocks},
+        },
+    };
 
     #[test]
     fn build_artifact_uses_dag_derived_input_commitment() {
@@ -196,7 +218,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             vec![format!(
                 "{}=xyz.taluslabs.sum@1",
                 sui::types::Address::from_static("0xf")
@@ -230,7 +251,6 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             Vec::new(),
         )
         .expect_err("user funded cannot carry agent budget");
@@ -251,14 +271,13 @@ mod tests {
             "once".to_string(),
             0,
             1,
-            false,
             Vec::new(),
         )
         .expect_err("agent funded requires budget");
         assert!(
             error
                 .to_string()
-                .contains("--agent-funded-max-budget is required"),
+                .contains("--agent-funded-max-budget-mist is required"),
             "unexpected error: {error}"
         );
     }
@@ -281,6 +300,51 @@ mod tests {
         assert!(
             error.to_string().contains("expected '<TOOL_REGISTRY_ID>"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_input_commitment_succeeds_without_owned_coins() {
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let dag_ref = sui_mocks::object_ref_for_id(dag_id);
+        let state_id = sui::types::Address::from_static("0xe");
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
+        let state = DAGStateV1::new(
+            1,
+            LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
+            VecMap { contents: vec![] },
+            Table::new(sui::types::Address::from_static("0x11"), 0),
+            Table::new(sui::types::Address::from_static("0x12"), 0),
+            Table::new(sui::types::Address::from_static("0x13"), 0),
+            MoveOption::from_option(None::<graph::PostFailureAction>),
+        );
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        sui_mocks::grpc::mock_get_object_value_bcs_for(
+            &mut ledger_service_mock,
+            dag_ref,
+            sui::types::Owner::Shared(1),
+            &dag,
+            nexus_sdk::move_bindings::struct_tag::<DAG>(&nexus_objects),
+        );
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, state);
+        sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
+        sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 1);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let commitment = fetch_input_commitment_with_client(&client, dag_id)
+            .await
+            .expect("DAG input read should not require owned coins");
+
+        assert_eq!(
+            commitment,
+            tap_input_commitment_from_dag_inputs(std::iter::empty::<(&str, &str)>())
         );
     }
 }

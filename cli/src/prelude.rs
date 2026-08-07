@@ -3,7 +3,7 @@ pub(crate) use {
     anyhow::{anyhow, bail, Error as AnyError, Result as AnyResult},
     clap::{builder::ValueParser, Args, CommandFactory, Parser, Subcommand, ValueEnum},
     colored::Colorize,
-    nexus_sdk::{sui::traits::*, types::NexusObjects, *},
+    nexus_sdk::{nexus::client::DEFAULT_GAS_BUDGET, types::NexusObjects, *},
     serde::{Deserialize, Serialize},
     serde_json::json,
     std::{
@@ -14,11 +14,19 @@ pub(crate) use {
             Arc,
         },
     },
-    tokio::sync::Mutex,
 };
 
 /// Where to find config files.
 pub(crate) const CLI_CONF_PATH: &str = "~/.nexus/conf.toml";
+pub(crate) const CLI_CONF_PATH_ENV: &str = "NEXUS_CLI_CONF";
+
+pub(crate) fn cli_conf_path() -> AnyResult<PathBuf> {
+    match std::env::var(CLI_CONF_PATH_ENV) {
+        Ok(path) => Ok(PathBuf::from(path)),
+        Err(std::env::VarError::NotPresent) => expand_tilde(CLI_CONF_PATH),
+        Err(error) => Err(anyhow!("Could not read {CLI_CONF_PATH_ENV}: {error}")),
+    }
+}
 
 /// Various Nexus RPC URLs.
 pub(crate) const DEVNET_NEXUS_RPC_URL: &str = "https://rpc.ssfn.devnet.production.taluslabs.dev/";
@@ -44,9 +52,6 @@ pub(crate) const MAINNET_OBJECTS_TOML: &str = concat!(
     "/objects.mainnet.toml"
 );
 
-/// What is the default gas budget to use? (0.1 SUI)
-pub(crate) const DEFAULT_GAS_BUDGET: u64 = sui::MIST_PER_SUI / 10;
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 pub(crate) enum SuiNet {
     #[default]
@@ -70,7 +75,7 @@ impl std::fmt::Display for SuiNet {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ToolOwnerCaps {
     pub(crate) over_tool: sui::types::Address,
-    pub(crate) over_gas: Option<sui::types::Address>,
+    pub(crate) cashier_admin: Option<sui::types::Address>,
 }
 
 /// Reusable Sui gas command args.
@@ -79,15 +84,17 @@ pub(crate) struct GasArgs {
     #[arg(
         long = "sui-gas-coin",
         short = 'g',
-        help = "The gas coin object ID. First coin object is chosen if not present.",
+        help = "Optional owned gas coin object ID. Most commands use address balance gas when omitted.",
+        help_heading = "Gas",
         value_name = "OBJECT_ID"
     )]
     pub(crate) sui_gas_coin: Option<sui::types::Address>,
     #[arg(
         long = "sui-gas-budget",
         short = 'b',
-        help = "The gas budget for the transaction.",
-        value_name = "AMOUNT",
+        help = "Maximum MIST spent on Sui transaction gas.",
+        help_heading = "Gas",
+        value_name = "MIST",
         default_value_t = DEFAULT_GAS_BUDGET
     )]
     pub(crate) sui_gas_budget: u64,

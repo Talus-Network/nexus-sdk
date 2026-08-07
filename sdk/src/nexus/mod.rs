@@ -4,15 +4,18 @@
 //!
 //! All CLI functionality should be exported to this module in the future.
 
+pub mod address_balance;
 pub mod client;
 pub mod crawler;
 pub mod error;
-pub mod gas;
+pub mod network;
 pub mod network_auth;
+pub mod protocol;
 pub mod registered_key;
 pub mod registry;
 pub mod scheduler;
 pub mod signer;
 pub mod tap;
 pub mod tool;
+pub mod transaction;
 pub mod workflow;

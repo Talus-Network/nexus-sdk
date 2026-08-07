@@ -4,7 +4,7 @@ use onchain_tool::onchain_tool_result::{Self as onchain_tool_result, OnchainTool
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
-use onchain_tool::proof_of_uid::{Self as proof_of_uid, ProofOfUID};
+use onchain_tool::proof_of_uid::{Self as proof_of_uid, UIDRequirements};
 
 /// One-time witness for package initialization.
 public struct ONCHAIN_TOOL has drop {}
@@ -57,9 +57,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
     share_object(counter);
 }
 
-/// Execute function that takes a ProofOfUID worksheet as its first argument.
-/// The tool must stamp the worksheet with the tool witness ID to prove it was executed.
-/// This allows the Nexus framework to verify that the tool was actually invoked.
+/// Execute function that takes UID requirements as its first argument.
 ///
 /// This execute function implements conditional logic:
 /// - If increase_with > 0, the counter is increased and execution succeeds.
@@ -69,14 +67,14 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 /// The production Nexus ABI finalizes output through an owned OnchainToolResult
 /// argument and does not return values from execute.
 entry fun execute(
-    worksheet: ProofOfUID,
+    requirements: UIDRequirements,
     result: OnchainToolResult,
     counter: &mut RandomCounter,
     increase_with: u64,
     _ctx: &mut TxContext,
 ) {
     let old_count = counter.count;
-    proof_of_uid::delete(worksheet);
+    proof_of_uid::delete(requirements);
     onchain_tool_result::delete_for_testing(result);
     let _ = old_count;
     let _ = increase_with;

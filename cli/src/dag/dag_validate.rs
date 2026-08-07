@@ -1,9 +1,10 @@
 use {
-    crate::{command_title, loading, prelude::*},
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*},
     nexus_sdk::{
         dag::{json::parse_dag_spec, validator::validate},
         types::DagSpec,
     },
+    std::path::Path,
 };
 
 /// Validate if a JSON file at the provided location is a valid Nexus DAG. If so,
@@ -47,8 +48,36 @@ pub(crate) async fn validate_dag(path: PathBuf) -> AnyResult<DagSpec, NexusCliEr
             validation_handle.error();
 
             Err(NexusCliError::Any(anyhow!(
-                "{e}\n\nSee more about DAG rules at <https://github.com/Talus-Network/nexus-next/wiki/Package:-Workflow#rules>",
+                "{e}\n\nSee more about DAG rules at <https://docs.talus.network/concepts/05-workflow-dag-execution#the-dag-definition>",
             )))
         }
+    }
+}
+
+pub(crate) fn output_validation(path: &Path) -> AnyResult<(), NexusCliError> {
+    notify_success!("DAG '{}' is valid.", path.display());
+    json_output(&validation_result_json(path))
+}
+
+fn validation_result_json(path: &Path) -> serde_json::Value {
+    json!({
+        "valid": true,
+        "path": path,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_result_json_reports_the_validated_path() {
+        assert_eq!(
+            validation_result_json(std::path::Path::new("workflow.json")),
+            serde_json::json!({
+                "valid": true,
+                "path": "workflow.json",
+            })
+        );
     }
 }

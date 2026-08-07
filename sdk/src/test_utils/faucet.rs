@@ -14,11 +14,11 @@ pub async fn request_tokens(url: &str, addr: sui::types::Address) -> anyhow::Res
         error: Option<String>,
     }
 
-    let json_body = serde_json::json![{
+    let json_body = serde_json::json!({
         "FixedAmountRequest": {
             "recipient": &addr.to_string()
         }
-    }];
+    });
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .max_delay(Duration::from_secs(5))
@@ -34,7 +34,9 @@ pub async fn request_tokens(url: &str, addr: sui::types::Address) -> anyhow::Res
             .await?;
 
         if !resp.status().is_success() {
-            anyhow::bail!("Unexpected status: {}", resp.status())
+            let status = resp.status();
+            let detail = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Faucet returned {status}: {detail}")
         }
 
         Ok(resp)

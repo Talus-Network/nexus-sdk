@@ -1,0 +1,10 @@
+[package]
+name = "scheduler_metadata_test"
+version = "0.0.0"
+edition = "2024"
+
+[environments]
+testnet = "4c78adac"
+
+[addresses]
+scheduler_metadata_test = "0x0"

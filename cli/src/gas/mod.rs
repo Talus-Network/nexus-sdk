@@ -1,293 +1,71 @@
-mod tickets;
+mod balance;
 
-use {
-    crate::prelude::*,
-    tickets::{expiry::*, limited_invocations::*},
-};
+use {crate::prelude::*, balance::*};
 
+/// Sui transaction gas and address balance commands.
 #[derive(Subcommand)]
 pub(crate) enum GasCommand {
-    #[command(subcommand, about = "Manage the expiry gas ticket extension")]
-    Expiry(ExpiryCommand),
+    #[command(
+        about = "Show SUI address balance and owned coin balance",
+        long_about = "Shows the configured signer's SUI address balance and the total held in \
+                      owned Coin<SUI> objects. Scheduler reserves and default transaction gas use \
+                      the address balance."
+    )]
+    Balance,
 
     #[command(
-        subcommand,
-        about = "Manage the limited invocations gas ticket extension"
+        about = "Deposit an owned SUI coin amount into the address balance",
+        long_about = "Moves MIST from an owned Coin<SUI> object into the configured signer's SUI \
+                      address balance. When --sui-gas-coin is omitted, the command selects a \
+                      sufficient owned coin deterministically. The selected coin must cover the \
+                      deposit amount and transaction gas budget."
     )]
-    LimitedInvocations(LimitedInvocationsCommand),
-}
-
-#[derive(Subcommand)]
-pub(crate) enum ExpiryCommand {
-    #[command(about = "Enable the expiry gas ticket extension")]
-    Enable {
+    Deposit {
         #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
+            long,
+            value_name = "MIST",
+            help = "Positive MIST amount deposited into the address balance"
         )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "owner-cap",
-            short = 'o',
-            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
-            value_name = "OBJECT_ID"
-        )]
-        owner_cap: Option<sui::types::Address>,
-        #[arg(
-            long = "cost-per-minute",
-            short = 'c',
-            help = "The cost per minute in MIST.",
-            value_name = "MIST"
-        )]
-        cost_per_minute: u64,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Disable the expiry gas ticket extension")]
-    Disable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "owner-cap",
-            short = 'o',
-            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
-            value_name = "OBJECT_ID"
-        )]
-        owner_cap: Option<sui::types::Address>,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Buy an expiry gas ticket for the specified tool")]
-    BuyTicket {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "minutes",
-            short = 'm',
-            help = "The duration of the ticket in minutes.",
-            value_name = "MINUTES"
-        )]
-        minutes: u64,
-        #[arg(
-            long = "coin",
-            short = 'c',
-            help = "Owned SUI coin object ID to use to pay for the ticket",
-            value_name = "OBJECT_ID"
-        )]
-        coin: sui::types::Address,
+        amount: std::num::NonZeroU64,
         #[command(flatten)]
         gas: GasArgs,
     },
 }
 
-#[derive(Subcommand)]
-pub(crate) enum LimitedInvocationsCommand {
-    #[command(about = "Enable the limited invocations gas ticket extension")]
-    Enable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "owner-cap",
-            short = 'o',
-            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
-            value_name = "OBJECT_ID"
-        )]
-        owner_cap: Option<sui::types::Address>,
-        #[arg(
-            long = "cost-per-invocation",
-            short = 'c',
-            help = "The cost per invocation in MIST.",
-            value_name = "MIST"
-        )]
-        cost_per_invocation: u64,
-        #[arg(
-            long = "min-invocations",
-            help = "The minimum number of invocations required for a ticket.",
-            value_name = "COUNT"
-        )]
-        min_invocations: u64,
-        #[arg(
-            long = "max-invocations",
-            help = "The maximum number of invocations allowed for a ticket.",
-            value_name = "COUNT"
-        )]
-        max_invocations: u64,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Disable the limited invocations gas ticket extension")]
-    Disable {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "owner-cap",
-            short = 'o',
-            help = "The OwnerCap<OverGas> object ID that must be owned by the sender.",
-            value_name = "OBJECT_ID"
-        )]
-        owner_cap: Option<sui::types::Address>,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-
-    #[command(about = "Buy a limited invocations gas ticket for the specified tool")]
-    BuyTicket {
-        #[arg(
-            long = "tool-fqn",
-            short = 't',
-            help = "The FQN of the tool.",
-            value_name = "FQN"
-        )]
-        tool_fqn: ToolFqn,
-        #[arg(
-            long = "invocations",
-            short = 'i',
-            help = "The number of invocations the ticket should cover.",
-            value_name = "COUNT"
-        )]
-        invocations: u64,
-        #[arg(
-            long = "coin",
-            short = 'c',
-            help = "Owned SUI coin object ID to use to pay for the ticket",
-            value_name = "OBJECT_ID"
-        )]
-        coin: sui::types::Address,
-        #[command(flatten)]
-        gas: GasArgs,
-    },
-}
-
-/// Handle the provided gas command. The [GasCommand] instance is passed from
-/// [crate::main].
 pub(crate) async fn handle(command: GasCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        // == `$ nexus gas expiry` ==
-        GasCommand::Expiry(command) => match command {
-            // == `$ nexus gas expiry enable` ==
-            ExpiryCommand::Enable {
-                tool_fqn,
-                owner_cap,
-                cost_per_minute,
-                gas,
-            } => {
-                enable_expiry_extension(
-                    tool_fqn,
-                    owner_cap,
-                    cost_per_minute,
-                    gas.sui_gas_coin,
-                    gas.sui_gas_budget,
-                )
-                .await
-            }
+        GasCommand::Balance => show().await,
+        GasCommand::Deposit { amount, gas } => deposit(amount, gas).await,
+    }
+}
 
-            // == `$ nexus gas expiry disable` ==
-            ExpiryCommand::Disable {
-                tool_fqn,
-                owner_cap,
-                gas,
-            } => {
-                disable_expiry_extension(tool_fqn, owner_cap, gas.sui_gas_coin, gas.sui_gas_budget)
-                    .await
-            }
+#[cfg(test)]
+mod tests {
+    use {super::*, clap::Parser};
 
-            // == `$ nexus gas expiry buy-ticket` ==
-            ExpiryCommand::BuyTicket {
-                tool_fqn,
-                minutes,
-                coin,
-                gas,
-            } => {
-                buy_expiry_gas_ticket(
-                    tool_fqn,
-                    minutes,
-                    coin,
-                    gas.sui_gas_coin,
-                    gas.sui_gas_budget,
-                )
-                .await
-            }
-        },
+    #[test]
+    fn parses_address_balance_commands() {
+        let balance = crate::Cli::try_parse_from(["nexus", "gas", "balance"])
+            .expect("balance command should parse");
+        assert!(matches!(
+            balance.command,
+            crate::Command::Gas(GasCommand::Balance)
+        ));
 
-        // == `$ nexus gas limited-invocations` ==
-        GasCommand::LimitedInvocations(command) => match command {
-            // == `$ nexus gas limited-invocations enable` ==
-            LimitedInvocationsCommand::Enable {
-                tool_fqn,
-                owner_cap,
-                cost_per_invocation,
-                min_invocations,
-                max_invocations,
-                gas,
-            } => {
-                enable_limited_invocations_extension(
-                    tool_fqn,
-                    owner_cap,
-                    cost_per_invocation,
-                    min_invocations,
-                    max_invocations,
-                    gas.sui_gas_coin,
-                    gas.sui_gas_budget,
-                )
-                .await
-            }
-
-            // == `$ nexus gas limited-invocations disable` ==
-            LimitedInvocationsCommand::Disable {
-                tool_fqn,
-                owner_cap,
-                gas,
-            } => {
-                disable_limited_invocations_extension(
-                    tool_fqn,
-                    owner_cap,
-                    gas.sui_gas_coin,
-                    gas.sui_gas_budget,
-                )
-                .await
-            }
-
-            // == `$ nexus gas limited-invocations buy-ticket` ==
-            LimitedInvocationsCommand::BuyTicket {
-                tool_fqn,
-                invocations,
-                coin,
-                gas,
-            } => {
-                buy_limited_invocations_gas_ticket(
-                    tool_fqn,
-                    invocations,
-                    coin,
-                    gas.sui_gas_coin,
-                    gas.sui_gas_budget,
-                )
-                .await
-            }
-        },
+        let deposit = crate::Cli::try_parse_from([
+            "nexus",
+            "gas",
+            "deposit",
+            "--amount",
+            "50000000",
+            "--sui-gas-budget",
+            "12345",
+        ])
+        .expect("deposit command should parse");
+        let crate::Command::Gas(GasCommand::Deposit { amount, gas }) = deposit.command else {
+            panic!("expected address balance deposit command");
+        };
+        assert_eq!(amount.get(), 50_000_000);
+        assert_eq!(gas.sui_gas_budget, 12_345);
     }
 }

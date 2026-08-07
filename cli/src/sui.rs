@@ -1,13 +1,22 @@
+//! Constructs CLI Sui and Nexus clients and attaches transaction gas.
+
 use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
-    nexus_sdk::{nexus::client::NexusClient, sui},
+    nexus_sdk::{
+        nexus::{
+            client::{AddressBalanceGas, GasSource, NexusClient},
+            error::NexusError,
+            protocol::ProtocolExtras,
+        },
+        sui,
+    },
 };
 
 /// Build Sui client for the provided Sui net.
 pub(crate) async fn build_sui_grpc_client(
     conf: &CliConf,
-) -> AnyResult<Arc<Mutex<sui::grpc::Client>>, NexusCliError> {
+) -> AnyResult<Arc<sui::grpc::Client>, NexusCliError> {
     let client_handle = loading!("Building Sui client...");
 
     // Try to get the `SUI_RPC_URL` from the environment, otherwise use
@@ -29,7 +38,7 @@ pub(crate) async fn build_sui_grpc_client(
         Ok(client) => {
             client_handle.success();
 
-            Ok(Arc::new(Mutex::new(client)))
+            Ok(Arc::new(client))
         }
         Err(e) => {
             client_handle.error();
@@ -109,60 +118,6 @@ pub(crate) async fn get_signing_key(
     }
 }
 
-/// Fetch all coins owned by the provided address.
-pub(crate) async fn fetch_coins_for_address(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-) -> AnyResult<Vec<(sui::types::ObjectReference, u64)>, NexusCliError> {
-    let coins_handle = loading!("Fetching coins...");
-
-    let request = sui::grpc::ListOwnedObjectsRequest::default()
-        .with_owner(owner)
-        .with_page_size(1000)
-        .with_object_type(sui::types::StructTag::gas_coin())
-        .with_read_mask(sui::grpc::FieldMask::from_paths([
-            "object_id",
-            "version",
-            "digest",
-            "balance",
-        ]));
-
-    let mut client = client.lock().await;
-
-    let response = match client
-        .state_client()
-        .list_owned_objects(request)
-        .await
-        .map(|resp| resp.into_inner())
-    {
-        Ok(response) => response,
-        Err(e) => {
-            coins_handle.error();
-
-            return Err(NexusCliError::Rpc(e.into()));
-        }
-    };
-
-    drop(client);
-
-    coins_handle.success();
-
-    Ok(response
-        .objects()
-        .iter()
-        .filter_map(|object| {
-            Some((
-                sui::types::ObjectReference::new(
-                    object.object_id_opt()?.parse().ok()?,
-                    object.version_opt()?,
-                    object.digest_opt()?.parse().ok()?,
-                ),
-                object.balance_opt().unwrap_or(0),
-            ))
-        })
-        .collect())
-}
-
 /// Wrapping some conf parsing functionality used around the CLI.
 pub(crate) async fn get_nexus_objects(
     conf: &mut CliConf,
@@ -226,102 +181,75 @@ async fn fetch_objects_from_url(url: &str) -> AnyResult<NexusObjects> {
     Ok(objects)
 }
 
-/// Fetch a coin from the Sui client.
-///
-/// `by_address`: If specified, fetch the coin with this object ID.
-/// `by_order`: If `by_address` is not specified, fetch the coin by its order in
-/// the list of owned coins (0-based).
-pub(crate) async fn fetch_coin(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-) -> AnyResult<sui::types::ObjectReference, NexusCliError> {
-    fetch_coin_with_balance(client, owner, by_address, by_order)
+async fn configure_nexus_client_gas(
+    nexus_client: &NexusClient,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> Result<(), NexusCliError> {
+    let config = match sui_gas_coin {
+        Some(gas_coin_id) => {
+            let gas_coin = nexus_client
+                .fetch_coin(gas_coin_id)
+                .await
+                .map_err(NexusCliError::Nexus)?;
+            GasSource::coin(vec![gas_coin], sui_gas_budget)
+        }
+        None => GasSource::AddressBalance(AddressBalanceGas::new(sui_gas_budget)),
+    };
+
+    nexus_client
+        .set_gas_source(config)
         .await
-        .map(|(coin, _)| coin)
+        .map_err(NexusCliError::Nexus)
 }
 
-pub(crate) async fn fetch_coin_with_balance(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
-    fetch_coin_with_balance_excluding(client, owner, by_address, by_order, &[]).await
+#[derive(Clone, Copy)]
+enum ClientAccess {
+    ReadOnly,
+    Signing,
 }
 
-pub(crate) async fn fetch_coin_with_balance_excluding(
-    client: Arc<Mutex<sui::grpc::Client>>,
-    owner: sui::types::Address,
-    by_address: Option<sui::types::Address>,
-    by_order: usize,
-    excluded: &[sui::types::Address],
-) -> AnyResult<(sui::types::ObjectReference, u64), NexusCliError> {
-    let mut coins = fetch_coins_for_address(client, owner).await?;
+async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient, NexusCliError> {
+    let mut conf = CliConf::load().await.unwrap_or_default();
 
-    if coins.is_empty() {
-        return Err(NexusCliError::Any(anyhow!(
-            "The wallet does not have enough coins to submit the transaction"
+    let client = build_sui_grpc_client(&conf).await?;
+    let nexus_objects = get_nexus_objects(&mut conf).await?;
+    let rpc_url = client.uri().to_string();
+
+    if *nexus_objects.protocol.object_id() == sui::types::Address::ZERO {
+        return Err(NexusCliError::Nexus(NexusError::Configuration(
+            "a protocol root is required".into(),
         )));
     }
 
-    // If object gas coin object ID was specified, use it. If it was specified
-    // and could not be found, return error.
-    match by_address {
-        Some(id) => {
-            let coin = coins
-                .into_iter()
-                .find(|(coin, _)| *coin.object_id() == id)
-                .ok_or_else(|| NexusCliError::Any(anyhow!("Coin '{id}' not found in wallet")))?;
-
-            Ok(coin)
-        }
-        None => {
-            coins.retain(|(coin, _)| !excluded.contains(coin.object_id()));
-            if by_order >= coins.len() {
-                return Err(NexusCliError::Any(anyhow!(
-                    "The wallet does not have enough coins to select coin #{by_order}"
-                )));
-            }
-
-            Ok(coins.swap_remove(by_order))
-        }
-    }
+    let builder = NexusClient::builder().with_rpc_url(&rpc_url);
+    let builder = match access {
+        ClientAccess::ReadOnly => builder,
+        ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
+    };
+    let builder = builder
+        .with_protocol(nexus_objects.protocol.clone())
+        .with_protocol_extras(ProtocolExtras::from(&nexus_objects));
+    builder.build().await.map_err(NexusCliError::Nexus)
 }
 
-/// Create a Nexus client from CLI parameters.
+/// Creates a Nexus client without attaching a gas source.
+pub(crate) async fn get_read_only_nexus_client() -> Result<NexusClient, NexusCliError> {
+    build_nexus_client_context(ClientAccess::ReadOnly).await
+}
+
+/// Creates a Nexus client with owner identity but without a gas source.
+pub(crate) async fn get_owner_nexus_client() -> Result<NexusClient, NexusCliError> {
+    build_nexus_client_context(ClientAccess::Signing).await
+}
+
+/// Creates a Nexus client and attaches the selected transaction gas source.
 pub(crate) async fn get_nexus_client(
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> Result<NexusClient, NexusCliError> {
-    let mut conf = CliConf::load().await.unwrap_or_default();
-
-    let client = build_sui_grpc_client(&conf).await?;
-    let pk = get_signing_key(&conf).await?;
-    let owner = pk.public_key().derive_address();
-    let gas_coin = fetch_coin(client.clone(), owner, sui_gas_coin, 0).await?;
-    let mut nexus_objects = get_nexus_objects(&mut conf).await?;
-
-    nexus_objects
-        .resolve_workflow_original_pkg_id(&client)
-        .await
-        .map_err(|e| {
-            NexusCliError::Any(anyhow!(
-                "Failed to resolve workflow original package ID: {e}"
-            ))
-        })?;
-    let rpc_url = client.lock().await.uri().to_string();
-
-    // Create Nexus client.
-    let nexus_client = NexusClient::builder()
-        .with_private_key(pk)
-        .with_nexus_objects(nexus_objects.clone())
-        .with_gas(vec![gas_coin], sui_gas_budget)
-        .with_rpc_url(&rpc_url)
-        .build()
-        .await
-        .map_err(NexusCliError::Nexus)?;
+    let nexus_client = build_nexus_client_context(ClientAccess::Signing).await?;
+    configure_nexus_client_gas(&nexus_client, sui_gas_coin, sui_gas_budget).await?;
 
     Ok(nexus_client)
 }
@@ -330,6 +258,339 @@ pub(crate) async fn get_nexus_client(
 mod tests {
     use {super::*, rstest::rstest};
 
+    struct CoinFreeClientCallSite {
+        command: &'static str,
+        source: &'static str,
+        function_signature: &'static str,
+        boundary_test_source: &'static str,
+        boundary_test_signature: &'static str,
+        boundary_test_marker: &'static str,
+    }
+
+    const OWNER_SCOPED_COIN_FREE_NEXUS_COMMANDS: &[CoinFreeClientCallSite] = &[
+        CoinFreeClientCallSite {
+            command: "nexus task list",
+            source: include_str!("task/list.rs"),
+            function_signature: "pub(crate) async fn run(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/mod.rs"),
+            boundary_test_signature:
+                "async fn task_pointer_discovery_reaches_grpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus gas balance",
+            source: include_str!("gas/balance.rs"),
+            function_signature: "pub(super) async fn show(",
+            boundary_test_source: include_str!("sui.rs"),
+            boundary_test_signature:
+                "async fn cli_client_without_explicit_gas_coin_supports_reads(",
+            boundary_test_marker: "assert_coin_free_client_supports_read",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus gas deposit",
+            source: include_str!("gas/balance.rs"),
+            function_signature: "pub(super) async fn deposit(",
+            boundary_test_source: include_str!("sui.rs"),
+            boundary_test_signature: "async fn cli_transaction_setup_attaches_explicit_coin_gas(",
+            boundary_test_marker: "configure_nexus_client_gas",
+        },
+    ];
+
+    const READ_ONLY_NEXUS_COMMANDS: &[CoinFreeClientCallSite] = &[
+        CoinFreeClientCallSite {
+            command: "nexus dag inspect",
+            source: include_str!("dag/dag_inspect.rs"),
+            function_signature: "pub(crate) async fn inspect_dag(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/workflow.rs"),
+            boundary_test_signature: "async fn inspect_dag_succeeds_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus task inspect",
+            source: include_str!("task/state.rs"),
+            function_signature: "pub(crate) async fn inspect(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus task occurrence list",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn list(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus task occurrence inspect",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn inspect(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/scheduler/task.rs"),
+            boundary_test_signature: "async fn scheduler_reads_reach_rpc_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus task occurrence cost",
+            source: include_str!("task/occurrence.rs"),
+            function_signature: "async fn cost(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/workflow.rs"),
+            boundary_test_signature: "async fn test_workflow_actions_execution_cost(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus execution inspect",
+            source: include_str!("execution/inspect.rs"),
+            function_signature: "pub(super) async fn run(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/workflow.rs"),
+            boundary_test_signature: "async fn inspect_execution_replays_update_chain_in_order(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap create-skill-artifact",
+            source: include_str!("tap/tap_create_skill_artifact.rs"),
+            function_signature: "async fn fetch_input_commitment(",
+            boundary_test_source: include_str!("tap/tap_create_skill_artifact.rs"),
+            boundary_test_signature:
+                "async fn fetch_input_commitment_succeeds_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap default-agent show",
+            source: include_str!("tap/tap_default_agent.rs"),
+            function_signature: "pub(crate) async fn show_default_agent(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn fetch_configured_default_tap_dag_executor_succeeds_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap payments show",
+            source: include_str!("tap/tap_payments.rs"),
+            function_signature: "async fn show_payment(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn fetch_execution_payment_succeeds_without_owned_coins(",
+            boundary_test_marker: "coin_free_payment_client",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap payments wait",
+            source: include_str!("tap/tap_payments.rs"),
+            function_signature: "async fn wait_payment(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn wait_for_payment_settled_succeeds_without_owned_coins(",
+            boundary_test_marker: "coin_free_payment_client",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap registry show",
+            source: include_str!("tap/tap_registry.rs"),
+            function_signature: "pub(crate) async fn show_registry(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn fetch_agent_registry_still_decodes_default_executor(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap requirements",
+            source: include_str!("tap/tap_requirements.rs"),
+            function_signature: "pub(crate) async fn fetch_requirements(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn tap_actions_get_skill_requirements_resolves_active_skill_revision(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tap vault balance",
+            source: include_str!("tap/tap_vault.rs"),
+            function_signature: "pub(crate) async fn handle_vault_command(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tap.rs"),
+            boundary_test_signature:
+                "async fn fetch_agent_payment_vault_for_agent_succeeds_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool auth list-keys",
+            source: include_str!("tool/tool_auth.rs"),
+            function_signature: "async fn list_keys(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/network_auth.rs"),
+            boundary_test_signature: "async fn list_tool_keys_returns_sorted_entries(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool auth export-allowed-leaders",
+            source: include_str!("tool/tool_auth.rs"),
+            function_signature: "async fn export_allowed_leaders(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/network_auth.rs"),
+            boundary_test_signature: "async fn actions_export_allowlists(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool auth sync-allowed-leaders",
+            source: include_str!("tool/tool_auth.rs"),
+            function_signature: "async fn sync_allowed_leaders(",
+            boundary_test_source: include_str!("tool/tool_auth.rs"),
+            boundary_test_signature:
+                "async fn sync_once_writes_allowlist_without_wallet_or_owned_coins(",
+            boundary_test_marker: "mock_network_auth_client_without_wallet",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool inspect",
+            source: include_str!("tool/tool_inspect.rs"),
+            function_signature: "pub(crate) async fn inspect_tool(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
+            boundary_test_signature:
+                "async fn inspect_tool_reports_missing_when_neither_object_exists(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+        CoinFreeClientCallSite {
+            command: "nexus tool list",
+            source: include_str!("tool/tool_list.rs"),
+            function_signature: "pub(crate) async fn list_tools(",
+            boundary_test_source: include_str!("tool/tool_list.rs"),
+            boundary_test_signature: "async fn fetch_tools_succeeds_without_owned_coins(",
+            boundary_test_marker: "mock_nexus_client_without_coins",
+        },
+    ];
+
+    fn function_source<'a>(source: &'a str, signature: &str) -> &'a str {
+        let start = source
+            .find(signature)
+            .unwrap_or_else(|| panic!("missing function signature '{signature}'"));
+        let tail = &source[start + signature.len()..];
+        let end = ["\nasync fn ", "\npub(crate) async fn ", "\n#[cfg(test)]"]
+            .into_iter()
+            .filter_map(|boundary| tail.find(boundary))
+            .min()
+            .unwrap_or(tail.len());
+
+        &tail[..end]
+    }
+
+    fn count_coin_free_read_calls(path: &std::path::Path, call: &str) -> usize {
+        std::fs::read_dir(path)
+            .unwrap_or_else(|error| panic!("failed to read '{}': {error}", path.display()))
+            .map(|entry| {
+                entry
+                    .expect("CLI source directory entry should be readable")
+                    .path()
+            })
+            .map(|path| {
+                if path.is_dir() {
+                    count_coin_free_read_calls(&path, call)
+                } else if path.extension().is_some_and(|extension| extension == "rs") {
+                    std::fs::read_to_string(&path)
+                        .unwrap_or_else(|error| {
+                            panic!("failed to read '{}': {error}", path.display())
+                        })
+                        .matches(call)
+                        .count()
+                } else {
+                    0
+                }
+            })
+            .sum()
+    }
+
+    async fn assert_coin_free_client_supports_read(command: &str) {
+        let object = nexus_sdk::test_utils::sui_mocks::mock_sui_object_ref();
+        let mut ledger_service_mock =
+            nexus_sdk::test_utils::sui_mocks::grpc::MockLedgerService::new();
+        nexus_sdk::test_utils::sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger_service_mock,
+            object.clone(),
+            sui::types::Owner::Immutable,
+            None,
+        );
+        let rpc_url = nexus_sdk::test_utils::sui_mocks::grpc::mock_server(
+            nexus_sdk::test_utils::sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                ..Default::default()
+            },
+        );
+        let client = NexusClient::builder()
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(nexus_sdk::test_utils::sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .unwrap_or_else(|error| panic!("{command} should build without owned coins: {error}"));
+        let response = client
+            .crawler()
+            .get_object_metadata(*object.object_id())
+            .await
+            .unwrap_or_else(|error| panic!("{command} read should succeed: {error}"));
+
+        assert!(client.gas_config().is_none(), "{command}");
+        assert_eq!(client.get_reference_gas_price(), None, "{command}");
+        assert_eq!(response.object_ref(), object, "{command}");
+    }
+
+    #[test]
+    fn every_coin_free_nexus_client_call_has_boundary_proof() {
+        let assert_call_sites = |call_sites: &[CoinFreeClientCallSite], client_call: &str| {
+            let coin_free_call = [client_call, ".await?"].concat();
+            for call_site in call_sites {
+                assert!(
+                    function_source(call_site.source, call_site.function_signature)
+                        .contains(&coin_free_call),
+                    "{} does not use its coin free Nexus client path",
+                    call_site.command
+                );
+                assert!(
+                    function_source(
+                        call_site.boundary_test_source,
+                        call_site.boundary_test_signature
+                    )
+                    .contains(call_site.boundary_test_marker),
+                    "{} does not map to its named coin free execution boundary",
+                    call_site.command
+                );
+            }
+        };
+        let owner_client = ["get_owner_nexus_client", "()"].concat();
+        let anonymous_client = ["get_read_only_nexus_client", "()"].concat();
+        assert_call_sites(OWNER_SCOPED_COIN_FREE_NEXUS_COMMANDS, &owner_client);
+        assert_call_sites(READ_ONLY_NEXUS_COMMANDS, &anonymous_client);
+
+        let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for (client_call, expected) in [
+            (
+                [owner_client.as_str(), ".await?"].concat(),
+                OWNER_SCOPED_COIN_FREE_NEXUS_COMMANDS.len(),
+            ),
+            (
+                [anonymous_client.as_str(), ".await?"].concat(),
+                READ_ONLY_NEXUS_COMMANDS.len(),
+            ),
+        ] {
+            assert_eq!(
+                count_coin_free_read_calls(&source_root, &client_call),
+                expected,
+                "the coin free command inventory must include every coin free Nexus client call"
+            );
+        }
+    }
+
+    #[test]
+    fn network_auth_sync_command_has_no_wallet_dependency() {
+        let source = include_str!("tool/tool_auth.rs");
+        let body = function_source(source, "async fn sync_allowed_leaders(");
+
+        for wallet_dependency in ["get_nexus_client(", "get_signing_key(", "fetch_coin("] {
+            assert!(
+                !body.contains(wallet_dependency),
+                "nexus tool auth sync-allowed-leaders unexpectedly uses {wallet_dependency}"
+            );
+        }
+        assert!(
+            function_source(
+                source,
+                "async fn sync_once_writes_allowlist_without_wallet_or_owned_coins("
+            )
+            .contains("mock_network_auth_client_without_wallet"),
+            "sync allowed leaders must retain execution level read only proof"
+        );
+    }
+
     #[rstest]
     #[tokio::test]
     async fn test_fetch_devnet_objects() {
@@ -337,12 +598,44 @@ mod tests {
         let mut server = Server::new_async().await;
 
         let response_body = r#"
-                primitives_pkg_id = "0x1"
-                workflow_pkg_id = "0x2"
-                interface_pkg_id = "0x3"
-                scheduler_pkg_id = "0x13"
-                registry_pkg_id = "0x11"
+                protocol_version = 1
+                config_hash = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
                 network_id = "0x4"
+
+                [protocol]
+                object_id = "0x16"
+                version = 1
+                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
+                [packages.primitives]
+                initial_id = "0x1"
+                storage_id = "0x1"
+                version = 1
+
+                [packages.tool]
+                initial_id = "0x15"
+                storage_id = "0x15"
+                version = 1
+
+                [packages.workflow]
+                initial_id = "0x2"
+                storage_id = "0x2"
+                version = 1
+
+                [packages.interface]
+                initial_id = "0x3"
+                storage_id = "0x3"
+                version = 1
+
+                [packages.scheduler]
+                initial_id = "0x13"
+                storage_id = "0x13"
+                version = 1
+
+                [packages.registry]
+                initial_id = "0x11"
+                storage_id = "0x11"
+                version = 1
 
                 [tool_registry]
                 object_id = "0x5"
@@ -363,20 +656,16 @@ mod tests {
                 agent_id = "0xa1"
                 skill_id = 177
 
-                [gas_service]
-                object_id = "0x8"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-
                 [leader_registry]
                 object_id = "0x10"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
 
-                [verifier_registry]
-                object_id = "0x12"
+                [priority_fee_vault]
+                object_id = "0x14"
                 version = 1
                 digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+
             "#
         .to_string();
 
@@ -399,11 +688,36 @@ mod tests {
 
         let objects = res.expect("mock object document should match NexusObjects");
 
-        assert_eq!(objects.primitives_pkg_id, "0x1".parse().unwrap());
-        assert_eq!(objects.workflow_pkg_id, "0x2".parse().unwrap());
-        assert_eq!(objects.interface_pkg_id, "0x3".parse().unwrap());
-        assert_eq!(objects.scheduler_pkg_id, "0x13".parse().unwrap());
-        assert_eq!(objects.registry_pkg_id, "0x11".parse().unwrap());
+        assert_eq!(objects.primitives_pkg_id(), "0x1".parse().unwrap());
+        assert_eq!(objects.tool_pkg_id(), "0x15".parse().unwrap());
+        assert_eq!(objects.workflow_pkg_id(), "0x2".parse().unwrap());
+        assert_eq!(objects.interface_pkg_id(), "0x3".parse().unwrap());
+        assert_eq!(objects.scheduler_pkg_id(), "0x13".parse().unwrap());
+        assert_eq!(objects.registry_pkg_id(), "0x11".parse().unwrap());
+        assert_eq!(
+            objects.primitives_type_origin_pkg_id(),
+            objects.primitives_pkg_id()
+        );
+        assert_eq!(
+            objects.interface_type_origin_pkg_id(),
+            objects.interface_pkg_id()
+        );
+        assert_eq!(
+            objects.registry_type_origin_pkg_id(),
+            objects.registry_pkg_id()
+        );
+        assert_eq!(
+            objects.tool_cashier_type_origin_pkg_id(),
+            objects.tool_pkg_id()
+        );
+        assert_eq!(
+            objects.workflow_type_origin_pkg_id(),
+            objects.workflow_pkg_id()
+        );
+        assert_eq!(
+            objects.scheduler_type_origin_pkg_id(),
+            objects.scheduler_pkg_id()
+        );
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(
             *objects.tool_registry.object_id(),
@@ -433,15 +747,6 @@ mod tests {
         );
         assert_eq!(objects.default_dag_executor.skill_id, 177);
         assert_eq!(
-            *objects.gas_service.object_id(),
-            sui::types::Address::from_static("0x8")
-        );
-        assert_eq!(objects.gas_service.version(), 1);
-        assert_eq!(
-            *objects.gas_service.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-        );
-        assert_eq!(
             *objects.leader_registry.object_id(),
             sui::types::Address::from_static("0x10")
         );
@@ -451,11 +756,98 @@ mod tests {
             sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
         );
         assert_eq!(
-            *objects.verifier_registry.object_id(),
-            sui::types::Address::from_static("0x12")
+            *objects.priority_fee_vault.object_id(),
+            sui::types::Address::from_static("0x14")
         );
-
+        assert_eq!(objects.priority_fee_vault.version(), 1);
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn cli_client_without_explicit_gas_coin_supports_reads() {
+        assert_coin_free_client_supports_read("shared CLI client").await;
+    }
+
+    #[tokio::test]
+    async fn cli_transaction_setup_attaches_address_balance_gas() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let rpc_url = nexus_sdk::test_utils::sui_mocks::grpc::mock_server(Default::default());
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(nexus_sdk::test_utils::sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("coin-free client should build");
+
+        configure_nexus_client_gas(&client, None, 4_321)
+            .await
+            .expect("address balance gas should attach without owned coins");
+
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("transaction setup should attach gas")
+                .get_budget(),
+            4_321
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_transaction_setup_attaches_explicit_coin_gas() {
+        let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let owner = pk.public_key().derive_address();
+        let coin = nexus_sdk::test_utils::sui_mocks::mock_sui_object_ref();
+        let mut coin_object = sui::grpc::Object::default();
+        coin_object.set_object_id(*coin.object_id());
+        coin_object.set_owner(sui::grpc::Owner::from(sui::types::Owner::Address(owner)));
+        coin_object.set_version(coin.version());
+        coin_object.set_digest(*coin.digest());
+        coin_object.set_balance(50_000);
+        coin_object.set_object_type(sui::types::StructTag::gas_coin().to_string());
+        let mut state_service_mock =
+            nexus_sdk::test_utils::sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(move |_| {
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(vec![coin_object]);
+                Ok(response.into())
+            });
+        let mut ledger_service_mock =
+            nexus_sdk::test_utils::sui_mocks::grpc::MockLedgerService::new();
+        nexus_sdk::test_utils::sui_mocks::grpc::mock_reference_gas_price(
+            &mut ledger_service_mock,
+            789,
+        );
+        let rpc_url = nexus_sdk::test_utils::sui_mocks::grpc::mock_server(
+            nexus_sdk::test_utils::sui_mocks::grpc::ServerMocks {
+                ledger_service_mock: Some(ledger_service_mock),
+                state_service_mock: Some(state_service_mock),
+                ..Default::default()
+            },
+        );
+        let client = NexusClient::builder()
+            .with_private_key(pk)
+            .with_rpc_url(&rpc_url)
+            .with_nexus_objects(nexus_sdk::test_utils::sui_mocks::mock_nexus_objects())
+            .build()
+            .await
+            .expect("coin-free client should build");
+
+        configure_nexus_client_gas(&client, Some(*coin.object_id()), 5_678)
+            .await
+            .expect("explicit coin gas should attach");
+
+        assert_eq!(
+            client
+                .gas_config()
+                .expect("transaction setup should attach coin gas")
+                .get_budget(),
+            5_678
+        );
+        assert_eq!(client.get_reference_gas_price(), Some(789));
     }
 
     mod parse_ed25519_private_key_tests {

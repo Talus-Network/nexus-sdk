@@ -8,10 +8,9 @@ use {
     std::{
         env,
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{Arc, OnceLock},
     },
     tempfile::{Builder, TempDir},
-    tokio::sync::Mutex,
 };
 
 fn test_artifact_temp_root() -> PathBuf {
@@ -19,7 +18,24 @@ fn test_artifact_temp_root() -> PathBuf {
         .join("target")
         .join("test-temp");
     std::fs::create_dir_all(&root).expect("Failed to create SDK test temp root");
+    ensure_test_move_home(&root);
     root
+}
+
+fn ensure_test_move_home(root: &Path) {
+    static MOVE_HOME: OnceLock<PathBuf> = OnceLock::new();
+
+    let move_home = MOVE_HOME.get_or_init(|| {
+        env::var_os("MOVE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                let move_home = root.join(".move");
+                std::fs::create_dir_all(&move_home).expect("Failed to create SDK test Move home");
+                env::set_var("MOVE_HOME", &move_home);
+                move_home
+            })
+    });
+    std::fs::create_dir_all(move_home).expect("Failed to create SDK test Move home");
 }
 
 fn build_tempdir(prefix: &str) -> TempDir {
@@ -79,10 +95,10 @@ pub async fn publish_move_package_with_overrides(
 
     copy_dir_recursive(&source_install_dir, &install_dir);
 
-    let mut client = sui::grpc::Client::new(rpc_url).expect("Could not create gRPC client");
+    let mut client = sui::grpc::client(rpc_url).expect("Could not create gRPC client");
     let addr = pk.public_key().derive_address();
     let signer = Signer::new(
-        Arc::new(Mutex::new(client.clone())),
+        Arc::new(client.clone()),
         pk.clone(),
         std::time::Duration::from_secs(30),
         Arc::new(sui_mocks::mock_nexus_objects()),

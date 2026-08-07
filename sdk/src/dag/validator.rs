@@ -530,7 +530,7 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
         }
 
         graph.add_edge(output_variant_node, output_port_node, EdgeKind::Normal);
-        graph.add_edge(output_port_node, input_port_node, edge.kind.clone());
+        graph.add_edge(output_port_node, input_port_node, edge.kind);
     }
 
     // Ensure we don't have duplicate vertices.

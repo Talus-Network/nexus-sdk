@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+bash .github/scripts/tests/test_validate_release_tag.sh
+bash .github/scripts/tests/test_resolve_release_intent.sh

@@ -183,3 +183,10 @@ pub(crate) fn json_output<T: Serialize>(data: &T) -> AnyResult<(), NexusCliError
         Err(e) => Err(NexusCliError::Any(e.into())),
     }
 }
+
+/// Prints prepared human output when JSON mode is disabled.
+pub(crate) fn human_output(output: &str) {
+    if !JSON_MODE.load(Ordering::Relaxed) {
+        print!("{output}");
+    }
+}
