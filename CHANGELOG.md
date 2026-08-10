@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Changed
+
+- Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
+
+## [`2.0.0-rc.5`] - 2026-08-07
+
+### `nexus-sdk`
+
 #### Added
 
 - Added a transaction builder for updating an off chain Tool URL.
