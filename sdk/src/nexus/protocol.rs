@@ -12,7 +12,10 @@ use {
                 ProtocolVersionActivatedV1Event,
                 SharedObjectInfo,
             },
-            registry::leader::{LeaderRegistry, LeaderRegistryStateV1},
+            registry::{
+                agent_registry::DefaultDagExecutorFieldKey,
+                leader::{LeaderRegistry, LeaderRegistryStateV1},
+            },
         },
         nexus::{
             crawler::{Crawler, Response},
@@ -230,14 +233,17 @@ impl ProtocolResolver {
             &config.shared_objects.contents[3].value,
         )
         .await?;
-        let default_dag_executor =
-            tap::fetch_default_dag_executor(&crawler, *refs.agent_registry.object_id())
-                .await
-                .map_err(NexusError::Rpc)?
-                .ok_or_else(|| {
-                    protocol_error("Configured AgentRegistry has no default DAG executor")
-                })?
-                .target();
+        let default_dag_executor = tap::fetch_default_dag_executor(
+            &crawler,
+            *refs.agent_registry.object_id(),
+            &crate::move_bindings::registry_type_tag::<DefaultDagExecutorFieldKey>(
+                &packages.registry,
+            ),
+        )
+        .await
+        .map_err(NexusError::Rpc)?
+        .ok_or_else(|| protocol_error("Configured AgentRegistry has no default DAG executor"))?
+        .target();
         let priority_fee_vault_owner_cap =
             refresh_optional_authority(&crawler, &self.extras.priority_fee_vault_owner_cap).await?;
 

@@ -4,7 +4,7 @@
 use {
     crate::{
         move_bindings::{
-            sui_framework::{table_vec::TableVec, versioned::Versioned},
+            sui_framework::{object::ID, table_vec::TableVec, versioned::Versioned},
             VersionedAnchor,
         },
         sui::{self, traits::FieldMaskUtil},
@@ -34,12 +34,59 @@ struct DynamicFieldValue<K, V> {
     value: V,
 }
 
+/// BCS representation of `sui::dynamic_object_field::Wrapper<K>`.
+///
+/// [`DynamicFieldValue`] cannot represent this name because ordinary dynamic
+/// fields store `K` directly, while dynamic object fields store this wrapper.
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct DynamicObjectFieldName<K> {
+    name: K,
+}
+
 fn parse_dynamic_field_name<K>(bytes: &[u8]) -> Result<K, bcs::Error>
 where
     K: DeserializeOwned,
 {
     bcs::from_bytes::<K>(bytes)
         .or_else(|_| bcs::from_bytes::<DynamicFieldNameBcs<K>>(bytes).map(|field| field.name))
+}
+
+fn derive_dynamic_field_id<K>(
+    parent_id: sui::types::Address,
+    key: &K,
+    key_type: &sui::types::TypeTag,
+) -> anyhow::Result<sui::types::Address>
+where
+    K: Serialize,
+{
+    let key_bytes = bcs::to_bytes(key).context("Could not encode dynamic field key")?;
+    Ok(parent_id.derive_dynamic_child_id(key_type, &key_bytes))
+}
+
+fn validate_dynamic_field<K, V>(
+    field_id: sui::types::Address,
+    key: &K,
+    field: &DynamicFieldValue<K, V>,
+) -> anyhow::Result<()>
+where
+    K: Eq,
+{
+    if field.id != field_id {
+        bail!("Dynamic field '{field_id}' decoded with an unexpected embedded ID");
+    }
+    if &field.name != key {
+        bail!("Dynamic field '{field_id}' decoded with an unexpected key");
+    }
+    Ok(())
+}
+
+fn dynamic_object_field_wrapper_type(key_type: &sui::types::TypeTag) -> sui::types::TypeTag {
+    sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+        sui::types::Address::from_static("0x2"),
+        sui::types::Identifier::from_static("dynamic_object_field"),
+        sui::types::Identifier::from_static("Wrapper"),
+        vec![key_type.clone()],
+    )))
 }
 
 /// The main crawler struct.
@@ -885,106 +932,17 @@ impl Crawler {
             .value)
     }
 
-    /// Fetch one dynamic field by BCS key, returning `Ok(None)` when that key is absent.
+    /// Fetch the dynamic field selected by one typed key.
     ///
-    /// Unlike [`Crawler::get_dynamic_fields`], this skips unrelated dynamic field key
-    /// namespaces under the same parent. That is useful for Sui objects that store several
-    /// unrelated dynamic field types directly under one UID.
-    pub async fn get_optional_dynamic_field<K, V>(
-        &self,
-        parent_id: sui::types::Address,
-        key: K,
-    ) -> anyhow::Result<Option<V>>
-    where
-        K: Eq + DeserializeOwned,
-        V: DeserializeOwned,
-    {
-        self.get_optional_dynamic_field_matching_value_type(parent_id, key, None)
-            .await
-    }
-
-    /// Fetch one dynamic field by BCS key and optional value-type suffix.
-    ///
-    /// Sui dynamic fields can use keys with the same BCS shape under one parent. The value type
-    /// lets callers disambiguate those namespaces before fetching and decoding the field object.
-    pub async fn get_optional_dynamic_field_matching_value_type<K, V>(
-        &self,
-        parent_id: sui::types::Address,
-        key: K,
-        value_type_suffix: Option<&str>,
-    ) -> anyhow::Result<Option<V>>
-    where
-        K: Eq + DeserializeOwned,
-        V: DeserializeOwned,
-    {
-        let mut page_token = None;
-        let field_mask = sui::grpc::FieldMask::from_paths(["name", "field_id", "value_type"]);
-        let mut client = self.clone_grpc_client();
-
-        loop {
-            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
-                .with_parent(parent_id)
-                .with_page_size(1000)
-                .with_read_mask(field_mask.clone());
-
-            if let Some(token) = page_token.clone() {
-                request = request.with_page_token(token);
-            }
-
-            let response = client
-                .state_client()
-                .list_dynamic_fields(request)
-                .await
-                .map(|r| r.into_inner())
-                .map_err(|e| {
-                    anyhow!("Could not fetch dynamic fields for parent '{parent_id}': {e}")
-                })?;
-
-            page_token = response.next_page_token;
-
-            for field in response.dynamic_fields {
-                if let (Some(expected_suffix), Some(value_type)) =
-                    (value_type_suffix, field.value_type.as_deref())
-                {
-                    if !value_type.ends_with(expected_suffix) {
-                        continue;
-                    }
-                }
-
-                let Some(name) = field.name_opt() else {
-                    continue;
-                };
-                let Ok(parsed_name) = parse_dynamic_field_name::<K>(name.value()) else {
-                    continue;
-                };
-                if parsed_name != key {
-                    continue;
-                }
-
-                let field_id = field
-                    .field_id_opt()
-                    .ok_or_else(|| anyhow!("Dynamic field ID missing for parent '{parent_id}'"))?
-                    .parse()
-                    .map_err(|_| anyhow!("Could not parse field ID for dynamic field"))?;
-
-                let object = self.get_object::<DynamicFieldValue<K, V>>(field_id).await?;
-                return Ok(Some(object.data.value));
-            }
-
-            if page_token.is_none() {
-                break;
-            }
-        }
-
-        Ok(None)
-    }
-
-    /// Fetch one dynamic field directly from its parent and typed key.
+    /// The field object identifier is derived from `parent_id`, `key`, and
+    /// `key_type`, so sibling fields are not enumerated. `key_type` must be the
+    /// canonical Move [`sui::types::TypeTag`] for `K`. An absent field returns
+    /// [`None`].
     ///
     /// # Errors
     ///
-    /// Returns an error when key encoding, transport, or value decoding fails.
-    /// An absent field returns `Ok(None)`.
+    /// Returns an error when the key cannot be encoded, the object request
+    /// fails, or the field identity, key, or value is invalid.
     pub async fn get_dynamic_field_by_key<K, V>(
         &self,
         parent_id: sui::types::Address,
@@ -995,18 +953,74 @@ impl Crawler {
         K: Eq + Serialize + DeserializeOwned,
         V: DeserializeOwned,
     {
-        let key_bytes = bcs::to_bytes(&key).context("Could not encode dynamic field key")?;
-        let field_id = parent_id.derive_dynamic_child_id(key_type, &key_bytes);
+        let field_id = derive_dynamic_field_id(parent_id, &key, key_type)?;
         let Some(field) = self
             .get_optional_object::<DynamicFieldValue<K, V>>(field_id)
             .await?
         else {
             return Ok(None);
         };
-        if field.data.name != key {
-            bail!("Dynamic field '{field_id}' decoded with an unexpected key");
-        }
+        validate_dynamic_field(field_id, &key, &field.data)?;
         Ok(Some(field.data.value))
+    }
+
+    /// Fetch values for the distinct dynamic field keys requested from one parent.
+    ///
+    /// Field identities are derived from `parent_id`, `key_type`, and each BCS
+    /// encoded key. Unlike [`Crawler::get_dynamic_fields`], the amount of work
+    /// is independent of unrelated fields stored under the parent.
+    ///
+    /// Missing fields are omitted from the returned [`HashMap`]. Duplicate keys
+    /// produce one object request.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a key cannot be encoded, an RPC response has an
+    /// unexpected identity, or a present field cannot be decoded and validated.
+    pub async fn get_dynamic_fields_by_keys<K, V, I>(
+        &self,
+        parent_id: sui::types::Address,
+        keys: I,
+        key_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<HashMap<K, V>>
+    where
+        K: Eq + Hash + Serialize + DeserializeOwned,
+        V: DeserializeOwned,
+        I: IntoIterator<Item = K>,
+    {
+        let mut index_by_field_id = HashMap::<sui::types::Address, usize>::new();
+        let mut requests = Vec::<(sui::types::Address, K)>::new();
+
+        for key in keys {
+            let field_id = derive_dynamic_field_id(parent_id, &key, key_type)?;
+            if let Some(index) = index_by_field_id.get(&field_id).copied() {
+                if requests[index].1 != key {
+                    bail!("Distinct dynamic field keys derived the same object ID '{field_id}'");
+                }
+                continue;
+            }
+            index_by_field_id.insert(field_id, requests.len());
+            requests.push((field_id, key));
+        }
+
+        let field_ids = requests
+            .iter()
+            .map(|(field_id, _)| *field_id)
+            .collect::<Vec<_>>();
+        let responses = self
+            .get_optional_objects::<DynamicFieldValue<K, V>>(&field_ids)
+            .await?;
+        let mut values = HashMap::with_capacity(responses.len());
+
+        for ((field_id, key), response) in requests.into_iter().zip(responses) {
+            let Some(response) = response else {
+                continue;
+            };
+            validate_dynamic_field(field_id, &key, &response.data)?;
+            values.insert(key, response.data.value);
+        }
+
+        Ok(values)
     }
 
     /// Fetch the payload selected by a [`Versioned`] container.
@@ -1291,20 +1305,47 @@ impl Crawler {
         Ok(names.into_iter().zip(child_objects).collect())
     }
 
-    /// Fetch one dynamic object field child for a parent object id.
-    pub async fn get_dynamic_object_field<K, V>(
+    /// Fetch the dynamic object field selected by one typed key.
+    ///
+    /// The method derives and reads the Sui wrapper field, then fetches only
+    /// the child object named by that wrapper. `key_type` must be the canonical
+    /// Move [`sui::types::TypeTag`] for `K`. Unlike
+    /// [`Crawler::get_dynamic_object_fields`], it does not enumerate sibling
+    /// fields. A missing wrapper returns `Ok(None)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the wrapper key cannot be encoded, either object
+    /// request fails, the wrapper or child identity is invalid, the child is
+    /// absent, or a returned value cannot be decoded and validated.
+    pub async fn get_dynamic_object_field_by_key<K, V>(
         &self,
         parent_id: sui::types::Address,
         key: K,
-    ) -> anyhow::Result<Response<V>>
+        key_type: &sui::types::TypeTag,
+    ) -> anyhow::Result<Option<Response<V>>>
     where
-        K: Eq + Hash + DeserializeOwned,
+        K: Eq + Serialize + DeserializeOwned,
         V: DeserializeOwned,
     {
-        self.get_dynamic_object_fields::<K, V>(parent_id)
+        let wrapper_key = DynamicObjectFieldName { name: key };
+        let wrapper_type = dynamic_object_field_wrapper_type(key_type);
+        let Some(child_id) = self
+            .get_dynamic_field_by_key::<DynamicObjectFieldName<K>, ID>(
+                parent_id,
+                wrapper_key,
+                &wrapper_type,
+            )
             .await?
-            .remove(&key)
-            .ok_or_else(|| anyhow!("Dynamic object field not found for parent '{parent_id}'"))
+        else {
+            return Ok(None);
+        };
+
+        let child_id = child_id.bytes;
+        self.get_optional_object(child_id)
+            .await?
+            .map(Some)
+            .ok_or_else(|| anyhow!("Dynamic object field child '{child_id}' not found"))
     }
 
     /// Fetch dynamic object fields for a parent and keep only entries whose
@@ -1382,69 +1423,30 @@ impl Crawler {
         Ok(child_ids)
     }
 
-    /// Fetch all items in a `TableVec<T>` and return them as a `Vec<T>`.
+    /// Fetch every item in a [`TableVec`] by its contiguous index key.
+    ///
+    /// The request derives the fields for `0..parent.size_u64()` directly and
+    /// returns values in index order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an index field cannot be fetched, validated, or
+    /// decoded, or when any expected index is absent.
     pub async fn get_table_vec<T>(&self, parent: &TableVec<T>) -> anyhow::Result<Vec<T>>
     where
         T: DeserializeOwned,
     {
-        let expected_size = parent.size();
-        if expected_size == 0 {
-            return Ok(vec![]);
-        }
-
-        let names_and_ids = self
-            .fetch_dynamic_fields::<u64>(parent.id(), expected_size)
+        let indexes = 0..parent.size_u64();
+        let mut values = self
+            .get_dynamic_fields_by_keys(parent.id(), indexes.clone(), &sui::types::TypeTag::U64)
             .await?;
 
-        let mut index_by_field_id = HashMap::with_capacity(names_and_ids.len());
-        let mut field_ids = Vec::with_capacity(names_and_ids.len());
-
-        for (name, _child_id, field_id) in names_and_ids {
-            let Some(field_id) = field_id else {
-                bail!("Dynamic field ID missing for TableVec");
-            };
-
-            let index = usize::try_from(name).unwrap_or(usize::MAX);
-            if index >= expected_size {
-                bail!("TableVec index out of bounds: {index} >= {expected_size}");
-            }
-
-            if index_by_field_id.insert(field_id, index).is_some() {
-                bail!("Duplicate dynamic field ID '{field_id}' for TableVec");
-            }
-
-            field_ids.push(field_id);
-        }
-
-        let field_objects = self
-            .get_objects::<DynamicFieldValue<u64, T>>(&field_ids)
-            .await?;
-
-        let mut values_by_index: Vec<Option<T>> = std::iter::repeat_with(|| None)
-            .take(expected_size)
-            .collect();
-        for obj in field_objects {
-            let index = index_by_field_id
-                .get(&obj.object_id)
-                .copied()
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Unexpected dynamic field ID '{}' for TableVec",
-                        obj.object_id
-                    )
-                })?;
-
-            if values_by_index[index].is_some() {
-                bail!("Duplicate TableVec element at index {index}");
-            }
-
-            values_by_index[index] = Some(obj.data.value);
-        }
-
-        values_by_index
-            .into_iter()
-            .enumerate()
-            .map(|(index, value)| value.ok_or_else(|| anyhow!("Missing TableVec element {index}")))
+        indexes
+            .map(|index| {
+                values
+                    .remove(&index)
+                    .ok_or_else(|| anyhow!("Missing TableVec element {index}"))
+            })
             .collect()
     }
 
@@ -2032,6 +2034,11 @@ mod tests {
         name: String,
     }
 
+    #[derive(Serialize)]
+    struct TestDynamicObjectFieldName<K> {
+        name: K,
+    }
+
     fn test_value_tag() -> sui::types::StructTag {
         sui::types::StructTag::new(
             sui::types::Address::from_static("0x1"),
@@ -2490,45 +2497,129 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_dynamic_object_field_fetches_child_object_by_key() {
+    async fn dynamic_object_field_by_key_fetches_only_the_wrapper_and_child() {
         let parent_id = sui::types::Address::from_static("0x40");
-        let field_id = sui::types::Address::from_static("0x41");
         let child_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x42"));
         let key = TestKey {
             name: "primary".to_string(),
         };
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
-
-        sui_mocks::grpc::mock_list_dynamic_object_fields(
-            &mut state_service_mock,
-            vec![(key.clone(), field_id, *child_ref.object_id())],
+        let key_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0xa1"),
+            sui::types::Identifier::from_static("test"),
+            sui::types::Identifier::from_static("TestKey"),
+            vec![],
+        )));
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_object_field"),
+            sui::types::Identifier::from_static("Wrapper"),
+            vec![key_type.clone()],
+        )));
+        let wrapper_key = TestDynamicObjectFieldName { name: key.clone() };
+        let field_id = parent_id.derive_dynamic_child_id(
+            &wrapper_type,
+            &bcs::to_bytes(&wrapper_key).expect("wrapper key serializes"),
         );
-        sui_mocks::grpc::mock_get_objects_bcs(
+        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service_mock,
-            vec![(
-                child_ref.clone(),
-                sui::types::Owner::Shared(child_ref.version()),
-                bcs::to_bytes(&TestValue { value: 11 }).expect("test value bcs"),
-                test_value_tag(),
-            )],
+            sui_mocks::object_ref_for_id(field_id),
+            sui::types::Owner::Object(parent_id),
+            bcs::to_bytes(&DynamicFieldValue {
+                id: field_id,
+                name: wrapper_key,
+                value: crate::move_bindings::sui_framework::object::ID::new(*child_ref.object_id()),
+            })
+            .expect("wrapper field serializes"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger_service_mock,
+            child_ref.clone(),
+            sui::types::Owner::Shared(child_ref.version()),
+            bcs::to_bytes(&TestValue { value: 11 }).expect("test value serializes"),
         );
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
         let client = sui::grpc::client(rpc_url).expect("mock client");
         let crawler = Crawler::new(Arc::new(client));
 
         let object = crawler
-            .get_dynamic_object_field::<TestKey, TestValue>(parent_id, key)
+            .get_dynamic_object_field_by_key::<TestKey, TestValue>(parent_id, key, &key_type)
             .await
-            .expect("dynamic object field loads");
+            .expect("dynamic object field request succeeds")
+            .expect("dynamic object field exists");
 
         assert_eq!(object.object_id, *child_ref.object_id());
         assert_eq!(object.data, TestValue { value: 11 });
+    }
+
+    #[tokio::test]
+    async fn dynamic_object_field_by_key_rejects_a_child_identity_mismatch() {
+        let parent_id = sui::types::Address::from_static("0x40");
+        let child_id = sui::types::Address::from_static("0x42");
+        let returned_child_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x43"));
+        let key = TestKey {
+            name: "primary".to_string(),
+        };
+        let key_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0xa1"),
+            sui::types::Identifier::from_static("test"),
+            sui::types::Identifier::from_static("TestKey"),
+            vec![],
+        )));
+        let wrapper_type = dynamic_object_field_wrapper_type(&key_type);
+        let wrapper_key = TestDynamicObjectFieldName { name: key.clone() };
+        let field_id = parent_id.derive_dynamic_child_id(
+            &wrapper_type,
+            &bcs::to_bytes(&wrapper_key).expect("wrapper key serializes"),
+        );
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger_service,
+            sui_mocks::object_ref_for_id(field_id),
+            sui::types::Owner::Object(parent_id),
+            bcs::to_bytes(&DynamicFieldValue {
+                id: field_id,
+                name: wrapper_key,
+                value: crate::move_bindings::sui_framework::object::ID::new(child_id),
+            })
+            .expect("wrapper field serializes"),
+        );
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(child_id.to_string().as_str())
+            })
+            .times(1)
+            .return_once(move |_| {
+                let mut response = sui::grpc::GetObjectResponse::default();
+                response.set_object(object_with_bcs(
+                    returned_child_ref,
+                    sui::types::Owner::Shared(1),
+                    &TestValue { value: 11 },
+                ));
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_dynamic_object_field_by_key::<TestKey, TestValue>(parent_id, key, &key_type)
+            .await
+            .expect_err("mismatched child identity must fail");
+
+        assert!(
+            error.to_string().contains("received object"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
@@ -2616,6 +2707,339 @@ mod tests {
             .expect("dynamic field loads");
 
         assert_eq!(value, Some(TestValue { value: 42 }));
+    }
+
+    #[tokio::test]
+    async fn dynamic_field_by_key_rejects_an_embedded_id_mismatch() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key = 7_u64;
+        let key_type = sui::types::TypeTag::U64;
+        let field_id = parent_id
+            .derive_dynamic_child_id(&key_type, &bcs::to_bytes(&key).expect("key serializes"));
+        let field_ref = sui_mocks::object_ref_for_id(field_id);
+        let field = DynamicFieldValue {
+            id: sui::types::Address::from_static("0x71"),
+            name: key,
+            value: TestValue { value: 42 },
+        };
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger_service,
+            field_ref,
+            sui::types::Owner::Object(parent_id),
+            bcs::to_bytes(&field).expect("dynamic field serializes"),
+        );
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_dynamic_field_by_key::<u64, TestValue>(parent_id, key, &key_type)
+            .await
+            .expect_err("mismatched embedded ID must fail");
+
+        assert!(
+            error.to_string().contains("unexpected embedded ID"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dynamic_fields_by_keys_fetch_only_distinct_derived_ids() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let keys = [7_u64, 7_u64, 9_u64];
+        let key_type = sui::types::TypeTag::U64;
+        let requested_keys = [7_u64, 9_u64];
+        let requested_ids = requested_keys.map(|key| {
+            parent_id
+                .derive_dynamic_child_id(&key_type, &bcs::to_bytes(&key).expect("key serializes"))
+        });
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |request| {
+                let actual_ids = request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| {
+                        request
+                            .object_id
+                            .as_deref()
+                            .expect("object ID")
+                            .parse()
+                            .expect("valid object ID")
+                    })
+                    .collect::<Vec<sui::types::Address>>();
+                assert_eq!(actual_ids, requested_ids);
+
+                let objects = requested_keys
+                    .into_iter()
+                    .zip(requested_ids)
+                    .map(|(name, object_id)| {
+                        sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                            sui_mocks::object_ref_for_id(object_id),
+                            sui::types::Owner::Object(parent_id),
+                            &DynamicFieldValue {
+                                id: object_id,
+                                name,
+                                value: TestValue { value: name },
+                            },
+                        ))
+                    })
+                    .collect();
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(objects),
+                ))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let fields = crawler
+            .get_dynamic_fields_by_keys::<u64, TestValue, _>(parent_id, keys, &key_type)
+            .await
+            .expect("exact fields load");
+
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[&7].value, 7);
+        assert_eq!(fields[&9].value, 9);
+    }
+
+    #[tokio::test]
+    async fn dynamic_fields_by_keys_omit_missing_fields() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key_type = sui::types::TypeTag::U64;
+        let keys = [7_u64, 9_u64];
+        let field_ids = keys.map(|key| {
+            parent_id
+                .derive_dynamic_child_id(&key_type, &bcs::to_bytes(&key).expect("key serializes"))
+        });
+        let present_id = field_ids[0];
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |_| {
+                let missing = sui_rpc::proto::google::rpc::Status {
+                    code: tonic::Code::NotFound.into(),
+                    message: "object not found".to_owned(),
+                    ..Default::default()
+                };
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(vec![
+                        sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                            sui_mocks::object_ref_for_id(present_id),
+                            sui::types::Owner::Object(parent_id),
+                            &DynamicFieldValue {
+                                id: present_id,
+                                name: 7_u64,
+                                value: TestValue { value: 7 },
+                            },
+                        )),
+                        sui::grpc::GetObjectResult::new_error(missing),
+                    ]),
+                ))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let fields = crawler
+            .get_dynamic_fields_by_keys::<u64, TestValue, _>(parent_id, keys, &key_type)
+            .await
+            .expect("exact fields load");
+
+        assert_eq!(fields, HashMap::from([(7, TestValue { value: 7 })]));
+    }
+
+    #[tokio::test]
+    async fn dynamic_fields_by_keys_skip_rpc_for_empty_input() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let fields = crawler
+            .get_dynamic_fields_by_keys::<u64, TestValue, _>(
+                sui::types::Address::from_static("0x70"),
+                [],
+                &sui::types::TypeTag::U64,
+            )
+            .await
+            .expect("empty request succeeds");
+
+        assert!(fields.is_empty());
+    }
+
+    #[tokio::test]
+    async fn dynamic_fields_by_keys_reject_a_decoded_key_mismatch() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key_type = sui::types::TypeTag::U64;
+        let requested_key = 7_u64;
+        let field_id = parent_id.derive_dynamic_child_id(
+            &key_type,
+            &bcs::to_bytes(&requested_key).expect("key serializes"),
+        );
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |_| {
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(vec![
+                        sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                            sui_mocks::object_ref_for_id(field_id),
+                            sui::types::Owner::Object(parent_id),
+                            &DynamicFieldValue {
+                                id: field_id,
+                                name: 9_u64,
+                                value: TestValue { value: 9 },
+                            },
+                        )),
+                    ]),
+                ))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_dynamic_fields_by_keys::<u64, TestValue, _>(parent_id, [requested_key], &key_type)
+            .await
+            .expect_err("mismatched key must fail");
+
+        assert!(
+            error.to_string().contains("unexpected key"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dynamic_fields_by_keys_reject_an_embedded_id_mismatch() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let key_type = sui::types::TypeTag::U64;
+        let requested_key = 7_u64;
+        let field_id = parent_id.derive_dynamic_child_id(
+            &key_type,
+            &bcs::to_bytes(&requested_key).expect("key serializes"),
+        );
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |_| {
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(vec![
+                        sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                            sui_mocks::object_ref_for_id(field_id),
+                            sui::types::Owner::Object(parent_id),
+                            &DynamicFieldValue {
+                                id: sui::types::Address::from_static("0x71"),
+                                name: requested_key,
+                                value: TestValue { value: 7 },
+                            },
+                        )),
+                    ]),
+                ))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_dynamic_fields_by_keys::<u64, TestValue, _>(parent_id, [requested_key], &key_type)
+            .await
+            .expect_err("mismatched embedded ID must fail");
+
+        assert!(
+            error.to_string().contains("unexpected embedded ID"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn table_vec_fetches_exact_index_range_without_listing_fields() {
+        let parent_id = sui::types::Address::from_static("0x70");
+        let table = TableVec::<TestValue>::new(parent_id, 2);
+        let indexes = [0_u64, 1_u64];
+        let field_ids = indexes.map(|index| {
+            parent_id.derive_dynamic_child_id(
+                &sui::types::TypeTag::U64,
+                &bcs::to_bytes(&index).expect("index serializes"),
+            )
+        });
+
+        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+        ledger_service
+            .expect_batch_get_objects()
+            .times(1)
+            .return_once(move |request| {
+                let actual_ids = request
+                    .get_ref()
+                    .requests
+                    .iter()
+                    .map(|request| {
+                        request
+                            .object_id
+                            .as_deref()
+                            .expect("object ID")
+                            .parse()
+                            .expect("valid object ID")
+                    })
+                    .collect::<Vec<sui::types::Address>>();
+                assert_eq!(actual_ids, field_ids);
+
+                let objects = indexes
+                    .into_iter()
+                    .zip(field_ids)
+                    .map(|(index, field_id)| {
+                        sui::grpc::GetObjectResult::new_object(object_with_bcs(
+                            sui_mocks::object_ref_for_id(field_id),
+                            sui::types::Owner::Object(parent_id),
+                            &DynamicFieldValue {
+                                id: field_id,
+                                name: index,
+                                value: TestValue { value: index + 3 },
+                            },
+                        ))
+                    })
+                    .collect();
+                Ok(tonic::Response::new(
+                    sui::grpc::BatchGetObjectsResponse::new(objects),
+                ))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger_service),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let values = crawler
+            .get_table_vec(&table)
+            .await
+            .expect("table vector loads");
+
+        assert_eq!(values, [TestValue { value: 3 }, TestValue { value: 4 }]);
     }
 
     #[tokio::test]
