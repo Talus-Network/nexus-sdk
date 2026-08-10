@@ -363,24 +363,7 @@ impl NetworkAuthActions {
                 ))
             })?;
 
-            let keys = client
-                .crawler()
-                .get_dynamic_fields::<u64, KeyRecord>(
-                    binding.data.key_table_id(),
-                    binding.data.key_table_size(),
-                )
-                .await
-                .map_err(|e| {
-                    NexusError::Rpc(anyhow::anyhow!(
-                        "failed to fetch leader key records ({binding_object_id}): {e}"
-                    ))
-                })?;
-
-            let record = keys.get(&active_kid).ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "leader binding {binding_object_id} missing active key record kid={active_kid}"
-                ))
-            })?;
+            let record = fetch_key_record(client.crawler(), &binding, active_kid).await?;
             let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
                 NexusError::Parsing(anyhow::anyhow!(
                     "leader binding {binding_object_id} active key is not 32 bytes"
@@ -504,24 +487,7 @@ impl NetworkAuthActions {
             return Ok(None);
         };
 
-        let keys = client
-            .crawler()
-            .get_dynamic_fields::<u64, KeyRecord>(
-                binding.data.key_table_id(),
-                binding.data.key_table_size(),
-            )
-            .await
-            .map_err(|e| {
-                NexusError::Rpc(anyhow::anyhow!(
-                    "failed to fetch leader key records ({binding_object_id}): {e}"
-                ))
-            })?;
-
-        let record = keys.get(&active_kid).ok_or_else(|| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "leader binding {binding_object_id} missing active key record kid={active_kid}"
-            ))
-        })?;
+        let record = fetch_key_record(client.crawler(), &binding, active_kid).await?;
         let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
             NexusError::Parsing(anyhow::anyhow!(
                 "leader binding {binding_object_id} active key is not 32 bytes"
@@ -778,25 +744,7 @@ async fn try_get_active_ed25519_key(
         return Ok(None);
     };
 
-    let keys = crawler
-        .get_dynamic_fields::<u64, KeyRecord>(
-            binding.data.key_table_id(),
-            binding.data.key_table_size(),
-        )
-        .await
-        .map_err(|e| {
-            NexusError::Rpc(anyhow::anyhow!(
-                "failed to fetch key records ({}): {e}",
-                binding.object_id
-            ))
-        })?;
-
-    let record = keys.get(&active_kid).ok_or_else(|| {
-        NexusError::Parsing(anyhow::anyhow!(
-            "key binding {} is missing active key record kid={active_kid}",
-            binding.object_id
-        ))
-    })?;
+    let record = fetch_key_record(crawler, binding, active_kid).await?;
     let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
         NexusError::Parsing(anyhow::anyhow!(
             "key binding {} active key kid={active_kid} is not 32 bytes",
@@ -823,6 +771,32 @@ async fn try_get_active_ed25519_key(
         kid: active_kid,
         public_key,
     }))
+}
+
+async fn fetch_key_record(
+    crawler: &Crawler,
+    binding: &Response<KeyBindingStateV1>,
+    key_id: u64,
+) -> Result<KeyRecord, NexusError> {
+    crawler
+        .get_dynamic_field_by_key::<u64, KeyRecord>(
+            binding.data.key_table_id(),
+            key_id,
+            &sui::types::TypeTag::U64,
+        )
+        .await
+        .map_err(|error| {
+            NexusError::Rpc(anyhow::anyhow!(
+                "failed to fetch key record ({}, kid={key_id}): {error}",
+                binding.object_id
+            ))
+        })?
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "key binding {} is missing key record kid={key_id}",
+                binding.object_id
+            ))
+        })
 }
 
 /// Internal helper that knows how to compute binding IDs.
@@ -1205,6 +1179,34 @@ mod tests {
             object
         }
 
+        fn mock_key_record_field(
+            ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+            key_table_id: sui::types::Address,
+            key_id: u64,
+            record: KeyRecord,
+            times: usize,
+        ) {
+            let field_id = key_table_id.derive_dynamic_child_id(
+                &sui::types::TypeTag::U64,
+                &bcs::to_bytes(&key_id).expect("key ID serializes"),
+            );
+            let field = DynamicFieldValueBcs {
+                id: field_id,
+                name: key_id,
+                value: record,
+            };
+            let field_bytes = bcs::to_bytes(&field).expect("key record field serializes");
+
+            for _ in 0..times {
+                sui_mocks::grpc::mock_get_object_bcs(
+                    ledger_service,
+                    sui_mocks::object_ref_for_id(field_id),
+                    sui::types::Owner::Object(key_table_id),
+                    field_bytes.clone(),
+                );
+            }
+        }
+
         async fn build_reader(
             registry_pkg_id: sui::types::Address,
             network_auth_object_id: sui::types::Address,
@@ -1225,16 +1227,7 @@ mod tests {
                 MoveTable::new(key_table_id, 1),
             );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             sui_mocks::grpc::mock_get_object_bcs(
                 &mut ledger_service,
@@ -1249,27 +1242,10 @@ mod tests {
                 binding_state,
             );
 
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                &mut state_service,
-                vec![(active_kid, field_object_id)],
-            );
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(1)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 1);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 
@@ -1307,16 +1283,7 @@ mod tests {
                     ],
                 );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             sui_mocks::grpc::mock_get_object_bcs(
                 &mut ledger_service,
@@ -1343,27 +1310,10 @@ mod tests {
                 binding_state,
             );
 
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                &mut state_service,
-                vec![(active_kid, field_object_id)],
-            );
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(1)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 1);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 
@@ -1487,16 +1437,7 @@ mod tests {
                     ],
                 );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             for _ in 0..2 {
                 sui_mocks::grpc::mock_get_object_bcs(
@@ -1525,38 +1466,10 @@ mod tests {
                 );
             }
 
-            state_service
-                .expect_list_dynamic_fields()
-                .times(2)
-                .returning(move |_request| {
-                    let mut dynamic_field = sui::grpc::DynamicField::default();
-                    dynamic_field.set_child_id(field_object_id);
-                    dynamic_field.set_field_id(field_object_id);
-                    let mut name = sui::grpc::Bcs::default();
-                    name.value = Some(bcs::to_bytes(&active_kid).unwrap().into());
-                    dynamic_field.set_name(name);
-
-                    let mut response = sui::grpc::ListDynamicFieldsResponse::default();
-                    response.dynamic_fields = vec![dynamic_field];
-                    Ok(Response::new(response))
-                });
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(2)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 2);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 

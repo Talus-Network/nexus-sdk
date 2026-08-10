@@ -12,7 +12,10 @@ pub use extensions::VersionedAnchor;
 pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {
     self::interface::graph::RuntimeVertex,
-    crate::{sui, types::NexusObjects},
+    crate::{
+        sui,
+        types::{NexusObjects, PackageVersion},
+    },
 };
 
 fn derive_object_id<T: sui::traits::ToBcs>(
@@ -107,7 +110,10 @@ pub(crate) fn with_nexus_scope<R>(objects: &NexusObjects, f: impl FnOnce() -> R)
     )
 }
 
-/// Build a generated Move type tag scoped to this Nexus deployment.
+/// Build the canonical Move type tag for `T` in a [`NexusObjects`] deployment.
+///
+/// The generated binding scope resolves datatype origins across package
+/// upgrades before constructing the tag.
 pub fn type_tag<T>(objects: &NexusObjects) -> sui::types::TypeTag
 where
     T: sui_move::MoveType,
@@ -115,8 +121,24 @@ where
     with_nexus_scope(objects, T::type_tag_static)
 }
 
+/// Build a generated registry type tag from one resolved [`PackageVersion`].
+#[cfg(feature = "nexus")]
+pub(crate) fn registry_type_tag<T>(registry: &PackageVersion) -> sui::types::TypeTag
+where
+    T: sui_move::MoveType,
+{
+    self::registry::with_package_context(
+        registry.storage_id,
+        registry.initial_id,
+        &registry.type_origins,
+        T::type_tag_static,
+    )
+}
+
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
-fn registry_type_tag<T>(registry_type_origin_pkg_id: sui::types::Address) -> sui::types::TypeTag
+fn registry_type_tag_from_origin<T>(
+    registry_type_origin_pkg_id: sui::types::Address,
+) -> sui::types::TypeTag
 where
     T: sui_move::MoveType,
 {
@@ -196,7 +218,7 @@ pub(crate) fn derive_network_auth_binding_id(
     network_auth_object_id: sui::types::Address,
     identity: &IdentityKey,
 ) -> anyhow::Result<sui::types::Address> {
-    let key_type = registry_type_tag::<IdentityKey>(registry_type_origin_pkg_id);
+    let key_type = registry_type_tag_from_origin::<IdentityKey>(registry_type_origin_pkg_id);
     derive_object_id(network_auth_object_id, &key_type, identity)
 }
 

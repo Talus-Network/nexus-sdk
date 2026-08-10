@@ -224,7 +224,7 @@ impl AgentRegistrySnapshot {
     pub fn skill_revision_records(&self) -> anyhow::Result<Vec<SkillRevisionContext>> {
         self.skills
             .iter()
-            .filter_map(SkillRevisionContext::from_skill_record)
+            .map(SkillRevisionContext::from_skill_record)
             .map(|record| {
                 record.validate()?;
                 Ok(record)
@@ -311,15 +311,15 @@ pub struct SkillRevisionContext {
 }
 
 impl SkillRevisionContext {
-    fn from_skill_record(skill: &SkillRecordContext) -> Option<Self> {
-        Some(Self {
+    pub(crate) fn from_skill_record(skill: &SkillRecordContext) -> Self {
+        Self {
             key: SkillRevisionLookupKey {
                 agent_id: skill.agent_id,
                 skill_id: skill.skill_id,
                 interface_revision: skill.current_interface_revision(),
             },
             requirements: skill.requirements().clone(),
-        })
+        }
     }
 
     pub fn worksheet_key(&self) -> WorksheetKey {

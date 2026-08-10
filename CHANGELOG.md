@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Changed
+
+- Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
+
+## [`2.0.0-rc.5`] - 2026-08-07
+
+### `nexus-sdk`
+
 #### Added
 
 - Added canonical protocol configuration resolution with package lineage, dependency linkage, shared object bindings, configuration hash validation, and datatype origin validation.
@@ -28,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Updated the Sui RPC client to version 0.3.2, adding response body timeout detection for stalled streams.
 - Scheduler dispatch bindings and transaction builders now use one `dispatch_next` target with an explicit leader submission gas charge.
 - Generated Move bindings now expose `consume_task_payment_reserve_for_sender`, making mutable reserve access and the fixed sender recipient explicit.
 - Generated Move event bindings now use the `Event` suffix consistently across primitives, registry, and workflow.
