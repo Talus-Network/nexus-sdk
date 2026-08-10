@@ -396,7 +396,7 @@ mod tests {
             NexusEventDecodeError::UnsupportedEvent {
                 emitting_package,
                 event_type: actual_type,
-            } if emitting_package == objects.tool_pkg_id() && actual_type == event_type
+            } if emitting_package == objects.tool_pkg_id() && *actual_type == event_type
         );
     }
 

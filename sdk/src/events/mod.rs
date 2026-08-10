@@ -27,8 +27,9 @@ pub enum NexusEventDecodeError {
     UnsupportedEvent {
         /// Exact package recorded as the Sui event source.
         emitting_package: sui::types::Address,
-        /// Full unsupported inner event type.
-        event_type: sui::types::StructTag,
+        /// Full unsupported inner event type, boxed to keep
+        /// [`NexusEventDecodeError`] compact on successful decode paths.
+        event_type: Box<sui::types::StructTag>,
     },
     /// The Nexus event contents are invalid.
     #[error("Nexus event contents are invalid: {0}")]

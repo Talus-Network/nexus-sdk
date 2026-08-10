@@ -54,7 +54,7 @@ pub(super) fn decode_nexus_event(
         if objects.is_active_emitter(emitting_package) {
             return Err(NexusEventDecodeError::UnsupportedEvent {
                 emitting_package,
-                event_type: event_type.tag.clone(),
+                event_type: Box::new(event_type.tag.clone()),
             });
         }
         return Ok(None);
