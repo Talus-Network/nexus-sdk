@@ -8,9 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Added a transaction builder for updating an off chain Tool URL.
+
 #### Changed
 
 - Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
+- Nexus event kinds are now generated from the committed IR for all six protocol packages, so every declared protocol event has a typed SDK representation.
+- Event decoding now reports unknown event types emitted directly by active protocol packages and decodes each event before publishing checkpoint progress.
 
 ## [`2.0.0-rc.5`] - 2026-08-07
 

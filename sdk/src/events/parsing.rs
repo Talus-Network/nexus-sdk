@@ -1,7 +1,7 @@
 //! Nexus event type selection and decoding.
 
 use crate::{
-    events::{parse_bcs, supports_event, NexusEvent},
+    events::{parse_bcs, supports_event, NexusEvent, NexusEventDecodeError},
     move_bindings::{
         interface::distributed_event as distributed_event_move,
         primitives::{data::NexusData as MoveNexusData, event as event_move},
@@ -32,8 +32,10 @@ impl<'a> NexusEventType<'a> {
             return None;
         }
 
-        let name = tag.name().as_str();
-        supports_event(name).then_some(Self { tag, name })
+        Some(Self {
+            tag,
+            name: tag.name().as_str(),
+        })
     }
 }
 
@@ -44,11 +46,21 @@ pub(super) fn decode_nexus_event(
     contents: &[u8],
     wrapper_type: &sui::types::StructTag,
     objects: &NexusObjects,
-) -> anyhow::Result<Option<NexusEvent>> {
+) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
     let Some(event_type) = NexusEventType::resolve(wrapper_type, objects) else {
         return Ok(None);
     };
-    let (data, distribution) = parse_bcs(event_type.name, contents)?;
+    if !supports_event(event_type.name) {
+        if objects.is_active_emitter(emitting_package) {
+            return Err(NexusEventDecodeError::UnsupportedEvent {
+                emitting_package,
+                event_type: event_type.tag.clone(),
+            });
+        }
+        return Ok(None);
+    }
+    let (data, distribution) =
+        parse_bcs(event_type.name, contents).map_err(NexusEventDecodeError::Contents)?;
 
     Ok(Some(NexusEvent {
         id: (digest, index),

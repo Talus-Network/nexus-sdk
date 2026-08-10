@@ -1,7 +1,7 @@
 //! Typed query for Nexus events.
 
 use {
-    super::parsing::decode_nexus_event,
+    super::{parsing::decode_nexus_event, NexusEventDecodeError},
     crate::{
         events::NexusEvent,
         move_bindings::{
@@ -20,25 +20,7 @@ use {
     },
     std::sync::Arc,
     sui_rpc::{field::FieldMaskUtil as _, proto::sui::rpc::v2::filter::event as event_filter},
-    thiserror::Error,
 };
-
-/// Failure returned by [`NexusEventQuery`] while converting a Sui event.
-#[derive(Debug, Error)]
-pub enum NexusEventDecodeError {
-    /// Required event identity is missing or invalid.
-    #[error("Nexus event identity is invalid: {0}")]
-    Identity(String),
-    /// A required Sui event field is missing.
-    #[error("Required Nexus event field is missing: {0}")]
-    MissingField(&'static str),
-    /// The Sui event type is invalid.
-    #[error("Nexus event type is invalid: {0}")]
-    EventType(#[from] sui::types::TypeParseError),
-    /// The Nexus event contents are invalid.
-    #[error("Nexus event contents are invalid: {0}")]
-    Contents(#[source] anyhow::Error),
-}
 
 /// Query that selects and decodes events for one Nexus deployment.
 #[derive(Clone)]
@@ -54,12 +36,12 @@ impl NexusEventQuery {
 
     /// Decodes one Sui transaction event using this query.
     ///
-    /// Returns [`None`] when the wrapper contains an unsupported event type.
+    /// Returns [`None`] when another package emits an unsupported event type.
     ///
     /// # Errors
     ///
-    /// Returns [`NexusEventDecodeError`] when supported event contents cannot
-    /// be decoded.
+    /// Returns [`NexusEventDecodeError`] when event contents cannot be decoded
+    /// or a direct active package emits an unsupported event.
     pub fn decode_sui_event(
         &self,
         index: u64,
@@ -91,7 +73,6 @@ impl NexusEventQuery {
             wrapper_type,
             &self.objects,
         )
-        .map_err(NexusEventDecodeError::Contents)
     }
 }
 
@@ -295,9 +276,34 @@ mod tests {
         super::*,
         crate::move_bindings::{
             primitives::{event::EventWrapper, protocol::ProtocolVersionActivatedV1Event},
+            registry::leader::MaxTransactionBudgetUpdatedEvent,
             sui_framework::object::ID,
+            tool::tool_registry::ToolUpdatedEvent,
         },
     };
+
+    fn nexus_wrapper_type(
+        objects: &NexusObjects,
+        inner: sui::types::StructTag,
+    ) -> sui::types::StructTag {
+        let wrapper = crate::move_bindings::struct_tag::<EventWrapper<MoveNexusData>>(objects);
+        sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        )
+    }
+
+    fn unknown_tool_event_type(objects: &NexusObjects) -> sui::types::StructTag {
+        let known = crate::move_bindings::struct_tag::<ToolUpdatedEvent>(objects);
+        sui::types::StructTag::new(
+            *known.address(),
+            known.module().clone(),
+            sui::types::Identifier::from_static("FutureToolEvent"),
+            vec![],
+        )
+    }
 
     fn activation_fixture() -> (NexusObjects, ProtocolActivation) {
         let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
@@ -367,5 +373,104 @@ mod tests {
             .expect("unrelated wrapper should be ignored");
 
         assert!(decoded.is_none());
+    }
+
+    #[test]
+    fn unknown_event_from_active_package_is_an_error() {
+        let objects = Arc::new(crate::test_utils::sui_mocks::mock_nexus_objects());
+        let event_type = unknown_tool_event_type(&objects);
+        let wrapper_type = nexus_wrapper_type(&objects, event_type.clone());
+
+        let error = NexusEventQuery::new(Arc::clone(&objects))
+            .decode_parts(
+                0,
+                sui::types::Digest::ZERO,
+                objects.tool_pkg_id(),
+                &wrapper_type,
+                &[],
+            )
+            .expect_err("an active package cannot emit an unknown Nexus event");
+
+        assert_matches::assert_matches!(
+            error,
+            NexusEventDecodeError::UnsupportedEvent {
+                emitting_package,
+                event_type: actual_type,
+            } if emitting_package == objects.tool_pkg_id() && actual_type == event_type
+        );
+    }
+
+    #[test]
+    fn unknown_event_from_other_package_is_ignored() {
+        let objects = Arc::new(crate::test_utils::sui_mocks::mock_nexus_objects());
+        let wrapper_type = nexus_wrapper_type(&objects, unknown_tool_event_type(&objects));
+
+        let decoded = NexusEventQuery::new(objects)
+            .decode_parts(
+                0,
+                sui::types::Digest::ZERO,
+                sui::types::Address::ZERO,
+                &wrapper_type,
+                &[],
+            )
+            .expect("an unknown event from another package is ignored");
+
+        assert!(decoded.is_none());
+    }
+
+    #[test]
+    fn generic_query_decodes_a_generated_registry_event() {
+        let objects = Arc::new(crate::test_utils::sui_mocks::mock_nexus_objects());
+        let event = MaxTransactionBudgetUpdatedEvent::new(
+            ID::new(*objects.leader_registry.object_id()),
+            1_000,
+        );
+        let wrapper: EventWrapper<MaxTransactionBudgetUpdatedEvent> = EventWrapper::new(event);
+        let wrapper_type = crate::move_bindings::struct_tag::<
+            EventWrapper<MaxTransactionBudgetUpdatedEvent>,
+        >(&objects);
+
+        let decoded = NexusEventQuery::new(Arc::clone(&objects))
+            .decode_parts(
+                0,
+                sui::types::Digest::ZERO,
+                objects.registry_pkg_id(),
+                &wrapper_type,
+                &bcs::to_bytes(&wrapper).expect("wrapper serializes"),
+            )
+            .expect("generated event decodes")
+            .expect("generated event is recognized");
+
+        assert!(matches!(
+            decoded.data,
+            crate::events::NexusEventKind::MaxTransactionBudgetUpdated(_)
+        ));
+    }
+
+    #[test]
+    fn generic_query_decodes_protocol_activation() {
+        let (objects, activation) = activation_fixture();
+        let objects = Arc::new(objects);
+        let wrapper: EventWrapper<ProtocolVersionActivatedV1Event> =
+            EventWrapper::new(activation.event);
+        let wrapper_type = crate::move_bindings::struct_tag::<
+            EventWrapper<ProtocolVersionActivatedV1Event>,
+        >(&objects);
+
+        let decoded = NexusEventQuery::new(Arc::clone(&objects))
+            .decode_parts(
+                activation.id.1,
+                activation.id.0,
+                activation.emitting_package,
+                &wrapper_type,
+                &bcs::to_bytes(&wrapper).expect("wrapper serializes"),
+            )
+            .expect("protocol activation decodes")
+            .expect("protocol activation is recognized");
+
+        assert!(matches!(
+            decoded.data,
+            crate::events::NexusEventKind::ProtocolVersionActivatedV1(_)
+        ));
     }
 }

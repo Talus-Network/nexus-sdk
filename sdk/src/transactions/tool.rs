@@ -644,6 +644,34 @@ pub fn update_tool_timeout_ptb(
     })
 }
 
+/// Builds a transaction that replaces an off chain Tool URL.
+///
+/// The `tool` is the current shared Tool reference and `owner_cap` must grant
+/// authority over that Tool.
+///
+/// # Errors
+///
+/// Returns an error when an object argument, URL argument, or generated Move
+/// call cannot be added to the transaction.
+pub fn update_off_chain_tool_url_ptb(
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    new_url: &str,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let new_url = tx.arg(&new_url.as_bytes().to_vec())?;
+
+        tx.call_target(
+            tool_registry_binding::update_off_chain_tool_url_target,
+            vec![tool, owner_cap, new_url],
+        )?;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -808,6 +836,25 @@ mod tests {
         assert_eq!(calls[0].module.as_str(), "tool_registry");
         assert_eq!(calls[0].function.as_str(), "unregister");
         assert_eq!(calls[0].arguments.len(), 4);
+    }
+
+    #[test]
+    fn off_chain_url_update_uses_current_tool_registry_abi() {
+        let objects = nexus_objects();
+        let ptb = update_off_chain_tool_url_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+            "https://example.com/invoke",
+        )
+        .unwrap();
+        let calls = move_calls(&ptb);
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].package, objects.tool_pkg_id());
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
+        assert_eq!(calls[0].function.as_str(), "update_off_chain_tool_url");
+        assert_eq!(calls[0].arguments.len(), 3);
     }
 
     #[test]

@@ -2,12 +2,38 @@ use {
     crate::sui,
     anyhow::{bail, Result},
     serde::{Deserialize, Serialize},
+    thiserror::Error,
 };
 
 mod parsing;
 mod query;
 
 pub use query::*;
+
+/// Failure returned while converting a Sui event into a [`NexusEvent`].
+#[derive(Debug, Error)]
+pub enum NexusEventDecodeError {
+    /// Required event identity is missing or invalid.
+    #[error("Nexus event identity is invalid: {0}")]
+    Identity(String),
+    /// A required Sui event field is missing.
+    #[error("Required Nexus event field is missing: {0}")]
+    MissingField(&'static str),
+    /// The Sui event type is invalid.
+    #[error("Nexus event type is invalid: {0}")]
+    EventType(#[from] sui::types::TypeParseError),
+    /// A direct active package emitted an event absent from the SDK contract.
+    #[error("Active Nexus package '{emitting_package}' emitted unsupported event '{event_type}'")]
+    UnsupportedEvent {
+        /// Exact package recorded as the Sui event source.
+        emitting_package: sui::types::Address,
+        /// Full unsupported inner event type.
+        event_type: sui::types::StructTag,
+    },
+    /// The Nexus event contents are invalid.
+    #[error("Nexus event contents are invalid: {0}")]
+    Contents(#[source] anyhow::Error),
+}
 
 fn deserialize_u64_to_datetime<'de, D>(
     deserializer: D,
@@ -121,6 +147,11 @@ macro_rules! events {
         }
 
         impl NexusEventKind {
+            /// Move datatype names supported by [`NexusEventKind`].
+            pub const NAMES: &'static [&'static str] = &[
+                $($name),*
+            ];
+
             /// Returns the name of the event kind as a string.
             pub fn name(&self) -> String {
                 match self {
@@ -181,62 +212,69 @@ macro_rules! events {
     };
 }
 
-// Enumeration with all available events coming from the on-chain part of
-// Nexus. Also includes BCS parsing implementations.
-events! {
-    crate::move_bindings::scheduler::scheduler::OccurrenceAdvertisedEvent => OccurrenceAdvertised, "OccurrenceAdvertisedEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceDispatchedEvent => OccurrenceDispatched, "OccurrenceDispatchedEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceMissedEvent => OccurrenceMissed, "OccurrenceMissedEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceScheduledEvent => OccurrenceScheduled, "OccurrenceScheduledEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceSettledEvent => OccurrenceSettled, "OccurrenceSettledEvent",
-    crate::move_bindings::scheduler::scheduler::OccurrenceWithdrawnEvent => OccurrenceWithdrawn, "OccurrenceWithdrawnEvent",
-    crate::move_bindings::scheduler::scheduler::TaskCanceledEvent => TaskCanceled, "TaskCanceledEvent",
-    crate::move_bindings::scheduler::scheduler::TaskClosedEvent => TaskClosed, "TaskClosedEvent",
-    crate::move_bindings::scheduler::scheduler::TaskCreatedEvent => TaskCreated, "TaskCreatedEvent",
-    crate::move_bindings::scheduler::scheduler::TaskPausedEvent => TaskPaused, "TaskPausedEvent",
-    crate::move_bindings::scheduler::scheduler::TaskResumedEvent => TaskResumed, "TaskResumedEvent",
-    crate::move_bindings::workflow::execution_events::RequestWalkExecutionEvent => RequestWalkExecution, "RequestWalkExecutionEvent",
-    crate::move_bindings::interface::agent::AgentCreatedEvent => AgentCreated, "AgentCreatedEvent",
-    crate::move_bindings::registry::agent_registry::SkillRegisteredEvent => SkillRegistered, "SkillRegisteredEvent",
-    crate::move_bindings::registry::agent_registry::SkillContractRevisionedEvent => SkillContractRevisioned, "SkillContractRevisionedEvent",
-    crate::move_bindings::registry::agent_registry::DefaultDagExecutorUpdatedEvent => DefaultDagExecutorUpdated, "DefaultDagExecutorUpdatedEvent",
-    crate::move_bindings::workflow::execution_events::AgentSkillExecutionRequestedEvent => AgentSkillExecutionRequested, "AgentSkillExecutionRequestedEvent",
-    crate::move_bindings::workflow::execution_events::AgentVertexAuthorizationRequiredEvent => AgentVertexAuthorizationRequired, "AgentVertexAuthorizationRequiredEvent",
-    crate::move_bindings::interface::payment::AgentSkillPaymentCreatedEvent => AgentSkillPaymentCreated, "AgentSkillPaymentCreatedEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentFeesRecordedEvent => ExecutionPaymentFeesRecorded, "ExecutionPaymentFeesRecordedEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentToolCostSnapshottedEvent => ExecutionPaymentToolCostSnapshotted, "ExecutionPaymentToolCostSnapshottedEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentVertexLockedEvent => ExecutionPaymentVertexLocked, "ExecutionPaymentVertexLockedEvent",
-    crate::move_bindings::interface::payment::ExecutionPaymentVertexSettledEvent => ExecutionPaymentVertexSettled, "ExecutionPaymentVertexSettledEvent",
-    crate::move_bindings::interface::payment::GasPaymentConsumedEvent => GasPaymentConsumed, "GasPaymentConsumedEvent",
-    crate::move_bindings::interface::payment::ExecutionAccomplishedEvent => ExecutionAccomplished, "ExecutionAccomplishedEvent",
-    crate::move_bindings::interface::payment::ExecutionRefundedEvent => ExecutionRefunded, "ExecutionRefundedEvent",
-    crate::move_bindings::interface::payment::TaskExecutionPaymentCreatedEvent => TaskExecutionPaymentCreated, "TaskExecutionPaymentCreatedEvent",
-    crate::move_bindings::interface::payment::TaskExecutionPaymentFinalizedEvent => TaskExecutionPaymentFinalized, "TaskExecutionPaymentFinalizedEvent",
-    crate::move_bindings::interface::payment::TaskPaymentReserveCanceledEvent => TaskPaymentReserveCanceled, "TaskPaymentReserveCanceledEvent",
-    crate::move_bindings::interface::payment::TaskPaymentReserveRefilledEvent => TaskPaymentReserveRefilled, "TaskPaymentReserveRefilledEvent",
-    crate::move_bindings::tool::tool_registry::ToolRegisteredEvent => ToolRegistered, "ToolRegisteredEvent",
-    crate::move_bindings::tool::tool_registry::ToolUnregisteredEvent => ToolUnregistered, "ToolUnregisteredEvent",
-    crate::move_bindings::registry::priority_fee_vault::PriorityFeeSwapEvent => PriorityFeeSwap, "PriorityFeeSwapEvent",
-    crate::move_bindings::workflow::execution_events::CommittedToolResultEvent => CommittedToolResult, "CommittedToolResultEvent",
-    crate::move_bindings::workflow::execution_events::WalkAdvancedEvent => WalkAdvanced, "WalkAdvancedEvent",
-    crate::move_bindings::workflow::execution_events::WalkFailedEvent => WalkFailed, "WalkFailedEvent",
-    crate::move_bindings::workflow::execution_events::SubmissionFailureEvidenceRecordedEvent => SubmissionFailureEvidenceRecorded, "SubmissionFailureEvidenceRecordedEvent",
-    crate::move_bindings::workflow::execution_events::TerminalErrEvalRecordedEvent => TerminalErrEvalRecorded, "TerminalErrEvalRecordedEvent",
-    crate::move_bindings::workflow::execution_events::ToolVerificationResolvedEvent => ToolVerificationResolved, "ToolVerificationResolvedEvent",
-    crate::move_bindings::workflow::execution_events::WalkPendingAbortEvent => WalkPendingAbort, "WalkPendingAbortEvent",
-    crate::move_bindings::workflow::execution_events::WalkAbortedEvent => WalkAborted, "WalkAbortedEvent",
-    crate::move_bindings::workflow::execution_events::WalkCancelledEvent => WalkCancelled, "WalkCancelledEvent",
-    crate::move_bindings::workflow::execution_events::EndStateReachedEvent => EndStateReached, "EndStateReachedEvent",
-    crate::move_bindings::workflow::execution_events::ExecutionFinishedEvent => ExecutionFinished, "ExecutionFinishedEvent",
-    crate::move_bindings::workflow::execution_events::ExecutionPaymentRefilledEvent => ExecutionPaymentRefilled, "ExecutionPaymentRefilledEvent",
-    crate::move_bindings::workflow::execution_events::ExecutionPaymentInsufficientSettlementEvent => ExecutionPaymentInsufficientSettlement, "ExecutionPaymentInsufficientSettlementEvent",
-    crate::move_bindings::registry::priority_fee_vault::PriorityFeeDepositEvent => PriorityFeeDeposit, "PriorityFeeDepositEvent",
-    crate::move_bindings::registry::leader_cap::FoundingLeaderCapCreatedEvent => FoundingLeaderCapCreated, "FoundingLeaderCapCreatedEvent",
-    crate::move_bindings::registry::leader::LeaderCapIssuedEvent => LeaderCapIssued, "LeaderCapIssuedEvent",
-    crate::move_bindings::registry::leader::LeaderClaimedEvent => LeaderClaimed, "LeaderClaimedEvent",
-    crate::move_bindings::tool::tool_cashier::ToolPaymentInsufficientFundsEvent => ToolPaymentInsufficientFunds, "ToolPaymentInsufficientFundsEvent",
-    crate::move_bindings::tool::tool_cashier::ToolPaymentLockUpdatedEvent => ToolPaymentLockUpdated, "ToolPaymentLockUpdatedEvent",
-    crate::move_bindings::tool::tool_cashier::ToolPaymentSettledEvent => ToolPaymentSettled, "ToolPaymentSettledEvent",
-    crate::move_bindings::interface::dag::DAGCreatedEvent => DAGCreated, "DAGCreatedEvent",
-    crate::move_bindings::tool::tool_registry::ToolRegistryCreatedEvent => ToolRegistryCreated, "ToolRegistryCreatedEvent",
+// The SDK event contract is generated from the same committed IR that renders
+// the Move bindings above.
+include!(concat!(env!("OUT_DIR"), "/nexus_events.rs"));
+
+#[cfg(test)]
+mod tests {
+    use {super::NexusEventKind, std::collections::BTreeSet};
+
+    const PROTOCOL_IR: [&str; 6] = [
+        include_str!("../move_bindings/ir/interface.json"),
+        include_str!("../move_bindings/ir/primitives.json"),
+        include_str!("../move_bindings/ir/registry.json"),
+        include_str!("../move_bindings/ir/scheduler.json"),
+        include_str!("../move_bindings/ir/tool.json"),
+        include_str!("../move_bindings/ir/workflow.json"),
+    ];
+
+    #[test]
+    fn event_catalog_matches_committed_protocol_ir() {
+        let mut ir_names = PROTOCOL_IR
+            .into_iter()
+            .flat_map(|contents| {
+                let package: serde_json::Value =
+                    serde_json::from_str(contents).expect("committed IR is valid JSON");
+                package["modules"]
+                    .as_object()
+                    .expect("IR contains modules")
+                    .values()
+                    .flat_map(|module| {
+                        module["datatypes"]
+                            .as_array()
+                            .expect("IR module contains datatypes")
+                            .iter()
+                            .filter_map(|datatype| datatype["name"].as_str())
+                            .filter(|name| name.ends_with("Event"))
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let mut catalog_names = NexusEventKind::NAMES
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ir_names.len(),
+            ir_names.iter().collect::<BTreeSet<_>>().len(),
+            "Move event datatype names must be unique"
+        );
+        assert_eq!(
+            catalog_names.len(),
+            catalog_names.iter().collect::<BTreeSet<_>>().len(),
+            "SDK event names must be unique"
+        );
+
+        ir_names.sort();
+        catalog_names.sort();
+        assert_eq!(catalog_names, ir_names);
+        assert!(
+            catalog_names.contains(&"ProtocolVersionActivatedV1Event".to_owned()),
+            "protocol activation belongs to the generic event catalog"
+        );
+    }
 }
