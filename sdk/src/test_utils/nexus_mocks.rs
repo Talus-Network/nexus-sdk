@@ -104,9 +104,7 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
         MoveTable::new(key_table_id, 1),
     );
     let key_record = KeyRecord::new(0, vec![9; 32], 0, MoveOption::from_option(None::<u64>));
-    let field_ref = sui_mocks::mock_sui_object_ref();
     let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-    let mut state_service = sui_mocks::grpc::MockStateService::new();
     sui_mocks::grpc::mock_get_object_value_bcs_for(
         &mut ledger_service,
         nexus_objects.network_auth.clone(),
@@ -133,22 +131,15 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
         1,
         binding_state,
     );
-    sui_mocks::grpc::mock_list_dynamic_fields(
-        &mut state_service,
-        vec![(active_kid, *field_ref.object_id())],
-    );
-    sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+    sui_mocks::grpc::mock_get_dynamic_field_by_key(
         &mut ledger_service,
-        vec![(
-            field_ref,
-            sui::types::Owner::Shared(1),
-            active_kid,
-            key_record,
-        )],
+        key_table_id,
+        &sui::types::TypeTag::U64,
+        active_kid,
+        key_record,
     );
     let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
         ledger_service_mock: Some(ledger_service),
-        state_service_mock: Some(state_service),
         ..Default::default()
     });
 
