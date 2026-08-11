@@ -1,7 +1,9 @@
 use {
     crate::{
         move_bindings::{
-            scheduler::task::{Task, TaskController, TaskStateV1},
+            interface::agent::SkillDagBinding,
+            primitives::meta_schema::{MetaSchema, PortSchema, ValueKind},
+            scheduler::task::{Task, TaskController, TaskStateV2},
             sui_framework::clock::Clock,
         },
         move_boundary,
@@ -20,6 +22,7 @@ use {
             SchedulerError,
             StartTime,
             TaskFunding,
+            TaskOperation,
             TaskSpec,
         },
         transactions::scheduler::{
@@ -36,7 +39,7 @@ use {
 };
 
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<TaskStateV1>,
+    pub(super) object: Response<TaskStateV2>,
     pub(super) authority: ResolvedAuthority,
 }
 
@@ -44,14 +47,7 @@ pub(crate) async fn prepare_task(
     client: &NexusClient,
     task: &TaskSpec,
 ) -> Result<PreparedTask, SchedulerError> {
-    task.validate()?;
-    if let Some(dag_id) = task.operation().selected_dag_id() {
-        let dag = workflow::fetch_dag_snapshot(client.crawler(), dag_id)
-            .await
-            .with_context(|| format!("could not inspect Task DAG '{dag_id}'"))
-            .map_err(SchedulerError::transport)?;
-        validate_task_inputs(&dag, task.entry_group(), task.inputs())?;
-    }
+    preflight_task_inputs(client, task).await?;
     let sender = client.owner().map_err(SchedulerError::from)?;
     let agent = match task.operation().agent_id() {
         Some(agent_id) => Some(agent_input(client, agent_id).await?),
@@ -87,6 +83,77 @@ pub(crate) async fn prepare_task(
     })
 }
 
+pub(super) async fn preflight_task_inputs(
+    client: &NexusClient,
+    task: &TaskSpec,
+) -> Result<(), SchedulerError> {
+    task.validate()?;
+    let dag_id = effective_task_dag_id(client, task.operation()).await?;
+    let dag = workflow::fetch_dag_snapshot(client.crawler(), dag_id)
+        .await
+        .with_context(|| format!("could not inspect Task DAG '{dag_id}'"))
+        .map_err(SchedulerError::transport)?;
+    validate_task_inputs(&dag, task.entry_group(), task.inputs())?;
+    Ok(())
+}
+
+async fn effective_task_dag_id(
+    client: &NexusClient,
+    operation: &TaskOperation,
+) -> Result<crate::sui::types::Address, SchedulerError> {
+    match operation {
+        TaskOperation::DefaultDag { dag_id } => Ok(*dag_id),
+        TaskOperation::AgentSkill {
+            agent_id,
+            skill_id,
+            selected_dag,
+            ..
+        } => {
+            let objects = client.get_nexus_objects();
+            let target = tap::fetch_configured_active_tap_skill_execution_target(
+                client.crawler(),
+                &objects,
+                *agent_id,
+                *skill_id,
+            )
+            .await
+            .with_context(|| {
+                format!("could not resolve active Agent '{agent_id}' skill {skill_id}")
+            })
+            .map_err(SchedulerError::transport)?;
+            resolve_agent_skill_dag(
+                *agent_id,
+                *skill_id,
+                target.data.skill.dag_binding(),
+                *selected_dag,
+            )
+        }
+    }
+}
+
+fn resolve_agent_skill_dag(
+    agent_id: crate::sui::types::Address,
+    skill_id: u64,
+    binding: &SkillDagBinding,
+    selected_dag: Option<crate::sui::types::Address>,
+) -> Result<crate::sui::types::Address, SchedulerError> {
+    match (binding, selected_dag) {
+        (SkillDagBinding::Pinned { dag_id }, None) => Ok(*dag_id),
+        (SkillDagBinding::Pinned { dag_id }, Some(selected_dag)) => {
+            Err(SchedulerError::PinnedSkillDagSelectionConflict {
+                agent_id,
+                skill_id,
+                pinned_dag: *dag_id,
+                selected_dag,
+            })
+        }
+        (SkillDagBinding::RuntimeSelected, Some(selected_dag)) => Ok(selected_dag),
+        (SkillDagBinding::RuntimeSelected, None) => {
+            Err(SchedulerError::RuntimeSelectedSkillDagRequired { agent_id, skill_id })
+        }
+    }
+}
+
 fn validate_task_inputs(
     dag: &DagSnapshot,
     entry_group: &str,
@@ -103,16 +170,69 @@ fn validate_task_inputs(
         .iter()
         .map(|(vertex, ports)| (vertex.clone(), ports.keys().cloned().collect::<Vec<_>>()))
         .collect::<BTreeMap<_, _>>();
-    if expected == &received {
-        return Ok(());
+    if expected != &received {
+        return Err(SchedulerError::TaskInputsMismatch {
+            dag_id: dag.dag_id,
+            entry_group: entry_group.to_owned(),
+            expected: input_shape(expected, "<value>"),
+            received: input_shape(&received, "<provided>"),
+        });
     }
+    for (vertex, ports) in inputs {
+        let schema = dag.vertex_meta_schemas.get(vertex).ok_or_else(|| {
+            SchedulerError::InconsistentChainState {
+                message: format!(
+                    "DAG '{}' entry vertex '{}' has no fetched MetaSchema",
+                    dag.dag_id, vertex
+                ),
+            }
+        })?;
+        for (port, value) in ports {
+            let port_schema = schema
+                .input_ports
+                .iter()
+                .find(|schema| schema.port_name == port.as_bytes())
+                .ok_or_else(|| SchedulerError::InconsistentChainState {
+                    message: format!(
+                        "DAG '{}' entry input '{}.{}' is absent from its vertex MetaSchema",
+                        dag.dag_id, vertex, port
+                    ),
+                })?;
+            if !MetaSchema::conforms_port(port_schema, value) {
+                return Err(SchedulerError::TaskInputSchemaMismatch {
+                    dag_id: dag.dag_id,
+                    vertex: vertex.clone(),
+                    port: port.clone(),
+                    expected: port_schema_shape(port_schema).into_boxed_str(),
+                    received: nexus_data_shape(value).into_boxed_str(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
 
-    Err(SchedulerError::TaskInputsMismatch {
-        dag_id: dag.dag_id,
-        entry_group: entry_group.to_owned(),
-        expected: input_shape(expected, "<value>"),
-        received: input_shape(&received, "<provided>"),
-    })
+fn port_schema_shape(schema: &PortSchema) -> String {
+    format!(
+        "{}/{}",
+        if schema.is_many { "many" } else { "one" },
+        match schema.value_kind {
+            ValueKind::Object => "object",
+            ValueKind::Data => "data",
+        }
+    )
+}
+
+fn nexus_data_shape(value: &crate::types::NexusData) -> String {
+    let cardinality = if value.is_many() { "many" } else { "one" };
+    let kind = if value.values().is_err() {
+        "empty"
+    } else if value.is_object() {
+        "object"
+    } else {
+        "data"
+    };
+    format!("{cardinality}/{kind}")
 }
 
 fn input_shape(shape: &BTreeMap<String, Vec<String>>, placeholder: &str) -> String {
@@ -181,7 +301,7 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<TaskStateV1>, SchedulerError> {
+) -> Result<Response<TaskStateV2>, SchedulerError> {
     let anchor = client
         .crawler()
         .get_optional_object::<Task>(task_id)
@@ -190,7 +310,7 @@ pub(super) async fn fetch_task(
         .ok_or(SchedulerError::TaskNotFound { task_id })?;
     client
         .crawler()
-        .load_versioned_payload(anchor, 1)
+        .load_versioned_payload(anchor, 2)
         .await
         .map_err(SchedulerError::transport)
 }
@@ -206,7 +326,7 @@ pub(super) async fn resolve_task(
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<TaskStateV1>,
+    task: &Response<TaskStateV2>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {
@@ -336,7 +456,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::{
-                    dag::{DAGStateV1, DAG},
+                    dag::{DAGStateV2, DAG},
                     graph,
                 },
                 move_std::option::Option as MoveOption,
@@ -368,6 +488,23 @@ mod tests {
                     "sum".to_owned(),
                     vec!["0".to_owned(), "1".to_owned(), "2".to_owned()],
                 )]),
+            )]),
+            vertex_meta_schemas: BTreeMap::from([(
+                "sum".to_owned(),
+                MetaSchema::new(
+                    ["0", "1", "2"]
+                        .into_iter()
+                        .map(|port| {
+                            PortSchema::new(port.as_bytes().to_vec(), false, ValueKind::Data)
+                        })
+                        .collect(),
+                    vec![
+                        crate::move_bindings::primitives::meta_schema::OutputVariantSchema::new(
+                            b"ok".to_vec(),
+                            vec![],
+                        ),
+                    ],
+                ),
             )]),
         }
     }
@@ -421,23 +558,114 @@ mod tests {
             BTreeMap::from([
                 (
                     "0".to_owned(),
-                    crate::move_bindings::primitives::data::NexusData::inline_one(
-                        b"state".to_vec(),
-                    ),
+                    crate::types::NexusData::inline_data(b"state").expect("fixture is bounded"),
                 ),
                 (
                     "1".to_owned(),
-                    crate::move_bindings::primitives::data::NexusData::inline_one(b"20".to_vec()),
+                    crate::types::NexusData::inline_data(b"20").expect("fixture is bounded"),
                 ),
                 (
                     "2".to_owned(),
-                    crate::move_bindings::primitives::data::NexusData::inline_one(b"22".to_vec()),
+                    crate::types::NexusData::inline_data(b"22").expect("fixture is bounded"),
                 ),
             ]),
         )]);
 
         validate_task_inputs(&dag, "_default_group", &inputs)
             .expect("the exact entry shape is valid");
+    }
+
+    #[test]
+    fn task_inputs_reject_wrong_meta_schema_kind_and_empty_many() {
+        let mut dag = dag_snapshot();
+        let schema = dag.vertex_meta_schemas.get_mut("sum").unwrap();
+        schema.input_ports[0].value_kind = ValueKind::Object;
+        let mut inputs = BTreeMap::from([(
+            "sum".to_owned(),
+            BTreeMap::from([
+                (
+                    "0".to_owned(),
+                    crate::types::NexusData::inline_data(b"state").unwrap(),
+                ),
+                (
+                    "1".to_owned(),
+                    crate::types::NexusData::inline_data(b"20").unwrap(),
+                ),
+                (
+                    "2".to_owned(),
+                    crate::types::NexusData::inline_data(b"22").unwrap(),
+                ),
+            ]),
+        )]);
+
+        assert!(matches!(
+            validate_task_inputs(&dag, "_default_group", &inputs),
+            Err(SchedulerError::TaskInputSchemaMismatch {
+                ref vertex,
+                ref port,
+                ref expected,
+                ref received,
+                ..
+            }) if vertex == "sum"
+                && port == "0"
+                && expected.as_ref() == "one/object"
+                && received.as_ref() == "one/data"
+        ));
+
+        let schema = dag.vertex_meta_schemas.get_mut("sum").unwrap();
+        schema.input_ports[0].is_many = true;
+        inputs.get_mut("sum").unwrap().insert(
+            "0".to_owned(),
+            crate::types::NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new()),
+        );
+        assert!(matches!(
+            validate_task_inputs(&dag, "_default_group", &inputs),
+            Err(SchedulerError::TaskInputSchemaMismatch {
+                ref vertex,
+                ref port,
+                ref expected,
+                ref received,
+                ..
+            }) if vertex == "sum"
+                && port == "0"
+                && expected.as_ref() == "many/object"
+                && received.as_ref() == "one/empty"
+        ));
+    }
+
+    #[test]
+    fn effective_agent_skill_dag_enforces_pinned_and_runtime_selection() {
+        let agent_id = crate::sui::types::Address::from_static("0xa");
+        let pinned = crate::sui::types::Address::from_static("0xd");
+        let selected = crate::sui::types::Address::from_static("0xe");
+
+        assert_eq!(
+            resolve_agent_skill_dag(agent_id, 7, &SkillDagBinding::pinned(pinned), None,).unwrap(),
+            pinned
+        );
+        assert!(matches!(
+            resolve_agent_skill_dag(
+                agent_id,
+                7,
+                &SkillDagBinding::pinned(pinned),
+                Some(selected),
+            ),
+            Err(SchedulerError::PinnedSkillDagSelectionConflict { .. })
+        ));
+        assert_eq!(
+            resolve_agent_skill_dag(
+                agent_id,
+                7,
+                &SkillDagBinding::RuntimeSelected,
+                Some(selected),
+            )
+            .unwrap(),
+            selected
+        );
+        assert!(matches!(
+            resolve_agent_skill_dag(agent_id, 7, &SkillDagBinding::RuntimeSelected, None,),
+            Err(SchedulerError::RuntimeSelectedSkillDagRequired { .. })
+        ));
     }
 
     async fn test_client(mocks: sui_mocks::grpc::ServerMocks) -> NexusClient {
@@ -464,8 +692,8 @@ mod tests {
             &crate::sui::types::TypeTag::U64,
             &bcs::to_bytes(&u64::MAX).expect("the state key serializes"),
         );
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
-        let state = DAGStateV1::new(
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
+        let state = DAGStateV2::new(
             1,
             LinkedTable::new(dag_id, 0),
             VecMap {
@@ -485,7 +713,7 @@ mod tests {
             crate::sui::types::Owner::Shared(1),
             bcs::to_bytes(&dag).expect("the DAG anchor serializes"),
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 1, state);
+        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 2, state);
     }
 
     #[tokio::test]

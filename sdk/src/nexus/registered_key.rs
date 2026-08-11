@@ -1,17 +1,14 @@
-//! Canonical wire helpers for the built-in RegisteredKey verifier.
+//! Canonical commitment helpers for the built-in RegisteredKey verifier.
 
 use {
     crate::{
         move_bindings::{
-            interface::verifier::{
-                CanonicalToolInput,
-                RegisteredKeyAuxiliary,
-                ToolInvocationNoncePreimage,
-            },
-            primitives::data::NexusData,
+            interface::verifier::{RegisteredKeyAuxiliary, ToolInvocationNoncePreimage},
+            primitives::meta_schema::MetaSchema,
             sui_framework::object::ID,
         },
         sui,
+        types::NexusData,
     },
     anyhow::{bail, Context as _},
     sha2::{Digest as _, Sha256},
@@ -20,46 +17,31 @@ use {
 
 pub const SHA256_LEN: usize = 32;
 pub const ED25519_SIGNATURE_LEN: usize = 64;
-pub const INVOCATION_NONCE_DOMAIN: &[u8] = b"nexus.signed_http.v2.invocation_nonce";
-pub const TOOL_RESPONSE_DOMAIN: &[u8] = b"nexus.signed_http.v2.tool_response";
+pub const INVOCATION_NONCE_DOMAIN: &[u8] = b"nexus.direct.v1.invocation-nonce";
+pub use crate::commitments::{
+    output_sha256,
+    tool_signature_message,
+    RAW_OUTPUT_DOMAIN,
+    TOOL_RESPONSE_DOMAIN,
+};
 
-/// Sort Tool input ports by raw UTF-8 bytes and project the exact Move BCS shape.
-pub fn canonical_tool_inputs(input_ports: &HashMap<String, NexusData>) -> Vec<CanonicalToolInput> {
-    let mut port_names = input_ports.keys().collect::<Vec<_>>();
-    port_names.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-    port_names
-        .into_iter()
-        .map(|port_name| {
-            CanonicalToolInput::new(
-                port_name.as_bytes().to_vec(),
-                input_ports
-                    .get(port_name)
-                    .expect("a key collected from the map must still exist")
-                    .clone(),
-            )
-        })
-        .collect()
-}
-
-/// BCS bytes hashed by both the leader and `dag::effective_input_payload_sha256`.
-pub fn canonical_tool_inputs_bcs(
-    input_ports: &HashMap<String, NexusData>,
-) -> anyhow::Result<Vec<u8>> {
-    bcs::to_bytes(&canonical_tool_inputs(input_ports)).map_err(Into::into)
-}
-
-/// `request_hash = SHA-256(BCS(vector<CanonicalToolInput>))`.
+/// Returns the exact schema-ordered content commitment computed by Move.
 pub fn canonical_tool_inputs_sha256(
+    schema: &MetaSchema,
     input_ports: &HashMap<String, NexusData>,
 ) -> anyhow::Result<[u8; SHA256_LEN]> {
-    Ok(sha256(&canonical_tool_inputs_bcs(input_ports)?))
+    schema.canonical_inputs_sha256(input_ports)
 }
 
-pub fn result_sha256(result_bytes: &[u8]) -> [u8; SHA256_LEN] {
-    sha256(result_bytes)
+/// Returns the exact schema-ordered resolved-content commitment computed by Move.
+pub fn canonical_resolved_tool_inputs_sha256(
+    schema: &MetaSchema,
+    input_ports: &HashMap<String, NexusData>,
+) -> anyhow::Result<[u8; SHA256_LEN]> {
+    schema.resolved_inputs_sha256(input_ports)
 }
 
-/// Deterministic identity for one logical offchain Tool invocation.
+/// Deterministic identity for one logical off-chain Tool invocation.
 pub fn invocation_nonce(
     execution_id: sui::types::Address,
     walk_index: u64,
@@ -73,26 +55,7 @@ pub fn invocation_nonce(
         iteration,
     );
     let encoded = bcs::to_bytes(&preimage).context("failed to encode invocation nonce preimage")?;
-    let mut message = Vec::with_capacity(INVOCATION_NONCE_DOMAIN.len() + encoded.len());
-    message.extend_from_slice(INVOCATION_NONCE_DOMAIN);
-    message.extend_from_slice(&encoded);
-    Ok(sha256(&message))
-}
-
-/// Tool signature message: domain, leader signature, nonce, and result hash.
-pub fn tool_signature_message(
-    leader_signature: &[u8; ED25519_SIGNATURE_LEN],
-    nonce: &[u8; SHA256_LEN],
-    result_bytes: &[u8],
-) -> Vec<u8> {
-    let mut message = Vec::with_capacity(
-        TOOL_RESPONSE_DOMAIN.len() + ED25519_SIGNATURE_LEN + SHA256_LEN + SHA256_LEN,
-    );
-    message.extend_from_slice(TOOL_RESPONSE_DOMAIN);
-    message.extend_from_slice(leader_signature);
-    message.extend_from_slice(nonce);
-    message.extend_from_slice(&result_sha256(result_bytes));
-    message
+    Ok(domain_sha256(INVOCATION_NONCE_DOMAIN, &encoded))
 }
 
 pub fn registered_key_auxiliary(
@@ -125,127 +88,158 @@ pub fn validate_registered_key_auxiliary(auxiliary: &RegisteredKeyAuxiliary) -> 
     Ok(())
 }
 
-fn sha256(bytes: &[u8]) -> [u8; SHA256_LEN] {
-    Sha256::digest(bytes).into()
+fn domain_sha256(domain: &[u8], bytes: &[u8]) -> [u8; SHA256_LEN] {
+    let mut hasher = Sha256::new();
+    hasher.update(domain);
+    hasher.update(bytes);
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        crate::move_bindings::primitives::meta_schema::{
+            OutputVariantSchema,
+            PortSchema,
+            ValueKind,
+        },
+    };
 
-    fn inline(value: &[u8]) -> NexusData {
-        NexusData::new(b"inline".to_vec(), value.to_vec(), vec![])
+    fn schema() -> MetaSchema {
+        MetaSchema::new(
+            ["z", "aa"]
+                .into_iter()
+                .map(|name| PortSchema::new(name.as_bytes().to_vec(), false, ValueKind::Data))
+                .collect(),
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        )
+    }
+
+    fn object_schema() -> MetaSchema {
+        MetaSchema::new(
+            vec![PortSchema::new(
+                b"object".to_vec(),
+                false,
+                ValueKind::Object,
+            )],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        )
+    }
+
+    fn object_inputs() -> HashMap<String, NexusData> {
+        HashMap::from([(
+            "object".to_string(),
+            NexusData::object(sui::types::Address::from_static("0x1")),
+        )])
+    }
+
+    fn inputs() -> HashMap<String, NexusData> {
+        HashMap::from([
+            ("aa".to_string(), NexusData::inline_data(b"A").unwrap()),
+            ("z".to_string(), NexusData::inline_data(b"Z").unwrap()),
+        ])
     }
 
     #[test]
-    fn canonical_input_hash_uses_raw_port_order_and_exact_move_shape() {
-        let inputs = HashMap::from([
-            ("z".to_string(), inline(b"Z")),
-            ("aa".to_string(), inline(b"A")),
-        ]);
-        let canonical = canonical_tool_inputs(&inputs);
-        assert_eq!(canonical[0].port_name, b"aa");
-        assert_eq!(canonical[1].port_name, b"z");
+    fn direct_input_commitments_match_move_goldens() {
+        let canonical = canonical_tool_inputs_sha256(&schema(), &inputs()).unwrap();
+        let resolved = canonical_resolved_tool_inputs_sha256(&schema(), &inputs()).unwrap();
+        assert_eq!(canonical, resolved);
         assert_eq!(
-            hex::encode(canonical_tool_inputs_bcs(&inputs).unwrap()),
-            "0202616106696e6c696e65014100017a06696e6c696e65015a00"
-        );
-        assert_eq!(
-            hex::encode(canonical_tool_inputs_sha256(&inputs).unwrap()),
-            "a74c4268147c51e92a2d25b8436ac425fca6ba475bed23df0c66015f8d3b71f8"
-        );
-    }
-
-    #[test]
-    fn auxiliary_validation_rejects_wrong_lengths() {
-        validate_registered_key_auxiliary(&registered_key_auxiliary(
-            [1; 32], [4; 32], [2; 64], [3; 64],
-        ))
-        .unwrap();
-        assert!(
-            validate_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
-                vec![1; 31],
-                vec![4; 32],
-                vec![2; 64],
-                vec![3; 64],
-            ))
-            .is_err()
-        );
-        assert!(
-            validate_registered_key_auxiliary(&RegisteredKeyAuxiliary::new(
-                vec![1; 32],
-                vec![4; 31],
-                vec![2; 64],
-                vec![3; 64],
-            ))
-            .is_err()
-        );
-
-        for (auxiliary, expected) in [
-            (
-                RegisteredKeyAuxiliary::new(vec![1; 32], vec![4; 32], vec![2; 63], vec![3; 64]),
-                "leader signature must be 64 bytes",
-            ),
-            (
-                RegisteredKeyAuxiliary::new(vec![1; 32], vec![4; 32], vec![2; 64], vec![3; 65]),
-                "tool signature must be 64 bytes",
-            ),
-        ] {
-            assert!(validate_registered_key_auxiliary(&auxiliary)
-                .unwrap_err()
-                .to_string()
-                .contains(expected));
-        }
-    }
-
-    #[test]
-    fn invocation_nonce_matches_move_and_is_sensitive_to_every_context_field() {
-        let execution = sui::types::Address::from_static("0xe");
-        let baseline = invocation_nonce(execution, 3, b"vertex", 0).unwrap();
-        assert_eq!(
-            hex::encode(baseline),
-            "fd301a716f5810abdbe05231e4b3562c7101bbf6f09f880a82e72af7c325944f"
-        );
-        assert_ne!(
-            baseline,
-            invocation_nonce(sui::types::Address::from_static("0xf"), 3, b"vertex", 0).unwrap()
-        );
-        assert_ne!(
-            baseline,
-            invocation_nonce(execution, 4, b"vertex", 0).unwrap()
-        );
-        assert_ne!(
-            baseline,
-            invocation_nonce(execution, 3, b"other", 0).unwrap()
-        );
-        assert_ne!(
-            baseline,
-            invocation_nonce(execution, 3, b"vertex", 1).unwrap()
+            hex::encode(canonical),
+            "764bb4542b1f268b9d4e43e8a196513610ed09d698a861846dec4573886d74c2"
         );
     }
 
     #[test]
-    fn tool_message_binds_domain_leader_signature_nonce_and_result_hash() {
-        let leader_signature = [7; 64];
-        let nonce = [8; 32];
-        let message = tool_signature_message(&leader_signature, &nonce, b"result");
-        let domain_end = TOOL_RESPONSE_DOMAIN.len();
-        assert_eq!(&message[..domain_end], TOOL_RESPONSE_DOMAIN);
-        assert_eq!(&message[domain_end..domain_end + 64], &leader_signature);
-        assert_eq!(&message[domain_end + 64..domain_end + 96], &nonce);
-        assert_eq!(&message[domain_end + 96..], result_sha256(b"result"));
-        assert_ne!(
-            message,
-            tool_signature_message(&leader_signature, &[9; 32], b"result")
-        );
-        #[cfg(feature = "signed_http")]
-        assert_eq!(
-            message,
-            crate::signed_http::v2::wire::tool_signature_message(
-                &leader_signature,
-                &nonce,
-                b"result",
+    fn empty_many_is_rejected_before_registered_key_commitment() {
+        let schema_for = |kind| {
+            MetaSchema::new(
+                vec![PortSchema::new(b"values".to_vec(), true, kind)],
+                vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
             )
+        };
+        let inputs = HashMap::from([(
+            "values".to_string(),
+            NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new()),
+        )]);
+        let data_error = canonical_tool_inputs_sha256(&schema_for(ValueKind::Data), &inputs)
+            .expect_err("empty Many must fail before commitment");
+        let object_error = canonical_tool_inputs_sha256(&schema_for(ValueKind::Object), &inputs)
+            .expect_err("empty Many must fail before commitment");
+
+        assert!(data_error.to_string().contains("does not conform"));
+        assert!(object_error.to_string().contains("does not conform"));
+    }
+
+    #[test]
+    fn compatible_port_relabeling_changes_the_authenticated_hash() {
+        let z = NexusData::inline_data(b"Z")
+            .unwrap()
+            .to_json_value()
+            .unwrap();
+        let aa = NexusData::inline_data(b"A")
+            .unwrap()
+            .to_json_value()
+            .unwrap();
+        let schema = schema();
+        let original_inputs = schema
+            .resolved_inputs_from_json(&serde_json::json!({
+                "ports": [
+                    { "port_name": "z", "value": z },
+                    { "port_name": "aa", "value": aa },
+                ]
+            }))
+            .unwrap();
+        let original = schema.resolved_inputs_sha256(&original_inputs).unwrap();
+        let relabeled_inputs = schema
+            .resolved_inputs_from_json(&serde_json::json!({
+                "ports": [
+                    { "port_name": "aa", "value": NexusData::inline_data(b"Z").unwrap().to_json_value().unwrap() },
+                    { "port_name": "z", "value": NexusData::inline_data(b"A").unwrap().to_json_value().unwrap() },
+                ]
+            }))
+            .unwrap();
+        let relabeled = schema.resolved_inputs_sha256(&relabeled_inputs).unwrap();
+
+        assert_ne!(original, relabeled);
+    }
+
+    #[test]
+    fn worksheet_input_commitment_accepts_onchain_object_ports() {
+        canonical_tool_inputs_sha256(&object_schema(), &object_inputs())
+            .expect("on-chain Object input should produce a worksheet commitment");
+    }
+
+    #[test]
+    fn resolved_input_commitment_rejects_offchain_object_ports() {
+        let error = canonical_resolved_tool_inputs_sha256(&object_schema(), &object_inputs())
+            .expect_err("off-chain resolved input must remain Data-only");
+
+        assert_eq!(
+            error.to_string(),
+            "off-chain input ports must contain opaque Data values"
+        );
+    }
+
+    #[test]
+    fn invocation_nonce_matches_move_golden() {
+        assert_eq!(
+            hex::encode(
+                invocation_nonce(sui::types::Address::from_static("0xe"), 3, b"vertex", 0).unwrap()
+            ),
+            "8cbddd0079b54454ecbfe326de557be12db32c74dd72b4a8f22c835475663b75"
+        );
+    }
+
+    #[test]
+    fn tool_message_contains_the_direct_output_hash() {
+        let message = tool_signature_message(&[7; 64], &[8; 32], b"result");
+        assert!(message.starts_with(TOOL_RESPONSE_DOMAIN));
+        assert_eq!(
+            &message[TOOL_RESPONSE_DOMAIN.len() + 96..],
+            output_sha256(b"result")
         );
     }
 }

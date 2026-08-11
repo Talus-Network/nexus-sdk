@@ -37,9 +37,13 @@ fn proof_for_offchain_tool(
 
 fn proof_for_leader(
     tx: &mut move_boundary::NexusPtbBuilder,
+    leader_registry: Argument,
     leader_cap: Argument,
 ) -> anyhow::Result<Argument> {
-    tx.call_target(network_auth_binding::prove_leader_target, vec![leader_cap])
+    tx.call_target(
+        network_auth_binding::prove_leader_v2_target,
+        vec![leader_registry, leader_cap],
+    )
 }
 
 fn register_key(
@@ -164,12 +168,13 @@ pub fn create_leader_binding_and_register_key_ptb(
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
-        let proof_for_binding = proof_for_leader(tx, leader_cap)?;
+        let proof_for_binding = proof_for_leader(tx, leader_registry, leader_cap)?;
         let binding = create_binding(tx, proof_for_binding, description)?;
 
-        let proof_for_key = proof_for_leader(tx, leader_cap)?;
+        let proof_for_key = proof_for_leader(tx, leader_registry, leader_cap)?;
         register_key(tx, binding, proof_for_key, public_key, pop_signature)?;
         share_binding(tx, binding)
     })
@@ -188,9 +193,10 @@ pub fn register_leader_key_on_existing_binding_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let binding = tx.shared_object(binding, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
-        let proof = proof_for_leader(tx, leader_cap)?;
+        let proof = proof_for_leader(tx, leader_registry, leader_cap)?;
         register_key(tx, binding, proof, public_key, pop_signature)
     })
 }

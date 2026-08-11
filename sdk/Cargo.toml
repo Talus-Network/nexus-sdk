@@ -36,7 +36,7 @@ signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dale
 dag = ["types", "serde_json", "petgraph"]
 
 # On-chain tool schema generation by introspecting published Move modules.
-onchain_schema_gen = ["types", "sui_types", "serde_json", "tokio"]
+onchain_schema_gen = ["types", "sui_types", "serde_json", "tokio", "convert_case"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
@@ -83,6 +83,7 @@ types = [
     "hex",
     "jsonschema",
     "serde_json",
+    "base64",
     "sha2",
 ]
 
@@ -162,6 +163,10 @@ workspace = true
 optional = true
 
 [dependencies.bcs]
+workspace = true
+optional = true
+
+[dependencies.convert_case]
 workspace = true
 optional = true
 

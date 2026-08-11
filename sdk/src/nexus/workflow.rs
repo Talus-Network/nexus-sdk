@@ -27,7 +27,7 @@ use {
                 verifier::{FailureEvidenceKind, ToolVerifierMode},
             },
             move_std::type_name::TypeName,
-            primitives::data::NexusData,
+            primitives::meta_schema::MetaSchema,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
@@ -48,9 +48,9 @@ use {
         },
         sui,
         transactions::{dag, tool_cashier},
-        types::{DagSpec, NexusObjects, ToolAnchor, ToolRef, ToolStateV1},
+        types::{DagSpec, NexusData, NexusObjects, ToolAnchor, ToolRef, ToolStateV2},
     },
-    anyhow::anyhow,
+    anyhow::{anyhow, bail},
     sha2::{Digest as _, Sha256},
     std::{
         collections::{BTreeMap, HashMap},
@@ -83,6 +83,7 @@ pub struct DagSnapshot {
     pub minimum_protocol_version: u64,
     pub vertex_count: u64,
     pub entry_groups: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    pub vertex_meta_schemas: BTreeMap<String, MetaSchema>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -137,6 +138,7 @@ pub enum ExpiredWalkResolutionKind {
     SettledOnchainResult {
         result_ref: sui::types::ObjectReference,
         expected_vertex: RuntimeVertex,
+        output_witnesses: Vec<NexusData>,
         tool_witness_id: sui::types::Address,
         finalize_tx_digest: Vec<u8>,
     },
@@ -339,6 +341,22 @@ fn onchain_tool_result_is_finalized(result: &OnchainToolResult) -> bool {
         && result.named_payload.as_option().is_some()
         && result.finalize_tx_digest.as_option().is_some()
         && result.finalize_recipient.as_option().is_some()
+}
+
+fn onchain_tool_result_output_witnesses(
+    result: &OnchainToolResult,
+) -> anyhow::Result<Vec<NexusData>> {
+    result
+        .named_payload
+        .as_option()
+        .ok_or_else(|| anyhow!("finalized on-chain result is missing named_payload"))?
+        .contents
+        .iter()
+        .map(|entry| {
+            entry.value.values()?;
+            Ok(entry.value.clone())
+        })
+        .collect()
 }
 
 impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
@@ -591,7 +609,7 @@ async fn build_execution_completion_result(
     })
 }
 
-pub fn dag_vertex_requires_tool_verification(vertex: &graph_move::VertexInfo) -> bool {
+pub fn dag_vertex_requires_tool_verification(vertex: &graph_move::VertexInfoV2) -> bool {
     vertex.verifier_mode != ToolVerifierMode::None
 }
 
@@ -607,12 +625,15 @@ pub fn dag_vertex_requires_tool_verification(vertex: &graph_move::VertexInfo) ->
 /// cannot be fetched or decoded.
 pub async fn fetch_dag_vertices_bcs(
     crawler: &Crawler,
-    dag: &dag_move::DAGStateV1,
-) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfo>> {
+    dag: &dag_move::DAGStateV2,
+) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfoV2>> {
+    if dag.vertices.size() == 0 {
+        return Ok(HashMap::new());
+    }
     Ok(crawler
         .get_dynamic_fields::<
             graph_move::Vertex,
-            linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
+            linked_table::Node<graph_move::Vertex, graph_move::VertexInfoV2>,
         >(dag.vertices.id(), dag.vertices.size())
         .await?
         .into_iter()
@@ -633,13 +654,13 @@ pub async fn fetch_dag_vertices_bcs(
 pub async fn fetch_dag_vertex_bcs(
     crawler: &Crawler,
     objects: &NexusObjects,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
     vertex: &graph_move::Vertex,
-) -> anyhow::Result<Option<graph_move::VertexInfo>> {
+) -> anyhow::Result<Option<graph_move::VertexInfoV2>> {
     crawler
         .get_dynamic_field_by_key::<
             graph_move::Vertex,
-            linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
+            linked_table::Node<graph_move::Vertex, graph_move::VertexInfoV2>,
         >(
             dag.vertices.id(),
             vertex.clone(),
@@ -662,16 +683,16 @@ pub async fn fetch_dag_vertex_bcs(
 pub async fn fetch_dag_vertices_by_keys_bcs<I>(
     crawler: &Crawler,
     objects: &NexusObjects,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
     vertices: I,
-) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfo>>
+) -> anyhow::Result<HashMap<graph_move::Vertex, graph_move::VertexInfoV2>>
 where
     I: IntoIterator<Item = graph_move::Vertex>,
 {
     Ok(crawler
         .get_dynamic_fields_by_keys::<
             graph_move::Vertex,
-            linked_table::Node<graph_move::Vertex, graph_move::VertexInfo>,
+            linked_table::Node<graph_move::Vertex, graph_move::VertexInfoV2>,
             _,
         >(
             dag.vertices.id(),
@@ -689,7 +710,7 @@ pub(crate) async fn fetch_dag_snapshot(
     dag_id: sui::types::Address,
 ) -> anyhow::Result<DagSnapshot> {
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_id, 1)
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(dag_id, 2)
         .await?;
     let entry_groups = dag
         .data
@@ -715,12 +736,31 @@ pub(crate) async fn fetch_dag_snapshot(
             (entry_group.key.name.as_str().to_owned(), vertices)
         })
         .collect();
+    let vertices = fetch_dag_vertices_bcs(crawler, &dag.data).await?;
+    if vertices.len() != dag.data.vertices.size() {
+        bail!(
+            "DAG '{dag_id}' linked vertex count {} differs from declared count {}",
+            vertices.len(),
+            dag.data.vertices.size()
+        );
+    }
+    let vertex_meta_schemas = vertices
+        .into_iter()
+        .map(|(vertex, info)| {
+            let name = vertex.name.as_str().to_owned();
+            let schema = info.meta_schema.into_option().ok_or_else(|| {
+                anyhow!("DAG '{dag_id}' vertex '{name}' is missing its immutable MetaSchema")
+            })?;
+            Ok((name, schema))
+        })
+        .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
 
     Ok(DagSnapshot {
         dag_id,
         minimum_protocol_version: dag.data.minimum_protocol_version,
         vertex_count: dag.data.vertices.size().try_into()?,
         entry_groups,
+        vertex_meta_schemas,
     })
 }
 
@@ -817,7 +857,7 @@ pub async fn inspect_expired_walk_resolution_at(
         }
         OnchainToolResultState::Finalized { result, object_ref } => {
             let dag = crawler
-                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
+                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(execution.dag_id(), 2)
                 .await?;
             let vertex_info =
                 fetch_dag_vertex_bcs(crawler, objects, &dag.data, timeout_vertex.vertex())
@@ -892,7 +932,7 @@ pub async fn inspect_expired_walk_resolution_at(
             .await?
             .data;
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(execution.dag_id(), 2)
         .await?;
     let vertex_info = fetch_dag_vertex_bcs(crawler, objects, &dag.data, abort_vertex.vertex())
         .await?
@@ -954,7 +994,7 @@ fn unresolved_timeout_skip_reason(walk: &DAGWalk) -> &'static str {
 async fn finalized_onchain_result_resolution_kind(
     crawler: &Crawler,
     objects: &NexusObjects,
-    vertex_info: &graph_move::VertexInfo,
+    vertex_info: &graph_move::VertexInfoV2,
     timeout_vertex: RuntimeVertex,
     result: &OnchainToolResult,
     object_ref: sui::types::ObjectReference,
@@ -963,7 +1003,7 @@ async fn finalized_onchain_result_resolution_kind(
     let tool_id =
         crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)?;
     let tool = crawler
-        .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
+        .get_versioned_object::<ToolAnchor, ToolStateV2>(tool_id, 2)
         .await?
         .data;
     let ToolRef::Sui {
@@ -982,10 +1022,12 @@ async fn finalized_onchain_result_resolution_kind(
         .as_option()
         .cloned()
         .ok_or_else(|| anyhow!("finalized on-chain result is missing finalize_tx_digest"))?;
+    let output_witnesses = onchain_tool_result_output_witnesses(result)?;
 
     Ok(ExpiredWalkResolutionKind::SettledOnchainResult {
         result_ref: object_ref,
         expected_vertex: timeout_vertex,
+        output_witnesses,
         tool_witness_id: tool_witness_id.bytes,
         finalize_tx_digest,
     })
@@ -1016,9 +1058,9 @@ async fn broken_onchain_result_cleanups_for_abort(
                     if dag.is_none() {
                         dag = Some(
                             crawler
-                                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(
+                                .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(
                                     execution.dag_id(),
-                                    1,
+                                    2,
                                 )
                                 .await?,
                         );
@@ -1194,7 +1236,7 @@ fn insufficient_settlement_field_key(
 
 pub async fn fetch_dag_default_values_bcs<T>(
     crawler: &Crawler,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
 ) -> anyhow::Result<HashMap<graph_move::VertexInputPort, T>>
 where
     T: serde::de::DeserializeOwned,
@@ -1209,7 +1251,7 @@ where
 
 pub async fn fetch_dag_edges_bcs(
     crawler: &Crawler,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
 ) -> anyhow::Result<HashMap<graph_move::Vertex, Vec<graph_move::Edge>>> {
     crawler
         .get_dynamic_fields::<graph_move::Vertex, Vec<graph_move::Edge>>(
@@ -1221,7 +1263,7 @@ pub async fn fetch_dag_edges_bcs(
 
 pub async fn fetch_dag_outputs_bcs(
     crawler: &Crawler,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
 ) -> anyhow::Result<HashMap<graph_move::Vertex, Vec<graph_move::OutputVariantPort>>> {
     crawler
         .get_dynamic_fields::<graph_move::Vertex, Vec<graph_move::OutputVariantPort>>(
@@ -1247,7 +1289,7 @@ pub async fn offchain_success_requires_tool_verification(
     next_vertex: &RuntimeVertex,
 ) -> anyhow::Result<bool> {
     let dag = crawler
-        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(dag_object_id, 1)
+        .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(dag_object_id, 2)
         .await?;
     let vertex_name = next_vertex.vertex();
     let vertex = fetch_dag_vertex_bcs(crawler, objects, &dag.data, vertex_name)
@@ -1274,7 +1316,7 @@ pub async fn offchain_success_requires_tool_verification(
 pub async fn fetch_vertex_input_port_names(
     crawler: &Crawler,
     objects: &NexusObjects,
-    dag: &dag_move::DAGStateV1,
+    dag: &dag_move::DAGStateV2,
     vertex_name: &TypeName,
 ) -> anyhow::Result<Vec<String>> {
     let vertex_key = graph_move::Vertex::from(vertex_name);
@@ -1851,6 +1893,7 @@ impl WorkflowActions {
             ExpiredWalkResolutionKind::SettledOnchainResult {
                 result_ref,
                 expected_vertex,
+                output_witnesses,
                 tool_witness_id,
                 finalize_tx_digest,
             } => {
@@ -1881,6 +1924,7 @@ impl WorkflowActions {
                         execution,
                         tool_registry,
                         result,
+                        &output_witnesses,
                         leader_registry,
                         priority_fee_vault,
                         plan.walk_index,
@@ -1897,6 +1941,7 @@ impl WorkflowActions {
                     ..base(ExpiredWalkResolutionKind::SettledOnchainResult {
                         result_ref,
                         expected_vertex,
+                        output_witnesses,
                         tool_witness_id,
                         finalize_tx_digest,
                     })
@@ -1958,7 +2003,7 @@ impl WorkflowActions {
             .map_err(NexusError::Rpc)?
             .data;
         let dag = crawler
-            .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV1>(execution.dag_id(), 1)
+            .get_versioned_object::<dag_move::DAG, dag_move::DAGStateV2>(execution.dag_id(), 2)
             .await
             .map_err(NexusError::Rpc)?;
         let clock = crawler
@@ -2122,7 +2167,7 @@ fn payment_vertex_key(
 
 fn filter_tool_cashier_abort_candidate_walks(
     execution_id: sui::types::Address,
-    vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
+    vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfoV2>,
     walks: &[DAGWalk],
     locks: &[ExecutionPaymentVertexLock],
     clock_ms: u64,
@@ -2210,7 +2255,6 @@ mod tests {
                     version::InterfaceVersion,
                 },
                 move_std::{ascii::String as MoveString, option::Option as MoveOption},
-                primitives::data::NexusData,
                 scheduler::scheduler::OccurrenceDispatchedEvent,
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet, versioned::Versioned},
                 workflow::{
@@ -2314,12 +2358,16 @@ mod tests {
         }
     }
 
-    fn raw_inline_nexus_data_bcs(one: impl Into<Vec<u8>>) -> NexusData {
-        NexusData {
-            storage: b"inline".to_vec(),
-            one: one.into(),
-            many: vec![],
-        }
+    fn raw_inline_nexus_data_bcs(
+        one: impl Into<Vec<u8>>,
+    ) -> crate::move_bindings::primitives::data::NexusData {
+        let witness = crate::move_bindings::primitives::data::NexusValue::inline_data(one.into())
+            .expect("fixture is bounded");
+        crate::move_bindings::primitives::data::NexusData::new(
+            b"nexus_value".to_vec(),
+            bcs::to_bytes(&witness).expect("fixture should encode"),
+            Vec::new(),
+        )
     }
 
     fn object_id(bytes: sui::types::Address) -> crate::move_bindings::sui_framework::object::ID {
@@ -2332,8 +2380,8 @@ mod tests {
         }
     }
 
-    fn dag_bcs(vertices_size: u64) -> dag_move::DAGStateV1 {
-        dag_move::DAGStateV1 {
+    fn dag_bcs(vertices_size: u64) -> dag_move::DAGStateV2 {
+        dag_move::DAGStateV2 {
             minimum_protocol_version: 1,
             vertices: linked_table::LinkedTable::new(sui_mocks::mock_sui_address(), vertices_size),
             entry_groups: crate::move_bindings::sui_framework::vec_map::VecMap { contents: vec![] },
@@ -2347,7 +2395,7 @@ mod tests {
     fn mock_get_dag_bcs(
         ledger_service_mock: &mut sui_mocks::grpc::MockLedgerService,
         dag_ref: sui::types::ObjectReference,
-        state: dag_move::DAGStateV1,
+        state: dag_move::DAGStateV2,
     ) {
         let state_id = dag_ref.object_id().derive_dynamic_child_id(
             &sui::types::TypeTag::U64,
@@ -2357,7 +2405,7 @@ mod tests {
             crate::move_bindings::sui_framework::object::UID::new(*dag_ref.object_id()),
             Versioned::new(
                 crate::move_bindings::sui_framework::object::UID::new(state_id),
-                1,
+                2,
             ),
         );
         sui_mocks::grpc::mock_get_object_bcs(
@@ -2366,7 +2414,7 @@ mod tests {
             sui::types::Owner::Shared(0),
             bcs::to_bytes(&anchor).expect("DAG anchor BCS should serialize"),
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger_service_mock, state_id, 1, state);
+        sui_mocks::grpc::mock_versioned_payload(ledger_service_mock, state_id, 2, state);
     }
 
     #[tokio::test]
@@ -2374,6 +2422,7 @@ mod tests {
         let nexus_objects = sui_mocks::mock_nexus_objects();
         let dag_ref = sui_mocks::mock_sui_object_ref();
         let mut state = dag_bcs(1);
+        let vertices_id = state.vertices.id();
         state
             .entry_groups
             .contents
@@ -2392,9 +2441,26 @@ mod tests {
                 },
             });
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        let vertex = graph_move::Vertex::new("sum");
+        let vertex_field_ref = sui_mocks::mock_sui_object_ref();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            &mut state_service_mock,
+            vec![(vertex.clone(), *vertex_field_ref.object_id())],
+        );
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            &mut ledger_service_mock,
+            vec![(
+                vertex_field_ref,
+                sui::types::Owner::Object(vertices_id),
+                vertex,
+                offchain_vertex_node_bcs(&fqn!("xyz.taluslabs.fixture@1")),
+            )],
+        );
         mock_get_dag_bcs(&mut ledger_service_mock, dag_ref.clone(), state);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
+            state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
         let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
@@ -2496,14 +2562,17 @@ mod tests {
         );
     }
 
-    fn offchain_vertex_info(tool_fqn: &crate::ToolFqn) -> graph_move::VertexInfo {
-        graph_move::VertexInfo {
+    fn offchain_vertex_info(tool_fqn: &crate::ToolFqn) -> graph_move::VertexInfoV2 {
+        graph_move::VertexInfoV2 {
             kind: graph_move::VertexKind::OffChain {
                 tool_fqn: tool_fqn.to_string().into(),
             },
             input_ports: VecSet { contents: vec![] },
             post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
             tool_id: object_id(sui::types::Address::from_static("0x42")),
+            meta_schema: MoveOption::from_option(Some(
+                crate::move_bindings::primitives::meta_schema::MetaSchema::new(vec![], vec![]),
+            )),
             verifier_mode: ToolVerifierMode::None,
         }
     }
@@ -2522,10 +2591,17 @@ mod tests {
                         key: crate::move_bindings::interface::graph::OutputPort {
                             name: MoveString::from(name),
                         },
-                        value: crate::move_bindings::primitives::data::NexusData {
-                            storage: b"inline".to_vec(),
-                            one: value.to_vec(),
-                            many: vec![],
+                        value: {
+                            let witness =
+                                crate::move_bindings::primitives::data::NexusValue::inline_data(
+                                    value,
+                                )
+                                .expect("fixture is bounded");
+                            crate::move_bindings::primitives::data::NexusData::new(
+                                b"nexus_value".to_vec(),
+                                bcs::to_bytes(&witness).expect("fixture should encode"),
+                                Vec::new(),
+                            )
                         },
                     },
                 )
@@ -2713,7 +2789,7 @@ mod tests {
 
     fn offchain_vertex_node_bcs(
         tool_fqn: &crate::ToolFqn,
-    ) -> linked_table::Node<graph_move::Vertex, graph_move::VertexInfo> {
+    ) -> linked_table::Node<graph_move::Vertex, graph_move::VertexInfoV2> {
         linked_table::Node {
             prev: crate::move_bindings::move_std::option::Option::from_option(
                 None::<graph_move::Vertex>,
@@ -3897,7 +3973,7 @@ mod tests {
                 .resolved_ports_to_data
                 .get("answer")
                 .expect("answer port")
-                .inline_one_bytes()
+                .inline_data_bytes()
                 .expect("answer should be inline bytes"),
             b"42"
         );

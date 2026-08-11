@@ -29,28 +29,6 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("scheduler", "0xa5"),
 ];
 const TALUS_PACKAGE: (&str, &str) = ("talus", "0xa6");
-const SUI_FRAMEWORK_PACKAGE: (&str, &str) = ("sui_framework", "0x2");
-const SUI_FRAMEWORK_MODULES: &[&str] = &[
-    "accumulator",
-    "bag",
-    "balance",
-    "clock",
-    "coin",
-    "funds_accumulator",
-    "linked_table",
-    "object",
-    "object_bag",
-    "object_table",
-    "priority_queue",
-    "sui",
-    "table",
-    "table_vec",
-    "transfer",
-    "url",
-    "vec_map",
-    "vec_set",
-    "versioned",
-];
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
@@ -88,7 +66,6 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
         let mut package = fetch_package(&mut client, package_id)
             .await
             .with_context(|| format!("fetch {name} ({package_id})"))?;
-        retain_supported_modules(&mut package, &name);
         apply_source_names(&mut package, &name, source_root)?;
         packages.push((name, package));
     }
@@ -101,14 +78,6 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn retain_supported_modules(package: &mut NormalizedPackage, package_name: &str) {
-    if package_name == SUI_FRAMEWORK_PACKAGE.0 {
-        package
-            .modules
-            .retain(|module, _| SUI_FRAMEWORK_MODULES.contains(&module.as_str()));
-    }
 }
 
 fn apply_source_names(
@@ -225,10 +194,6 @@ fn packages_from_objects_toml(text: &str, source: &str) -> Result<Vec<(String, A
         .and_then(toml::Value::as_str)
         .ok_or_else(|| anyhow!("{source} is missing us_token.package_id"))?;
     packages.push((TALUS_PACKAGE.0.to_string(), parse_address(talus_id)?));
-    packages.push((
-        SUI_FRAMEWORK_PACKAGE.0.to_string(),
-        parse_address(SUI_FRAMEWORK_PACKAGE.1)?,
-    ));
     Ok(packages)
 }
 
@@ -263,7 +228,7 @@ mod tests {
     };
 
     #[test]
-    fn parses_required_nexus_packages() {
+    fn parses_rebind_packages_without_pinned_framework() {
         let objects = [
             r#"[packages.primitives]"#,
             r#"storage_id = "0x11""#,
@@ -294,10 +259,6 @@ mod tests {
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
-                (
-                    "sui_framework".to_string(),
-                    Address::from_str("0x2").unwrap()
-                ),
             ]
         );
     }

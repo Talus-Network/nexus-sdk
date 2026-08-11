@@ -8,6 +8,8 @@ mod extensions;
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
 pub use extensions::VersionedAnchor;
+#[cfg(feature = "walrus")]
+pub(crate) use extensions::MAX_INLINE_DATA_BYTES;
 #[cfg(feature = "transactions")]
 pub use sui_move_ptb::CLOCK_OBJECT_ID;
 use {

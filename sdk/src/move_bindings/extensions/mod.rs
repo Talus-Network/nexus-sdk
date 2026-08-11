@@ -6,6 +6,7 @@
 //! values that preserve the generated BCS layout.
 
 mod leader_registry;
+mod meta_schema;
 mod network_auth;
 mod nexus_data;
 mod payment;
@@ -14,8 +15,11 @@ mod priority_fee_vault;
 mod runtime_vertex;
 mod shared_object_ref;
 mod support;
+mod tagged_output;
 mod tap;
 mod versioned;
 mod workflow;
 
+#[cfg(feature = "walrus")]
+pub(crate) use nexus_data::MAX_INLINE_DATA_BYTES;
 pub use versioned::VersionedAnchor;

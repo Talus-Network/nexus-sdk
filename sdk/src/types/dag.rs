@@ -1,10 +1,7 @@
 use crate::{
-    move_bindings::{
-        interface::{
-            graph::{EdgeKind, PostFailureAction},
-            verifier::ToolVerifierMode,
-        },
-        primitives::data::NexusData,
+    move_bindings::interface::{
+        graph::{EdgeKind, PostFailureAction},
+        verifier::ToolVerifierMode,
     },
     ToolFqn,
 };
@@ -53,7 +50,8 @@ pub struct DagEntryGroup {
 pub struct DagDefaultValue {
     pub vertex: String,
     pub input_port: String,
-    pub value: NexusData,
+    /// Canonical readable One/Many JSON retained until PTB construction.
+    pub value: serde_json::Value,
 }
 
 #[derive(Clone, Debug)]

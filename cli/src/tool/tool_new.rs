@@ -243,7 +243,7 @@ mod tests {
         assert!(move_contents.contains("result: OnchainToolResult"));
         assert!(move_contents.contains("requirements.satisfy(&state.witness().id"));
         assert!(move_contents.contains(
-            "onchain_tool_result::finalize_and_share(result, requirements, output, ctx);"
+            "onchain_tool_result::finalize_and_share_v2(result, requirements, output, ctx);"
         ));
         assert!(move_contents.contains("public fun tool_witness_id(self: &TestToolState): ID"));
         assert!(

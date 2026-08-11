@@ -18,7 +18,7 @@ impl crate::move_bindings::interface::graph::VertexKind {
     }
 }
 
-impl crate::move_bindings::interface::graph::VertexInfo {
+impl crate::move_bindings::interface::graph::VertexInfoV2 {
     pub fn declared_input_port_names(&self) -> Vec<String> {
         let mut ports = self
             .input_ports

@@ -431,9 +431,23 @@ mod tests {
         assert!(!is_hidden_internal_tool_param(&make_struct(
             "0x2", "random", "Random"
         )));
+    }
+
+    #[test]
+    fn workflow_current_execution_param_uses_published_carrier() {
         assert!(is_workflow_dag_execution_param(&make_struct(
             "0x44",
             "execution",
+            "DAGExecution"
+        )));
+        assert!(!is_workflow_dag_execution_param(&make_struct(
+            "0x44",
+            "execution",
+            "OtherExecution"
+        )));
+        assert!(!is_workflow_dag_execution_param(&make_struct(
+            "0x44",
+            "other_execution",
             "DAGExecution"
         )));
     }

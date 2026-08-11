@@ -150,6 +150,7 @@ mod tests {
         assert_eq!(register.package, objects.registry_pkg_id());
         assert_eq!(register.module.as_str(), "leader");
         assert_eq!(register.function.as_str(), "register");
+        assert_eq!(register.arguments.len(), 5);
         assert_eq!(register.arguments[1], Argument::Input(1));
         assert_eq!(
             ptb.commands.len(),

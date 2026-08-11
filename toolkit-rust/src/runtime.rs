@@ -10,9 +10,9 @@ use {
         NexusTool,
         ToolkitRuntimeConfig,
     },
-    nexus_sdk::move_bindings::{
-        primitives::{data::NexusData, tagged_output::TaggedOutput},
-        sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
+    nexus_sdk::{
+        move_bindings::primitives::meta_schema::MetaSchema,
+        types::{NexusData, OffchainToolOutput, OffchainToolOutputPort},
     },
     reqwest::Url,
     serde_json::json,
@@ -83,7 +83,7 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// - Rejects unsigned or invalidly signed `/invoke` requests (fail-closed).
 /// - Verifies the Leader signature against a local allowlist (`allowed_leaders` / `allowed_leaders_path`).
 /// - Caches completed responses by deterministic nonce and canonical input hash; in-flight nonce reuse is rejected.
-/// - Returns exact BCS `TaggedOutput` bytes and signs the nonce-bound v2 Tool response message.
+/// - Returns exact ordered BCS Tool output bytes and signs the nonce-bound v3 Tool response message.
 /// - Keeps nonce replay and cached-response handling entirely offchain.
 ///
 /// Operational note: your gateway/proxy must forward the `X-Nexus-Sig-*` headers in both directions.
@@ -450,10 +450,18 @@ impl InvokePipeline {
         body_bytes: &[u8],
         auth_ctx: Option<crate::AuthContext>,
     ) -> InvokePipelineResponse {
-        let input = match serde_json::from_slice::<crate::WithSerdeErrorPath<T::Input>>(body_bytes)
-        {
-            Ok(v) => v.0,
-            Err(e) => {
+        let input = match decode_tool_input::<T>(body_bytes, auth_ctx.as_ref()) {
+            Ok(value) => value,
+            Err(ToolInputDecodeError::Integrity) => {
+                return InvokePipelineResponse::json(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    json!({
+                        "error": "input_integrity_error",
+                        "details": "resolved Tool input does not match authenticated input hash",
+                    }),
+                );
+            }
+            Err(ToolInputDecodeError::Deserialization(e)) => {
                 return InvokePipelineResponse::json(
                     StatusCode::UNPROCESSABLE_ENTITY,
                     json!({
@@ -497,6 +505,45 @@ impl InvokePipeline {
     }
 }
 
+enum ToolInputDecodeError {
+    Deserialization(anyhow::Error),
+    Integrity,
+}
+
+fn decode_tool_input<T: NexusTool>(
+    body_bytes: &[u8],
+    auth_ctx: Option<&crate::AuthContext>,
+) -> Result<T::Input, ToolInputDecodeError> {
+    if let Some(auth_ctx) = auth_ctx {
+        let schema = MetaSchema::from_offchain_json_schemas(
+            &serde_json::to_vec(&schemars::schema_for!(T::Input))
+                .map_err(anyhow::Error::from)
+                .map_err(ToolInputDecodeError::Deserialization)?,
+            &serde_json::to_vec(&schemars::schema_for!(T::Output))
+                .map_err(anyhow::Error::from)
+                .map_err(ToolInputDecodeError::Deserialization)?,
+        )
+        .map_err(ToolInputDecodeError::Deserialization)?;
+        let resolved_inputs = serde_json::from_slice::<serde_json::Value>(body_bytes)
+            .map_err(anyhow::Error::from)
+            .and_then(|value| schema.resolved_inputs_from_json(&value))
+            .map_err(ToolInputDecodeError::Deserialization)?;
+        if schema.resolved_inputs_sha256(&resolved_inputs).ok() != Some(auth_ctx.input_hash) {
+            return Err(ToolInputDecodeError::Integrity);
+        }
+        return serde_json::from_value::<crate::WithSerdeErrorPath<T::Input>>(
+            schema
+                .resolved_inputs_to_semantic_json(&resolved_inputs)
+                .map_err(ToolInputDecodeError::Deserialization)?,
+        )
+        .map(|value| value.0)
+        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()));
+    }
+    serde_json::from_slice::<crate::WithSerdeErrorPath<T::Input>>(body_bytes)
+        .map(|value| value.0)
+        .map_err(|error| ToolInputDecodeError::Deserialization(error.into()))
+}
+
 fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8>> {
     let value = serde_json::to_value(crate::WithSerdeErrorPath(output))?;
     let serde_json::Value::Object(variants) = value else {
@@ -509,34 +556,33 @@ fn encode_tagged_output<T: serde::Serialize>(output: T) -> anyhow::Result<Vec<u8
     let serde_json::Value::Object(payload) = payload else {
         anyhow::bail!("tool output variant payload must be an object")
     };
-    let mut named_payload = payload
+    let ports = payload
         .into_iter()
-        .map(|(name, value)| {
-            Ok(VecMapEntry {
-                key: name.into_bytes(),
-                value: nexus_data(value)?,
+        .map(|(port_name, value)| {
+            Ok(OffchainToolOutputPort {
+                port_name: port_name.into_bytes(),
+                values: nexus_data(value)?.into_values()?,
             })
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
-    named_payload.sort_by(|left, right| left.key.cmp(&right.key));
-    Ok(bcs::to_bytes(&TaggedOutput {
+    let output = OffchainToolOutput {
         tag: tag.into_bytes(),
-        named_payload: VecMap {
-            contents: named_payload,
-        },
-    })?)
+        ports,
+    };
+    Ok(bcs::to_bytes(&output)?)
 }
 
 fn nexus_data(value: serde_json::Value) -> anyhow::Result<NexusData> {
     if let serde_json::Value::Array(values) = value {
-        let many = values
-            .iter()
-            .map(serde_json::to_vec)
-            .collect::<Result<Vec<_>, _>>()?;
-        return Ok(NexusData::inline_many(many));
+        return NexusData::inline_data_many(
+            values
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<Vec<_>, _>>()?,
+        );
     }
 
-    Ok(NexusData::inline_one(serde_json::to_vec(&value)?))
+    NexusData::inline_data(serde_json::to_vec(&value)?)
 }
 
 async fn invoke_handler<T: NexusTool>(
@@ -564,11 +610,21 @@ async fn invoke_handler<T: NexusTool>(
 mod tests {
     use {
         super::*,
-        nexus_sdk::{fqn, ToolFqn},
+        nexus_sdk::{fqn, signed_http::v3::wire::AuthenticatedRequest, ToolFqn},
         schemars::JsonSchema,
         serde::{Deserialize, Serialize},
         serde_json::json,
     };
+
+    fn resolved_input(port_name: &str, value: serde_json::Value) -> serde_json::Value {
+        let value = NexusData::inline_data(serde_json::to_vec(&value).unwrap()).unwrap();
+        json!({
+            "ports": [{
+                "port_name": port_name,
+                "value": value.to_json_value().unwrap(),
+            }],
+        })
+    }
 
     #[derive(Deserialize, JsonSchema)]
     struct Input {
@@ -583,6 +639,12 @@ mod tests {
             flags: Vec<bool>,
             metadata: serde_json::Value,
         },
+    }
+
+    #[derive(Serialize)]
+    enum DirectErrOutput {
+        #[serde(rename = "_err_eval")]
+        ErrEval { reason: String },
     }
 
     struct TestTool;
@@ -614,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_output_encodes_as_canonical_generated_tagged_output() {
+    fn tool_output_encodes_as_ordered_offchain_output() {
         let bytes = encode_tagged_output(Output::Ok {
             message: "hello".to_string(),
             count: 2,
@@ -622,47 +684,70 @@ mod tests {
             metadata: json!({"source": "test"}),
         })
         .unwrap();
-        let output: TaggedOutput = bcs::from_bytes(&bytes).unwrap();
+        let output: OffchainToolOutput = bcs::from_bytes(&bytes).unwrap();
 
         assert_eq!(bcs::to_bytes(&output).unwrap(), bytes);
         assert_eq!(output.tag, b"Ok");
-        assert_eq!(output.named_payload.contents.len(), 4);
         assert_eq!(
             output
-                .named_payload
-                .contents
+                .ports
                 .iter()
-                .map(|entry| entry.key.as_slice())
+                .map(|port| port.port_name.as_slice())
                 .collect::<Vec<_>>(),
             vec![
+                b"message".as_slice(),
                 b"count".as_slice(),
                 b"flags".as_slice(),
-                b"message".as_slice(),
                 b"metadata".as_slice(),
             ]
         );
 
-        let payload = |name: &[u8]| {
-            &output
-                .named_payload
-                .contents
-                .iter()
-                .find(|entry| entry.key == name)
-                .expect("named payload entry")
-                .value
-        };
-        let message = payload(b"message");
-        assert_eq!(message.inline_one_bytes(), Some(br#""hello""#.as_slice()));
+        let message = NexusData::from_values(output.ports[0].values.clone(), false).unwrap();
+        assert_eq!(message.inline_data_bytes(), Some(br#""hello""#.to_vec()));
 
-        let flags = payload(b"flags");
-        assert_eq!(flags.many, vec![b"true".to_vec(), b"false".to_vec()]);
+        let flags = NexusData::from_values(output.ports[2].values.clone(), true).unwrap();
+        assert_eq!(
+            flags
+                .values()
+                .unwrap()
+                .into_iter()
+                .map(|value| match value {
+                    nexus_sdk::move_bindings::primitives::data::NexusValue::InlineData {
+                        bytes,
+                    } => bytes.clone(),
+                    _ => panic!("flags should be inline Data"),
+                })
+                .collect::<Vec<_>>(),
+            vec![b"true".to_vec(), b"false".to_vec()]
+        );
 
-        let metadata = payload(b"metadata");
-        assert_eq!(metadata.one, br#"{"source":"test"}"#);
+        let metadata = NexusData::from_values(output.ports[3].values.clone(), false).unwrap();
+        assert_eq!(
+            metadata.inline_data_bytes(),
+            Some(br#"{"source":"test"}"#.to_vec())
+        );
     }
 
     #[test]
-    fn tagged_output_encoding_rejects_non_enum_shapes() {
+    fn direct_err_eval_encodes_exact_named_signed_output() {
+        let bytes = encode_tagged_output(DirectErrOutput::ErrEval {
+            reason: "forced failure".to_string(),
+        })
+        .unwrap();
+        let output: OffchainToolOutput = bcs::from_bytes(&bytes).unwrap();
+
+        assert_eq!(output.tag, b"_err_eval");
+        assert_eq!(output.ports.len(), 1);
+        assert_eq!(output.ports[0].port_name, b"reason");
+        let reason = NexusData::from_values(output.ports[0].values.clone(), false).unwrap();
+        assert_eq!(
+            reason.inline_data_bytes(),
+            Some(br#""forced failure""#.to_vec())
+        );
+    }
+
+    #[test]
+    fn canonical_response_encoding_rejects_non_enum_shapes() {
         assert!(encode_tagged_output(json!("plain value"))
             .unwrap_err()
             .to_string()
@@ -679,25 +764,38 @@ mod tests {
 
     #[test]
     fn array_payloads_encode_each_json_value() {
+        let inline_values = |data: &NexusData| {
+            data.values()
+                .expect("encoded Toolkit output should decode")
+                .into_iter()
+                .map(|element| match element {
+                    nexus_sdk::move_bindings::primitives::data::NexusValue::InlineData {
+                        bytes,
+                    } => bytes.clone(),
+                    _ => panic!("array payload should contain inline Data"),
+                })
+                .collect::<Vec<_>>()
+        };
         let homogeneous = nexus_data(json!(["a", "b"])).unwrap();
         assert_eq!(
-            homogeneous.many,
+            inline_values(&homogeneous),
             vec![br#""a""#.to_vec(), br#""b""#.to_vec()]
         );
 
         let mixed = nexus_data(json!([1, true])).unwrap();
-        assert_eq!(mixed.many, vec![b"1".to_vec(), b"true".to_vec()]);
+        assert_eq!(inline_values(&mixed), vec![b"1".to_vec(), b"true".to_vec()]);
 
-        let empty = nexus_data(json!([])).unwrap();
-        assert!(empty.many.is_empty());
+        let empty = nexus_data(json!([])).expect_err("empty arrays must not produce Many values");
+        assert!(empty.to_string().contains("requires at least one value"));
     }
 
     #[tokio::test]
-    async fn invoke_pipeline_returns_exact_tagged_output_bytes() {
-        let response = InvokePipeline::run::<TestTool>(br#"{"message":"hello"}"#, None).await;
+    async fn invoke_pipeline_returns_exact_canonical_response_bytes() {
+        let body = serde_json::to_vec(&json!({"message": "hello"})).unwrap();
+        let response = InvokePipeline::run::<TestTool>(&body, None).await;
         assert_eq!(response.status, StatusCode::OK);
         assert!(response.is_result);
-        let output: TaggedOutput = bcs::from_bytes(&response.body).unwrap();
+        let output: OffchainToolOutput = bcs::from_bytes(&response.body).unwrap();
         assert_eq!(bcs::to_bytes(&output).unwrap(), response.body);
     }
 
@@ -707,6 +805,51 @@ mod tests {
         assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
         assert!(!response.is_result);
         assert!(serde_json::from_slice::<serde_json::Value>(&response.body).is_ok());
+    }
+
+    #[tokio::test]
+    async fn invoke_pipeline_rejects_authenticated_hash_mismatch() {
+        let transport = resolved_input("message", json!("hello"));
+        let body = serde_json::to_vec(&transport).unwrap();
+        let schema = MetaSchema::from_offchain_json_schemas(
+            &serde_json::to_vec(&schemars::schema_for!(Input)).unwrap(),
+            &serde_json::to_vec(&schemars::schema_for!(Output)).unwrap(),
+        )
+        .unwrap();
+        let resolved = schema.resolved_inputs_from_json(&transport).unwrap();
+        let actual_hash = schema.resolved_inputs_sha256(&resolved).unwrap();
+        let auth = |input_hash| AuthenticatedRequest {
+            leader_id: "leader".to_string(),
+            leader_key_id: 0,
+            input_hash,
+            leader_signature: [2; 64],
+            nonce: [3; 32],
+        };
+
+        let mismatch = InvokePipeline::run::<TestTool>(&body, Some(auth([9; 32]))).await;
+        assert_eq!(mismatch.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&mismatch.body).unwrap()["error"],
+            "input_integrity_error"
+        );
+
+        let accepted = InvokePipeline::run::<TestTool>(&body, Some(auth(actual_hash))).await;
+        assert_eq!(accepted.status, StatusCode::OK);
+
+        let semantic_body = serde_json::to_vec(&json!({"message": "hello"})).unwrap();
+        let injected = InvokePipeline::run::<TestTool>(
+            &semantic_body,
+            Some(auth(nexus_sdk::signed_http::v3::wire::sha256(
+                &semantic_body,
+            ))),
+        )
+        .await;
+        assert_eq!(injected.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(!injected.is_result);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&injected.body).unwrap()["error"],
+            "input_deserialization_error"
+        );
     }
 
     #[test]

@@ -318,6 +318,8 @@ struct ParameterSchema {
     custom_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mutable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nexus_current_execution: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parameter_index: Option<String>,
 }
@@ -667,6 +669,7 @@ mod tests {
                 description: "64-bit unsigned integer".to_string(),
                 custom_name: Some("increment_amount".to_string()),
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: Some("0".to_string()),
             },
         );
@@ -679,6 +682,7 @@ mod tests {
                 description: "Counter object reference".to_string(),
                 custom_name: Some("counter".to_string()),
                 mutable: Some(true),
+                nexus_current_execution: None,
                 parameter_index: Some("1".to_string()),
             },
         );
@@ -724,6 +728,7 @@ mod tests {
                 description: "64-bit unsigned integer".to_string(),
                 custom_name: None,
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: None,
             },
         );
@@ -736,6 +741,7 @@ mod tests {
                 description: "Object reference".to_string(),
                 custom_name: None,
                 mutable: Some(true),
+                nexus_current_execution: None,
                 parameter_index: None,
             },
         );
@@ -773,6 +779,7 @@ mod tests {
                 description: "Amount parameter".to_string(),
                 custom_name: Some("amount".to_string()),
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: Some("0".to_string()),
             },
         );
@@ -785,6 +792,7 @@ mod tests {
                 description: "Flag parameter".to_string(),
                 custom_name: None,
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: None,
             },
         );
@@ -797,6 +805,7 @@ mod tests {
                 description: "Message parameter".to_string(),
                 custom_name: Some("message".to_string()),
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: Some("2".to_string()),
             },
         );
@@ -957,6 +966,7 @@ mod tests {
                 description: "Test object".to_string(),
                 custom_name: Some("my_param".to_string()),
                 mutable: Some(true),
+                nexus_current_execution: Some(true),
                 parameter_index: Some("0".to_string()),
             },
         );
@@ -972,6 +982,7 @@ mod tests {
         assert_eq!(my_param.get("type").unwrap(), "object");
         assert_eq!(my_param.get("description").unwrap(), "Test object");
         assert_eq!(my_param.get("mutable").unwrap(), true);
+        assert_eq!(my_param.get("nexus_current_execution").unwrap(), true);
 
         // Verify metadata fields are removed.
         assert!(!my_param.contains_key("custom_name"));
@@ -990,6 +1001,7 @@ mod tests {
                 description: "Test param".to_string(),
                 custom_name: None,
                 mutable: None,
+                nexus_current_execution: None,
                 parameter_index: None,
             },
         );
@@ -1041,6 +1053,34 @@ mod tests {
         assert_eq!(amount_param.get("type").unwrap().as_str().unwrap(), "u64");
 
         // Reset JSON_MODE.
+        JSON_MODE.store(false, Ordering::Relaxed);
+    }
+
+    #[test]
+    #[serial(json_mode)]
+    fn test_customize_parameter_descriptions_preserves_current_execution_marker() {
+        JSON_MODE.store(false, Ordering::Relaxed);
+
+        let input_schema = r#"{
+            "0": {
+                "type": "object",
+                "description": "0x123::execution::DAGExecution",
+                "mutable": true,
+                "nexus_current_execution": true
+            }
+        }"#;
+        let mut reader = std::io::Cursor::new(b"\n\n");
+
+        let result =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap();
+        let result_value: Value = serde_json::from_str(&result).unwrap();
+        let execution = result_value.get("0").unwrap();
+
+        assert_eq!(execution["type"], "object");
+        assert_eq!(execution["mutable"], true);
+        assert_eq!(execution["nexus_current_execution"], true);
+
         JSON_MODE.store(false, Ordering::Relaxed);
     }
 
@@ -1402,9 +1442,22 @@ mod tests {
             serde_json::from_str(&output_schema).expect("Output schema should be valid JSON");
         assert!(output_json.is_object());
 
-        // Verify input schema has expected parameters (counter and increase_with).
-        // After skipping internal tool parameters and TxContext, we should have 2 parameters.
-        assert_eq!(input_json.as_object().unwrap().len(), 2);
+        // Verify input schema has the current execution, counter, and increase parameters.
+        // Internal Tool parameters and TxContext remain hidden.
+        assert_eq!(input_json.as_object().unwrap().len(), 3);
+        let current_execution = &input_json["0"];
+        assert_eq!(current_execution["type"], "object");
+        assert_eq!(current_execution["mutable"], true);
+        assert_eq!(current_execution["nexus_current_execution"], true);
+        assert!(current_execution["description"]
+            .as_str()
+            .unwrap()
+            .contains("DAGExecution"));
+        assert_eq!(input_json["1"]["type"], "object");
+        assert_eq!(input_json["1"]["mutable"], true);
+        assert!(input_json["1"].get("nexus_current_execution").is_none());
+        assert_eq!(input_json["2"]["type"], "u64");
+        assert!(input_json["2"].get("nexus_current_execution").is_none());
 
         // Verify output schema has expected variants.
         let output_obj = output_json.as_object().unwrap();

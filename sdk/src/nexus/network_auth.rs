@@ -18,7 +18,7 @@
 //! can export the typed allowlist data consumed by nexus toolkit.
 
 #[cfg(feature = "signed_http")]
-use crate::signed_http::v2::wire::{
+use crate::signed_http::v3::wire::{
     AllowedLeaderFileV1,
     AllowedLeaderKeyFileV1,
     AllowedLeadersFileV1,
@@ -50,21 +50,11 @@ use {
 const POP_DOMAIN_V1: &[u8] = b"nexus_registry.network_auth.pop_v1";
 const KEY_SCHEME_ED25519: u8 = 0;
 const NETWORK_AUTH_SCHEMA_V1: u64 = 1;
-#[cfg(any(test, feature = "upgrade_test"))]
-const NETWORK_AUTH_SCHEMA_V2: u64 = 2;
-#[cfg(not(feature = "upgrade_test"))]
 const LATEST_NETWORK_AUTH_SCHEMA: u64 = NETWORK_AUTH_SCHEMA_V1;
-#[cfg(feature = "upgrade_test")]
-const LATEST_NETWORK_AUTH_SCHEMA: u64 = NETWORK_AUTH_SCHEMA_V2;
-
-#[cfg(feature = "upgrade_test")]
-use crate::move_bindings::registry::network_auth::NetworkAuthStateV2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NetworkAuthSchema {
     V1,
-    #[cfg(feature = "upgrade_test")]
-    V2,
 }
 
 fn resolve_network_auth_schema(
@@ -75,10 +65,6 @@ fn resolve_network_auth_schema(
     match actual {
         NETWORK_AUTH_SCHEMA_V1 if maximum_supported >= NETWORK_AUTH_SCHEMA_V1 => {
             Ok(NetworkAuthSchema::V1)
-        }
-        #[cfg(feature = "upgrade_test")]
-        NETWORK_AUTH_SCHEMA_V2 if maximum_supported >= NETWORK_AUTH_SCHEMA_V2 => {
-            Ok(NetworkAuthSchema::V2)
         }
         _ => Err(NexusError::UnsupportedStateSchema {
             object,
@@ -326,7 +312,7 @@ impl NetworkAuthActions {
 
     /// Export tool side allowlist data containing the active key for each leader.
     ///
-    /// The returned file model matches [`crate::signed_http::v2::wire::AllowedLeadersFileV1`].
+    /// The returned file model matches [`crate::signed_http::v3::wire::AllowedLeadersFileV1`].
     ///
     /// `leader_cap_ids` are leader capability ID values for
     /// [`crate::move_bindings::registry::leader_cap::OverNetwork`] objects.
@@ -713,17 +699,6 @@ async fn fetch_network_auth_leader_cap_ids(
             .data
             .leader_cap_ids()
             .collect::<Vec<_>>(),
-        #[cfg(feature = "upgrade_test")]
-        NetworkAuthSchema::V2 => crawler
-            .load_versioned_payload::<NetworkAuth, NetworkAuthStateV2>(
-                anchor,
-                NETWORK_AUTH_SCHEMA_V2,
-            )
-            .await
-            .map_err(|error| network_auth_state_error(object_id, error))?
-            .data
-            .leader_cap_ids()
-            .collect::<Vec<_>>(),
     };
     leaders.sort_unstable();
     leaders.dedup();
@@ -894,36 +869,15 @@ fn sign_bytes(signing_key: &SigningKey, msg: &[u8]) -> [u8; 64] {
 mod tests {
     use super::*;
 
-    /// Verifies that the prepared consumer accepts every schema it can decode.
-    #[cfg(feature = "upgrade_test")]
+    /// Verifies that the reader accepts exactly the production schema it can decode.
     #[test]
-    fn upgrade_fixture_network_auth_schema_support_is_exact() {
+    fn network_auth_schema_support_is_exact() {
         let object = sui::types::Address::from_static("0x42");
 
         assert_eq!(
-            resolve_network_auth_schema(object, 1, 2).unwrap(),
+            resolve_network_auth_schema(object, 1, 1).unwrap(),
             NetworkAuthSchema::V1
         );
-        assert_eq!(
-            resolve_network_auth_schema(object, 2, 2).unwrap(),
-            NetworkAuthSchema::V2
-        );
-
-        let error = resolve_network_auth_schema(object, 3, 2).unwrap_err();
-        assert!(matches!(
-            error,
-            NexusError::UnsupportedStateSchema {
-                object: observed_object,
-                actual: 3,
-                expected: 2,
-            } if observed_object == object
-        ));
-    }
-
-    /// Verifies that a schema one reader rejects schema two state.
-    #[test]
-    fn schema_one_network_auth_reader_rejects_schema_two() {
-        let object = sui::types::Address::from_static("0x42");
         let error = resolve_network_auth_schema(object, 2, 1).unwrap_err();
 
         assert!(matches!(
@@ -947,7 +901,7 @@ mod tests {
             .parse()
             .expect("NEXUS_LOCAL_NETWORK_AUTH_OBJECT_ID must be an address");
         let expected_actual: u64 = std::env::var("NEXUS_LOCAL_EXPECT_NETWORK_AUTH_SCHEMA")
-            .unwrap_or_else(|_| NETWORK_AUTH_SCHEMA_V2.to_string())
+            .unwrap_or_else(|_| "2".to_owned())
             .parse()
             .expect("NEXUS_LOCAL_EXPECT_NETWORK_AUTH_SCHEMA must be an integer");
         let client = sui::grpc::client(&rpc).expect("the Sui RPC URL must be valid");
@@ -1124,19 +1078,6 @@ mod tests {
                         contents: identities,
                     },
                 ),
-                state_id,
-            )
-        }
-
-        #[cfg(feature = "upgrade_test")]
-        fn raw_network_auth_v2_for_test(
-            id: sui::types::Address,
-            identities: Vec<IdentityKey>,
-        ) -> (NetworkAuth, NetworkAuthStateV2, sui::types::Address) {
-            let state_id = state_id_for(id);
-            (
-                NetworkAuth::new(UID::new(id), Versioned::new(UID::new(state_id), 2)),
-                NetworkAuthStateV2::new_for_test(identities, 2),
                 state_id,
             )
         }
@@ -1355,51 +1296,6 @@ mod tests {
                     kid: active_kid,
                     public_key,
                 })
-            );
-        }
-
-        #[cfg(feature = "upgrade_test")]
-        #[tokio::test]
-        async fn reader_decodes_network_auth_state_v2() {
-            let mut rng = rand::thread_rng();
-            let registry_pkg_id = sui::types::Address::generate(&mut rng);
-            let network_auth_object_id = sui::types::Address::generate(&mut rng);
-            let first_leader = sui::types::Address::generate(&mut rng);
-            let second_leader = sui::types::Address::generate(&mut rng);
-            let (network_auth, state, state_id) = raw_network_auth_v2_for_test(
-                network_auth_object_id,
-                vec![
-                    IdentityKey::leader(second_leader),
-                    IdentityKey::tool(sui::types::Address::generate(&mut rng)),
-                    IdentityKey::leader(first_leader),
-                    IdentityKey::leader(second_leader),
-                ],
-            );
-
-            let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            sui_mocks::grpc::mock_get_object_bcs(
-                &mut ledger_service,
-                sui_mocks::object_ref_for_id(network_auth_object_id),
-                sui::types::Owner::Shared(1),
-                bcs::to_bytes(&network_auth).unwrap(),
-            );
-            sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 2, state);
-            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-                ledger_service_mock: Some(ledger_service),
-                ..Default::default()
-            });
-            let reader =
-                NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
-                    .unwrap();
-
-            let mut expected = vec![first_leader, second_leader];
-            expected.sort_unstable();
-            assert_eq!(
-                reader
-                    .list_leader_cap_ids_from_network_auth()
-                    .await
-                    .unwrap(),
-                expected
             );
         }
 

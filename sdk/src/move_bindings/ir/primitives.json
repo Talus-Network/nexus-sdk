@@ -1285,6 +1285,80 @@
               ]
             }
           }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "data",
+            "name": "NexusValue"
+          },
+          "module": "data",
+          "name": "NexusValue",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "Object",
+                  "position": 0,
+                  "fields": [
+                    {
+                      "name": "id",
+                      "position": 0,
+                      "ty": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x2",
+                            "module": "object",
+                            "name": "ID"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "InlineData",
+                  "position": 1,
+                  "fields": [
+                    {
+                      "name": "bytes",
+                      "position": 0,
+                      "ty": {
+                        "Vector": "U8"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "WalrusData",
+                  "position": 2,
+                  "fields": [
+                    {
+                      "name": "storage_key",
+                      "position": 0,
+                      "ty": {
+                        "Vector": "U8"
+                      }
+                    },
+                    {
+                      "name": "content_digest",
+                      "position": 1,
+                      "ty": {
+                        "Vector": "U8"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
         }
       ],
       "functions": [
@@ -1295,7 +1369,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "vec",
+              "name": "values",
               "ty": {
                 "Vector": {
                   "Datatype": {
@@ -1324,13 +1398,99 @@
           ]
         },
         {
+          "name": "inline_data_bytes",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": "U8"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "inline_data_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "bytes",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusValue"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "inline_many",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "many",
+              "name": "_many",
               "ty": {
                 "Vector": {
                   "Vector": "U8"
@@ -1358,7 +1518,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "one",
+              "name": "_one",
               "ty": {
                 "Vector": "U8"
               }
@@ -1384,7 +1544,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "_self",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -1415,6 +1575,442 @@
                     "Vector": "U8"
                   }
                 ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "is_many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_one",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "legacy_matches_witnesses_v1",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "many",
+              "ty": "Bool"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "data",
+                      "name": "NexusValue"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusData"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "matches_many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "matches_one",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "matches_witnesses",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "many",
+              "ty": "Bool"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "object_ids",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "many",
+              "ty": "Bool"
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "object_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusValue"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "one",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "data",
+                    "name": "NexusValue"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusData"
+                },
+                "type_arguments": []
               }
             }
           ]
@@ -1455,13 +2051,194 @@
           ]
         },
         {
+          "name": "value_content_commitment",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "value_is_bounded",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "value_is_inline_data",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "value_is_object",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "values_have_one_kind",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "walrus_data_value",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "storage_key",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "content_digest",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusValue"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "walrus_many",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "keys",
+              "name": "_keys",
               "ty": {
                 "Vector": {
                   "Vector": "U8"
@@ -1489,7 +2266,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "key",
+              "name": "_key",
               "ty": {
                 "Vector": "U8"
               }
@@ -1506,6 +2283,121 @@
                 "type_arguments": []
               }
             }
+          ]
+        },
+        {
+          "name": "witness_object_ids",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "witnesses_are_data",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "witnesses_are_object",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         }
       ]
@@ -1616,6 +2508,1702 @@
                 }
               }
             }
+          ]
+        }
+      ]
+    },
+    "meta_schema": {
+      "name": "meta_schema",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "MetaSchema"
+          },
+          "module": "meta_schema",
+          "name": "MetaSchema",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "input_ports",
+                  "position": 0,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "meta_schema",
+                          "name": "PortSchema"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "output_variants",
+                  "position": 1,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "meta_schema",
+                          "name": "OutputVariantSchema"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "OutputVariantSchema"
+          },
+          "module": "meta_schema",
+          "name": "OutputVariantSchema",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "variant_name",
+                  "position": 0,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "ports",
+                  "position": 1,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "meta_schema",
+                          "name": "PortSchema"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "PortCommitment"
+          },
+          "module": "meta_schema",
+          "name": "PortCommitment",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "One",
+                  "position": 0,
+                  "fields": [
+                    {
+                      "name": "kind",
+                      "position": 0,
+                      "ty": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "meta_schema",
+                            "name": "ValueKind"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    },
+                    {
+                      "name": "commitment",
+                      "position": 1,
+                      "ty": {
+                        "Vector": "U8"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "Many",
+                  "position": 1,
+                  "fields": [
+                    {
+                      "name": "kind",
+                      "position": 0,
+                      "ty": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "meta_schema",
+                            "name": "ValueKind"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    },
+                    {
+                      "name": "commitments",
+                      "position": 1,
+                      "ty": {
+                        "Vector": {
+                          "Vector": "U8"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "PortInputCommitment"
+          },
+          "module": "meta_schema",
+          "name": "PortInputCommitment",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "port_name",
+                  "position": 0,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "commitment",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortCommitment"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "PortSchema"
+          },
+          "module": "meta_schema",
+          "name": "PortSchema",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "port_name",
+                  "position": 0,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "is_many",
+                  "position": 1,
+                  "ty": "Bool"
+                },
+                {
+                  "name": "value_kind",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "ValueKind"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa1",
+            "module": "meta_schema",
+            "name": "ValueKind"
+          },
+          "module": "meta_schema",
+          "name": "ValueKind",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Enum": {
+              "variants": [
+                {
+                  "name": "Object",
+                  "position": 0,
+                  "fields": []
+                },
+                {
+                  "name": "Data",
+                  "position": 1,
+                  "fields": []
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "assert_valid_for_tool",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "is_offchain",
+              "ty": "Bool"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "canonical_schema_mismatch_failure",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "tagged_output",
+                  "name": "TaggedOutput"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "canonical_schema_mismatch_witnesses",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Vector": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "data",
+                      "name": "NexusValue"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "conforms_complete_input",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusData"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness_groups",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Vector": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "data",
+                            "name": "NexusValue"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "conforms_input_cardinality",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "schema",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "conforms_input_port",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "schema",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "conforms_raw_output",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "output",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "tagged_output",
+                        "name": "TaggedOutput"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness_groups",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Vector": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "data",
+                            "name": "NexusValue"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "conforms_safe_failure",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "output",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "tagged_output",
+                        "name": "TaggedOutput"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness_groups",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Vector": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "data",
+                            "name": "NexusValue"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "contains_bytes",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Vector": "U8"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "failure_port",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "failure_variant",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "find_input_port",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "name",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "find_output_variant",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "name",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "OutputVariantSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "find_variant_port",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "variant_name",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            },
+            {
+              "name": "port_name",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "option",
+                  "name": "Option"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "input_hash_for_stored",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusData"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witness_groups",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Vector": {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa1",
+                            "module": "data",
+                            "name": "NexusValue"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "input_hash_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "port_names",
+              "ty": {
+                "Vector": {
+                  "Vector": "U8"
+                }
+              }
+            },
+            {
+              "name": "commitments",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "meta_schema",
+                      "name": "PortCommitment"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "input_ports",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Vector": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "is_valid_for_tool",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "is_offchain",
+              "ty": "Bool"
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_valid_identifier",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "name",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": "U8"
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "is_valid_port_schema",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "port",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "new",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "input_ports",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "meta_schema",
+                      "name": "PortSchema"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            },
+            {
+              "name": "output_variants",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "meta_schema",
+                      "name": "OutputVariantSchema"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "MetaSchema"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "output_variant_schema",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "variant_name",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "ports",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "meta_schema",
+                      "name": "PortSchema"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "OutputVariantSchema"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "port_commitment_for_input",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "schema",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusData"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "PortCommitment"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "port_commitment_many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "values",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusValue"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "PortCommitment"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "port_commitment_one",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "PortCommitment"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "port_is_many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "port_name",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Vector": "U8"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "port_schema",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "port_name",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "is_many",
+              "ty": "Bool"
+            },
+            {
+              "name": "value_kind",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "meta_schema",
+                    "name": "ValueKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "PortSchema"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "store_input",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "schema",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "witnesses",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "data",
+                      "name": "NexusValue"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "data",
+                  "name": "NexusData"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "value_kind",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "value",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "data",
+                        "name": "NexusValue"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "ValueKind"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "value_kind_data",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "ValueKind"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "value_kind_object",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "meta_schema",
+                  "name": "ValueKind"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "value_kinds_compatible",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "from",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "to",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "meta_schema",
+                        "name": "PortSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
           ]
         }
       ]
@@ -4394,6 +6982,45 @@
           "return_types": []
         },
         {
+          "name": "assert_initial_package_bindings",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "packages",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        "U8",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "protocol",
+                              "name": "PackageInfo"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "assert_package_bindings",
           "visibility": "Private",
           "is_entry": false,
@@ -5826,6 +8453,59 @@
       ],
       "functions": [
         {
+          "name": "from_parts",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "tag",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "named_payload",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Vector": "U8"
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "data",
+                          "name": "NexusData"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "tagged_output",
+                  "name": "TaggedOutput"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "into_parts",
           "visibility": "Public",
           "is_entry": false,
@@ -6001,6 +8681,112 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "_self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "tagged_output",
+                    "name": "TaggedOutput"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_name",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "_value",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "data",
+                    "name": "NexusData"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "tagged_output",
+                  "name": "TaggedOutput"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "with_named_payload_many",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa1",
+                    "module": "tagged_output",
+                    "name": "TaggedOutput"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "name",
+              "ty": {
+                "Vector": "U8"
+              }
+            },
+            {
+              "name": "values",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa1",
+                      "module": "data",
+                      "name": "NexusValue"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa1",
+                  "module": "tagged_output",
+                  "name": "TaggedOutput"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "with_named_payload_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
               "name": "self",
               "ty": {
                 "Datatype": {
@@ -6026,7 +8812,7 @@
                   "type_name": {
                     "address": "0xa1",
                     "module": "data",
-                    "name": "NexusData"
+                    "name": "NexusValue"
                   },
                   "type_arguments": []
                 }

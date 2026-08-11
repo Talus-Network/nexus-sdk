@@ -64,10 +64,15 @@ impl VecMap<OutputPort, NexusData> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::move_bindings::primitives::data::NexusValue};
 
     fn inline_bytes(value: &'static [u8]) -> NexusData {
-        NexusData::inline_one(value.to_vec())
+        let value = NexusValue::inline_data(value).expect("fixture is bounded");
+        NexusData::new(
+            b"nexus_value".to_vec(),
+            bcs::to_bytes(&value).expect("fixture should encode"),
+            Vec::new(),
+        )
     }
 
     fn sample_ports_data() -> VecMap<InputPort, NexusData> {
@@ -82,7 +87,10 @@ mod tests {
         let bytes = bcs::to_bytes(&ports_data).unwrap();
         let decoded: VecMap<InputPort, NexusData> = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(decoded, ports_data);
-        assert_eq!(decoded.contents[0].value.one, b"port-value");
+        assert_eq!(
+            decoded.contents[0].value.inline_data_bytes(),
+            Some(b"port-value".to_vec())
+        );
     }
 
     #[test]

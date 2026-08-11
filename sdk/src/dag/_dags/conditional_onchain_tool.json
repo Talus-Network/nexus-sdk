@@ -4,16 +4,20 @@
       "vertex": "add_input_and_default",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": -3
+        "one": {
+          "kind": "data",
+          "data": -3
+        }
       }
     },
     {
       "vertex": "is_positive",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 0
+        "one": {
+          "kind": "data",
+          "data": 0
+        }
       }
     }
   ],

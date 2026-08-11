@@ -2,11 +2,11 @@
 
 use {
     crate::{
-        move_bindings::primitives::data::NexusData,
         scheduler::ScheduleError,
         sui,
         types::{
             AgentId,
+            NexusData,
             SkillId,
             DEFAULT_PRIORITY_FEE_PERCENTAGE,
             MAX_PRIORITY_FEE_PERCENTAGE,

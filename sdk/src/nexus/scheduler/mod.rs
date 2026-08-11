@@ -51,6 +51,20 @@ impl Scheduler {
             .map_err(SchedulerError::from)
     }
 
+    /// Validates the authored input shape against the selected authoritative DAG.
+    ///
+    /// This preflight performs no transaction submission. Task creation and scheduling repeat the
+    /// check during final preparation so a caller cannot rely on a stale snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError`] when the Task is invalid, the selected DAG cannot be read, or the
+    /// entry group and input ports do not exactly match that DAG.
+    pub async fn preflight_task_inputs(&self, task: &TaskSpec) -> Result<(), SchedulerError> {
+        let client = self.operation_client().await?;
+        resolve::preflight_task_inputs(&client, task).await
+    }
+
     /// Creates and shares an empty Task.
     ///
     /// Use [`Self::schedule_task`] when the creation transaction must also add

@@ -7,7 +7,7 @@ use {
                 OccurrenceRecord,
                 OccurrenceRecordKey,
                 OccurrenceState,
-                TaskStateV1 as MoveTaskStateV1,
+                TaskStateV2 as MoveTaskStateV2,
             },
             workflow::execution::DAGExecution,
         },
@@ -301,7 +301,7 @@ impl OccurrenceHandle {
 
 pub(super) fn snapshot_from_record(
     task_id: sui::types::Address,
-    task: &MoveTaskStateV1,
+    task: &MoveTaskStateV2,
     occurrence_id: u64,
     record: &OccurrenceRecord,
     execution: Option<&DAGExecution>,

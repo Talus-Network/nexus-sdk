@@ -1,4 +1,7 @@
-use {crate::ToolFqn, std::time::Duration};
+use {
+    crate::{move_bindings::primitives::meta_schema::MetaSchema, ToolFqn},
+    std::time::Duration,
+};
 
 /// Byte owned tool metadata used to register an off chain tool.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9,4 +12,11 @@ pub struct ToolMeta {
     pub timeout: Duration,
     pub input_schema: Vec<u8>,
     pub output_schema: Vec<u8>,
+}
+
+impl ToolMeta {
+    /// Converts human-readable Schemars documents into the immutable on-chain schema.
+    pub fn meta_schema(&self) -> anyhow::Result<MetaSchema> {
+        MetaSchema::from_offchain_json_schemas(&self.input_schema, &self.output_schema)
+    }
 }

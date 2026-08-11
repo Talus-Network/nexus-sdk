@@ -5,12 +5,12 @@ use {
             tool::external_verifier::ExternalVerifier,
         },
         sui,
-        types::{ToolRef, ToolStateV1},
+        types::{ToolRef, ToolStateV2},
     },
     serde::Serialize,
 };
 
-/// Semantic CLI view of [`ToolStateV1`].
+/// Semantic CLI view of [`ToolStateV2`].
 #[derive(Debug, Serialize)]
 pub(super) struct ToolOutput {
     pub(super) minimum_protocol_version: u64,
@@ -18,8 +18,7 @@ pub(super) struct ToolOutput {
     pub(super) fqn: String,
     pub(super) reference: ToolReferenceOutput,
     pub(super) description: String,
-    pub(super) input_schema: serde_json::Value,
-    pub(super) output_schema: serde_json::Value,
+    pub(super) meta_schema: serde_json::Value,
     pub(super) verified: bool,
     pub(super) vault_balance: u64,
     pub(super) workflow_authorization_cap_first: bool,
@@ -31,7 +30,7 @@ pub(super) struct ToolOutput {
 
 impl ToolOutput {
     pub(super) fn try_from_state(
-        tool: &ToolStateV1,
+        tool: &ToolStateV2,
         timeout_ms: Option<u64>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
@@ -40,8 +39,7 @@ impl ToolOutput {
             fqn: tool.fqn_string()?,
             reference: ToolReferenceOutput::try_from(tool.reference())?,
             description: tool.description_string()?,
-            input_schema: tool.input_schema_json()?,
-            output_schema: tool.output_schema_json()?,
+            meta_schema: tool.meta_schema.to_json_value()?,
             verified: tool.verified,
             vault_balance: tool.vault.value,
             workflow_authorization_cap_first: tool.workflow_authorization_cap_first,
@@ -177,14 +175,15 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 move_std::{ascii, option::Option as MoveOption},
+                primitives::meta_schema::{MetaSchema, OutputVariantSchema},
                 sui_framework::{balance::Balance, object::ID},
             },
-            types::{ToolRef, ToolStateV1},
+            types::{ToolRef, ToolStateV2},
         },
     };
 
-    fn fixture_tool() -> ToolStateV1 {
-        ToolStateV1 {
+    fn fixture_tool() -> ToolStateV2 {
+        ToolStateV2 {
             minimum_protocol_version: 1,
             registry: ID::new(nexus_sdk::sui::types::Address::from_static("0x42")),
             fqn: ascii::String::from("xyz.taluslabs.example@1"),
@@ -192,8 +191,10 @@ mod tests {
                 url: b"https://example.com/tool".to_vec(),
             },
             description: b"Example tool".to_vec(),
-            input_schema: br#"{"type":"object"}"#.to_vec(),
-            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+            meta_schema: MetaSchema::new(
+                vec![],
+                vec![OutputVariantSchema::new(b"Ok".to_vec(), vec![])],
+            ),
             verified: true,
             vault: Balance {
                 value: 25,
@@ -223,8 +224,13 @@ mod tests {
                     "url": "https://example.com/tool",
                 },
                 "description": "Example tool",
-                "input_schema": {"type": "object"},
-                "output_schema": {"oneOf": []},
+                "meta_schema": {
+                    "input_ports": [],
+                    "output_variants": [{
+                        "variant_name": "Ok",
+                        "ports": [],
+                    }],
+                },
                 "verified": true,
                 "vault_balance": 25,
                 "workflow_authorization_cap_first": false,
