@@ -10,6 +10,18 @@ mod query;
 
 pub use query::*;
 
+/// Nexus event whose datatype is absent from [`NexusEventKind`].
+#[derive(Clone, Debug, Error)]
+#[error("Nexus event '{event_type}' from source package '{source_package}' is unsupported")]
+pub struct UnsupportedNexusEvent {
+    /// Transaction digest and event sequence that identify the event.
+    pub id: (sui::types::Digest, u64),
+    /// Package recorded by Sui as the source of the Move command.
+    pub source_package: sui::types::Address,
+    /// Full inner event type. Its address identifies the definition package.
+    pub event_type: Box<sui::types::StructTag>,
+}
+
 /// Failure returned while converting a Sui event into a [`NexusEvent`].
 #[derive(Debug, Error)]
 pub enum NexusEventDecodeError {
@@ -22,15 +34,9 @@ pub enum NexusEventDecodeError {
     /// The Sui event type is invalid.
     #[error("Nexus event type is invalid: {0}")]
     EventType(#[from] sui::types::TypeParseError),
-    /// A direct active package emitted an event absent from the SDK contract.
-    #[error("Active Nexus package '{emitting_package}' emitted unsupported event '{event_type}'")]
-    UnsupportedEvent {
-        /// Exact package recorded as the Sui event source.
-        emitting_package: sui::types::Address,
-        /// Full unsupported inner event type, boxed to keep
-        /// [`NexusEventDecodeError`] compact on successful decode paths.
-        event_type: Box<sui::types::StructTag>,
-    },
+    /// The inner datatype belongs to Nexus but is absent from the SDK contract.
+    #[error(transparent)]
+    UnsupportedEvent(#[from] UnsupportedNexusEvent),
     /// The Nexus event contents are invalid.
     #[error("Nexus event contents are invalid: {0}")]
     Contents(#[source] anyhow::Error),
@@ -126,6 +132,25 @@ impl NexusEvent {
     /// finish without accepting an old package for newly created work.
     pub fn was_emitted_by(&self, objects: &crate::types::NexusObjects) -> bool {
         objects.is_active_emitter(self.emitting_package)
+    }
+}
+
+/// Nexus event selected before source compatibility policy is applied.
+#[derive(Clone, Debug)]
+pub enum NexusEventCandidate {
+    /// Event represented by [`NexusEventKind`].
+    Supported(Box<NexusEvent>),
+    /// Event absent from [`NexusEventKind`].
+    Unsupported(UnsupportedNexusEvent),
+}
+
+impl NexusEventCandidate {
+    /// Returns the package recorded by Sui as the Move command source.
+    pub fn source_package(&self) -> sui::types::Address {
+        match self {
+            Self::Supported(event) => event.emitting_package,
+            Self::Unsupported(event) => event.source_package,
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 //! Typed query for Nexus events.
 
 use {
-    super::{parsing::decode_nexus_event, NexusEventDecodeError},
+    super::{parsing::classify_nexus_event, NexusEventCandidate, NexusEventDecodeError},
     crate::{
         events::NexusEvent,
         move_bindings::{
@@ -36,12 +36,12 @@ impl NexusEventQuery {
 
     /// Decodes one Sui transaction event using this query.
     ///
-    /// Returns [`None`] when another package emits an unsupported event type.
+    /// Returns [`None`] when the event is not a Nexus event.
     ///
     /// # Errors
     ///
     /// Returns [`NexusEventDecodeError`] when event contents cannot be decoded
-    /// or a direct active package emits an unsupported event.
+    /// or the inner Nexus event type is unsupported.
     pub fn decode_sui_event(
         &self,
         index: u64,
@@ -65,10 +65,25 @@ impl NexusEventQuery {
         wrapper_type: &sui::types::StructTag,
         contents: &[u8],
     ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
-        decode_nexus_event(
+        match self.classify_parts(index, digest, emitting_package, wrapper_type, contents)? {
+            Some(NexusEventCandidate::Supported(event)) => Ok(Some(*event)),
+            Some(NexusEventCandidate::Unsupported(event)) => Err(event.into()),
+            None => Ok(None),
+        }
+    }
+
+    fn classify_parts(
+        &self,
+        index: u64,
+        digest: sui::types::Digest,
+        source_package: sui::types::Address,
+        wrapper_type: &sui::types::StructTag,
+        contents: &[u8],
+    ) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
+        classify_nexus_event(
             index,
             digest,
-            emitting_package,
+            source_package,
             contents,
             wrapper_type,
             &self.objects,
@@ -78,7 +93,7 @@ impl NexusEventQuery {
 
 impl EventQuery for NexusEventQuery {
     type Error = NexusEventDecodeError;
-    type Output = NexusEvent;
+    type Output = NexusEventCandidate;
 
     fn filter(&self) -> sui::grpc::EventFilter {
         let wrapper = crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(
@@ -133,7 +148,7 @@ impl EventQuery for NexusEventQuery {
                 NexusEventDecodeError::Identity(format!("emitting package is invalid: {error}"))
             })?;
 
-        self.decode_parts(
+        self.classify_parts(
             event_index.into(),
             digest,
             emitting_package,
@@ -393,29 +408,36 @@ mod tests {
 
         assert_matches::assert_matches!(
             error,
-            NexusEventDecodeError::UnsupportedEvent {
-                emitting_package,
-                event_type: actual_type,
-            } if emitting_package == objects.tool_pkg_id() && *actual_type == event_type
+            NexusEventDecodeError::UnsupportedEvent(unsupported)
+                if unsupported.source_package == objects.tool_pkg_id()
+                    && *unsupported.event_type == event_type
         );
     }
 
     #[test]
-    fn unknown_event_from_other_package_is_ignored() {
+    fn unknown_event_from_external_package_is_preserved_for_source_validation() {
         let objects = Arc::new(crate::test_utils::sui_mocks::mock_nexus_objects());
-        let wrapper_type = nexus_wrapper_type(&objects, unknown_tool_event_type(&objects));
+        let event_type = unknown_tool_event_type(&objects);
+        let wrapper_type = nexus_wrapper_type(&objects, event_type.clone());
+        let source_package = sui::types::Address::from_static("0xc1");
 
-        let decoded = NexusEventQuery::new(objects)
-            .decode_parts(
+        let candidate = NexusEventQuery::new(objects)
+            .classify_parts(
                 0,
                 sui::types::Digest::ZERO,
-                sui::types::Address::ZERO,
+                source_package,
                 &wrapper_type,
                 &[],
             )
-            .expect("an unknown event from another package is ignored");
+            .expect("unknown Nexus event classification should succeed")
+            .expect("unknown Nexus event should be preserved");
 
-        assert!(decoded.is_none());
+        assert_matches::assert_matches!(
+            candidate,
+            NexusEventCandidate::Unsupported(unsupported)
+                if unsupported.source_package == source_package
+                    && *unsupported.event_type == event_type
+        );
     }
 
     #[test]
