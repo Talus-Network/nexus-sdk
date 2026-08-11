@@ -152,6 +152,18 @@ impl NexusEventCandidate {
             Self::Unsupported(event) => event.source_package,
         }
     }
+
+    /// Converts [`Self::Supported`] into its decoded event.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UnsupportedNexusEvent`] for [`Self::Unsupported`].
+    pub fn into_supported(self) -> Result<NexusEvent, UnsupportedNexusEvent> {
+        match self {
+            Self::Supported(event) => Ok(*event),
+            Self::Unsupported(event) => Err(event),
+        }
+    }
 }
 
 macro_rules! events {

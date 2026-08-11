@@ -204,9 +204,9 @@ mod tests {
         )
         .expect("event decoding succeeds")
         .expect("event is recognized");
-        let NexusEventCandidate::Supported(decoded) = candidate else {
-            panic!("known event should be supported");
-        };
+        let decoded = candidate
+            .into_supported()
+            .expect("known event should be supported");
 
         assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
         assert!(decoded.was_emitted_by(&objects));

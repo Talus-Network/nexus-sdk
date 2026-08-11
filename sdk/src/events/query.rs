@@ -66,8 +66,10 @@ impl NexusEventQuery {
         contents: &[u8],
     ) -> Result<Option<NexusEvent>, NexusEventDecodeError> {
         match self.classify_parts(index, digest, emitting_package, wrapper_type, contents)? {
-            Some(NexusEventCandidate::Supported(event)) => Ok(Some(*event)),
-            Some(NexusEventCandidate::Unsupported(event)) => Err(event.into()),
+            Some(candidate) => candidate
+                .into_supported()
+                .map(Some)
+                .map_err(NexusEventDecodeError::from),
             None => Ok(None),
         }
     }
