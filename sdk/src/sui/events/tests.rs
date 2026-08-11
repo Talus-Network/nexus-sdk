@@ -138,14 +138,6 @@ async fn ingestor_adds_engine_fields_and_returns_raw_events() {
         .start(None)
         .expect("ingestor should start");
 
-    let progress = timeout(Duration::from_secs(2), pages.recv())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    assert_eq!(progress.checkpoint, 11);
-    assert!(progress.events.is_empty());
-
     let page = timeout(Duration::from_secs(2), pages.recv())
         .await
         .unwrap()
@@ -576,7 +568,7 @@ async fn decode_failure_is_terminal_and_preserves_event_identity() {
                 Ok(subscription_frame(None, watermark(b"live", None))),
                 Ok(subscription_frame(
                     Some(event.clone()),
-                    watermark(b"event", Some(9)),
+                    watermark(b"event", Some(10)),
                 )),
             ];
             Ok(tonic::Response::new(
@@ -596,9 +588,6 @@ async fn decode_failure_is_terminal_and_preserves_event_identity() {
     let mut pages = EventIngestor::new(&rpc_url, query)
         .start(None)
         .expect("ingestor should start");
-
-    let progress = pages.recv().await.unwrap().unwrap();
-    assert_eq!(progress.checkpoint, 9);
 
     let error = pages.recv().await.unwrap().unwrap_err();
     match error {

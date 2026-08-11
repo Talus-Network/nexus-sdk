@@ -1,7 +1,14 @@
 //! Nexus event type selection and decoding.
 
 use crate::{
-    events::{parse_bcs, supports_event, NexusEvent},
+    events::{
+        parse_bcs,
+        supports_event,
+        NexusEvent,
+        NexusEventCandidate,
+        NexusEventDecodeError,
+        UnsupportedNexusEvent,
+    },
     move_bindings::{
         interface::distributed_event as distributed_event_move,
         primitives::{data::NexusData as MoveNexusData, event as event_move},
@@ -32,31 +39,43 @@ impl<'a> NexusEventType<'a> {
             return None;
         }
 
-        let name = tag.name().as_str();
-        supports_event(name).then_some(Self { tag, name })
+        Some(Self {
+            tag,
+            name: tag.name().as_str(),
+        })
     }
 }
 
-pub(super) fn decode_nexus_event(
+pub(super) fn classify_nexus_event(
     index: u64,
     digest: sui::types::Digest,
     emitting_package: sui::types::Address,
     contents: &[u8],
     wrapper_type: &sui::types::StructTag,
     objects: &NexusObjects,
-) -> anyhow::Result<Option<NexusEvent>> {
+) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
     let Some(event_type) = NexusEventType::resolve(wrapper_type, objects) else {
         return Ok(None);
     };
-    let (data, distribution) = parse_bcs(event_type.name, contents)?;
+    if !supports_event(event_type.name) {
+        return Ok(Some(NexusEventCandidate::Unsupported(
+            UnsupportedNexusEvent {
+                id: (digest, index),
+                source_package: emitting_package,
+                event_type: Box::new(event_type.tag.clone()),
+            },
+        )));
+    }
+    let (data, distribution) =
+        parse_bcs(event_type.name, contents).map_err(NexusEventDecodeError::Contents)?;
 
-    Ok(Some(NexusEvent {
+    Ok(Some(NexusEventCandidate::Supported(Box::new(NexusEvent {
         id: (digest, index),
         emitting_package,
         generics: event_type.tag.type_params().to_vec(),
         data,
         distribution,
-    }))
+    }))))
 }
 
 fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
@@ -175,7 +194,7 @@ mod tests {
         );
 
         let emitter = objects.packages.scheduler.storage_id;
-        let decoded = decode_nexus_event(
+        let candidate = classify_nexus_event(
             0,
             sui::types::Digest::ZERO,
             emitter,
@@ -185,6 +204,9 @@ mod tests {
         )
         .expect("event decoding succeeds")
         .expect("event is recognized");
+        let decoded = candidate
+            .into_supported()
+            .expect("known event should be supported");
 
         assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
         assert!(decoded.was_emitted_by(&objects));
