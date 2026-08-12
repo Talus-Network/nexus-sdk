@@ -1,11 +1,39 @@
 //! Nexus network fee transactions.
 
 use crate::{
-    move_bindings::registry::priority_fee_vault as priority_fee_vault_binding,
+    move_bindings::{
+        registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDepositV2},
+        sui_framework::transfer::Receiving,
+    },
     move_boundary,
     sui,
     types::NexusObjects,
 };
+
+/// Receive and account for one non-empty batch of priority-fee deposit children.
+pub fn collect_priority_fee_deposits(
+    objects: &NexusObjects,
+    deposits: &[sui::types::ObjectReference],
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    if deposits.is_empty() {
+        anyhow::bail!("priority fee deposit collection requires at least one deposit");
+    }
+
+    move_boundary::ptb(objects, |transaction| {
+        let vault = transaction.shared_object(&objects.priority_fee_vault, true)?;
+        let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
+        let deposits = deposits
+            .iter()
+            .map(|deposit| transaction.receiving_object::<PriorityFeeDepositV2>(deposit))
+            .collect::<Result<Vec<_>, _>>()?;
+        let deposits = transaction.move_vector::<Receiving<PriorityFeeDepositV2>>(deposits)?;
+        transaction.call_target(
+            priority_fee_vault_binding::collect_deposits_v2_target,
+            vec![vault, leader_registry, deposits],
+        )?;
+        Ok(())
+    })
+}
 
 /// Configure the `$US` priority fee vault exchange rate.
 pub fn configure_priority_fee_vault(
@@ -67,4 +95,125 @@ pub fn withdraw_priority_fee(
         transaction.transfer_objects(vec![us_out], recipient)?;
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::types::{DefaultDagExecutorTarget, NexusPackages, UsTokenConfig},
+        sui::types::{Command, Input},
+    };
+
+    fn address(value: &'static str) -> sui::types::Address {
+        sui::types::Address::from_static(value)
+    }
+
+    fn object_ref(value: &'static str, version: u64, digest: u8) -> sui::types::ObjectReference {
+        sui::types::ObjectReference::new(
+            address(value),
+            version,
+            sui::types::Digest::from([digest; 32]),
+        )
+    }
+
+    fn nexus_objects() -> NexusObjects {
+        NexusObjects {
+            protocol_version: 1,
+            protocol: object_ref("0x18", 1, 18),
+            packages: NexusPackages::first_publication(
+                address("0x2"),
+                address("0x3"),
+                address("0x5"),
+                address("0x13"),
+                address("0x1"),
+                address("0x11"),
+            ),
+            config_hash: vec![0; 32],
+            network_id: address("0x4"),
+            tool_registry: object_ref("0x6", 1, 6),
+            network_auth: object_ref("0x8", 1, 8),
+            agent_registry: object_ref("0xc", 1, 12),
+            default_dag_executor: DefaultDagExecutorTarget {
+                agent_id: address("0xa1"),
+                skill_id: 177,
+            },
+            leader_registry: object_ref("0xe", 1, 14),
+            priority_fee_vault: object_ref("0xf", 1, 15),
+            priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
+            us_token: UsTokenConfig::new(address("0x12")),
+        }
+    }
+
+    #[test]
+    fn priority_fee_collection_uses_typed_receiving_inputs() {
+        let objects = nexus_objects();
+        let deposits = vec![object_ref("0x20", 7, 20), object_ref("0x21", 8, 21)];
+
+        let ptb = collect_priority_fee_deposits(&objects, &deposits).expect("collection PTB");
+
+        let receiving = ptb
+            .inputs
+            .iter()
+            .filter_map(|input| match input {
+                Input::Receiving(reference) => Some(reference),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(receiving, deposits.iter().collect::<Vec<_>>());
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *objects.priority_fee_vault.object_id()
+                        && shared.mutability().is_mutable()
+            )
+        }));
+        assert!(ptb.inputs.iter().any(|input| {
+            matches!(
+                input,
+                Input::Shared(shared)
+                    if shared.object_id() == *objects.leader_registry.object_id()
+                        && !shared.mutability().is_mutable()
+            )
+        }));
+
+        let vector = ptb
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::MakeMoveVector(vector) => Some(vector),
+                _ => None,
+            })
+            .expect("typed receiving vector");
+        assert_eq!(
+            vector.type_,
+            Some(crate::move_bindings::type_tag::<
+                Receiving<PriorityFeeDepositV2>,
+            >(&objects))
+        );
+        assert_eq!(vector.elements.len(), 2);
+
+        let call = ptb
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                Command::MoveCall(call)
+                    if call.module.as_str() == "priority_fee_vault"
+                        && call.function.as_str() == "collect_deposits_v2" =>
+                {
+                    Some(call)
+                }
+                _ => None,
+            })
+            .expect("collection Move call");
+        assert_eq!(call.arguments.len(), 3);
+    }
+
+    #[test]
+    fn priority_fee_collection_rejects_an_empty_batch() {
+        let error = collect_priority_fee_deposits(&nexus_objects(), &[])
+            .expect_err("empty batch must be rejected");
+        assert!(error.to_string().contains("at least one deposit"));
+    }
 }

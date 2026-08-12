@@ -1,4 +1,88 @@
-use crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*};
+use {
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    nexus_sdk::nexus::network::CollectPriorityFeeDepositsResult,
+};
+
+pub(crate) async fn collect_priority_fees(
+    deposits: Vec<sui::types::Address>,
+    all: bool,
+    batch_size: usize,
+    sui_gas_coin: Option<sui::types::Address>,
+    sui_gas_budget: u64,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Collecting priority fee deposits");
+    let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let tx_handle = loading!("Discovering deposits and executing collection transaction(s)...");
+    let result = if all {
+        nexus_client
+            .network()
+            .collect_all_priority_fee_deposits(batch_size)
+            .await
+    } else {
+        let mut result = CollectPriorityFeeDepositsResult::default();
+        let mut failure = None;
+        for batch in deposits.chunks(batch_size) {
+            let batch_result = match nexus_client
+                .network()
+                .collect_priority_fee_deposits(batch.to_vec())
+                .await
+            {
+                Ok(batch_result) => batch_result,
+                Err(error) => {
+                    failure = Some(error);
+                    break;
+                }
+            };
+            result.tx_digests.extend(batch_result.tx_digests);
+            result
+                .collected_deposit_ids
+                .extend(batch_result.collected_deposit_ids);
+            result
+                .skipped_old_leader_deposits
+                .extend(batch_result.skipped_old_leader_deposits);
+            result
+                .unavailable_deposit_ids
+                .extend(batch_result.unavailable_deposit_ids);
+        }
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(result),
+        }
+    };
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            tx_handle.error();
+            return Err(NexusCliError::Nexus(error));
+        }
+    };
+    tx_handle.success();
+    notify_success!(
+        "Collected {count} priority fee deposit(s) in {transactions} transaction(s)",
+        count = result.collected_deposit_ids.len(),
+        transactions = result.tx_digests.len(),
+    );
+    json_output(&collect_priority_fees_result_json(&result))?;
+    Ok(())
+}
+
+fn collect_priority_fees_result_json(
+    result: &CollectPriorityFeeDepositsResult,
+) -> serde_json::Value {
+    json!({
+        "transaction_digests": result.tx_digests,
+        "collected_deposit_ids": result.collected_deposit_ids,
+        "skipped_old_leader_deposits": result
+            .skipped_old_leader_deposits
+            .iter()
+            .map(|deposit| json!({
+                "deposit_id": deposit.deposit_id,
+                "leader_cap_id": deposit.leader_cap_id,
+            }))
+            .collect::<Vec<_>>(),
+        "unavailable_deposit_ids": result.unavailable_deposit_ids,
+    })
+}
 
 pub(crate) async fn configure_priority_fee_vault(
     exchange_rate_million_mists_us: u64,
@@ -151,7 +235,10 @@ pub(crate) async fn withdraw_priority_fee(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::nexus::network::DrainPriorityFeeVaultSuiResult};
+    use {
+        super::*,
+        nexus_sdk::nexus::network::{DrainPriorityFeeVaultSuiResult, SkippedPriorityFeeDeposit},
+    };
 
     #[test]
     fn drain_result_json_uses_million_mists_exchange_rate_key() {
@@ -169,5 +256,35 @@ mod tests {
         assert!(value.get("exchange_rate_sui_us").is_none());
         assert_eq!(value["sui_balance_before"], 1_000_000_000u64);
         assert_eq!(value["min_sui_out"], 1_000_000_000u64);
+    }
+
+    #[test]
+    fn priority_fee_collection_result_json_has_stable_top_level_keys() {
+        let result = CollectPriorityFeeDepositsResult {
+            tx_digests: vec![sui::types::Digest::from_static(
+                "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv",
+            )],
+            collected_deposit_ids: vec![sui::types::Address::from_static("0x701")],
+            skipped_old_leader_deposits: vec![SkippedPriorityFeeDeposit {
+                deposit_id: sui::types::Address::from_static("0x702"),
+                leader_cap_id: sui::types::Address::from_static("0x703"),
+            }],
+            unavailable_deposit_ids: vec![sui::types::Address::from_static("0x704")],
+        };
+
+        let value = collect_priority_fees_result_json(&result);
+        assert_eq!(value["transaction_digests"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            value["collected_deposit_ids"][0],
+            sui::types::Address::from_static("0x701").to_string()
+        );
+        assert_eq!(
+            value["skipped_old_leader_deposits"][0]["leader_cap_id"],
+            sui::types::Address::from_static("0x703").to_string()
+        );
+        assert_eq!(
+            value["unavailable_deposit_ids"][0],
+            sui::types::Address::from_static("0x704").to_string()
+        );
     }
 }

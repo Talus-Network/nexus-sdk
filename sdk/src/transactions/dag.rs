@@ -865,7 +865,7 @@ pub fn consume_on_chain_tool_result_for_walk_ptb(
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let result = tx.shared_object_by_id(result.0, result.1, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         consume_on_chain_tool_result_for_walk(
@@ -1148,7 +1148,7 @@ pub fn consume_on_chain_tool_result_for_walk(
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
 
     tx.call_target(
-        execution_submission_binding::consume_on_chain_tool_result_for_walk_target,
+        execution_submission_binding::consume_on_chain_tool_result_for_walk_v2_target,
         vec![
             dag,
             execution,
@@ -1288,7 +1288,7 @@ fn settle_committed_tool_result_for_walk_by_leader(
     let settlement_gas_charge = tx.arg(&settlement_gas_charge)?;
 
     tx.call_target(
-        execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_target,
+        execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_v2_target,
         vec![
             dag,
             execution,
@@ -1329,7 +1329,7 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
         let execution = tx.shared_object_by_id(execution.0, execution.1, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         settle_committed_tool_result_for_walk_by_leader(
@@ -1416,12 +1416,12 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
         let execution = tx.shared_object(execution, true)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
         let walk_index = tx.arg(&walk_index)?;
         let clock = tx.clock()?;
 
         tx.call_target(
-            execution_settlement_binding::settle_committed_tool_result_for_walk_target,
+            execution_settlement_binding::settle_committed_tool_result_for_walk_v2_target,
             vec![
                 dag,
                 execution,
@@ -1455,7 +1455,7 @@ pub fn settle_onchain_tool_result_for_walk(
     let tool_witness_id = tx.object_id(tool_witness_id)?;
 
     tx.call_target(
-        execution_settlement_binding::settle_onchain_tool_result_for_walk_target,
+        execution_settlement_binding::settle_onchain_tool_result_for_walk_v2_target,
         vec![
             dag,
             execution,
@@ -1489,7 +1489,7 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let result = tx.shared_object(result, true)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
         let clock = tx.clock()?;
 
         settle_onchain_tool_result_for_walk(
@@ -1563,7 +1563,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
         let execution = tx.object_from_owner(execution, execution_owner, true)?;
         let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
         let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+        let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, false)?;
         let leader_cap = tx.object_from_owner(leader_cap, leader_cap_owner, false)?;
         let walk_index = tx.arg(&walk_index)?;
         let expected_vertex = runtime_vertex_arg(tx, expected_vertex)?;
@@ -1575,7 +1575,7 @@ pub(crate) fn settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
         let clock = tx.clock()?;
 
         tx.call_target(
-            execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_target,
+            execution_settlement_binding::settle_committed_tool_result_for_walk_by_leader_v2_target,
             vec![
                 dag,
                 execution,
@@ -2116,7 +2116,7 @@ mod tests {
             &ptb,
             Some(objects.workflow_pkg_id()),
             "execution_submission",
-            "consume_on_chain_tool_result_for_walk",
+            "consume_on_chain_tool_result_for_walk_v2",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected consume call");
@@ -2124,7 +2124,7 @@ mod tests {
 
         assert_eq!(call.arguments.len(), 13);
         expect_shared_object_arg(&ptb, &call.arguments[5], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, true);
+        expect_shared_object_arg(&ptb, &call.arguments[6], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[7], 9);
         expect_u64_arg(&ptb, &call.arguments[10], 123);
         expect_u64_arg(&ptb, &call.arguments[11], 45);
@@ -2154,7 +2154,7 @@ mod tests {
             &ptb,
             Some(objects.workflow_pkg_id()),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk_by_leader",
+            "settle_committed_tool_result_for_walk_by_leader_v2",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected settlement call");
@@ -2162,7 +2162,7 @@ mod tests {
 
         assert_eq!(call.arguments.len(), 13);
         expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, true);
+        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[6], 11);
         expect_u64_arg(&ptb, &call.arguments[10], 123);
         expect_u64_arg(&ptb, &call.arguments[11], 45);
@@ -2242,7 +2242,7 @@ mod tests {
             &ptb,
             Some(objects.workflow_pkg_id()),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk_by_leader",
+            "settle_committed_tool_result_for_walk_by_leader_v2",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected failed on-chain settlement call");
@@ -2286,7 +2286,7 @@ mod tests {
             &ptb,
             Some(objects.workflow_pkg_id()),
             "execution_settlement",
-            "settle_committed_tool_result_for_walk",
+            "settle_committed_tool_result_for_walk_v2",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected permissionless settlement call");
@@ -2294,7 +2294,7 @@ mod tests {
 
         assert_eq!(call.arguments.len(), 7);
         expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, true);
+        expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[5], 13);
     }
 
@@ -2318,7 +2318,7 @@ mod tests {
             &ptb,
             Some(objects.workflow_pkg_id()),
             "execution_settlement",
-            "settle_onchain_tool_result_for_walk",
+            "settle_onchain_tool_result_for_walk_v2",
         );
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected on-chain settlement call");
@@ -2326,7 +2326,7 @@ mod tests {
 
         assert_eq!(call.arguments.len(), 10);
         expect_shared_object_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
-        expect_shared_object_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, true);
+        expect_shared_object_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[6], 15);
     }
 

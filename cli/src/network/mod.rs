@@ -2,6 +2,19 @@ mod actions;
 
 use {crate::prelude::*, actions::*};
 
+fn parse_priority_fee_batch_size(value: &str) -> Result<usize, String> {
+    let value = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid batch size '{value}': {error}"))?;
+    if !(1..=nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE).contains(&value) {
+        return Err(format!(
+            "batch size must be in 1..={}",
+            nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE
+        ));
+    }
+    Ok(value)
+}
+
 /// Nexus network fee commands.
 #[derive(Subcommand)]
 pub(crate) enum NetworkCommand {
@@ -65,6 +78,34 @@ pub(crate) enum NetworkCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+
+    #[command(about = "Collect object-owned priority fee deposits into vault accounting")]
+    CollectPriorityFees {
+        #[arg(
+            long = "deposit",
+            help = "PriorityFeeDepositV2 object ID; repeat to select multiple deposits",
+            value_name = "OBJECT_ID",
+            required_unless_present = "all",
+            conflicts_with = "all"
+        )]
+        deposits: Vec<sui::types::Address>,
+        #[arg(
+            long,
+            help = "Collect the finite deposit set visible when the command starts",
+            conflicts_with = "deposits"
+        )]
+        all: bool,
+        #[arg(
+            long = "batch-size",
+            help = "Maximum deposits per transaction",
+            value_name = "COUNT",
+            default_value_t = nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE,
+            value_parser = parse_priority_fee_batch_size
+        )]
+        batch_size: usize,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliError> {
@@ -101,6 +142,21 @@ pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliErr
             )
             .await
         }
+        NetworkCommand::CollectPriorityFees {
+            deposits,
+            all,
+            batch_size,
+            gas,
+        } => {
+            collect_priority_fees(
+                deposits,
+                all,
+                batch_size,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }
 
@@ -125,5 +181,61 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn parses_explicit_priority_fee_collection_with_default_batch_size() {
+        let deposit = "0x701";
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--deposit",
+            deposit,
+        ])
+        .expect("explicit priority fee collection should parse");
+        assert!(matches!(
+            cli.command,
+            crate::Command::Network(NetworkCommand::CollectPriorityFees {
+                deposits,
+                all: false,
+                batch_size: nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE,
+                ..
+            }) if deposits == vec![sui::types::Address::from_static(deposit)]
+        ));
+    }
+
+    #[test]
+    fn priority_fee_collection_requires_exactly_one_mode_and_bounded_batch_size() {
+        assert!(
+            crate::Cli::try_parse_from(["nexus", "network", "collect-priority-fees",]).is_err()
+        );
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--deposit",
+            "0x701",
+            "--all",
+        ])
+        .is_err());
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--all",
+            "--batch-size",
+            "129",
+        ])
+        .is_err());
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--all",
+            "--batch-size",
+            "1",
+        ])
+        .is_ok());
     }
 }

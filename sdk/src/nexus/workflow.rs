@@ -1873,7 +1873,8 @@ impl WorkflowActions {
                     let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
                     let result = tx.shared_object(&result_ref, true)?;
                     let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
-                    let priority_fee_vault = tx.shared_object(&objects.priority_fee_vault, true)?;
+                    let priority_fee_vault =
+                        tx.shared_object(&objects.priority_fee_vault, false)?;
                     let clock = tx.clock()?;
                     dag::settle_onchain_tool_result_for_walk(
                         tx,

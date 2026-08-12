@@ -132,7 +132,7 @@ impl<K, V> DynamicFieldPage<K, V> {
     }
 }
 
-/// One RPC page of typed objects owned by one address.
+/// One RPC page of typed objects owned by one address or object.
 #[derive(Clone, Debug)]
 pub struct OwnedObjectPage<T> {
     data: Vec<Response<T>>,
@@ -145,6 +145,13 @@ fn is_owned_by_address(owner: &sui::types::Owner, address: sui::types::Address) 
             *owner == address
         }
         _ => false,
+    }
+}
+
+fn matches_expected_owner(observed: &sui::types::Owner, expected: &sui::types::Owner) -> bool {
+    match expected {
+        sui::types::Owner::Address(address) => is_owned_by_address(observed, *address),
+        _ => observed == expected,
     }
 }
 
@@ -749,6 +756,33 @@ impl Crawler {
         Ok(results)
     }
 
+    /// Fetch exact-type objects owned by another object and deserialize their BCS contents.
+    pub async fn get_object_owned_objects<T>(
+        &self,
+        parent_id: sui::types::Address,
+        object_type: sui::types::StructTag,
+    ) -> anyhow::Result<Vec<Response<T>>>
+    where
+        T: DeserializeOwned,
+    {
+        let mut results = Vec::new();
+        let mut cursor = None;
+
+        loop {
+            let page = self
+                .get_object_owned_object_page(parent_id, object_type.clone(), cursor, 1000)
+                .await?;
+            let (data, next_cursor) = page.into_parts();
+            results.extend(data);
+            cursor = next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
     /// Fetch one RPC page of objects owned by an address with an exact type.
     ///
     /// The address owner and type of every returned object are validated after
@@ -769,6 +803,52 @@ impl Crawler {
     where
         T: DeserializeOwned,
     {
+        self.get_typed_owned_object_page(
+            sui::types::Owner::Address(owner),
+            object_type,
+            cursor,
+            limit,
+        )
+        .await
+    }
+
+    /// Fetch one RPC page of exact-type objects owned by another object.
+    ///
+    /// Unlike [`Crawler::get_owned_object_page`], this requires every returned object to have the
+    /// exact `Owner::Object(parent_id)` owner. Address and consensus-address ownership are rejected.
+    pub async fn get_object_owned_object_page<T>(
+        &self,
+        parent_id: sui::types::Address,
+        object_type: sui::types::StructTag,
+        cursor: Option<Vec<u8>>,
+        limit: usize,
+    ) -> anyhow::Result<OwnedObjectPage<T>>
+    where
+        T: DeserializeOwned,
+    {
+        self.get_typed_owned_object_page(
+            sui::types::Owner::Object(parent_id),
+            object_type,
+            cursor,
+            limit,
+        )
+        .await
+    }
+
+    async fn get_typed_owned_object_page<T>(
+        &self,
+        expected_owner: sui::types::Owner,
+        object_type: sui::types::StructTag,
+        cursor: Option<Vec<u8>>,
+        limit: usize,
+    ) -> anyhow::Result<OwnedObjectPage<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let request_owner = match &expected_owner {
+            sui::types::Owner::Address(owner) | sui::types::Owner::Object(owner) => *owner,
+            _ => bail!("typed owned-object reads require an address or object owner"),
+        };
         let page_size =
             u32::try_from(limit).context("owned object page limit does not fit in u32")?;
         if page_size == 0 {
@@ -785,7 +865,7 @@ impl Crawler {
             "contents",
         ]);
         let mut request = sui::grpc::ListOwnedObjectsRequest::default()
-            .with_owner(owner)
+            .with_owner(request_owner)
             .with_page_size(page_size)
             .with_object_type(object_type.clone())
             .with_read_mask(field_mask);
@@ -801,7 +881,8 @@ impl Crawler {
             .map(|response| response.into_inner())
             .map_err(|error| {
                 anyhow!(
-                    "Could not fetch objects of type '{object_type}' owned by '{owner}': {error}"
+                    "Could not fetch objects of type '{object_type}' owned by \
+                     '{expected_owner:?}': {error}"
                 )
             })?;
 
@@ -810,10 +891,10 @@ impl Crawler {
             let object_id = Self::parse_object_id(&object)?;
             let (observed_owner, digest, version, balance) =
                 self.parse_object_metadata(object_id, &object)?;
-            if !is_owned_by_address(&observed_owner, owner) {
+            if !matches_expected_owner(&observed_owner, &expected_owner) {
                 bail!(
-                    "Object '{object_id}' has owner '{observed_owner:?}', expected owner address \
-                     '{owner}'"
+                    "Object '{object_id}' has owner '{observed_owner:?}', expected \
+                     '{expected_owner:?}'"
                 );
             }
             let observed_type = object
@@ -2494,6 +2575,144 @@ mod tests {
             }
         );
         assert_eq!(page.next_cursor(), Some(response_cursor.as_slice()));
+    }
+
+    #[tokio::test]
+    async fn object_owned_objects_page_and_validate_the_exact_parent() {
+        let parent_id = sui::types::Address::from_static("0xa");
+        let object_type = test_value_tag();
+        let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
+        let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x21"));
+        let expected_owner = parent_id.to_string();
+        let expected_type = object_type.to_string();
+        let responses = vec![
+            (
+                typed_object_with_bcs(
+                    first_ref.clone(),
+                    sui::types::Owner::Object(parent_id),
+                    &object_type,
+                    &TestValue { value: 7 },
+                ),
+                Some(Vec::from(&b"page-2"[..])),
+            ),
+            (
+                typed_object_with_bcs(
+                    second_ref.clone(),
+                    sui::types::Owner::Object(parent_id),
+                    &object_type,
+                    &TestValue { value: 9 },
+                ),
+                None,
+            ),
+        ];
+        let mut responses = responses.into_iter();
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(2)
+            .returning(move |request| {
+                let request = request.get_ref();
+                assert_eq!(request.owner.as_deref(), Some(expected_owner.as_str()));
+                assert_eq!(request.object_type.as_deref(), Some(expected_type.as_str()));
+                let (object, next_page_token) = responses.next().expect("object-owned page");
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(vec![object]);
+                response.next_page_token = next_page_token.map(Into::into);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let objects = crawler
+            .get_object_owned_objects::<TestValue>(parent_id, object_type)
+            .await
+            .expect("object-owned objects load");
+
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].object_id, *first_ref.object_id());
+        assert_eq!(objects[1].object_id, *second_ref.object_id());
+        assert!(objects
+            .iter()
+            .all(|object| object.owner == sui::types::Owner::Object(parent_id)));
+    }
+
+    #[tokio::test]
+    async fn object_owned_object_page_rejects_address_ownership() {
+        let parent_id = sui::types::Address::from_static("0xa");
+        let object_type = test_value_tag();
+        let object_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once({
+                let object_type = object_type.clone();
+                move |_| {
+                    let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                    response.set_objects(vec![typed_object_with_bcs(
+                        object_ref,
+                        sui::types::Owner::Address(parent_id),
+                        &object_type,
+                        &TestValue { value: 7 },
+                    )]);
+                    Ok(tonic::Response::new(response))
+                }
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_object_owned_object_page::<TestValue>(parent_id, object_type, None, 1)
+            .await
+            .expect_err("address ownership must be rejected");
+        assert!(error.to_string().contains("expected 'Object"));
+    }
+
+    #[tokio::test]
+    async fn object_owned_object_page_rejects_the_wrong_type() {
+        let parent_id = sui::types::Address::from_static("0xa");
+        let expected_type = test_value_tag();
+        let wrong_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0xa1"),
+            sui::types::Identifier::from_static("test"),
+            sui::types::Identifier::from_static("WrongValue"),
+            vec![],
+        );
+        let object_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
+        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
+        state_service_mock
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(move |_| {
+                let mut response = sui::grpc::ListOwnedObjectsResponse::default();
+                response.set_objects(vec![typed_object_with_bcs(
+                    object_ref,
+                    sui::types::Owner::Object(parent_id),
+                    &wrong_type,
+                    &TestValue { value: 7 },
+                )]);
+                Ok(tonic::Response::new(response))
+            });
+
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            state_service_mock: Some(state_service_mock),
+            ..Default::default()
+        });
+        let crawler = Crawler::new(Arc::new(sui::grpc::client(rpc_url).expect("mock client")));
+
+        let error = crawler
+            .get_object_owned_object_page::<TestValue>(parent_id, expected_type.clone(), None, 1)
+            .await
+            .expect_err("wrong type must be rejected");
+        assert!(error.to_string().contains(&expected_type.to_string()));
     }
 
     #[tokio::test]

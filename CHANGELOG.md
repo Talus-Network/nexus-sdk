@@ -11,12 +11,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Added a transaction builder for updating an off chain Tool URL.
+- Added exact object-owner pagination, typed receiving PTBs, and bounded explicit or finite collect-all priority-fee deposit actions.
 
 #### Changed
 
 - Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
 - Nexus event kinds are now generated from the committed IR for all six protocol packages, so every declared protocol event has a typed SDK representation.
 - Event decoding now reports unknown event types emitted directly by active protocol packages and decodes each event before publishing checkpoint progress.
+- Maintained settlement builders now use immutable priority-fee vault inputs and the additive V2 Move entrypoints.
+
+### `nexus-cli`
+
+#### Added
+
+- Added `nexus network collect-priority-fees` with mutually exclusive repeatable `--deposit` or `--all` modes, bounded batching, and stable JSON reporting for collected, skipped, and concurrently unavailable deposits.
 
 ## [`2.0.0-rc.5`] - 2026-08-07
 
