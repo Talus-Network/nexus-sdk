@@ -19,7 +19,7 @@ use {
         transactions::network,
         types::PriorityFeeWithdrawalQuote,
     },
-    std::collections::{HashMap, HashSet},
+    std::collections::HashMap,
 };
 
 pub const MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE: usize = 128;
@@ -54,7 +54,7 @@ pub struct SkippedPriorityFeeDeposit {
     pub leader_cap_id: sui::types::Address,
 }
 
-/// Collection outcome across one explicit batch or a finite collect-all run.
+/// Collection outcome across one finite leader-scoped run.
 ///
 /// Existing one-digest fee results cannot represent bounded multi-transaction collection,
 /// removed-leader skips, or deposits consumed concurrently by another collector.
@@ -260,37 +260,22 @@ impl NetworkActions {
         })
     }
 
-    /// Collect one explicit non-empty set of priority-fee deposit object IDs.
-    ///
-    /// The IDs are resolved from a fresh exact owner/type scan. A failed submission is rebuilt
-    /// once from another scan so stale receiving references are not retried.
-    pub async fn collect_priority_fee_deposits(
-        &self,
-        deposit_ids: Vec<sui::types::Address>,
-    ) -> Result<CollectPriorityFeeDepositsResult, NexusError> {
-        validate_priority_fee_deposit_ids(&deposit_ids)?;
-        let client = self.client.operation_client().await?;
-        collect_priority_fee_deposit_batch(&client, deposit_ids, true).await
-    }
-
-    /// Collect the finite deposit-ID set visible at the start of this invocation.
+    /// Collect the finite priority-fee deposit set visible for one leader capability.
     ///
     /// Each batch rescans only to refresh references or observe concurrent consumption. Deposits
     /// created after the initial scan are intentionally deferred to the next invocation.
-    pub async fn collect_all_priority_fee_deposits(
+    pub async fn collect_priority_fee_deposits(
         &self,
+        leader_cap_id: sui::types::Address,
         batch_size: usize,
     ) -> Result<CollectPriorityFeeDepositsResult, NexusError> {
-        if !(1..=MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE).contains(&batch_size) {
-            return Err(NexusError::Configuration(format!(
-                "priority fee deposit batch size must be in 1..={MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE}, got {batch_size}"
-            )));
-        }
+        validate_priority_fee_batch_size(batch_size)?;
 
         let client = self.client.operation_client().await?;
         let frozen_ids = discover_priority_fee_deposits(&client)
             .await?
             .into_iter()
+            .filter(|deposit| deposit.data.leader_cap_id.bytes == leader_cap_id)
             .map(|deposit| deposit.object_id)
             .collect::<Vec<_>>();
         let mut result = CollectPriorityFeeDepositsResult::default();
@@ -314,27 +299,10 @@ impl NetworkActions {
     }
 }
 
-fn validate_priority_fee_deposit_ids(
-    deposit_ids: &[sui::types::Address],
-) -> Result<(), NexusError> {
-    if deposit_ids.is_empty() {
-        return Err(NexusError::Configuration(
-            "at least one priority fee deposit ID is required".to_owned(),
-        ));
-    }
-    if deposit_ids.len() > MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE {
+fn validate_priority_fee_batch_size(batch_size: usize) -> Result<(), NexusError> {
+    if !(1..=MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE).contains(&batch_size) {
         return Err(NexusError::Configuration(format!(
-            "at most {MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE} priority fee deposits may be collected per transaction"
-        )));
-    }
-    let mut unique = HashSet::with_capacity(deposit_ids.len());
-    if let Some(duplicate) = deposit_ids
-        .iter()
-        .copied()
-        .find(|deposit_id| !unique.insert(*deposit_id))
-    {
-        return Err(NexusError::Configuration(format!(
-            "priority fee deposit ID '{duplicate}' was supplied more than once"
+            "priority fee deposit batch size must be in 1..={MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE}, got {batch_size}"
         )));
     }
     Ok(())
@@ -752,16 +720,11 @@ mod tests {
     }
 
     #[test]
-    fn priority_fee_deposit_id_validation_enforces_bounds_and_uniqueness() {
-        let deposit_id = sui::types::Address::from_static("0x571");
-        assert!(validate_priority_fee_deposit_ids(&[]).is_err());
-        assert!(validate_priority_fee_deposit_ids(&[deposit_id, deposit_id]).is_err());
-        assert!(validate_priority_fee_deposit_ids(&vec![
-            deposit_id;
-            MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE + 1
-        ])
-        .is_err());
-        assert!(validate_priority_fee_deposit_ids(&[deposit_id]).is_ok());
+    fn priority_fee_batch_size_validation_enforces_bounds() {
+        assert!(validate_priority_fee_batch_size(0).is_err());
+        assert!(validate_priority_fee_batch_size(MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE + 1).is_err());
+        assert!(validate_priority_fee_batch_size(1).is_ok());
+        assert!(validate_priority_fee_batch_size(MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE).is_ok());
     }
 
     #[tokio::test]
@@ -773,7 +736,10 @@ mod tests {
         mock_priority_fee_deposit_scans(
             &mut state_service,
             &objects,
-            vec![vec![(deposit_ref.clone(), removed_leader)]],
+            vec![
+                vec![(deposit_ref.clone(), removed_leader)],
+                vec![(deposit_ref.clone(), removed_leader)],
+            ],
         );
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
         mock_leader_registry_state(
@@ -791,7 +757,7 @@ mod tests {
 
         let result = client
             .network()
-            .collect_priority_fee_deposits(vec![*deposit_ref.object_id()])
+            .collect_priority_fee_deposits(removed_leader, MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE)
             .await
             .expect("removed leader deposits are reported");
 
@@ -811,13 +777,25 @@ mod tests {
     async fn priority_fee_collection_submits_registered_deposits() {
         let objects = sui_mocks::mock_nexus_objects();
         let deposit_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x575"));
+        let unrelated_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x5751"));
         let leader_cap_id = sui::types::Address::from_static("0x576");
+        let unrelated_leader = sui::types::Address::from_static("0x5761");
         let records_id = sui::types::Address::from_static("0x577");
         let mut state_service = sui_mocks::grpc::MockStateService::new();
         mock_priority_fee_deposit_scans(
             &mut state_service,
             &objects,
-            vec![vec![(deposit_ref.clone(), leader_cap_id)]],
+            vec![
+                vec![
+                    (deposit_ref.clone(), leader_cap_id),
+                    (unrelated_ref.clone(), unrelated_leader),
+                ],
+                vec![
+                    (deposit_ref.clone(), leader_cap_id),
+                    (unrelated_ref, unrelated_leader),
+                ],
+            ],
         );
 
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
@@ -859,7 +837,7 @@ mod tests {
 
         let result = client
             .network()
-            .collect_priority_fee_deposits(vec![*deposit_ref.object_id()])
+            .collect_priority_fee_deposits(leader_cap_id, MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE)
             .await
             .expect("registered deposit collection succeeds");
 
@@ -870,12 +848,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn collect_all_freezes_initial_ids_and_reports_concurrent_unavailability() {
+    async fn leader_collection_freezes_initial_ids_and_reports_concurrent_unavailability() {
         let objects = sui_mocks::mock_nexus_objects();
         let first_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x579"));
         let second_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x57b"));
         let later_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x57c"));
+        let unrelated_ref =
+            sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x57c1"));
         let leader_cap_id = sui::types::Address::from_static("0x57d");
+        let unrelated_leader = sui::types::Address::from_static("0x57d1");
         let records_id = sui::types::Address::from_static("0x57e");
         let mut state_service = sui_mocks::grpc::MockStateService::new();
         mock_priority_fee_deposit_scans(
@@ -885,9 +866,16 @@ mod tests {
                 vec![
                     (first_ref.clone(), leader_cap_id),
                     (second_ref.clone(), leader_cap_id),
+                    (unrelated_ref.clone(), unrelated_leader),
                 ],
-                vec![(first_ref.clone(), leader_cap_id)],
-                vec![(later_ref, leader_cap_id)],
+                vec![
+                    (first_ref.clone(), leader_cap_id),
+                    (unrelated_ref.clone(), unrelated_leader),
+                ],
+                vec![
+                    (later_ref, leader_cap_id),
+                    (unrelated_ref, unrelated_leader),
+                ],
             ],
         );
 
@@ -930,9 +918,9 @@ mod tests {
 
         let result = client
             .network()
-            .collect_all_priority_fee_deposits(1)
+            .collect_priority_fee_deposits(leader_cap_id, 1)
             .await
-            .expect("finite collect-all succeeds");
+            .expect("finite leader collection succeeds");
 
         assert_eq!(result.tx_digests, vec![submitted.digest()]);
         assert_eq!(result.collected_deposit_ids, vec![*first_ref.object_id()]);

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Added a transaction builder for updating an off chain Tool URL.
-- Added exact object-owner pagination, typed receiving PTBs, and bounded explicit or finite collect-all priority-fee deposit actions.
+- Added exact object-owner pagination, typed receiving PTBs, and bounded leader-scoped priority-fee deposit collection.
 
 #### Changed
 
@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added `nexus network collect-priority-fees` with mutually exclusive repeatable `--deposit` or `--all` modes, bounded batching, and stable JSON reporting for collected, skipped, and concurrently unavailable deposits.
+- Added `nexus network collect-priority-fees --leader-cap-id <OBJECT_ID>` with bounded batching and stable JSON reporting for collected, skipped, and concurrently unavailable deposits.
 
 ## [`2.0.0-rc.5`] - 2026-08-07
 

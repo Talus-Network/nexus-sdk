@@ -79,22 +79,14 @@ pub(crate) enum NetworkCommand {
         gas: GasArgs,
     },
 
-    #[command(about = "Collect object-owned priority fee deposits into vault accounting")]
+    #[command(about = "Collect one leader capability's priority fee deposits")]
     CollectPriorityFees {
         #[arg(
-            long = "deposit",
-            help = "PriorityFeeDepositV2 object ID; repeat to select multiple deposits",
-            value_name = "OBJECT_ID",
-            required_unless_present = "all",
-            conflicts_with = "all"
+            long = "leader-cap-id",
+            help = "Leader capability whose initially visible deposits will be collected",
+            value_name = "OBJECT_ID"
         )]
-        deposits: Vec<sui::types::Address>,
-        #[arg(
-            long,
-            help = "Collect the finite deposit set visible when the command starts",
-            conflicts_with = "deposits"
-        )]
-        all: bool,
+        leader_cap_id: sui::types::Address,
         #[arg(
             long = "batch-size",
             help = "Maximum deposits per transaction",
@@ -143,14 +135,12 @@ pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliErr
             .await
         }
         NetworkCommand::CollectPriorityFees {
-            deposits,
-            all,
+            leader_cap_id,
             batch_size,
             gas,
         } => {
             collect_priority_fees(
-                deposits,
-                all,
+                leader_cap_id,
                 batch_size,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
@@ -184,29 +174,28 @@ mod tests {
     }
 
     #[test]
-    fn parses_explicit_priority_fee_collection_with_default_batch_size() {
-        let deposit = "0x701";
+    fn parses_leader_priority_fee_collection_with_default_batch_size() {
+        let leader_cap_id = "0x701";
         let cli = crate::Cli::try_parse_from([
             "nexus",
             "network",
             "collect-priority-fees",
-            "--deposit",
-            deposit,
+            "--leader-cap-id",
+            leader_cap_id,
         ])
-        .expect("explicit priority fee collection should parse");
+        .expect("leader priority fee collection should parse");
         assert!(matches!(
             cli.command,
             crate::Command::Network(NetworkCommand::CollectPriorityFees {
-                deposits,
-                all: false,
+                leader_cap_id: parsed_leader_cap_id,
                 batch_size: nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE,
                 ..
-            }) if deposits == vec![sui::types::Address::from_static(deposit)]
+            }) if parsed_leader_cap_id == sui::types::Address::from_static(leader_cap_id)
         ));
     }
 
     #[test]
-    fn priority_fee_collection_requires_exactly_one_mode_and_bounded_batch_size() {
+    fn priority_fee_collection_requires_a_leader_and_bounded_batch_size() {
         assert!(
             crate::Cli::try_parse_from(["nexus", "network", "collect-priority-fees",]).is_err()
         );
@@ -216,14 +205,18 @@ mod tests {
             "collect-priority-fees",
             "--deposit",
             "0x701",
-            "--all",
         ])
+        .is_err());
+        assert!(crate::Cli::try_parse_from(
+            ["nexus", "network", "collect-priority-fees", "--all",]
+        )
         .is_err());
         assert!(crate::Cli::try_parse_from([
             "nexus",
             "network",
             "collect-priority-fees",
-            "--all",
+            "--leader-cap-id",
+            "0x701",
             "--batch-size",
             "129",
         ])
@@ -232,7 +225,8 @@ mod tests {
             "nexus",
             "network",
             "collect-priority-fees",
-            "--all",
+            "--leader-cap-id",
+            "0x701",
             "--batch-size",
             "1",
         ])

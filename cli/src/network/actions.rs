@@ -4,8 +4,7 @@ use {
 };
 
 pub(crate) async fn collect_priority_fees(
-    deposits: Vec<sui::types::Address>,
-    all: bool,
+    leader_cap_id: sui::types::Address,
     batch_size: usize,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -13,42 +12,10 @@ pub(crate) async fn collect_priority_fees(
     command_title!("Collecting priority fee deposits");
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
     let tx_handle = loading!("Discovering deposits and executing collection transaction(s)...");
-    let result = if all {
-        nexus_client
-            .network()
-            .collect_all_priority_fee_deposits(batch_size)
-            .await
-    } else {
-        let mut result = CollectPriorityFeeDepositsResult::default();
-        let mut failure = None;
-        for batch in deposits.chunks(batch_size) {
-            let batch_result = match nexus_client
-                .network()
-                .collect_priority_fee_deposits(batch.to_vec())
-                .await
-            {
-                Ok(batch_result) => batch_result,
-                Err(error) => {
-                    failure = Some(error);
-                    break;
-                }
-            };
-            result.tx_digests.extend(batch_result.tx_digests);
-            result
-                .collected_deposit_ids
-                .extend(batch_result.collected_deposit_ids);
-            result
-                .skipped_old_leader_deposits
-                .extend(batch_result.skipped_old_leader_deposits);
-            result
-                .unavailable_deposit_ids
-                .extend(batch_result.unavailable_deposit_ids);
-        }
-        match failure {
-            Some(error) => Err(error),
-            None => Ok(result),
-        }
-    };
+    let result = nexus_client
+        .network()
+        .collect_priority_fee_deposits(leader_cap_id, batch_size)
+        .await;
     let result = match result {
         Ok(result) => result,
         Err(error) => {
@@ -62,14 +29,16 @@ pub(crate) async fn collect_priority_fees(
         count = result.collected_deposit_ids.len(),
         transactions = result.tx_digests.len(),
     );
-    json_output(&collect_priority_fees_result_json(&result))?;
+    json_output(&collect_priority_fees_result_json(leader_cap_id, &result))?;
     Ok(())
 }
 
 fn collect_priority_fees_result_json(
+    leader_cap_id: sui::types::Address,
     result: &CollectPriorityFeeDepositsResult,
 ) -> serde_json::Value {
     json!({
+        "leader_cap_id": leader_cap_id,
         "transaction_digests": result.tx_digests,
         "collected_deposit_ids": result.collected_deposit_ids,
         "skipped_old_leader_deposits": result
@@ -272,7 +241,9 @@ mod tests {
             unavailable_deposit_ids: vec![sui::types::Address::from_static("0x704")],
         };
 
-        let value = collect_priority_fees_result_json(&result);
+        let leader_cap_id = sui::types::Address::from_static("0x705");
+        let value = collect_priority_fees_result_json(leader_cap_id, &result);
+        assert_eq!(value["leader_cap_id"], leader_cap_id.to_string());
         assert_eq!(value["transaction_digests"].as_array().unwrap().len(), 1);
         assert_eq!(
             value["collected_deposit_ids"][0],
