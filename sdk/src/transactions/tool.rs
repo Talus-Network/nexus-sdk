@@ -436,7 +436,7 @@ fn register_on_chain_for_self_with_collateral_ptb(
         let fqn = tx.ascii_string(fqn.to_string())?;
         let description = tx.arg(&description.as_bytes().to_vec())?;
         let meta_schema =
-            crate::move_bindings::primitives::meta_schema::MetaSchema::from_onchain_json_schemas(
+            crate::move_bindings::interface::meta_schema::MetaSchema::from_onchain_json_schemas(
                 input_schema,
                 output_schema,
             )?;

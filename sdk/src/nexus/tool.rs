@@ -630,7 +630,7 @@ mod tests {
             fqn: ascii(&fixture.fqn.to_string()),
             r#ref: reference,
             description: b"demo".to_vec(),
-            meta_schema: crate::move_bindings::primitives::meta_schema::MetaSchema::new(
+            meta_schema: crate::move_bindings::interface::meta_schema::MetaSchema::new(
                 vec![],
                 vec![],
             ),
@@ -665,7 +665,7 @@ mod tests {
                 1,
                 LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
                 Table::<ID, bool>::new(id("0x102"), 0),
-                Table::<ID, crate::move_bindings::primitives::meta_schema::MetaSchema>::new(
+                Table::<ID, crate::move_bindings::interface::meta_schema::MetaSchema>::new(
                     id("0x110"),
                     0,
                 ),

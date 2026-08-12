@@ -11,7 +11,7 @@ use {
         ToolkitRuntimeConfig,
     },
     nexus_sdk::{
-        move_bindings::primitives::meta_schema::MetaSchema,
+        move_bindings::interface::meta_schema::MetaSchema,
         types::{NexusData, OffchainToolOutput, OffchainToolOutputPort},
     },
     reqwest::Url,

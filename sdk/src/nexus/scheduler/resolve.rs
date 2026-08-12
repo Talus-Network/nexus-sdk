@@ -1,8 +1,10 @@
 use {
     crate::{
         move_bindings::{
-            interface::agent::SkillDagBinding,
-            primitives::meta_schema::{MetaSchema, PortSchema, ValueKind},
+            interface::{
+                agent::SkillDagBinding,
+                meta_schema::{MetaSchema, PortSchema, ValueKind},
+            },
             scheduler::task::{Task, TaskController, TaskStateV2},
             sui_framework::clock::Clock,
         },
@@ -499,7 +501,7 @@ mod tests {
                         })
                         .collect(),
                     vec![
-                        crate::move_bindings::primitives::meta_schema::OutputVariantSchema::new(
+                        crate::move_bindings::interface::meta_schema::OutputVariantSchema::new(
                             b"ok".to_vec(),
                             vec![],
                         ),

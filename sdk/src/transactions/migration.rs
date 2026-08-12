@@ -7,8 +7,8 @@ use {
                 agent::{self as agent_binding, ExecutionInputMigrationWitness},
                 dag::{self as dag_binding, DAGDefaultMigrationWitness},
                 graph::{self as graph_binding, InputPort, Vertex, VertexInputPort},
+                meta_schema::MetaSchema,
             },
-            primitives::meta_schema::MetaSchema,
             scheduler::task as task_binding,
             sui_framework::vec_map::{self as vec_map_binding, VecMap},
             tool::tool_registry as tool_registry_binding,
@@ -238,7 +238,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            move_bindings::primitives::meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
+            move_bindings::interface::meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
             test_utils::sui_mocks,
         },
     };

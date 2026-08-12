@@ -22,12 +22,12 @@ use {
             interface::{
                 dag as dag_move,
                 graph::{self as graph_move, RuntimeVertex},
+                meta_schema::MetaSchema,
                 onchain_tool_result::OnchainToolResult,
                 payment::{ExecutionPayment, ExecutionPaymentVertexLock},
                 verifier::{FailureEvidenceKind, ToolVerifierMode},
             },
             move_std::type_name::TypeName,
-            primitives::meta_schema::MetaSchema,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
@@ -2571,7 +2571,7 @@ mod tests {
             post_failure_action: MoveOption::from_option(None::<graph_move::PostFailureAction>),
             tool_id: object_id(sui::types::Address::from_static("0x42")),
             meta_schema: MoveOption::from_option(Some(
-                crate::move_bindings::primitives::meta_schema::MetaSchema::new(vec![], vec![]),
+                crate::move_bindings::interface::meta_schema::MetaSchema::new(vec![], vec![]),
             )),
             verifier_mode: ToolVerifierMode::None,
         }

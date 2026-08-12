@@ -1,7 +1,7 @@
 //! Read-only helpers for registry-owned capability and verifier discovery.
 
 #[cfg(test)]
-use crate::move_bindings::primitives::meta_schema::MetaSchema;
+use crate::move_bindings::interface::meta_schema::MetaSchema;
 use {
     crate::{
         move_bindings::{

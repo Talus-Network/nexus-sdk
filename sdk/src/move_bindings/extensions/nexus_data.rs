@@ -3,10 +3,8 @@
 use {
     crate::{
         move_bindings::{
-            primitives::{
-                data::{NexusData, NexusValue},
-                meta_schema::{PortCommitment, ValueKind},
-            },
+            interface::meta_schema::{PortCommitment, ValueKind},
+            primitives::data::{NexusData, NexusValue},
             sui_framework::object::ID,
         },
         sui,
@@ -19,7 +17,7 @@ use {
 };
 
 const SHA256_LEN: usize = 32;
-const MAX_MANY_VALUES: usize = 128;
+const MAX_MANY_VALUES: usize = 256;
 pub(crate) const MAX_INLINE_DATA_BYTES: usize = 61_440;
 const MAX_WALRUS_STORAGE_KEY_BYTES: usize = 1_024;
 const MAX_NEXUS_DATA_BYTES: usize = 65_536;

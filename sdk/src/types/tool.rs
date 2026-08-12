@@ -192,7 +192,7 @@ mod tests {
             fqn: ascii("xyz.taluslabs.math.i64.add@1"),
             r#ref: reference,
             description: b"A test tool".to_vec(),
-            meta_schema: crate::move_bindings::primitives::meta_schema::MetaSchema::new(
+            meta_schema: crate::move_bindings::interface::meta_schema::MetaSchema::new(
                 vec![],
                 vec![],
             ),

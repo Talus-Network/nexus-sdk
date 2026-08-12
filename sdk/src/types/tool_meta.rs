@@ -1,5 +1,5 @@
 use {
-    crate::{move_bindings::primitives::meta_schema::MetaSchema, ToolFqn},
+    crate::{move_bindings::interface::meta_schema::MetaSchema, ToolFqn},
     std::time::Duration,
 };
 

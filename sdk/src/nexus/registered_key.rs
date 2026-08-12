@@ -3,8 +3,10 @@
 use {
     crate::{
         move_bindings::{
-            interface::verifier::{RegisteredKeyAuxiliary, ToolInvocationNoncePreimage},
-            primitives::meta_schema::MetaSchema,
+            interface::{
+                meta_schema::MetaSchema,
+                verifier::{RegisteredKeyAuxiliary, ToolInvocationNoncePreimage},
+            },
             sui_framework::object::ID,
         },
         sui,
@@ -99,7 +101,7 @@ fn domain_sha256(domain: &[u8], bytes: &[u8]) -> [u8; SHA256_LEN] {
 mod tests {
     use {
         super::*,
-        crate::move_bindings::primitives::meta_schema::{
+        crate::move_bindings::interface::meta_schema::{
             OutputVariantSchema,
             PortSchema,
             ValueKind,

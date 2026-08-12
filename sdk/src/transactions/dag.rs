@@ -9,10 +9,11 @@ use {
                     RuntimeVertex,
                     Vertex as GraphVertex,
                 },
+                meta_schema::MetaSchema,
                 verifier::{self as verifier_binding, RegisteredKeyAuxiliary, ToolVerifierMode},
             },
             move_std::option::Option as MoveOption,
-            primitives::{meta_schema::MetaSchema, tagged_output as tagged_output_binding},
+            primitives::tagged_output as tagged_output_binding,
             registry::registered_key_verifier as registered_key_verifier_binding,
             sui_framework::transfer as transfer_binding,
             tool::tool_registry as tool_registry_binding,
@@ -1860,9 +1861,11 @@ mod tests {
         super::*,
         crate::{
             move_bindings::{
-                interface::verifier::VerifierMethodId,
+                interface::{
+                    meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
+                    verifier::VerifierMethodId,
+                },
                 move_std::ascii,
-                primitives::meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
                 sui_framework::object::ID,
             },
             types::{DefaultDagExecutorTarget, OffchainToolOutputPort, UsTokenConfig},

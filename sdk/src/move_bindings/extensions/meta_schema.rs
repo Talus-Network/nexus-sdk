@@ -2,7 +2,7 @@
 
 use {
     crate::{
-        move_bindings::primitives::meta_schema::{
+        move_bindings::interface::meta_schema::{
             MetaSchema,
             OutputVariantSchema,
             PortSchema,
@@ -335,7 +335,7 @@ impl MetaSchema {
         #[derive(Serialize)]
         struct PortInputCommitment<'a> {
             port_name: &'a [u8],
-            commitment: crate::move_bindings::primitives::meta_schema::PortCommitment,
+            commitment: crate::move_bindings::interface::meta_schema::PortCommitment,
         }
 
         let commitments = self
@@ -920,7 +920,7 @@ mod tests {
 
     #[test]
     fn committed_binding_ir_uses_one_boolean_port_shape_bit() {
-        let ir: Value = serde_json::from_str(include_str!("../ir/primitives.json")).unwrap();
+        let ir: Value = serde_json::from_str(include_str!("../ir/interface.json")).unwrap();
         let module = &ir["modules"]["meta_schema"];
         let datatypes = module["datatypes"].as_array().unwrap();
         let functions = module["functions"].as_array().unwrap();

@@ -137,8 +137,7 @@ mod tests {
         super::*,
         nexus_sdk::{
             move_bindings::{
-                interface::verifier::ToolVerifierSupport,
-                primitives::meta_schema::MetaSchema,
+                interface::{meta_schema::MetaSchema, verifier::ToolVerifierSupport},
                 sui_framework::{
                     balance::Balance,
                     linked_table::LinkedTable,

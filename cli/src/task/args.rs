@@ -624,10 +624,10 @@ mod tests {
                 interface::{
                     dag::{DAGStateV2, DAG},
                     graph::{self, VertexInfoV2, VertexKind},
+                    meta_schema::{MetaSchema, PortSchema, ValueKind},
                     verifier::ToolVerifierMode,
                 },
                 move_std::option::Option as MoveOption,
-                primitives::meta_schema::{MetaSchema, PortSchema, ValueKind},
                 sui_framework::{
                     linked_table::{LinkedTable, Node},
                     object::{ID, UID},

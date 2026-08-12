@@ -327,9 +327,11 @@ mod tests {
         nexus_sdk::{
             fqn,
             move_bindings::{
-                interface::verifier::{ToolVerifierSupport, VerifierMethodId},
+                interface::{
+                    meta_schema::{MetaSchema, OutputVariantSchema},
+                    verifier::{ToolVerifierSupport, VerifierMethodId},
+                },
                 move_std::{ascii, option::Option as MoveOption},
-                primitives::meta_schema::{MetaSchema, OutputVariantSchema},
                 sui_framework::{balance::Balance, object::ID},
                 tool::external_verifier::ExternalVerifier,
             },

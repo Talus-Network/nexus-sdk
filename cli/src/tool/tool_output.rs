@@ -174,8 +174,8 @@ mod tests {
         super::*,
         nexus_sdk::{
             move_bindings::{
+                interface::meta_schema::{MetaSchema, OutputVariantSchema},
                 move_std::{ascii, option::Option as MoveOption},
-                primitives::meta_schema::{MetaSchema, OutputVariantSchema},
                 sui_framework::{balance::Balance, object::ID},
             },
             types::{ToolRef, ToolStateV2},

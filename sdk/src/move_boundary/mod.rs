@@ -5,14 +5,14 @@
 //! call targets or type tags.
 
 #[cfg(feature = "transactions")]
-use crate::move_bindings::primitives::data::NexusValue;
-#[cfg(feature = "transactions")]
-use crate::move_bindings::primitives::meta_schema::{
+use crate::move_bindings::interface::meta_schema::{
     MetaSchema,
     OutputVariantSchema,
     PortSchema,
     ValueKind,
 };
+#[cfg(feature = "transactions")]
+use crate::move_bindings::primitives::data::NexusValue;
 use crate::sui;
 #[cfg(feature = "transactions")]
 use crate::{
@@ -358,7 +358,7 @@ impl NexusPtbBuilder {
         Ok(self.move_vector::<NexusValue>(values)?)
     }
 
-    /// Build a generated immutable `primitives::meta_schema::MetaSchema`.
+    /// Build a generated immutable `interface::meta_schema::MetaSchema`.
     pub(crate) fn meta_schema(&mut self, schema: &MetaSchema) -> anyhow::Result<Argument> {
         let input_ports = schema
             .input_ports
@@ -378,14 +378,14 @@ impl NexusPtbBuilder {
                     .collect::<anyhow::Result<Vec<_>>>()?;
                 let ports = self.move_vector::<PortSchema>(ports)?;
                 self.call_target(
-                    primitives::meta_schema::output_variant_schema_target,
+                    interface::meta_schema::output_variant_schema_target,
                     vec![name, ports],
                 )
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let output_variants = self.move_vector::<OutputVariantSchema>(output_variants)?;
         self.call_target(
-            primitives::meta_schema::new_target,
+            interface::meta_schema::new_target,
             vec![input_ports, output_variants],
         )
     }
@@ -395,7 +395,7 @@ impl NexusPtbBuilder {
         let is_many = self.tx.arg(&schema.is_many)?;
         let value_kind = self.value_kind(schema.value_kind)?;
         self.call_target(
-            primitives::meta_schema::port_schema_target,
+            interface::meta_schema::port_schema_target,
             vec![port_name, is_many, value_kind],
         )
     }
@@ -419,8 +419,8 @@ impl NexusPtbBuilder {
 
     fn value_kind(&mut self, kind: ValueKind) -> anyhow::Result<Argument> {
         let target = match kind {
-            ValueKind::Object => primitives::meta_schema::value_kind_object_target,
-            ValueKind::Data => primitives::meta_schema::value_kind_data_target,
+            ValueKind::Object => interface::meta_schema::value_kind_object_target,
+            ValueKind::Data => interface::meta_schema::value_kind_data_target,
         };
         self.call_target(target, vec![])
     }
