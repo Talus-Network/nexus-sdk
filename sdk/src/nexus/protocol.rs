@@ -883,7 +883,7 @@ mod tests {
                 .collect(),
         );
         let shared_objects = VecMap::new(
-            ["0x21", "0x22", "0x23", "0x24", "0x25"]
+            ["0x21", "0x22", "0x23", "0x24", "0x25", "0x26"]
                 .into_iter()
                 .zip(SHARED_OBJECT_ROLES)
                 .map(|(id, (role, _))| Entry::new(role, shared(id)))

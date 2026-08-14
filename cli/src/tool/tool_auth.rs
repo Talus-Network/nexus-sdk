@@ -12,7 +12,7 @@ use {
         nexus::{client::NexusClient, network_auth::ToolKeyList},
         signed_http::{
             keys::{parse_ed25519_signing_key, Ed25519Keypair},
-            v2::wire::AllowedLeadersFileV1,
+            v3::wire::AllowedLeadersFileV1,
         },
         ToolFqn,
     },

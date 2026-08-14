@@ -4,24 +4,30 @@
       "vertex": "restaurant_event_decider",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "decide restaurant"
+        "one": {
+          "kind": "data",
+          "data": "decide restaurant"
+        }
       }
     },
     {
       "vertex": "events_llm_summarizer",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "summarize events"
+        "one": {
+          "kind": "data",
+          "data": "summarize events"
+        }
       }
     },
     {
       "vertex": "restaurants_llm_summarizer",
       "input_port": "llm_prompt",
       "value": {
-        "storage": "inline",
-        "data": "summarize restaurants"
+        "one": {
+          "kind": "data",
+          "data": "summarize restaurants"
+        }
       }
     }
   ],

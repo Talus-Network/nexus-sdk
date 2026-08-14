@@ -4403,6 +4403,124 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "_arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg3",
+              "ty": "U64"
+            },
+            {
+              "name": "_arg4",
+              "ty": "U64"
+            },
+            {
+              "name": "_arg5",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "FailureMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_agent_task_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
               "name": "registry",
               "ty": {
                 "Ref": {
@@ -4413,6 +4531,24 @@
                         "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -4445,7 +4581,7 @@
                   "type_name": {
                     "address": "0xa2",
                     "module": "agent",
-                    "name": "AgentExecutionConfig"
+                    "name": "AgentExecutionConfigV2"
                   },
                   "type_arguments": []
                 }
@@ -4521,6 +4657,130 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "_arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "_arg3",
+              "ty": "Address"
+            },
+            {
+              "name": "_arg4",
+              "ty": "U64"
+            },
+            {
+              "name": "_arg5",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "FailureMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg6",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_default_task_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
               "name": "registry",
               "ty": {
                 "Ref": {
@@ -4539,13 +4799,31 @@
               }
             },
             {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "config",
               "ty": {
                 "Datatype": {
                   "type_name": {
                     "address": "0xa2",
                     "module": "agent",
-                    "name": "AgentExecutionConfig"
+                    "name": "AgentExecutionConfigV2"
                   },
                   "type_arguments": []
                 }
@@ -4645,6 +4923,148 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "_arg0",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_arg1",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "AgentExecutionConfig"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg3",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "coin",
+                    "name": "Coin"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "_arg4",
+              "ty": "Address"
+            },
+            {
+              "name": "_arg5",
+              "ty": "U64"
+            },
+            {
+              "name": "_arg6",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "FailureMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg7",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_user_task_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
               "name": "registry",
               "ty": {
                 "Ref": {
@@ -4655,6 +5075,24 @@
                         "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -4687,7 +5125,7 @@
                   "type_name": {
                     "address": "0xa2",
                     "module": "agent",
-                    "name": "AgentExecutionConfig"
+                    "name": "AgentExecutionConfigV2"
                   },
                   "type_arguments": []
                 }
@@ -7124,6 +7562,165 @@
           "type_name": {
             "address": "0xa5",
             "module": "task",
+            "name": "TaskStateV2"
+          },
+          "module": "task",
+          "name": "TaskStateV2",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "minimum_protocol_version",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "controller",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "TaskController"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "status",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "TaskStatus"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "failure_mode",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "FailureMode"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "operation",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpecV2"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "schedule_policy",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "SkillSchedulePolicy"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "schedule",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "schedule",
+                        "name": "Schedule"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "in_flight",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        "U64",
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa5",
+                              "module": "task",
+                              "name": "InFlightOccurrence"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "registration",
+                  "position": 8,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "agent_registry",
+                              "name": "ScheduledTaskRegistration"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa5",
+            "module": "task",
             "name": "TaskStatus"
           },
           "module": "task",
@@ -8334,7 +8931,7 @@
           ]
         },
         {
-          "name": "load_v1",
+          "name": "load_v2",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -8367,7 +8964,7 @@
                     "type_name": {
                       "address": "0xa5",
                       "module": "task",
-                      "name": "TaskStateV1"
+                      "name": "TaskStateV2"
                     },
                     "type_arguments": []
                   }
@@ -8377,7 +8974,7 @@
           ]
         },
         {
-          "name": "load_v1_mut",
+          "name": "load_v2_mut",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -8410,7 +9007,7 @@
                     "type_name": {
                       "address": "0xa5",
                       "module": "task",
-                      "name": "TaskStateV1"
+                      "name": "TaskStateV2"
                     },
                     "type_arguments": []
                   }
@@ -8418,6 +9015,206 @@
               }
             }
           ]
+        },
+        {
+          "name": "migrate_address_task_to_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "input_witnesses",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa2",
+                          "module": "graph",
+                          "name": "Vertex"
+                        },
+                        "type_arguments": []
+                      }
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "vec_map",
+                          "name": "VecMap"
+                        },
+                        "type_arguments": [
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "graph",
+                                "name": "InputPort"
+                              },
+                              "type_arguments": []
+                            }
+                          },
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "agent",
+                                "name": "ExecutionInputMigrationWitness"
+                              },
+                              "type_arguments": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "migrate_agent_task_to_v2",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "controller_agent",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "Agent"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "input_witnesses",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "vec_map",
+                    "name": "VecMap"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa2",
+                          "module": "graph",
+                          "name": "Vertex"
+                        },
+                        "type_arguments": []
+                      }
+                    },
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "vec_map",
+                          "name": "VecMap"
+                        },
+                        "type_arguments": [
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "graph",
+                                "name": "InputPort"
+                              },
+                              "type_arguments": []
+                            }
+                          },
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "agent",
+                                "name": "ExecutionInputMigrationWitness"
+                              },
+                              "type_arguments": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "minimum_protocol_version",
@@ -8490,6 +9287,119 @@
           "type_parameters": [],
           "parameters": [
             {
+              "name": "_arg0",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "TaskController"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg1",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa5",
+                    "module": "task",
+                    "name": "FailureMode"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg2",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "ExecutionSpec"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg3",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "agent",
+                    "name": "SkillSchedulePolicy"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg4",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa3",
+                    "module": "agent_registry",
+                    "name": "ScheduledTaskRegistration"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_arg5",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "Task"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa5",
+                  "module": "task",
+                  "name": "TaskPointer"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_v2",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
               "name": "controller",
               "ty": {
                 "Datatype": {
@@ -8522,7 +9432,7 @@
                   "type_name": {
                     "address": "0xa2",
                     "module": "agent",
-                    "name": "ExecutionSpec"
+                    "name": "ExecutionSpecV2"
                   },
                   "type_arguments": []
                 }
@@ -8821,7 +9731,7 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "_arg0",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8846,6 +9756,44 @@
                   "address": "0xa2",
                   "module": "agent",
                   "name": "ExecutionSpec"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "operation_v2",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa5",
+                        "module": "task",
+                        "name": "Task"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa2",
+                  "module": "agent",
+                  "name": "ExecutionSpecV2"
                 },
                 "type_arguments": []
               }

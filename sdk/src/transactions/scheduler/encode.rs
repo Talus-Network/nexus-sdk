@@ -8,7 +8,7 @@ use {
                 graph::{InputPort, Vertex},
             },
             move_std::option::Option as MoveOption,
-            primitives::data::NexusData,
+            primitives::data::NexusValue,
             scheduler::scheduler as scheduler_binding,
             sui_framework::{
                 object::ID as MoveObjectId,
@@ -22,7 +22,7 @@ use {
     sui_sdk_types::Argument,
 };
 
-type VertexInputs = VecMap<InputPort, NexusData>;
+type VertexInputs = VecMap<InputPort, Vec<NexusValue>>;
 
 pub(super) fn execution_config_arg(
     transaction: &mut NexusPtbBuilder,
@@ -43,7 +43,7 @@ pub(super) fn execution_config_arg(
                 .map_err(SchedulerError::transaction)?;
             transaction
                 .call_target(
-                    agent_binding::new_default_agent_execution_config_target,
+                    agent_binding::new_default_agent_execution_config_v2_target,
                     vec![dag_id, network, entry_group, inputs],
                 )
                 .map_err(SchedulerError::transaction)
@@ -65,7 +65,7 @@ pub(super) fn execution_config_arg(
                 authorization_templates_arg(transaction, authorization_templates)?;
             transaction
                 .call_target(
-                    agent_binding::new_agent_execution_config_target,
+                    agent_binding::new_agent_execution_config_v2_target,
                     vec![
                         agent_id,
                         network,
@@ -98,7 +98,7 @@ fn execution_inputs_arg(
             .map_err(SchedulerError::transaction)?;
         let inputs_for_vertex = transaction
             .call_target(
-                vec_map_binding::empty_target::<InputPort, NexusData>,
+                vec_map_binding::empty_target::<InputPort, Vec<NexusValue>>,
                 vec![],
             )
             .map_err(SchedulerError::transaction)?;
@@ -108,11 +108,11 @@ fn execution_inputs_arg(
                 .graph_input_port(input)
                 .map_err(SchedulerError::transaction)?;
             let value = transaction
-                .nexus_data(value)
+                .nexus_value_witnesses(value)
                 .map_err(SchedulerError::transaction)?;
             transaction
                 .call_target(
-                    vec_map_binding::insert_target::<InputPort, NexusData>,
+                    vec_map_binding::insert_target::<InputPort, Vec<NexusValue>>,
                     vec![inputs_for_vertex, input, value],
                 )
                 .map_err(SchedulerError::transaction)?;

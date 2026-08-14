@@ -28,6 +28,9 @@ pub mod types;
 #[cfg(feature = "types")]
 mod move_boundary;
 
+#[cfg(any(feature = "nexus", feature = "signed_http"))]
+mod commitments;
+
 /// DAG JSON parsing and static validation helpers for SDK and CLI authoring flows.
 #[cfg(feature = "dag")]
 pub mod dag;

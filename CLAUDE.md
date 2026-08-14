@@ -105,14 +105,7 @@ helpers on top, but they should not duplicate Move ABI logic.
 
 How the pipeline fits together:
 
-- **Refresh half (on demand through `just sdk rebind`)**:
-  `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR
-  through `sui_move_codegen::fetch_package`, replaces concrete Nexus package
-  identities with stable SDK binding slots, normalizes the unused deployment
-  version, and writes committed JSON under
-  `sdk/src/move_bindings/ir/<package>.json`. The reduced `move_std` and
-  `sui_framework` IR files remain unchanged and are rendered alongside the six
-  refreshed Nexus package files.
+- **Refresh half (on demand through `just sdk rebind`)**: `sdk/src/bin/regenerate_bindings.rs` fetches each Nexus package's normalized IR through `sui_move_codegen::fetch_package`, replaces concrete Nexus package identities with stable SDK binding slots, normalizes the unused deployment version, extracts authoritative protocol limits from matching Nexus Move source, and writes committed JSON under `sdk/src/move_bindings/ir/<package>.json` plus `sdk/src/move_bindings/protocol_limits.toml`. The reduced `move_std` and `sui_framework` IR files remain unchanged and are rendered alongside the six refreshed Nexus package files.
 - **Offline half (every build)**: `sdk/build.rs` reads the committed IR and
   renders one `$OUT_DIR/<package>_types.rs` file per package. The rendered Rust
   includes generated Move structs, enum variants, type tags, serde and BCS
@@ -145,24 +138,19 @@ Key invariants:
 
 ### Regenerating the bindings
 
-Run this after the on chain Move in Nexus changes identifiers, signatures,
-functions, or datatypes. The command expects a deployment objects TOML plus a
-reachable Sui gRPC endpoint. From the SDK workspace:
+Run this after the on chain Move in Nexus changes identifiers, signatures, functions, datatypes, or protocol-limit constants. The preferred command takes the Nexus `sui` source directory, derives its deployment objects TOML, and uses the default local Sui gRPC endpoint:
 
 ```bash
-just sdk rebind {your_path_to_objects_toml}
+just sdk rebind {your_path_to_nexus_contracts}
 ```
 
-You can pass the gRPC endpoint as the second argument when it is not
-`http://127.0.0.1:9000`:
+You can pass the gRPC endpoint as the second argument when it is not `http://127.0.0.1:9000`:
 
 ```bash
-just sdk rebind {your_path_to_objects_toml} http://127.0.0.1:{grpc_port}
+just sdk rebind {your_path_to_nexus_contracts} http://127.0.0.1:{grpc_port}
 ```
 
-Network package metadata does not contain Move function parameter names. Pass
-a matching Move source root as the third argument when source names should be
-restored:
+Network package metadata does not contain Move function parameter names or named constant values. When passing a deployment objects TOML instead of the source directory, pass its matching Move source root as the third argument:
 
 ```bash
 just sdk rebind \
@@ -171,14 +159,7 @@ just sdk rebind \
   {your_path_to_nexus_contracts}
 ```
 
-The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the
-`binding_codegen` feature. The binary reads package ids from
-the supplied deployment manifest, fetches normalized Nexus package metadata
-over gRPC, optionally overlays trusted source parameter names, and writes the
-refreshed Nexus JSON under `sdk/src/move_bindings/ir/`. The reduced `move_std`
-and `sui_framework` IR files are not fetched or rewritten. Without a source
-root, parameter names remain deterministic `argN` values. Source input does not
-replace signatures, types, or abilities from the network.
+The recipe runs `sdk/src/bin/regenerate_bindings.rs` with the `binding_codegen` feature. The binary reads package ids from the supplied deployment manifest, fetches normalized Nexus package metadata over gRPC, overlays trusted source parameter names, extracts required protocol limits, writes `sdk/src/move_bindings/protocol_limits.toml`, and writes the refreshed Nexus JSON under `sdk/src/move_bindings/ir/`. The reduced `move_std` and `sui_framework` IR files are not fetched or rewritten. Source input does not replace signatures, types, or abilities from the network.
 
 Before writing, regeneration replaces every current and original Nexus package
 ID, including cross package type references, with its stable SDK binding slot.
@@ -189,10 +170,7 @@ while redeploying the same ABI does not change the committed IR. Runtime
 for type identity. The recipe does not start Sui, publish packages, or run
 `cargo check`; run the normal SDK checks after regeneration.
 
-The committed artifact to review is the JSON diff under
-`sdk/src/move_bindings/ir/`. `sdk/build.rs` renders Rust bindings from that JSON
-during normal builds, so a dropped or renamed generated target should be
-treated as an on chain API move and fixed at the call site.
+The committed artifacts to review are the JSON diff under `sdk/src/move_bindings/ir/` and the generated `sdk/src/move_bindings/protocol_limits.toml`. `sdk/build.rs` renders Rust bindings and protocol-limit constants from those artifacts during normal builds, so a dropped or renamed generated target should be treated as an on chain API move and fixed at the call site.
 
 ## CLI conventions
 

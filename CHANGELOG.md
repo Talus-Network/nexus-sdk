@@ -11,12 +11,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Added a transaction builder for updating an off chain Tool URL.
+- Added canonical `NexusValue`, one-or-many `NexusData`, and `MetaSchema` helpers for JSON and BCS conversion, ordered port validation, commitments, output variants, protocol bounds, and digest-checked Walrus storage resolution.
+- Added PTB builders for DAG, address-funded Task, Agent-funded Task, ToolRegistry, and Tool V1-to-V2 migrations plus direct owner-authorized on-chain Tool package targeting without an `UpgradeCap`; DAG construction now supplies the matching owner capability to borrowed mutation calls.
+- Added signed HTTP v3 helpers that authenticate leaders and bind Tool signatures to the leader signature, invocation nonce, and exact ordered BCS `OffchainToolOutput` bytes.
 
 #### Changed
 
+- Move binding regeneration now requires matching Nexus Move source and generates SDK validation limits from authoritative on-chain declarations instead of independent Rust literals.
 - Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
 - Nexus event kinds are now generated from the committed IR for all six protocol packages, so every declared protocol event has a typed SDK representation.
 - Event decoding now reports unknown event types emitted directly by active protocol packages and decodes each event before publishing checkpoint progress.
+- Regenerated bindings and transaction builders now target schema-bound V2 DAG, graph, execution, Task, Tool, and ToolRegistry state with explicit entry groups, typed inputs, post-failure actions, output witnesses, and package-migration support.
+- On-chain Tool preparation and result submission now preserve ordered pure and object arguments from `MetaSchema`, enforce immutable/shared ownership and shared-version semantics, reject caller-owned objects and Leader capabilities, and verify Walrus content commitments before building a PTB.
+- `NexusData` PTB materialization now preserves explicit ordered object requirements for accepted inline and aligned many-value forms, rejects Walrus-one object requirements, and passes only the canonical `LeaderRegistry` required by the Move ABI.
+
+### `nexus-cli`
+
+#### Added
+
+- Added complete Task authoring for default DAG and Agent-skill operations, entry-group JSON inputs, selected Walrus-backed fields, address or Agent funding, standalone and recurring schedules, deadlines, priority fees, and pause-on-failure policy with authoritative DAG preflight before upload.
+
+#### Changed
+
+- On-chain Tool registration now preserves generated positional input keys and permits description customization without exposing an incompatible input-renaming path.
+- DAG, Tool, workflow, and Task commands now render and accept canonical typed `NexusData` and `MetaSchema` values, generate on-chain Tool schemas from the registered Move `execute` function, and use the active V2 transaction shapes.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Toolkit `/invoke` responses now encode exact ordered BCS `OffchainToolOutput` ports from externally tagged Rust enums and use signed HTTP v3 nonce-bound authentication, replay handling, and response signatures while local HTTP and serialization errors remain unsigned JSON.
 
 ## [`2.0.0-rc.5`] - 2026-08-07
 
@@ -66,7 +90,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Event replay gaps are terminal by default and return a typed error with the missing checkpoint range. Explicit recovery reports the gap and resumes the existing live subscription for disposable environments.
 - Tool registration PTBs now withdraw and refund address balance collateral in the configured `$US` type.
 - Leader registration PTBs now preserve any `$US` balance above the chosen stake instead of requiring the input coin to reach zero.
-- Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
 - Generated `TaggedOutput` bindings now map payload names directly to encoded `NexusData` values, with no type hint wrapper or deferred formatting API.
