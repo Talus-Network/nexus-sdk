@@ -118,7 +118,7 @@ fn ordered_output_bcs_matches_move_output_hash_golden() {
     );
     assert_eq!(
         hex::encode(output_sha256(&bytes)),
-        "53c01b8ce70ee1095349bb6b0b70f5698b8c7e491df7406df6dbe66f7b3c64aa"
+        "05b824008a23a42ccb453d2dc4fd3ab6d1ef55246c719dc035dd2e621041cb6c"
     );
 }
 

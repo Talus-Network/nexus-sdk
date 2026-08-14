@@ -645,6 +645,8 @@ mod tests {
         std::collections::BTreeMap,
     };
 
+    const BLOB_ID_A: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     fn mock_dag(
         ledger: &mut sui_mocks::grpc::MockLedgerService,
         state_service: &mut sui_mocks::grpc::MockStateService,
@@ -1043,7 +1045,7 @@ mod tests {
         let upload = StorageInfo {
             newly_created: Some(NewlyCreated {
                 blob_object: BlobObject {
-                    blob_id: "json_blob_id".to_owned(),
+                    blob_id: BLOB_ID_A.to_owned(),
                     id: "json_object_id".to_owned(),
                     storage: BlobStorage { end_epoch: 200 },
                 },
@@ -1058,7 +1060,7 @@ mod tests {
             .create_async()
             .await;
         let get = walrus
-            .mock("GET", "/v1/blobs/json_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID_A}").as_str())
             .with_status(200)
             .with_body(br#""value""#)
             .create_async()

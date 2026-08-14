@@ -3,7 +3,7 @@ use {
         move_bindings::{
             registry::registered_key_verifier as registered_key_verifier_binding,
             sui_framework::transfer as transfer_binding,
-            tool::{tool as tool_binding, tool_registry as tool_registry_binding},
+            tool::tool_registry as tool_registry_binding,
         },
         move_boundary,
         sui,
@@ -519,26 +519,21 @@ pub fn unregister_ptb(
     })
 }
 
-/// PTB template for migrating an on-chain Tool to the package proven by an UpgradeCap.
-///
-/// The Move call checks the Tool owner, validates the expected current package, and derives the
-/// target from the completed package upgrade capability without a ToolRegistry input.
+/// PTB template for updating an on-chain Tool package using its bound owner capability.
 pub fn migrate_on_chain_tool_package_ptb(
     objects: &NexusObjects,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
-    expected_current_package: sui::types::Address,
-    upgrade_cap: &sui::types::ObjectReference,
+    target_package: sui::types::Address,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let tool = tx.shared_object(tool, true)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let expected_current_package = tx.arg(&expected_current_package)?;
-        let upgrade_cap = tx.owned_object(upgrade_cap)?;
+        let target_package = tx.arg(&target_package)?;
 
         tx.call_target(
-            tool_binding::migrate_on_chain_tool_package_target,
-            vec![tool, owner_cap, expected_current_package, upgrade_cap],
+            tool_registry_binding::migrate_on_chain_tool_package_target,
+            vec![tool, owner_cap, target_package],
         )?;
         Ok(())
     })
@@ -888,28 +883,21 @@ mod tests {
     }
 
     #[test]
-    fn on_chain_package_migration_uses_tool_owner_and_upgrade_cap_proof() {
+    fn on_chain_package_migration_uses_only_tool_owner_and_target_package() {
         let objects = nexus_objects();
         let tool = object_ref("0x20", 2, 20);
         let owner_cap = object_ref("0x21", 3, 21);
-        let package_cap = object_ref("0x22", 4, 22);
-        let current_package = addr("0x23");
+        let target_package = addr("0x23");
 
-        let ptb = migrate_on_chain_tool_package_ptb(
-            &objects,
-            &tool,
-            &owner_cap,
-            current_package,
-            &package_cap,
-        )
-        .unwrap();
+        let ptb =
+            migrate_on_chain_tool_package_ptb(&objects, &tool, &owner_cap, target_package).unwrap();
 
         let calls = move_calls(&ptb);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].package, objects.tool_pkg_id());
-        assert_eq!(calls[0].module.as_str(), "tool");
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
         assert_eq!(calls[0].function.as_str(), "migrate_on_chain_tool_package");
-        assert_eq!(calls[0].arguments.len(), 4);
+        assert_eq!(calls[0].arguments.len(), 3);
         let tool_input = ptb
             .inputs
             .iter()
@@ -922,17 +910,15 @@ mod tests {
         assert!(!ptb.inputs.iter().any(|input| {
             matches!(input, CallArg::Shared(shared) if shared.object_id() == *objects.tool_registry.object_id())
         }));
-        for object_id in [*owner_cap.object_id(), *package_cap.object_id()] {
-            assert_eq!(
-                ptb.inputs
-                    .iter()
-                    .filter(|input| {
-                        matches!(input, CallArg::ImmutableOrOwned(object) if *object.object_id() == object_id)
-                    })
-                    .count(),
-                1,
-            );
-        }
+        assert_eq!(
+            ptb.inputs
+                .iter()
+                .filter(|input| {
+                    matches!(input, CallArg::ImmutableOrOwned(object) if *object.object_id() == *owner_cap.object_id())
+                })
+                .count(),
+            1,
+        );
     }
 
     #[test]

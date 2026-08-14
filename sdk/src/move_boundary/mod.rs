@@ -38,7 +38,8 @@ pub const RANDOM_OBJECT_ID: sui::types::Address = sui::types::Address::from_stat
 #[cfg(feature = "transactions")]
 const MAX_PURE_INPUT_BYTES: usize = 16_384;
 #[cfg(feature = "transactions")]
-const BYTE_VECTOR_CHUNK_BYTES: usize = MAX_PURE_INPUT_BYTES - 384;
+// Each of 256 nested byte vectors can add a three-byte BCS length prefix: 256 * 3 = 768.
+const BYTE_VECTOR_CHUNK_BYTES: usize = MAX_PURE_INPUT_BYTES - (256 * 3);
 
 /// Normalize package dependency IDs for Sui publish commands.
 ///
@@ -661,7 +662,7 @@ mod tests {
         assert!(transaction.commands.len() <= MAX_PROGRAMMABLE_TX_COMMANDS);
         for input in &transaction.inputs {
             if let sui::types::Input::Pure(bytes) = input {
-                assert!(bytes.len() <= MAX_PURE_INPUT_BYTES);
+                assert!(bytes.len() < MAX_PURE_INPUT_BYTES);
             }
         }
         assert!(
@@ -706,7 +707,9 @@ mod tests {
     fn nexus_data_builds_object_and_walrus_values() {
         let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
         let object = NexusData::object(addr(0x99));
-        let walrus = NexusData::walrus_data(b"blob-key", vec![7; 32]).expect("fixture is valid");
+        let walrus =
+            NexusData::walrus_data(b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", vec![7; 32])
+                .expect("fixture is valid");
 
         transaction
             .nexus_value_witnesses(&object)
@@ -739,7 +742,7 @@ mod tests {
 
     #[test]
     fn aggregate_limit_inline_many_is_sui_ptb_buildable() {
-        let value = NexusData::inline_data_many((0..128).map(|_| vec![0; 500])).unwrap();
+        let value = NexusData::inline_data_many((0..256).map(|_| vec![0; 240])).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
         builder.nexus_value_witnesses(&value).unwrap();
@@ -749,8 +752,9 @@ mod tests {
 
     #[test]
     fn maximal_count_walrus_many_is_sui_ptb_buildable() {
+        let blob_id = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         let value =
-            NexusData::walrus_data_many((0..128).map(|_| (vec![0; 400], vec![0; 32]))).unwrap();
+            NexusData::walrus_data_many((0..256).map(|_| (blob_id.to_vec(), vec![0; 32]))).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
         builder.nexus_value_witnesses(&value).unwrap();

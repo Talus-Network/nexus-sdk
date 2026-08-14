@@ -142,9 +142,6 @@ pub enum PreparedOffchainToolResultSubmission {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OnchainToolArgument {
-    PreallocatedObject {
-        object_id: sui::types::Address,
-    },
     ObjectId(sui::types::Address),
     Pure(Vec<u8>),
     SharedObject {
@@ -266,11 +263,12 @@ pub(crate) fn publish(
 pub(crate) fn create(
     tx: &mut move_boundary::NexusPtbBuilder,
     mut dag_arg: sui::types::Argument,
+    dag_owner: sui::types::Argument,
     dag: DagSpec,
 ) -> anyhow::Result<sui::types::Argument> {
     // Create all vertices.
     for vertex in &dag.vertices {
-        create_registered_vertex(tx, dag_arg, vertex)?;
+        create_registered_vertex(tx, dag_arg, dag_owner, vertex)?;
 
         if let Some(action) = &vertex.post_failure_action {
             dag_arg = create_vertex_post_failure_action(tx, dag_arg, &vertex.name, action)?;
@@ -283,7 +281,7 @@ pub(crate) fn create(
                     vertex.name
                 );
             }
-            create_vertex_verifier_mode(tx, dag_arg, &vertex.name, mode)?;
+            create_vertex_verifier_mode(tx, dag_arg, dag_owner, &vertex.name, mode)?;
         }
     }
 
@@ -362,7 +360,7 @@ pub(crate) fn publish_ptb(
     move_boundary::ptb(objects, |tx| {
         let new_dag = empty(tx)?;
         let mut dag_arg = new_dag.dag;
-        dag_arg = create(tx, dag_arg, dag)?;
+        dag_arg = create(tx, dag_arg, new_dag.owner_cap, dag)?;
         publish(tx, dag_arg);
         let owner = tx.arg(&owner)?;
         tx.transfer_objects(vec![new_dag.owner_cap], owner)?;
@@ -381,6 +379,7 @@ fn tool_registry_arg(
 fn create_registered_vertex(
     tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
+    dag_owner: sui::types::Argument,
     vertex: &DagVertex,
 ) -> anyhow::Result<()> {
     let tool_registry = tool_registry_arg(tx)?;
@@ -393,7 +392,7 @@ fn create_registered_vertex(
 
     tx.call_target(
         tool_registry_binding::add_vertex_to_dag_target,
-        vec![tool_registry, dag, name, kind],
+        vec![tool_registry, dag, dag_owner, name, kind],
     )?;
     Ok(())
 }
@@ -431,6 +430,7 @@ fn create_vertex_post_failure_action(
 fn create_vertex_verifier_mode(
     tx: &mut move_boundary::NexusPtbBuilder,
     dag: sui::types::Argument,
+    dag_owner: sui::types::Argument,
     vertex: &str,
     mode: &ToolVerifierMode,
 ) -> anyhow::Result<()> {
@@ -440,7 +440,7 @@ fn create_vertex_verifier_mode(
 
     tx.call_target(
         tool_registry_binding::set_registered_vertex_verifier_mode_target,
-        vec![tool_registry, dag, vertex, mode],
+        vec![tool_registry, dag, dag_owner, vertex, mode],
     )?;
     Ok(())
 }
@@ -558,13 +558,6 @@ fn prepare_onchain_tool_argument(
     pre_allocated: &HashMap<sui::types::Address, sui::types::Argument>,
 ) -> anyhow::Result<sui::types::Argument> {
     match argument {
-        OnchainToolArgument::PreallocatedObject { object_id } => {
-            pre_allocated.get(object_id).copied().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Required pre-allocated object '{object_id}' is not available in this PTB"
-                )
-            })
-        }
         OnchainToolArgument::ObjectId(object_id) => Ok(tx.object_id(*object_id)?),
         OnchainToolArgument::Pure(bytes) => Ok(tx.pure_bcs(bytes.clone())?),
         OnchainToolArgument::SharedObject {
@@ -2699,10 +2692,14 @@ mod tests {
             panic!("expected DAG constructor call");
         };
         assert_eq!(new_dag_call.arguments.len(), 0);
-        assert_eq!(add_vertex_call.arguments.len(), 4);
+        assert_eq!(add_vertex_call.arguments.len(), 5);
         assert_eq!(
             add_vertex_call.arguments[1],
             Argument::NestedResult(new_dag as u16, 0)
+        );
+        assert_eq!(
+            add_vertex_call.arguments[2],
+            Argument::NestedResult(new_dag as u16, 1)
         );
         let Command::MoveCall(configure_call) = &ptb.commands[configure] else {
             panic!("expected verifier configuration call");
@@ -2710,6 +2707,10 @@ mod tests {
         assert_eq!(
             configure_call.arguments[1],
             Argument::NestedResult(new_dag as u16, 0)
+        );
+        assert_eq!(
+            configure_call.arguments[2],
+            Argument::NestedResult(new_dag as u16, 1)
         );
         let Command::MoveCall(share_dag_call) = &ptb.commands[share_dag] else {
             panic!("expected DAG share call");

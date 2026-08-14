@@ -3,14 +3,14 @@
 //! Move stores ports as [`crate::move_bindings::sui_framework::vec_map::VecMap`] entries keyed by
 //! generated [`crate::move_bindings::interface::graph::InputPort`] and
 //! [`crate::move_bindings::interface::graph::OutputPort`] values. SDK callers usually operate on
-//! [`std::collections::HashMap`] names, so this module only performs that key projection while
-//! leaving [`crate::move_bindings::primitives::data::NexusData`] payloads untouched.
+//! [`std::collections::HashMap`] names, so this module projects both stored
+//! [`crate::move_bindings::primitives::data::NexusData`] and transient resolved value vectors.
 
 use {
     crate::move_bindings::{
         interface::graph::{InputPort, OutputPort},
         move_std::ascii::String as MoveString,
-        primitives::data::NexusData,
+        primitives::data::{NexusData, NexusValue},
         sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
     },
     std::collections::HashMap,
@@ -62,9 +62,27 @@ impl VecMap<OutputPort, NexusData> {
     }
 }
 
+impl VecMap<InputPort, Vec<NexusValue>> {
+    pub fn into_map(self) -> HashMap<String, Vec<NexusValue>> {
+        self.contents
+            .into_iter()
+            .map(|entry| (String::from(entry.key.name), entry.value))
+            .collect()
+    }
+}
+
+impl VecMap<OutputPort, Vec<NexusValue>> {
+    pub fn into_map(self) -> HashMap<String, Vec<NexusValue>> {
+        self.contents
+            .into_iter()
+            .map(|entry| (String::from(entry.key.name), entry.value))
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::move_bindings::primitives::data::NexusValue};
+    use super::*;
 
     fn inline_bytes(value: &'static [u8]) -> NexusData {
         let value = NexusValue::inline_data(value).expect("fixture is bounded");

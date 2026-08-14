@@ -3,12 +3,11 @@
 use {
     crate::{
         move_bindings::{
+            canonical_walrus_blob_id,
             interface::graph::{InputPort, OutputPort},
-            primitives::data::NexusValue,
             sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
-            MAX_INLINE_DATA_BYTES,
         },
-        types::NexusData,
+        types::{NexusData, NexusValue},
         walrus::{StorageInfo, WalrusClient, WALRUS_MAX_EPOCHS},
     },
     futures_util::future::{join_all, try_join_all},
@@ -86,27 +85,29 @@ impl StorageConf {
 }
 
 impl NexusData {
-    /// Resolves Walrus Data to inline Data after verifying its committed digest.
-    pub async fn fetch(self, conf: &StorageConf) -> anyhow::Result<Self> {
+    /// Resolves Walrus Data to transient Tool data after verifying its committed digest.
+    pub async fn fetch(self, conf: &StorageConf) -> anyhow::Result<Vec<NexusValue>> {
         self.resolve(conf)
             .await
             .map_err(WalrusFetchError::into_strict_error)
     }
 
     /// Resolves every Walrus value while retaining concrete bytes on a digest mismatch.
-    pub async fn resolve(self, conf: &StorageConf) -> Result<Self, WalrusFetchError<Self>> {
+    pub async fn resolve(
+        self,
+        conf: &StorageConf,
+    ) -> Result<Vec<NexusValue>, WalrusFetchError<Vec<NexusValue>>> {
         if !self.is_well_formed() {
             return Err(WalrusFetchError::Unavailable {
                 source: anyhow::anyhow!("cannot resolve malformed NexusData"),
             });
         }
-        if !self.has_walrus() {
-            return Ok(self);
-        }
-
-        let client =
-            walrus_reader(conf).map_err(|source| WalrusFetchError::Unavailable { source })?;
-        let many = self.is_many();
+        let has_walrus = self.has_walrus();
+        let client = if has_walrus {
+            Some(walrus_reader(conf).map_err(|source| WalrusFetchError::Unavailable { source })?)
+        } else {
+            None
+        };
         let mut resolved = Vec::new();
         let mut mismatch = None;
         for value in self
@@ -121,7 +122,9 @@ impl NexusData {
                     let blob_id = blob_id_from_bytes(&storage_key)
                         .map_err(|source| WalrusFetchError::Unavailable { source })?;
                     let bytes = client
-                        .read_file_bounded(&blob_id, MAX_INLINE_DATA_BYTES)
+                        .as_ref()
+                        .expect("Walrus client exists when a reference is present")
+                        .read_file(&blob_id)
                         .await
                         .map_err(|source| WalrusFetchError::Unavailable {
                             source: source.into(),
@@ -132,16 +135,11 @@ impl NexusData {
                             storage_key: blob_id,
                         });
                     }
-                    resolved.push(
-                        NexusValue::inline_data(bytes)
-                            .map_err(|source| WalrusFetchError::Unavailable { source })?,
-                    );
+                    resolved.push(NexusValue::InlineData { bytes });
                 }
                 value => resolved.push(value),
             }
         }
-        let resolved = NexusData::from_values(resolved, many)
-            .map_err(|source| WalrusFetchError::Unavailable { source })?;
         match mismatch {
             Some(mismatch) => Err(WalrusFetchError::DigestMismatch { resolved, mismatch }),
             None => Ok(resolved),
@@ -199,10 +197,13 @@ impl VecMap<InputPort, NexusData> {
             .map(|contents| Self { contents })
     }
 
-    pub async fn fetch_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+    pub async fn fetch_all(
+        self,
+        storage_conf: &StorageConf,
+    ) -> anyhow::Result<VecMap<InputPort, Vec<NexusValue>>> {
         resolve_entries(self.contents, storage_conf)
             .await
-            .map(|contents| Self { contents })
+            .map(|contents| VecMap { contents })
             .map_err(WalrusFetchError::into_strict_error)
     }
 
@@ -210,15 +211,18 @@ impl VecMap<InputPort, NexusData> {
     pub async fn resolve_all(
         self,
         storage_conf: &StorageConf,
-    ) -> Result<Self, WalrusFetchError<Self>> {
+    ) -> Result<
+        VecMap<InputPort, Vec<NexusValue>>,
+        WalrusFetchError<VecMap<InputPort, Vec<NexusValue>>>,
+    > {
         match resolve_entries(self.contents, storage_conf).await {
-            Ok(contents) => Ok(Self { contents }),
+            Ok(contents) => Ok(VecMap { contents }),
             Err(WalrusFetchError::Unavailable { source }) => {
                 Err(WalrusFetchError::Unavailable { source })
             }
             Err(WalrusFetchError::DigestMismatch { resolved, mismatch }) => {
                 Err(WalrusFetchError::DigestMismatch {
-                    resolved: Self { contents: resolved },
+                    resolved: VecMap { contents: resolved },
                     mismatch,
                 })
             }
@@ -233,10 +237,13 @@ impl VecMap<OutputPort, NexusData> {
             .map(|contents| Self { contents })
     }
 
-    pub async fn fetch_all(self, storage_conf: &StorageConf) -> anyhow::Result<Self> {
+    pub async fn fetch_all(
+        self,
+        storage_conf: &StorageConf,
+    ) -> anyhow::Result<VecMap<OutputPort, Vec<NexusValue>>> {
         resolve_entries(self.contents, storage_conf)
             .await
-            .map(|contents| Self { contents })
+            .map(|contents| VecMap { contents })
             .map_err(WalrusFetchError::into_strict_error)
     }
 
@@ -244,15 +251,18 @@ impl VecMap<OutputPort, NexusData> {
     pub async fn resolve_all(
         self,
         storage_conf: &StorageConf,
-    ) -> Result<Self, WalrusFetchError<Self>> {
+    ) -> Result<
+        VecMap<OutputPort, Vec<NexusValue>>,
+        WalrusFetchError<VecMap<OutputPort, Vec<NexusValue>>>,
+    > {
         match resolve_entries(self.contents, storage_conf).await {
-            Ok(contents) => Ok(Self { contents }),
+            Ok(contents) => Ok(VecMap { contents }),
             Err(WalrusFetchError::Unavailable { source }) => {
                 Err(WalrusFetchError::Unavailable { source })
             }
             Err(WalrusFetchError::DigestMismatch { resolved, mismatch }) => {
                 Err(WalrusFetchError::DigestMismatch {
-                    resolved: Self { contents: resolved },
+                    resolved: VecMap { contents: resolved },
                     mismatch,
                 })
             }
@@ -281,7 +291,10 @@ async fn commit_entries<P>(
 async fn resolve_entries<P>(
     contents: Vec<VecMapEntry<P, NexusData>>,
     storage_conf: &StorageConf,
-) -> Result<Vec<VecMapEntry<P, NexusData>>, WalrusFetchError<Vec<VecMapEntry<P, NexusData>>>> {
+) -> Result<
+    Vec<VecMapEntry<P, Vec<NexusValue>>>,
+    WalrusFetchError<Vec<VecMapEntry<P, Vec<NexusValue>>>>,
+> {
     validate_entries(&contents).map_err(|source| WalrusFetchError::Unavailable { source })?;
     let fetched = join_all(
         contents
@@ -356,9 +369,7 @@ fn walrus_writer(conf: &StorageConf) -> anyhow::Result<(WalrusClient, u8)> {
 }
 
 fn blob_id_from_bytes(bytes: &[u8]) -> anyhow::Result<String> {
-    std::str::from_utf8(bytes)
-        .map(str::to_owned)
-        .map_err(|error| anyhow::anyhow!("Walrus blob id must be UTF-8: {error}"))
+    canonical_walrus_blob_id(bytes).map(str::to_owned)
 }
 
 fn blob_id_from_storage_info(info: StorageInfo) -> anyhow::Result<String> {
@@ -375,6 +386,8 @@ mod tests {
         crate::walrus::{AlreadyCertified, BlobObject, BlobStorage, NewlyCreated, SuiEvent},
         mockito::{Server, ServerGuard},
     };
+
+    const BLOB_ID: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
         let server = Server::new_async().await;
@@ -402,7 +415,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(fetched, data);
+        assert!(matches!(
+            fetched.as_slice(),
+            [NexusValue::InlineData { bytes }] if bytes == b"payload"
+        ));
     }
 
     #[tokio::test]
@@ -435,11 +451,11 @@ mod tests {
     async fn malformed_map_entry_precedes_all_walrus_requests() {
         let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
         let get = server
-            .mock("GET", "/v1/blobs/valid")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
             .expect(0)
             .create_async()
             .await;
-        let valid = NexusData::walrus_data(b"valid", vec![0; 32]).unwrap();
+        let valid = NexusData::walrus_data(BLOB_ID.as_bytes(), vec![0; 32]).unwrap();
         let malformed = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
         let map = || VecMap {
             contents: vec![
@@ -475,7 +491,7 @@ mod tests {
         let response = StorageInfo {
             newly_created: Some(NewlyCreated {
                 blob_object: BlobObject {
-                    blob_id: "raw_blob_id".to_string(),
+                    blob_id: BLOB_ID.to_string(),
                     id: "raw_object_id".to_string(),
                     storage: BlobStorage { end_epoch: 200 },
                 },
@@ -490,7 +506,7 @@ mod tests {
             .create_async()
             .await;
         let get = server
-            .mock("GET", "/v1/blobs/raw_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
             .with_status(200)
             .with_body("payload")
             .create_async()
@@ -505,7 +521,7 @@ mod tests {
         assert!(matches!(
             committed.values().unwrap().as_slice(),
             [NexusValue::WalrusData { storage_key, .. }]
-                if storage_key == b"raw_blob_id"
+                if storage_key == BLOB_ID.as_bytes()
         ));
         put.assert_async().await;
         get.assert_async().await;
@@ -515,13 +531,13 @@ mod tests {
     async fn typed_fetch_rejects_digest_mismatch() {
         let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
         let get = server
-            .mock("GET", "/v1/blobs/raw_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
             .with_status(200)
             .with_body("different")
             .create_async()
             .await;
-        let value =
-            NexusData::walrus_data(b"raw_blob_id", Sha256::digest(b"payload").to_vec()).unwrap();
+        let value = NexusData::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(b"payload").to_vec())
+            .unwrap();
 
         let error = value.fetch(&storage_conf).await.unwrap_err();
 
@@ -532,16 +548,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn typed_fetch_accepts_content_larger_than_onchain_inline_data() {
+        let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
+        let bytes = vec![b'x'; 61_441];
+        let get = server
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
+            .with_status(200)
+            .with_body(bytes.clone())
+            .create_async()
+            .await;
+        let value =
+            NexusData::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(&bytes).to_vec()).unwrap();
+
+        let resolved = value.fetch(&storage_conf).await.unwrap();
+
+        assert!(matches!(
+            resolved.as_slice(),
+            [NexusValue::InlineData { bytes: resolved_bytes }] if resolved_bytes == &bytes
+        ));
+        get.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn typed_resolve_preserves_fetched_bytes_for_digest_mismatch() {
         let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
         let get = server
-            .mock("GET", "/v1/blobs/raw_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
             .with_status(200)
             .with_body("different")
             .create_async()
             .await;
-        let value =
-            NexusData::walrus_data(b"raw_blob_id", Sha256::digest(b"payload").to_vec()).unwrap();
+        let value = NexusData::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(b"payload").to_vec())
+            .unwrap();
 
         let WalrusFetchError::DigestMismatch { resolved, mismatch } =
             value.resolve(&storage_conf).await.unwrap_err()
@@ -549,8 +587,11 @@ mod tests {
             panic!("successful fetch with unequal bytes must be an integrity mismatch");
         };
 
-        assert_eq!(mismatch.storage_key, "raw_blob_id");
-        assert_eq!(resolved, NexusData::inline_data(b"different").unwrap());
+        assert_eq!(mismatch.storage_key, BLOB_ID);
+        assert!(matches!(
+            resolved.as_slice(),
+            [NexusValue::InlineData { bytes }] if bytes == b"different"
+        ));
         get.assert_async().await;
     }
 
@@ -558,12 +599,12 @@ mod tests {
     async fn typed_resolve_classifies_unavailable_content_separately() {
         let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
         let get = server
-            .mock("GET", "/v1/blobs/raw_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
             .with_status(404)
             .create_async()
             .await;
-        let value =
-            NexusData::walrus_data(b"raw_blob_id", Sha256::digest(b"payload").to_vec()).unwrap();
+        let value = NexusData::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(b"payload").to_vec())
+            .unwrap();
 
         assert!(matches!(
             value.resolve(&storage_conf).await.unwrap_err(),

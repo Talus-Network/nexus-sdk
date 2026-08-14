@@ -1,6 +1,12 @@
 //! Typed Tool schema conversion, validation, and runtime conformance helpers.
 
 use {
+    super::nexus_data::{
+        resolved_values_from_json,
+        resolved_values_port_commitment,
+        resolved_values_to_json,
+        validate_resolved_values,
+    },
     crate::{
         move_bindings::interface::meta_schema::{
             MetaSchema,
@@ -8,7 +14,7 @@ use {
             PortSchema,
             ValueKind,
         },
-        types::{NexusData, OffchainToolOutput},
+        types::{NexusData, NexusValue, OffchainToolOutput},
     },
     anyhow::{anyhow, bail, Context as _},
     serde::Serialize,
@@ -26,7 +32,7 @@ const MAX_NEXUS_DATA_BYTES: usize = 65_536;
 const MAX_RAW_OUTPUT_BYTES: usize = 262_144;
 const FAILURE_VARIANT: &[u8] = b"_err_eval";
 const FAILURE_PORT: &[u8] = b"reason";
-pub const RESOLVED_INPUT_DOMAIN: &[u8] = b"nexus.direct.v1.resolved-input";
+pub const RESOLVED_INPUT_DOMAIN: &[u8] = b"nexus.direct.v3.resolved-input";
 
 impl MetaSchema {
     /// Converts Schemars-style off-chain input and externally tagged output schemas.
@@ -170,6 +176,19 @@ impl MetaSchema {
         }
     }
 
+    /// Returns whether transient resolved values exactly conform to one port schema.
+    pub fn conforms_resolved_port(schema: &PortSchema, values: &[NexusValue]) -> bool {
+        if validate_resolved_values(values, schema.is_many).is_err() {
+            return false;
+        }
+        match schema.value_kind {
+            ValueKind::Object => values.iter().all(NexusValue::is_object),
+            ValueKind::Data => values
+                .iter()
+                .all(|value| matches!(value, NexusValue::InlineData { .. })),
+        }
+    }
+
     /// Returns complete typed inputs in immutable schema order.
     pub fn canonical_input_values(
         &self,
@@ -201,7 +220,7 @@ impl MetaSchema {
     /// Encodes complete resolved off-chain inputs in immutable schema order.
     pub fn resolved_inputs_to_json(
         &self,
-        input_ports: &HashMap<String, NexusData>,
+        input_ports: &HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<Value> {
         let ordered = self.resolved_input_values(input_ports)?;
         Ok(json!({
@@ -212,18 +231,18 @@ impl MetaSchema {
                 .map(|(port, value)| {
                     Ok(json!({
                         "port_name": utf8_name(&port.port_name, "input port")?,
-                        "value": value.to_json_value()?,
+                        "value": resolved_values_to_json(value, port.is_many)?,
                     }))
                 })
                 .collect::<anyhow::Result<Vec<_>>>()?,
         }))
     }
 
-    /// Parses the strict named transport and returns one canonical generated storage map.
+    /// Parses the strict named transport and returns direct resolved value vectors.
     pub fn resolved_inputs_from_json(
         &self,
         value: &Value,
-    ) -> anyhow::Result<HashMap<String, NexusData>> {
+    ) -> anyhow::Result<HashMap<String, Vec<NexusValue>>> {
         let object = value
             .as_object()
             .ok_or_else(|| anyhow!("resolved Tool inputs must be a JSON object"))?;
@@ -252,10 +271,18 @@ impl MetaSchema {
                 if !names.insert(port_name.to_owned()) {
                     bail!("resolved Tool inputs contain duplicate port '{port_name}'");
                 }
-                Ok((
-                    port_name.to_owned(),
-                    NexusData::from_json_value(&entry["value"])?,
-                ))
+                let port_schema = self
+                    .input_ports
+                    .iter()
+                    .find(|port| port.port_name == port_name.as_bytes())
+                    .ok_or_else(|| {
+                        anyhow!("Tool input contains unknown schema port '{port_name}'")
+                    })?;
+                let (values, many) = resolved_values_from_json(&entry["value"])?;
+                if port_schema.is_many != many {
+                    bail!("Tool input port '{port_name}' cardinality does not match MetaSchema");
+                }
+                Ok((port_name.to_owned(), values))
             })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
         self.resolved_input_values(&input_ports)?;
@@ -265,10 +292,10 @@ impl MetaSchema {
     /// Returns the RegisteredKey commitment over exact schema names and resolved content.
     pub fn resolved_inputs_sha256(
         &self,
-        input_ports: &HashMap<String, NexusData>,
+        input_ports: &HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<[u8; 32]> {
         let ordered = self.resolved_input_values(input_ports)?;
-        self.input_commitment_sha256(&ordered)
+        self.resolved_input_commitment_sha256(&ordered)
     }
 
     /// Returns the Move-compatible commitment for canonical on-chain or off-chain inputs.
@@ -284,16 +311,15 @@ impl MetaSchema {
     /// Projects resolved inline Data into the semantic JSON consumed by a Toolkit Tool.
     pub fn resolved_inputs_to_semantic_json(
         &self,
-        input_ports: &HashMap<String, NexusData>,
+        input_ports: &HashMap<String, Vec<NexusValue>>,
     ) -> anyhow::Result<Value> {
         let ordered = self.resolved_input_values(input_ports)?;
         let mut semantic = Map::new();
         for (port, value) in self.input_ports.iter().zip(ordered) {
             let port_name = utf8_name(&port.port_name, "input port")?;
-            let decoded = value.values()?;
-            let decoded = if value.is_many() {
+            let decoded = if port.is_many {
                 Value::Array(
-                    decoded
+                    value
                         .iter()
                         .map(|value| offchain_element_json(port_name, value))
                         .collect::<anyhow::Result<Vec<_>>>()?,
@@ -301,7 +327,7 @@ impl MetaSchema {
             } else {
                 offchain_element_json(
                     port_name,
-                    decoded
+                    value
                         .first()
                         .expect("well-formed One contains exactly one value"),
                 )?
@@ -311,24 +337,62 @@ impl MetaSchema {
         Ok(Value::Object(semantic))
     }
 
-    fn resolved_input_values(
+    fn resolved_input_values<'a>(
         &self,
-        input_ports: &HashMap<String, NexusData>,
-    ) -> anyhow::Result<Vec<NexusData>> {
+        input_ports: &'a HashMap<String, Vec<NexusValue>>,
+    ) -> anyhow::Result<Vec<&'a [NexusValue]>> {
         self.validate_for_tool(true)?;
-        let ordered = self.canonical_input_values(input_ports)?;
-        for (port, value) in self.input_ports.iter().zip(&ordered) {
-            let port_name = utf8_name(&port.port_name, "input port")?;
-            if value.values()?.iter().any(|value| {
-                !matches!(
-                    value,
-                    crate::move_bindings::primitives::data::NexusValue::InlineData { .. }
-                )
-            }) {
-                bail!("off-chain Tool input port '{port_name}' must contain resolved inline Data");
-            }
+        if input_ports.len() != self.input_ports.len() {
+            bail!(
+                "Tool input contains {} ports but schema requires {}",
+                input_ports.len(),
+                self.input_ports.len()
+            );
         }
-        Ok(ordered)
+        self.input_ports
+            .iter()
+            .map(|port| {
+                let name = utf8_name(&port.port_name, "input port")?;
+                let value = input_ports
+                    .get(name)
+                    .ok_or_else(|| anyhow!("Tool input is missing schema port '{name}'"))?;
+                if !Self::conforms_resolved_port(port, value) {
+                    bail!("Tool input port '{name}' does not conform to MetaSchema");
+                }
+                Ok(value.as_slice())
+            })
+            .collect()
+    }
+
+    fn resolved_input_commitment_sha256(
+        &self,
+        ordered: &[&[NexusValue]],
+    ) -> anyhow::Result<[u8; 32]> {
+        #[derive(Serialize)]
+        struct PortInputCommitment<'a> {
+            port_name: &'a [u8],
+            commitment: crate::move_bindings::interface::meta_schema::PortCommitment,
+        }
+
+        let commitments = self
+            .input_ports
+            .iter()
+            .zip(ordered)
+            .map(|(port, value)| {
+                Ok(PortInputCommitment {
+                    port_name: &port.port_name,
+                    commitment: resolved_values_port_commitment(
+                        value,
+                        port.value_kind,
+                        port.is_many,
+                    )?,
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut hasher = Sha256::new();
+        hasher.update(RESOLVED_INPUT_DOMAIN);
+        hasher.update(bcs::to_bytes(&commitments)?);
+        Ok(hasher.finalize().into())
     }
 
     fn input_commitment_sha256(&self, ordered: &[NexusData]) -> anyhow::Result<[u8; 32]> {
@@ -754,6 +818,43 @@ mod tests {
         assert!(MetaSchema::conforms_port(&schema, &object));
         assert!(!MetaSchema::conforms_port(&schema, &data));
         assert!(!MetaSchema::conforms_port(&schema, &many));
+    }
+
+    #[test]
+    fn resolved_vectors_use_schema_cardinality_and_reject_unresolved_or_oversized_values() {
+        let schema = MetaSchema::new(
+            vec![PortSchema::new(b"items".to_vec(), true, ValueKind::Data)],
+            vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
+        );
+        let value = NexusValue::inline_data(br#""one""#).unwrap();
+        let inputs = HashMap::from([("items".to_string(), vec![value.clone()])]);
+
+        let encoded = schema.resolved_inputs_to_json(&inputs).unwrap();
+        assert!(encoded["ports"][0]["value"].get("many").is_some());
+        assert_eq!(schema.resolved_inputs_from_json(&encoded).unwrap(), inputs);
+        assert!(schema
+            .resolved_inputs_from_json(&json!({
+                "ports": [{
+                    "port_name": "items",
+                    "value": { "one": { "kind": "data", "data": "one" } }
+                }]
+            }))
+            .is_err());
+        let oversized = vec![value; 257];
+        assert!(!MetaSchema::conforms_resolved_port(
+            &schema.input_ports[0],
+            &oversized,
+        ));
+        assert!(!MetaSchema::conforms_resolved_port(
+            &schema.input_ports[0],
+            &[
+                NexusValue::walrus_data(
+                    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    vec![0; 32],
+                )
+                .unwrap()
+            ],
+        ));
     }
 
     #[test]

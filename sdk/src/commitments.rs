@@ -2,8 +2,8 @@
 
 use sha2::{Digest as _, Sha256};
 
-pub const RAW_OUTPUT_DOMAIN: &[u8] = b"nexus.direct.v1.raw-output";
-pub const TOOL_RESPONSE_DOMAIN: &[u8] = b"nexus.direct.v1.tool-response";
+pub const RAW_OUTPUT_DOMAIN: &[u8] = b"nexus.direct.v3.raw-output";
+pub const TOOL_RESPONSE_DOMAIN: &[u8] = b"nexus.direct.v3.tool-response";
 
 pub fn output_sha256(canonical_response_bcs: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();

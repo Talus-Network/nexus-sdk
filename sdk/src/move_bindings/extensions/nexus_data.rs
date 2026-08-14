@@ -10,7 +10,10 @@ use {
         sui,
     },
     anyhow::{anyhow, bail, Context as _},
-    base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
+    base64::{
+        engine::general_purpose::{STANDARD as BASE64, URL_SAFE_NO_PAD},
+        Engine as _,
+    },
     serde_json::{json, Value},
     sha2::{Digest as _, Sha256},
     std::str::FromStr as _,
@@ -19,8 +22,95 @@ use {
 const SHA256_LEN: usize = 32;
 const MAX_MANY_VALUES: usize = 256;
 pub(crate) const MAX_INLINE_DATA_BYTES: usize = 61_440;
-const MAX_WALRUS_STORAGE_KEY_BYTES: usize = 1_024;
+const WALRUS_BLOB_ID_BYTES: usize = 32;
+const WALRUS_BLOB_ID_ENCODED_BYTES: usize = 43;
 const MAX_NEXUS_DATA_BYTES: usize = 65_536;
+
+pub(super) fn validate_resolved_values(values: &[NexusValue], many: bool) -> anyhow::Result<()> {
+    if (!many && values.len() != 1) || (many && values.is_empty()) {
+        bail!("resolved Nexus values must contain one value or a non-empty Many");
+    }
+    if values.len() > MAX_MANY_VALUES {
+        bail!("resolved Nexus values exceed {MAX_MANY_VALUES} values");
+    }
+    if values
+        .iter()
+        .any(|value| matches!(value, NexusValue::WalrusData { .. }))
+    {
+        bail!("resolved Nexus values cannot contain Walrus references");
+    }
+    if let Some(first) = values.first() {
+        let object_kind = first.is_object();
+        if values.iter().any(|value| value.is_object() != object_kind) {
+            bail!("resolved Nexus values must have one homogeneous value kind");
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn resolved_values_to_json(values: &[NexusValue], many: bool) -> anyhow::Result<Value> {
+    validate_resolved_values(values, many)?;
+    let values = values.iter().map(value_to_json).collect::<Vec<_>>();
+    if many {
+        Ok(json!({ "many": values }))
+    } else {
+        Ok(json!({ "one": values.into_iter().next().expect("One has one value") }))
+    }
+}
+
+pub(super) fn resolved_values_from_json(value: &Value) -> anyhow::Result<(Vec<NexusValue>, bool)> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("resolved Nexus values must be a JSON object"))?;
+    let cardinality_key = match (object.contains_key("one"), object.contains_key("many")) {
+        (true, false) => "one",
+        (false, true) => "many",
+        _ => bail!("resolved Nexus values must contain exactly one of 'one' or 'many'"),
+    };
+    ensure_exact_keys(object, &[cardinality_key], "resolved Nexus values")?;
+    let (values, many) = match cardinality_key {
+        "one" => (vec![resolved_value_from_json(&object["one"])?], false),
+        "many" => (
+            object["many"]
+                .as_array()
+                .ok_or_else(|| anyhow!("resolved Nexus property 'many' must be an array"))?
+                .iter()
+                .map(resolved_value_from_json)
+                .collect::<anyhow::Result<Vec<_>>>()?,
+            true,
+        ),
+        _ => unreachable!("cardinality key was validated above"),
+    };
+    validate_resolved_values(&values, many)?;
+    Ok((values, many))
+}
+
+pub(super) fn resolved_values_port_commitment(
+    values: &[NexusValue],
+    schema_kind: ValueKind,
+    many: bool,
+) -> anyhow::Result<PortCommitment> {
+    validate_resolved_values(values, many)?;
+    if value_kind(values.first().expect("resolved values are non-empty")) != schema_kind {
+        bail!("resolved Nexus value kind does not match schema");
+    }
+    if many {
+        Ok(PortCommitment::Many {
+            kind: schema_kind,
+            commitments: values
+                .iter()
+                .map(value_content_commitment)
+                .collect::<anyhow::Result<Vec<_>>>()?,
+        })
+    } else {
+        Ok(PortCommitment::One {
+            kind: schema_kind,
+            commitment: value_content_commitment(
+                values.first().expect("One contains exactly one value"),
+            )?,
+        })
+    }
+}
 
 impl NexusValue {
     pub fn object(id: sui::types::Address) -> Self {
@@ -41,9 +131,7 @@ impl NexusValue {
     ) -> anyhow::Result<Self> {
         let storage_key = storage_key.into();
         let content_digest = content_digest.into();
-        if storage_key.len() > MAX_WALRUS_STORAGE_KEY_BYTES {
-            bail!("Walrus storage key exceeds {MAX_WALRUS_STORAGE_KEY_BYTES} bytes");
-        }
+        canonical_walrus_blob_id(&storage_key)?;
         if content_digest.len() != SHA256_LEN {
             bail!("Walrus content digest must contain exactly {SHA256_LEN} bytes");
         }
@@ -72,8 +160,7 @@ impl NexusValue {
                 storage_key,
                 content_digest,
             } => {
-                storage_key.len() <= MAX_WALRUS_STORAGE_KEY_BYTES
-                    && content_digest.len() == SHA256_LEN
+                canonical_walrus_blob_id(storage_key).is_ok() && content_digest.len() == SHA256_LEN
             }
         }
     }
@@ -431,6 +518,31 @@ fn value_from_json(value: &Value) -> anyhow::Result<NexusValue> {
     }
 }
 
+fn resolved_value_from_json(value: &Value) -> anyhow::Result<NexusValue> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| anyhow!("resolved NexusData value must be a JSON object"))?;
+    match object.get("kind").and_then(Value::as_str) {
+        Some("object") => {
+            ensure_exact_keys(object, &["kind", "id"], "resolved Object value")?;
+            let id = required_string(object.get("id"), "object id")?;
+            Ok(NexusValue::object(
+                sui::types::Address::from_str(id)
+                    .with_context(|| format!("invalid Object ID '{id}'"))?,
+            ))
+        }
+        Some("data") => {
+            ensure_exact_keys(object, &["kind", "data"], "resolved Data value")?;
+            Ok(NexusValue::InlineData {
+                bytes: serde_json::to_vec(&object["data"])?,
+            })
+        }
+        Some("walrus") => bail!("resolved NexusData cannot contain Walrus references"),
+        Some(kind) => bail!("unknown resolved NexusData value kind '{kind}'"),
+        None => bail!("resolved NexusData value is missing string property 'kind'"),
+    }
+}
+
 fn validate_value_json(value: &Value) -> anyhow::Result<()> {
     let object = value
         .as_object()
@@ -451,9 +563,7 @@ fn validate_value_json(value: &Value) -> anyhow::Result<()> {
                 "Walrus NexusData value",
             )?;
             let storage_key = decode_base64(object.get("storage_key"), "Walrus storage key")?;
-            if storage_key.len() > MAX_WALRUS_STORAGE_KEY_BYTES {
-                bail!("Walrus storage key exceeds {MAX_WALRUS_STORAGE_KEY_BYTES} bytes");
-            }
+            canonical_walrus_blob_id(&storage_key)?;
             let digest = decode_base64(object.get("content_digest"), "Walrus content digest")?;
             if digest.len() != SHA256_LEN {
                 bail!("Walrus content digest must contain exactly {SHA256_LEN} bytes");
@@ -501,9 +611,25 @@ fn decode_base64(value: Option<&Value>, name: &str) -> anyhow::Result<Vec<u8>> {
         .with_context(|| format!("invalid RFC 4648 base64 {name}"))
 }
 
+pub(crate) fn canonical_walrus_blob_id(storage_key: &[u8]) -> anyhow::Result<&str> {
+    if storage_key.len() != WALRUS_BLOB_ID_ENCODED_BYTES {
+        bail!("Walrus blob ID must contain exactly {WALRUS_BLOB_ID_ENCODED_BYTES} bytes");
+    }
+    let blob_id = std::str::from_utf8(storage_key).context("Walrus blob ID must be UTF-8")?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(blob_id)
+        .context("Walrus blob ID must use URL-safe base64 without padding")?;
+    if decoded.len() != WALRUS_BLOB_ID_BYTES || URL_SAFE_NO_PAD.encode(&decoded) != blob_id {
+        bail!("Walrus blob ID must be the canonical encoding of 32 bytes");
+    }
+    Ok(blob_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const BLOB_ID: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     #[test]
     fn direct_inline_value_roundtrips_bcs_and_json() {
@@ -559,6 +685,40 @@ mod tests {
     }
 
     #[test]
+    fn walrus_storage_key_requires_canonical_blob_id() {
+        assert!(NexusData::walrus_data(BLOB_ID.as_bytes(), vec![0; SHA256_LEN]).is_ok());
+
+        for invalid in [
+            "short".to_string(),
+            format!("{BLOB_ID}A"),
+            format!("{}+", &BLOB_ID[..42]),
+            format!("{}B", &BLOB_ID[..42]),
+            format!("{BLOB_ID}="),
+        ] {
+            assert!(
+                NexusData::walrus_data(invalid.as_bytes(), vec![0; SHA256_LEN]).is_err(),
+                "invalid Blob ID was accepted: {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolved_data_can_exceed_inline_limit_without_weakening_onchain_validation() {
+        let bytes = vec![b'x'; MAX_INLINE_DATA_BYTES + 1];
+        assert!(NexusValue::inline_data(bytes.clone()).is_err());
+
+        let resolved = vec![NexusValue::InlineData {
+            bytes: bytes.clone(),
+        }];
+        validate_resolved_values(&resolved, false).unwrap();
+
+        assert!(matches!(
+            resolved.as_slice(),
+            [NexusValue::InlineData { bytes: resolved_bytes }] if resolved_bytes == &bytes
+        ));
+    }
+
+    #[test]
     fn empty_many_is_rejected_by_construction_json_storage_and_commitments() {
         let value = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
         let json = json!({ "many": [] });
@@ -575,14 +735,14 @@ mod tests {
 
     #[test]
     fn aggregate_bound_accepts_max_count_with_bounded_payloads() {
-        let value = NexusData::inline_data_many((0..128).map(|_| vec![0; 500])).unwrap();
+        let value = NexusData::inline_data_many((0..256).map(|_| vec![0; 240])).unwrap();
 
         assert!(value.is_well_formed());
     }
 
     #[test]
     fn aggregate_bound_rejects_oversized_many() {
-        let error = NexusData::inline_data_many((0..128).map(|_| vec![0; 512])).unwrap_err();
+        let error = NexusData::inline_data_many((0..256).map(|_| vec![0; 256])).unwrap_err();
 
         assert!(error.to_string().contains("65536 encoded bytes"));
     }

@@ -11,7 +11,7 @@ mod tool_meta;
 mod workflow_models;
 
 pub use {
-    crate::move_bindings::primitives::data::NexusData,
+    crate::move_bindings::primitives::data::{NexusData, NexusValue},
     dag::*,
     nexus_objects::{NexusObjects, UsTokenConfig},
     offchain_tool_output::{OffchainToolOutput, OffchainToolOutputPort},

@@ -10,7 +10,7 @@ use {
             sui_framework::object::ID,
         },
         sui,
-        types::NexusData,
+        types::{NexusData, NexusValue},
     },
     anyhow::{bail, Context as _},
     sha2::{Digest as _, Sha256},
@@ -19,7 +19,7 @@ use {
 
 pub const SHA256_LEN: usize = 32;
 pub const ED25519_SIGNATURE_LEN: usize = 64;
-pub const INVOCATION_NONCE_DOMAIN: &[u8] = b"nexus.direct.v1.invocation-nonce";
+pub const INVOCATION_NONCE_DOMAIN: &[u8] = b"nexus.direct.v3.invocation-nonce";
 pub use crate::commitments::{
     output_sha256,
     tool_signature_message,
@@ -38,7 +38,7 @@ pub fn canonical_tool_inputs_sha256(
 /// Returns the exact schema-ordered resolved-content commitment computed by Move.
 pub fn canonical_resolved_tool_inputs_sha256(
     schema: &MetaSchema,
-    input_ports: &HashMap<String, NexusData>,
+    input_ports: &HashMap<String, Vec<NexusValue>>,
 ) -> anyhow::Result<[u8; SHA256_LEN]> {
     schema.resolved_inputs_sha256(input_ports)
 }
@@ -143,14 +143,22 @@ mod tests {
         ])
     }
 
+    fn resolved_inputs() -> HashMap<String, Vec<NexusValue>> {
+        inputs()
+            .into_iter()
+            .map(|(name, value)| (name, value.into_values().unwrap()))
+            .collect()
+    }
+
     #[test]
     fn direct_input_commitments_match_move_goldens() {
         let canonical = canonical_tool_inputs_sha256(&schema(), &inputs()).unwrap();
-        let resolved = canonical_resolved_tool_inputs_sha256(&schema(), &inputs()).unwrap();
+        let resolved =
+            canonical_resolved_tool_inputs_sha256(&schema(), &resolved_inputs()).unwrap();
         assert_eq!(canonical, resolved);
         assert_eq!(
             hex::encode(canonical),
-            "764bb4542b1f268b9d4e43e8a196513610ed09d698a861846dec4573886d74c2"
+            "c4c6b94a64dfa36bbc1261eb8cd2ea030a0187cb6f66b34571be80aa1539f858"
         );
     }
 
@@ -216,7 +224,11 @@ mod tests {
 
     #[test]
     fn resolved_input_commitment_rejects_offchain_object_ports() {
-        let error = canonical_resolved_tool_inputs_sha256(&object_schema(), &object_inputs())
+        let object_inputs = HashMap::from([(
+            "object".to_string(),
+            vec![NexusValue::object(sui::types::Address::from_static("0x1"))],
+        )]);
+        let error = canonical_resolved_tool_inputs_sha256(&object_schema(), &object_inputs)
             .expect_err("off-chain resolved input must remain Data-only");
 
         assert_eq!(
@@ -231,7 +243,7 @@ mod tests {
             hex::encode(
                 invocation_nonce(sui::types::Address::from_static("0xe"), 3, b"vertex", 0).unwrap()
             ),
-            "8cbddd0079b54454ecbfe326de557be12db32c74dd72b4a8f22c835475663b75"
+            "7dc2b7b7addb953fc231afd71d9444beca7b253f1e45481bc50d4ac6cd0e4c32"
         );
     }
 

@@ -150,6 +150,8 @@ mod tests {
         serde_json::json,
     };
 
+    const BLOB_ID_A: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     async fn setup_mock_server_and_conf() -> anyhow::Result<(ServerGuard, StorageConf)> {
         let server = Server::new_async().await;
         let server_url = server.url();
@@ -207,7 +209,7 @@ mod tests {
         let mock_put_response = StorageInfo {
             newly_created: Some(NewlyCreated {
                 blob_object: BlobObject {
-                    blob_id: "json_blob_id".to_string(),
+                    blob_id: BLOB_ID_A.to_string(),
                     id: "json_object_id".to_string(),
                     storage: BlobStorage { end_epoch: 200 },
                 },
@@ -223,7 +225,7 @@ mod tests {
             .create_async()
             .await;
         let mock_get = server
-            .mock("GET", "/v1/blobs/json_blob_id")
+            .mock("GET", format!("/v1/blobs/{BLOB_ID_A}").as_str())
             .with_status(200)
             .with_body(br#""value1""#)
             .create_async()

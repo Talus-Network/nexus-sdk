@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added a transaction builder for updating an off chain Tool URL.
 - Added canonical `NexusValue`, one-or-many `NexusData`, and `MetaSchema` helpers for JSON and BCS conversion, ordered port validation, commitments, output variants, protocol bounds, and digest-checked Walrus storage resolution.
-- Added PTB builders for DAG, address-funded Task, Agent-funded Task, ToolRegistry, and Tool V1-to-V2 migrations plus owner-authorized on-chain Tool package migration through the existing `UpgradeCap` lineage.
+- Added PTB builders for DAG, address-funded Task, Agent-funded Task, ToolRegistry, and Tool V1-to-V2 migrations plus direct owner-authorized on-chain Tool package targeting without an `UpgradeCap`; DAG construction now supplies the matching owner capability to borrowed mutation calls.
 - Added signed HTTP v3 helpers that authenticate leaders and bind Tool signatures to the leader signature, invocation nonce, and exact ordered BCS `OffchainToolOutput` bytes.
 
 #### Changed
@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Event decoding now reports unknown event types emitted directly by active protocol packages and decodes each event before publishing checkpoint progress.
 - Regenerated bindings and transaction builders now target schema-bound V2 DAG, graph, execution, Task, Tool, and ToolRegistry state with explicit entry groups, typed inputs, post-failure actions, output witnesses, and package-migration support.
 - On-chain Tool preparation and result submission now preserve ordered pure and object arguments from `MetaSchema`, enforce immutable/shared ownership and shared-version semantics, reject caller-owned objects and Leader capabilities, and verify Walrus content commitments before building a PTB.
+- `NexusData` PTB materialization now preserves explicit ordered object requirements for accepted inline and aligned many-value forms, rejects Walrus-one object requirements, and passes only the canonical `LeaderRegistry` required by the Move ABI.
 
 ### `nexus-cli`
 
@@ -71,7 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Every standard action now resolves one exact active configuration at its operation boundary, validates package origin IDs against Sui metadata, and uses one immutable snapshot for all nested work. Activation event queries remain observational only.
 - `NexusClient::transaction` is now asynchronous so transaction creation resolves and owns one active protocol snapshot before any calls are added.
 - Every versioned state read now checks its exact schema before decoding. Network auth operations return `NexusError::UnsupportedStateSchema` when the active payload is newer than the SDK binding.
-- NetworkAuth readers support schema one in the initial release and return `NexusError::UnsupportedStateSchema` before decoding any unknown payload; stale schema-two fixture and binding support was removed after regenerated current Move IR exposed only schema one.
+- NetworkAuth readers support schema one in the initial release and return `NexusError::UnsupportedStateSchema` before decoding any unknown payload. The end to end upgrade fixture enables an explicit schema two branch only for its prepared version two consumer.
 - Event consumers can reject direct calls from inactive Nexus package versions while accepting user packages only when their transitive Nexus linkage exactly matches the captured protocol configuration.
 - Tool pricing, ticket calls, and payment events now use the tool package, while execution settlement calls use the workflow `tool_cashier_adapter`. Network fee operations use the network facade.
 - Package origin resolution now covers every Nexus package so current call targets remain separate from stable type identities after upgrades.
@@ -87,7 +88,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Event replay gaps are terminal by default and return a typed error with the missing checkpoint range. Explicit recovery reports the gap and resumes the existing live subscription for disposable environments.
 - Tool registration PTBs now withdraw and refund address balance collateral in the configured `$US` type.
 - Leader registration PTBs now preserve any `$US` balance above the chosen stake instead of requiring the input coin to reach zero.
-- Move binding regeneration now preserves the reduced Move standard library and Sui framework IR, limiting deployment refreshes to Nexus packages.
 - Move binding regeneration now commits canonical SDK package identities, preventing package ID churn when the same Move ABI is rebound from another deployment.
 - Regenerated Move bindings and updated DAG, registry, workflow, event, and crawler models for the simplified verifier contracts and separate onchain Tool result path.
 - Generated `TaggedOutput` bindings now map payload names directly to encoded `NexusData` values, with no type hint wrapper or deferred formatting API.
@@ -98,7 +98,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Scheduler metadata keys and values now use `0x1::string::String` through `string::utf8`, with a real-Sui-VM regression for non-empty metadata.
 - Protocol validation now separates transport from deterministic metadata checks, with coverage for malformed package identity, datatype origins, linkage, shared object versions, protocol roots, configuration hashes, and unsupported protocol versions.
 - DAG publication now transfers the returned owner capability to the publishing account.
-- `NexusData` PTB materialization now preserves explicit ordered object requirements for accepted inline and aligned many-value forms, rejects Walrus-one object requirements, and passes only the canonical `LeaderRegistry` required by the Move ABI.
 
 #### Fixed
 

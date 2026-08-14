@@ -48,7 +48,7 @@ use {
         },
         sui,
         transactions::{dag, tool_cashier},
-        types::{DagSpec, NexusData, NexusObjects, ToolAnchor, ToolRef, ToolStateV2},
+        types::{DagSpec, NexusData, NexusObjects, NexusValue, ToolAnchor, ToolRef, ToolStateV2},
     },
     anyhow::{anyhow, bail},
     sha2::{Digest as _, Sha256},
@@ -416,7 +416,7 @@ pub enum WorkflowExecutionTerminalState {
 #[derive(Clone, Debug)]
 pub struct ResolvedEndState {
     pub event: EndStateReachedEvent,
-    pub resolved_ports_to_data: HashMap<String, NexusData>,
+    pub resolved_ports_to_data: HashMap<String, Vec<NexusValue>>,
 }
 
 #[derive(Clone, Debug)]
@@ -3968,15 +3968,14 @@ mod tests {
             result.end_states[0].event.vertex,
             RuntimeVertex::plain("final")
         );
-        assert_eq!(
+        assert!(matches!(
             result.end_states[0]
                 .resolved_ports_to_data
                 .get("answer")
                 .expect("answer port")
-                .inline_data_bytes()
-                .expect("answer should be inline bytes"),
-            b"42"
-        );
+                .as_slice(),
+            [NexusValue::InlineData { bytes }] if bytes == b"42"
+        ));
     }
 
     #[tokio::test]
