@@ -3,7 +3,9 @@
 use {
     anyhow::{anyhow, bail, Context, Result},
     std::{
+        collections::BTreeMap,
         env,
+        fmt::Write as _,
         fs,
         path::{Path, PathBuf},
         str::FromStr,
@@ -19,6 +21,7 @@ use {
 
 const DEFAULT_GRPC_URL: &str = "http://127.0.0.1:9000";
 const IR_DIR: &str = "src/move_bindings/ir";
+const PROTOCOL_LIMITS_FILE: &str = "src/move_bindings/protocol_limits.toml";
 const CANONICAL_PACKAGE_VERSION: u64 = 1;
 const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("primitives", "0xa1"),
@@ -51,6 +54,40 @@ const SUI_FRAMEWORK_MODULES: &[&str] = &[
     "vec_set",
     "versioned",
 ];
+const PROTOCOL_LIMIT_MODULES: &[(&str, &str, &str, &[&str])] = &[
+    (
+        "interface",
+        "meta_schema",
+        "interface/sources/meta_schema.move",
+        &[
+            "MAX_IDENTIFIER_BYTES",
+            "MAX_INPUT_PORTS",
+            "MAX_META_SCHEMA_BYTES",
+            "MAX_NEXUS_DATA_BYTES",
+            "MAX_OUTPUT_VARIANTS",
+            "MAX_PORTS_PER_OUTPUT_VARIANT",
+            "MAX_RAW_OUTPUT_BYTES",
+        ],
+    ),
+    (
+        "interface",
+        "payment",
+        "interface/sources/payment.move",
+        &["MAX_PRIORITY_FEE_PERCENTAGE"],
+    ),
+    (
+        "primitives",
+        "data",
+        "primitives/sources/data.move",
+        &[
+            "MAX_INLINE_DATA_BYTES",
+            "MAX_MANY_VALUES",
+            "MAX_NEXUS_DATA_BYTES",
+        ],
+    ),
+];
+
+type ProtocolLimits = BTreeMap<String, BTreeMap<String, BTreeMap<String, u64>>>;
 
 #[derive(Debug, PartialEq, Eq)]
 struct Inputs {
@@ -65,12 +102,20 @@ async fn main() -> Result<()> {
 }
 
 async fn regenerate(inputs: Inputs) -> Result<()> {
-    let source_root = inputs.source_root.as_deref().or_else(|| {
-        inputs
-            .objects_file
-            .is_dir()
-            .then_some(inputs.objects_file.as_path())
-    });
+    let source_root = inputs
+        .source_root
+        .as_deref()
+        .or_else(|| {
+            inputs
+                .objects_file
+                .is_dir()
+                .then_some(inputs.objects_file.as_path())
+        })
+        .ok_or_else(|| {
+            anyhow!(
+                "Nexus Move source root is required to regenerate authoritative protocol limits"
+            )
+        })?;
     let objects_file = if inputs.objects_file.is_dir() {
         inputs.objects_file.join("bin/target/objects.localnet.toml")
     } else {
@@ -79,6 +124,7 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     let package_ids = packages_from_objects_file(&objects_file)?;
     let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(IR_DIR);
     fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
+    let protocol_limits = extract_protocol_limits(source_root)?;
 
     let mut client = GrpcClient::new(&inputs.grpc_url)
         .map_err(|err| anyhow!("gRPC client for {}: {err}", inputs.grpc_url))?;
@@ -89,11 +135,13 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
             .await
             .with_context(|| format!("fetch {name} ({package_id})"))?;
         retain_supported_modules(&mut package, &name);
-        apply_source_names(&mut package, &name, source_root)?;
+        apply_source_names(&mut package, &name, Some(source_root))?;
         packages.push((name, package));
     }
 
     canonicalize_sdk_ir(&mut packages);
+    let limits_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PROTOCOL_LIMITS_FILE);
+    write_protocol_limits(&limits_path, &protocol_limits)?;
     for (name, package) in packages {
         let module_count = package.modules.len();
         let path = write_package_ir(&out_dir, &name, &package)?;
@@ -101,6 +149,104 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn extract_protocol_limits(source_root: &Path) -> Result<ProtocolLimits> {
+    let mut limits = ProtocolLimits::new();
+    for (package, module, relative_path, required) in PROTOCOL_LIMIT_MODULES {
+        let path = source_root.join(relative_path);
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("read protocol limit source {}", path.display()))?;
+        let module_limits =
+            extract_required_u64_constants(&source, &path.display().to_string(), required)?;
+        limits
+            .entry((*package).to_string())
+            .or_default()
+            .insert((*module).to_string(), module_limits);
+    }
+    Ok(limits)
+}
+
+fn extract_required_u64_constants(
+    source: &str,
+    source_name: &str,
+    required: &[&str],
+) -> Result<BTreeMap<String, u64>> {
+    let mut constants = BTreeMap::new();
+    for (line_index, line) in source.lines().enumerate() {
+        let declaration = line.split("//").next().unwrap_or_default().trim();
+        let Some(declaration) = declaration.strip_prefix("const ") else {
+            continue;
+        };
+        let Some((name, value)) = declaration.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if !required.contains(&name) {
+            continue;
+        }
+        let value = value
+            .trim()
+            .strip_prefix("u64")
+            .map(str::trim_start)
+            .and_then(|value| value.strip_prefix('='))
+            .map(str::trim)
+            .and_then(|value| value.strip_suffix(';'))
+            .ok_or_else(|| {
+                anyhow!(
+                    "{source_name}:{} must declare '{name}' as a literal u64 constant",
+                    line_index + 1
+                )
+            })?;
+        let normalized = value.trim().replace('_', "");
+        let parsed = if let Some(hex) = normalized.strip_prefix("0x") {
+            u64::from_str_radix(hex, 16)
+        } else {
+            normalized.parse()
+        }
+        .with_context(|| {
+            format!(
+                "{source_name}:{} contains an invalid u64 value for '{name}'",
+                line_index + 1
+            )
+        })?;
+        if parsed > i64::MAX as u64 {
+            bail!(
+                "{source_name}:{} value for '{name}' exceeds the generated TOML integer range",
+                line_index + 1
+            );
+        }
+        if constants.insert(name.to_string(), parsed).is_some() {
+            bail!("{source_name} declares required constant '{name}' more than once");
+        }
+    }
+
+    for name in required {
+        if !constants.contains_key(*name) {
+            bail!("{source_name} is missing required u64 constant '{name}'");
+        }
+    }
+    Ok(constants)
+}
+
+fn render_protocol_limits(limits: &ProtocolLimits) -> String {
+    let mut output = String::from(
+        "# @generated by regenerate_bindings from authoritative Nexus Move source; do not edit.\n",
+    );
+    for (package, modules) in limits {
+        for (module, constants) in modules {
+            writeln!(output, "\n[{package}.{module}]").expect("writing to String cannot fail");
+            for (name, value) in constants {
+                writeln!(output, "{name} = {value}").expect("writing to String cannot fail");
+            }
+        }
+    }
+    output
+}
+
+fn write_protocol_limits(path: &Path, limits: &ProtocolLimits) -> Result<()> {
+    fs::write(path, render_protocol_limits(limits))
+        .with_context(|| format!("write {}", path.display()))
 }
 
 fn retain_supported_modules(package: &mut NormalizedPackage, package_name: &str) {
@@ -261,6 +407,100 @@ mod tests {
             Visibility,
         },
     };
+
+    #[test]
+    fn extracts_required_move_u64_constants() {
+        let source = r#"
+            const IGNORED: u64 = 9;
+            const MAX_FIRST: u64 = 65_536;
+            const MAX_SECOND: u64 = 0x80; // source comment
+        "#;
+
+        let constants =
+            extract_required_u64_constants(source, "limits.move", &["MAX_FIRST", "MAX_SECOND"])
+                .unwrap();
+
+        assert_eq!(
+            constants,
+            BTreeMap::from([
+                ("MAX_FIRST".to_string(), 65_536),
+                ("MAX_SECOND".to_string(), 128),
+            ])
+        );
+    }
+
+    #[test]
+    fn rejects_missing_or_duplicate_move_limits() {
+        let missing = extract_required_u64_constants(
+            "const MAX_FIRST: u64 = 1;",
+            "limits.move",
+            &["MAX_FIRST", "MAX_SECOND"],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(missing.contains("missing required u64 constant 'MAX_SECOND'"));
+
+        let duplicate = extract_required_u64_constants(
+            "const MAX_FIRST: u64 = 1;\nconst MAX_FIRST: u64 = 2;",
+            "limits.move",
+            &["MAX_FIRST"],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(duplicate.contains("more than once"));
+    }
+
+    #[test]
+    fn rejects_malformed_or_out_of_range_move_limits() {
+        let malformed = extract_required_u64_constants(
+            "const MAX_FIRST: u64 = 1 << 10;",
+            "limits.move",
+            &["MAX_FIRST"],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(malformed.contains("invalid u64 value"));
+
+        let out_of_range = extract_required_u64_constants(
+            "const MAX_FIRST: u64 = 18_446_744_073_709_551_615;",
+            "limits.move",
+            &["MAX_FIRST"],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(out_of_range.contains("exceeds the generated TOML integer range"));
+    }
+
+    #[test]
+    fn renders_protocol_limits_deterministically() {
+        let limits = BTreeMap::from([
+            (
+                "primitives".to_string(),
+                BTreeMap::from([(
+                    "data".to_string(),
+                    BTreeMap::from([("MAX_DATA".to_string(), 64)]),
+                )]),
+            ),
+            (
+                "interface".to_string(),
+                BTreeMap::from([(
+                    "meta_schema".to_string(),
+                    BTreeMap::from([("MAX_PORTS".to_string(), 32)]),
+                )]),
+            ),
+        ]);
+
+        assert_eq!(
+            render_protocol_limits(&limits),
+            concat!(
+                "# @generated by regenerate_bindings from authoritative Nexus Move source; do not edit.\n",
+                "\n[interface.meta_schema]\n",
+                "MAX_PORTS = 32\n",
+                "\n[primitives.data]\n",
+                "MAX_DATA = 64\n",
+            )
+        );
+    }
 
     #[test]
     fn parses_required_rebind_packages() {

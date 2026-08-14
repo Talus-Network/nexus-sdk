@@ -5,6 +5,11 @@ use {
         move_bindings::{
             interface::meta_schema::{PortCommitment, ValueKind},
             primitives::data::{NexusData, NexusValue},
+            protocol_limits::primitives::data::{
+                MAX_INLINE_DATA_BYTES,
+                MAX_MANY_VALUES,
+                MAX_NEXUS_DATA_BYTES,
+            },
             sui_framework::object::ID,
         },
         sui,
@@ -20,17 +25,14 @@ use {
 };
 
 const SHA256_LEN: usize = 32;
-const MAX_MANY_VALUES: usize = 256;
-pub(crate) const MAX_INLINE_DATA_BYTES: usize = 61_440;
 const WALRUS_BLOB_ID_BYTES: usize = 32;
 const WALRUS_BLOB_ID_ENCODED_BYTES: usize = 43;
-const MAX_NEXUS_DATA_BYTES: usize = 65_536;
 
 pub(super) fn validate_resolved_values(values: &[NexusValue], many: bool) -> anyhow::Result<()> {
     if (!many && values.len() != 1) || (many && values.is_empty()) {
         bail!("resolved Nexus values must contain one value or a non-empty Many");
     }
-    if values.len() > MAX_MANY_VALUES {
+    if values.len() > MAX_MANY_VALUES as usize {
         bail!("resolved Nexus values exceed {MAX_MANY_VALUES} values");
     }
     if values
@@ -119,7 +121,7 @@ impl NexusValue {
 
     pub fn inline_data(bytes: impl Into<Vec<u8>>) -> anyhow::Result<Self> {
         let bytes = bytes.into();
-        if bytes.len() > MAX_INLINE_DATA_BYTES {
+        if bytes.len() > MAX_INLINE_DATA_BYTES as usize {
             bail!("inline data exceeds {MAX_INLINE_DATA_BYTES} bytes");
         }
         Ok(Self::InlineData { bytes })
@@ -150,12 +152,12 @@ impl NexusValue {
     }
 
     pub fn is_well_formed(&self) -> bool {
-        if bcs::to_bytes(self).map_or(true, |bytes| bytes.len() > MAX_NEXUS_DATA_BYTES) {
+        if bcs::to_bytes(self).map_or(true, |bytes| bytes.len() > MAX_NEXUS_DATA_BYTES as usize) {
             return false;
         }
         match self {
             Self::Object { .. } => true,
-            Self::InlineData { bytes } => bytes.len() <= MAX_INLINE_DATA_BYTES,
+            Self::InlineData { bytes } => bytes.len() <= MAX_INLINE_DATA_BYTES as usize,
             Self::WalrusData {
                 storage_key,
                 content_digest,
@@ -189,7 +191,7 @@ impl NexusData {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         validate_values(&values, is_many)?;
-        if bcs::to_bytes(self)?.len() > MAX_NEXUS_DATA_BYTES {
+        if bcs::to_bytes(self)?.len() > MAX_NEXUS_DATA_BYTES as usize {
             bail!("NexusData exceeds {MAX_NEXUS_DATA_BYTES} encoded bytes");
         }
         Ok(values)
@@ -268,7 +270,7 @@ impl NexusData {
                 Vec::new(),
             )
         };
-        if bcs::to_bytes(&data)?.len() > MAX_NEXUS_DATA_BYTES {
+        if bcs::to_bytes(&data)?.len() > MAX_NEXUS_DATA_BYTES as usize {
             bail!("NexusData exceeds {MAX_NEXUS_DATA_BYTES} encoded bytes");
         }
         Ok(data)
@@ -375,7 +377,7 @@ impl NexusData {
                 if values.is_empty() {
                     bail!("NexusData::Many requires at least one value");
                 }
-                if values.len() > MAX_MANY_VALUES {
+                if values.len() > MAX_MANY_VALUES as usize {
                     bail!("NexusData::Many exceeds {MAX_MANY_VALUES} values");
                 }
                 for value in values {
@@ -431,7 +433,7 @@ fn validate_values(values: &[NexusValue], many: bool) -> anyhow::Result<()> {
     if many && values.is_empty() {
         bail!("NexusData::Many requires at least one value");
     }
-    if values.len() > MAX_MANY_VALUES {
+    if values.len() > MAX_MANY_VALUES as usize {
         bail!("NexusData::Many exceeds {MAX_MANY_VALUES} values");
     }
     if values.iter().any(|value| !value.is_well_formed()) {
@@ -704,7 +706,7 @@ mod tests {
 
     #[test]
     fn resolved_data_can_exceed_inline_limit_without_weakening_onchain_validation() {
-        let bytes = vec![b'x'; MAX_INLINE_DATA_BYTES + 1];
+        let bytes = vec![b'x'; MAX_INLINE_DATA_BYTES as usize + 1];
         assert!(NexusValue::inline_data(bytes.clone()).is_err());
 
         let resolved = vec![NexusValue::InlineData {

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Move binding regeneration now requires matching Nexus Move source and generates SDK validation limits from authoritative on-chain declarations instead of independent Rust literals.
 - Dynamic field point reads now derive typed field object IDs and fetch only requested keys. Exact batch and dynamic object helpers replace singular APIs that scanned complete collections.
 - Nexus event kinds are now generated from the committed IR for all six protocol packages, so every declared protocol event has a typed SDK representation.
 - Event decoding now reports unknown event types emitted directly by active protocol packages and decodes each event before publishing checkpoint progress.
@@ -32,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- On-chain Tool registration now preserves generated positional input keys and permits description customization without exposing an incompatible input-renaming path.
 - DAG, Tool, workflow, and Task commands now render and accept canonical typed `NexusData` and `MetaSchema` values, generate on-chain Tool schemas from the registered Move `execute` function, and use the active V2 transaction shapes.
 
 ### `nexus-toolkit`

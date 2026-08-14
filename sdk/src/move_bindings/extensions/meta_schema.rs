@@ -8,11 +8,17 @@ use {
         validate_resolved_values,
     },
     crate::{
-        move_bindings::interface::meta_schema::{
-            MetaSchema,
-            OutputVariantSchema,
-            PortSchema,
-            ValueKind,
+        move_bindings::{
+            interface::meta_schema::{MetaSchema, OutputVariantSchema, PortSchema, ValueKind},
+            protocol_limits::interface::meta_schema::{
+                MAX_IDENTIFIER_BYTES,
+                MAX_INPUT_PORTS,
+                MAX_META_SCHEMA_BYTES,
+                MAX_NEXUS_DATA_BYTES,
+                MAX_OUTPUT_VARIANTS,
+                MAX_PORTS_PER_OUTPUT_VARIANT,
+                MAX_RAW_OUTPUT_BYTES,
+            },
         },
         types::{NexusData, NexusValue, OffchainToolOutput},
     },
@@ -23,13 +29,6 @@ use {
     std::collections::{HashMap, HashSet},
 };
 
-const MAX_IDENTIFIER_BYTES: usize = 128;
-const MAX_INPUT_PORTS: usize = 32;
-const MAX_OUTPUT_VARIANTS: usize = 8;
-const MAX_PORTS_PER_OUTPUT_VARIANT: usize = 16;
-const MAX_META_SCHEMA_BYTES: usize = 65_536;
-const MAX_NEXUS_DATA_BYTES: usize = 65_536;
-const MAX_RAW_OUTPUT_BYTES: usize = 262_144;
 const FAILURE_VARIANT: &[u8] = b"_err_eval";
 const FAILURE_PORT: &[u8] = b"reason";
 pub const RESOLVED_INPUT_DOMAIN: &[u8] = b"nexus.direct.v3.resolved-input";
@@ -124,13 +123,15 @@ impl MetaSchema {
 
     /// Mirrors the authoritative Move structural validation and resource limits.
     pub fn validate_for_tool(&self, is_offchain: bool) -> anyhow::Result<()> {
-        if self.input_ports.len() > MAX_INPUT_PORTS {
+        if self.input_ports.len() > MAX_INPUT_PORTS as usize {
             bail!("MetaSchema exceeds {MAX_INPUT_PORTS} input ports");
         }
-        if self.output_variants.is_empty() || self.output_variants.len() > MAX_OUTPUT_VARIANTS {
+        if self.output_variants.is_empty()
+            || self.output_variants.len() > MAX_OUTPUT_VARIANTS as usize
+        {
             bail!("MetaSchema must contain 1..={MAX_OUTPUT_VARIANTS} output variants");
         }
-        if bcs::to_bytes(self)?.len() > MAX_META_SCHEMA_BYTES {
+        if bcs::to_bytes(self)?.len() > MAX_META_SCHEMA_BYTES as usize {
             bail!("MetaSchema exceeds {MAX_META_SCHEMA_BYTES} encoded bytes");
         }
         validate_unique_ports(&self.input_ports, "input")?;
@@ -152,7 +153,7 @@ impl MetaSchema {
             if !variants.insert(variant.variant_name.as_slice()) {
                 bail!("duplicate output variant name");
             }
-            if variant.ports.len() > MAX_PORTS_PER_OUTPUT_VARIANT {
+            if variant.ports.len() > MAX_PORTS_PER_OUTPUT_VARIANT as usize {
                 bail!("output variant exceeds {MAX_PORTS_PER_OUTPUT_VARIANT} ports");
             }
             validate_unique_ports(&variant.ports, "output")?;
@@ -162,7 +163,7 @@ impl MetaSchema {
 
     /// Returns whether a typed value exactly conforms to one port schema.
     pub fn conforms_port(schema: &PortSchema, value: &NexusData) -> bool {
-        if bcs::to_bytes(value).map_or(true, |bytes| bytes.len() > MAX_NEXUS_DATA_BYTES)
+        if bcs::to_bytes(value).map_or(true, |bytes| bytes.len() > MAX_NEXUS_DATA_BYTES as usize)
             || !value.is_well_formed()
         {
             return false;
@@ -421,7 +422,7 @@ impl MetaSchema {
 
     /// Validates one exact schema-ordered canonical Tool response.
     pub fn conforms_raw_output(&self, output: &OffchainToolOutput) -> bool {
-        if bcs::to_bytes(output).map_or(true, |bytes| bytes.len() > MAX_RAW_OUTPUT_BYTES) {
+        if bcs::to_bytes(output).map_or(true, |bytes| bytes.len() > MAX_RAW_OUTPUT_BYTES as usize) {
             return false;
         }
         if output.tag == FAILURE_VARIANT {
@@ -490,7 +491,7 @@ impl MetaSchema {
             return false;
         }
         NexusData::from_values(port.values.clone(), false).is_ok_and(|value| {
-            bcs::to_bytes(&value).is_ok_and(|bytes| bytes.len() <= MAX_NEXUS_DATA_BYTES)
+            bcs::to_bytes(&value).is_ok_and(|bytes| bytes.len() <= MAX_NEXUS_DATA_BYTES as usize)
                 && value.inline_data_bytes().is_some()
         })
     }
@@ -626,7 +627,7 @@ fn validate_unique_ports(ports: &[PortSchema], kind: &str) -> anyhow::Result<()>
 }
 
 fn validate_identifier(name: &[u8], kind: &str) -> anyhow::Result<()> {
-    if name.is_empty() || name.len() > MAX_IDENTIFIER_BYTES || !name.is_ascii() {
+    if name.is_empty() || name.len() > MAX_IDENTIFIER_BYTES as usize || !name.is_ascii() {
         bail!("{kind} name must contain 1..={MAX_IDENTIFIER_BYTES} ASCII bytes");
     }
     Ok(())
