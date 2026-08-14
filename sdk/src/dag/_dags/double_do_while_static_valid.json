@@ -4,40 +4,50 @@
       "vertex": "start",
       "input_port": "comp",
       "value": {
-        "storage": "inline",
-        "data": 15
+        "one": {
+          "kind": "data",
+          "data": 15
+        }
       }
     },
     {
       "vertex": "loop_1",
       "input_port": "comp",
       "value": {
-        "storage": "inline",
-        "data": 1000
+        "one": {
+          "kind": "data",
+          "data": 1000
+        }
       }
     },
     {
       "vertex": "loop_1",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "one": {
+          "kind": "data",
+          "data": 1
+        }
       }
     },
     {
       "vertex": "loop_2",
       "input_port": "comp",
       "value": {
-        "storage": "inline",
-        "data": 1000
+        "one": {
+          "kind": "data",
+          "data": 1000
+        }
       }
     },
     {
       "vertex": "loop_2",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 2
+        "one": {
+          "kind": "data",
+          "data": 2
+        }
       }
     }
   ],

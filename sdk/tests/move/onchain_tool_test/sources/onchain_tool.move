@@ -1,10 +1,11 @@
 module onchain_tool::onchain_tool;
 
+use onchain_tool::execution::DAGExecution;
 use onchain_tool::onchain_tool_result::{Self as onchain_tool_result, OnchainToolResult};
+use onchain_tool::proof_of_uid::{Self as proof_of_uid, UIDRequirements};
 use std::ascii::String as AsciiString;
 use sui::bag::{Self, Bag};
 use sui::transfer::share_object;
-use onchain_tool::proof_of_uid::{Self as proof_of_uid, UIDRequirements};
 
 /// One-time witness for package initialization.
 public struct ONCHAIN_TOOL has drop {}
@@ -69,6 +70,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 entry fun execute(
     requirements: UIDRequirements,
     result: OnchainToolResult,
+    current_execution: &mut DAGExecution,
     counter: &mut RandomCounter,
     increase_with: u64,
     _ctx: &mut TxContext,
@@ -76,6 +78,7 @@ entry fun execute(
     let old_count = counter.count;
     proof_of_uid::delete(requirements);
     onchain_tool_result::delete_for_testing(result);
+    let _ = current_execution;
     let _ = old_count;
     let _ = increase_with;
 }

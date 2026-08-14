@@ -5,12 +5,12 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV1};
+pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV2};
 /// Current logical Tool state.
 ///
 /// [`ToolAnchor`] is the stable object shell. Most callers operate on the
 /// selected state payload, so this alias preserves the public Tool model.
-pub type Tool = ToolStateV1;
+pub type Tool = ToolStateV2;
 use {
     crate::{
         move_bindings::{move_std::ascii, tool::tool_registry},
@@ -36,7 +36,7 @@ impl ToolAnchor {
     }
 }
 
-impl ToolStateV1 {
+impl ToolStateV2 {
     /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
@@ -62,32 +62,6 @@ impl ToolStateV1 {
 
     pub fn reference(&self) -> &ToolRef {
         &self.r#ref
-    }
-
-    pub fn input_schema_json(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::from_slice(&self.input_schema).context("Tool input schema is not valid JSON")
-    }
-
-    pub fn output_schema_json(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::from_slice(&self.output_schema).context("Tool output schema is not valid JSON")
-    }
-
-    /// Validate the provided JSON input against the tool's input schema.
-    pub fn validate_input(&self, data: &serde_json::Value) -> anyhow::Result<()> {
-        let schema = self.input_schema_json()?;
-        match jsonschema::draft202012::validate(&schema, data) {
-            Ok(()) => Ok(()),
-            Err(error) => anyhow::bail!("Input data does not match the input schema: {error}"),
-        }
-    }
-
-    /// Validate the provided JSON output against the tool's output schema.
-    pub fn validate_output(&self, data: &serde_json::Value) -> anyhow::Result<()> {
-        let schema = self.output_schema_json()?;
-        match jsonschema::draft202012::validate(&schema, data) {
-            Ok(()) => Ok(()),
-            Err(error) => anyhow::bail!("Output data does not match the output schema: {error}"),
-        }
     }
 
     pub fn description_string(&self) -> anyhow::Result<String> {
@@ -209,12 +183,8 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool(
-        reference: ToolRef,
-        input_schema: Vec<u8>,
-        output_schema: Vec<u8>,
-    ) -> ToolStateV1 {
-        ToolStateV1 {
+    fn fixture_tool(reference: ToolRef) -> ToolStateV2 {
+        ToolStateV2 {
             minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 sui_mocks::mock_sui_address(),
@@ -222,8 +192,10 @@ mod tests {
             fqn: ascii("xyz.taluslabs.math.i64.add@1"),
             r#ref: reference,
             description: b"A test tool".to_vec(),
-            input_schema,
-            output_schema,
+            meta_schema: crate::move_bindings::interface::meta_schema::MetaSchema::new(
+                vec![],
+                vec![],
+            ),
             verified: false,
             vault: sui_framework::balance::Balance {
                 value: 0,
@@ -256,17 +228,13 @@ mod tests {
     }
 
     #[test]
-    fn generated_tool_bcs_roundtrips_and_preserves_schema_bytes() {
-        let tool = fixture_tool(
-            ToolRef::Http {
-                url: b"https://example.com/tool".to_vec(),
-            },
-            b"input schema bytes".to_vec(),
-            b"output schema bytes".to_vec(),
-        );
+    fn generated_tool_bcs_roundtrips_and_preserves_meta_schema() {
+        let tool = fixture_tool(ToolRef::Http {
+            url: b"https://example.com/tool".to_vec(),
+        });
 
         let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
-        let decoded: ToolStateV1 =
+        let decoded: ToolStateV2 =
             bcs::from_bytes(&bytes).expect("generated Tool state deserializes as BCS");
 
         assert_eq!(
@@ -278,8 +246,7 @@ mod tests {
             decoded.registered_at_datetime().unwrap(),
             DateTime::<Utc>::from_timestamp(0, 0).unwrap()
         );
-        assert_eq!(decoded.input_schema, b"input schema bytes");
-        assert_eq!(decoded.output_schema, b"output schema bytes");
+        assert_eq!(decoded.meta_schema, tool.meta_schema);
     }
 
     #[test]

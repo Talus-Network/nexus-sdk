@@ -19,9 +19,10 @@ pub(crate) async fn run(
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
     command_title!("Creating and scheduling Task");
-    let task = task.into_spec().await?;
+    let task = task.into_preparation().await?;
     let schedule = schedule.into_schedule().await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
+    let task = task.materialize(&client).await?;
     let progress = loading!("Submitting atomic Task schedule transaction...");
     let receipt = client.scheduler().schedule_task(task, schedule).await?;
     progress.success();

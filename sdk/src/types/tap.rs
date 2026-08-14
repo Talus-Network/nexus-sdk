@@ -28,7 +28,8 @@ pub const fn skill_id(value: u64) -> SkillId {
 }
 pub const DEFAULT_PRIORITY_FEE_PERCENTAGE: u64 = 20;
 pub const MIN_PRIORITY_FEE_PERCENTAGE: u64 = 10;
-pub const MAX_PRIORITY_FEE_PERCENTAGE: u64 = 10000;
+pub const MAX_PRIORITY_FEE_PERCENTAGE: u64 =
+    crate::move_bindings::protocol_limits::interface::payment::MAX_PRIORITY_FEE_PERCENTAGE;
 
 /// Inputs for validating or deriving a base gas budget within a total escrow amount.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -314,12 +314,8 @@ struct ParameterSchema {
     #[serde(rename = "type")]
     param_type: String,
     description: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    custom_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mutable: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    parameter_index: Option<String>,
 }
 
 /// Represents an output variant with optional fields.
@@ -358,16 +354,31 @@ fn customize_parameter_descriptions_with_reader(
         "\n{title}",
         title = "Input Schema Customization".bold().cyan()
     );
-    println!(
-        "Customize names and descriptions for each input parameter (press Enter to keep current)"
-    );
+    println!("Customize descriptions for each input parameter (press Enter to keep current)");
 
-    // Sort parameter keys numerically.
-    let mut param_keys: Vec<String> = schema.keys().cloned().collect();
-    param_keys.sort_by_key(|k| k.parse::<i32>().unwrap_or(i32::MAX));
+    let mut param_keys = schema
+        .keys()
+        .map(|key| {
+            key.parse::<usize>()
+                .map(|index| (index, key.clone()))
+                .map_err(|_| {
+                    NexusCliError::Any(anyhow::anyhow!(
+                        "On-chain input schema key '{key}' is not a positional index"
+                    ))
+                })
+        })
+        .collect::<AnyResult<Vec<_>, _>>()?;
+    param_keys.sort_by_key(|(index, _)| *index);
+    for (expected, (index, key)) in param_keys.iter().enumerate() {
+        if *index != expected || key != &expected.to_string() {
+            return Err(NexusCliError::Any(anyhow::anyhow!(
+                "On-chain input schema keys must be contiguous positional indices starting at 0"
+            )));
+        }
+    }
 
     // Customize each parameter.
-    for param_key in &param_keys {
+    for (_, param_key) in &param_keys {
         if let Some(param) = schema.get_mut(param_key) {
             customize_parameter(param_key, param, reader)
                 .map_err(|e| NexusCliError::Any(anyhow::anyhow!("I/O error: {e}")))?;
@@ -376,36 +387,22 @@ fn customize_parameter_descriptions_with_reader(
 
     println!();
 
-    // Convert schema to use custom names as keys.
-    let final_schema = build_final_schema(schema)?;
+    let mut final_schema = Map::new();
+    for (_, param_key) in param_keys {
+        let param = schema.remove(&param_key).ok_or_else(|| {
+            NexusCliError::Any(anyhow::anyhow!(
+                "On-chain input schema parameter '{param_key}' disappeared during customization"
+            ))
+        })?;
+        let value = serde_json::to_value(param).map_err(|e| {
+            NexusCliError::Any(anyhow::anyhow!("Failed to serialize parameter: {e}"))
+        })?;
+        final_schema.insert(param_key, value);
+    }
 
     // Serialize back to JSON.
     serde_json::to_string(&final_schema)
         .map_err(|e| NexusCliError::Any(anyhow::anyhow!("Failed to serialize schema: {e}")))
-}
-
-/// Build the final schema with custom names as keys.
-fn build_final_schema(
-    schema: HashMap<String, ParameterSchema>,
-) -> AnyResult<Map<String, Value>, NexusCliError> {
-    let mut final_schema = Map::new();
-
-    for (param_index, mut param) in schema {
-        // Use custom name if provided, otherwise use the integer index.
-        let key = param.custom_name.take().unwrap_or(param_index);
-
-        // Clear metadata fields before serialization.
-        param.parameter_index = None;
-
-        // Convert to JSON value (this automatically excludes None fields).
-        let param_value = serde_json::to_value(param).map_err(|e| {
-            NexusCliError::Any(anyhow::anyhow!("Failed to serialize parameter: {e}"))
-        })?;
-
-        final_schema.insert(key, param_value);
-    }
-
-    Ok(final_schema)
 }
 
 /// Wrapper function that calls customize_parameter_descriptions_with_reader using stdin.
@@ -531,24 +528,6 @@ fn customize_parameter(
         }
     );
 
-    // Customize parameter name.
-    let default_name = param.custom_name.as_deref().unwrap_or(param_key);
-    println!("Current name: {}", default_name.truecolor(150, 150, 150));
-    if param.custom_name.is_some() {
-        println!("Current custom name: {}", default_name.green());
-    }
-
-    if let Some(new_name) = prompt_optional_input(
-        reader,
-        &format!("Custom name (Enter to keep '{default_name}')"),
-        default_name,
-    )? {
-        param.custom_name = Some(new_name);
-    } else if param.custom_name.is_some() {
-        // User pressed Enter but had a custom name.
-        param.custom_name = None;
-    }
-
     // Customize parameter description.
     if let Some(new_desc) = prompt_optional_input(
         reader,
@@ -655,168 +634,80 @@ mod tests {
     }
 
     #[test]
-    fn test_build_final_schema_with_custom_names() {
-        // Create a schema with integer keys and custom names using typed structs.
-        let mut schema = HashMap::new();
-
-        // Parameter 0: u64 with custom name "increment_amount".
-        schema.insert(
-            "0".to_string(),
-            ParameterSchema {
-                param_type: "u64".to_string(),
-                description: "64-bit unsigned integer".to_string(),
-                custom_name: Some("increment_amount".to_string()),
-                mutable: None,
-                parameter_index: Some("0".to_string()),
+    #[serial(json_mode)]
+    fn test_customize_parameter_descriptions_keeps_positional_keys_in_abi_order() {
+        JSON_MODE.store(false, Ordering::Relaxed);
+        let input_schema = r#"{
+            "1": {
+                "type": "object",
+                "description": "Counter object reference",
+                "mutable": true
             },
-        );
+            "0": {
+                "type": "u64",
+                "description": "64-bit unsigned integer"
+            }
+        }"#;
+        let mut reader = std::io::Cursor::new(b"Amount to increment\nCounter to update\n");
 
-        // Parameter 1: object with custom name "counter".
-        schema.insert(
-            "1".to_string(),
-            ParameterSchema {
-                param_type: "object".to_string(),
-                description: "Counter object reference".to_string(),
-                custom_name: Some("counter".to_string()),
-                mutable: Some(true),
-                parameter_index: Some("1".to_string()),
-            },
-        );
+        let result =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap();
+        let result: Value = serde_json::from_str(&result).unwrap();
+        let result = result.as_object().unwrap();
 
-        // Convert schema.
-        let result = build_final_schema(schema).unwrap();
-
-        // Verify custom names are used as keys.
-        assert!(result.contains_key("increment_amount"));
-        assert!(result.contains_key("counter"));
-        assert!(!result.contains_key("0"));
-        assert!(!result.contains_key("1"));
-
-        // Verify metadata fields are removed.
-        let increment_amount_param = result.get("increment_amount").unwrap().as_object().unwrap();
-        assert!(!increment_amount_param.contains_key("custom_name"));
-        assert!(!increment_amount_param.contains_key("parameter_index"));
-
-        // Verify type and description are preserved.
-        assert_eq!(increment_amount_param.get("type").unwrap(), "u64");
         assert_eq!(
-            increment_amount_param.get("description").unwrap(),
-            "64-bit unsigned integer"
+            result.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["0", "1"]
         );
+        assert_eq!(result["0"]["description"], "Amount to increment");
+        assert_eq!(result["1"]["description"], "Counter to update");
+        assert_eq!(result["1"]["mutable"], true);
+        assert!(result.get("amount").is_none());
 
-        // Verify mutable flag is preserved for counter.
-        let counter_param = result.get("counter").unwrap().as_object().unwrap();
-        assert_eq!(counter_param.get("mutable").unwrap(), true);
-        assert!(!counter_param.contains_key("custom_name"));
-        assert!(!counter_param.contains_key("parameter_index"));
+        JSON_MODE.store(false, Ordering::Relaxed);
     }
 
     #[test]
-    fn test_build_final_schema_without_custom_names() {
-        // Create a schema with integer keys but no custom names using typed structs.
-        let mut schema = HashMap::new();
+    #[serial(json_mode)]
+    fn test_customize_parameter_descriptions_rejects_non_positional_keys() {
+        JSON_MODE.store(false, Ordering::Relaxed);
+        let input_schema = r#"{
+            "amount": {
+                "type": "u64",
+                "description": "64-bit unsigned integer"
+            }
+        }"#;
+        let mut reader = std::io::Cursor::new(b"description\n");
 
-        // Parameter 0: u64 without custom name.
-        schema.insert(
-            "0".to_string(),
-            ParameterSchema {
-                param_type: "u64".to_string(),
-                description: "64-bit unsigned integer".to_string(),
-                custom_name: None,
-                mutable: None,
-                parameter_index: None,
-            },
-        );
+        let error =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap_err()
+                .to_string();
 
-        // Parameter 1: object without custom name.
-        schema.insert(
-            "1".to_string(),
-            ParameterSchema {
-                param_type: "object".to_string(),
-                description: "Object reference".to_string(),
-                custom_name: None,
-                mutable: Some(true),
-                parameter_index: None,
-            },
-        );
-
-        // Convert schema.
-        let result = build_final_schema(schema).unwrap();
-
-        // Verify integer keys are preserved.
-        assert!(result.contains_key("0"));
-        assert!(result.contains_key("1"));
-
-        // Verify all properties are preserved.
-        let param0_result = result.get("0").unwrap().as_object().unwrap();
-        assert_eq!(param0_result.get("type").unwrap(), "u64");
-        assert_eq!(
-            param0_result.get("description").unwrap(),
-            "64-bit unsigned integer"
-        );
-
-        let param1_result = result.get("1").unwrap().as_object().unwrap();
-        assert_eq!(param1_result.get("type").unwrap(), "object");
-        assert_eq!(param1_result.get("mutable").unwrap(), true);
+        assert!(error.contains("not a positional index"));
+        JSON_MODE.store(false, Ordering::Relaxed);
     }
 
     #[test]
-    fn test_build_final_schema_mixed() {
-        // Create a schema with some custom names and some without using typed structs.
-        let mut schema = HashMap::new();
+    #[serial(json_mode)]
+    fn test_customize_parameter_descriptions_rejects_non_contiguous_keys() {
+        JSON_MODE.store(false, Ordering::Relaxed);
+        let input_schema = r#"{
+            "1": {
+                "type": "u64",
+                "description": "64-bit unsigned integer"
+            }
+        }"#;
+        let mut reader = std::io::Cursor::new(b"description\n");
 
-        // Parameter 0: with custom name.
-        schema.insert(
-            "0".to_string(),
-            ParameterSchema {
-                param_type: "u64".to_string(),
-                description: "Amount parameter".to_string(),
-                custom_name: Some("amount".to_string()),
-                mutable: None,
-                parameter_index: Some("0".to_string()),
-            },
-        );
+        let error =
+            customize_parameter_descriptions_with_reader(input_schema.to_string(), &mut reader)
+                .unwrap_err()
+                .to_string();
 
-        // Parameter 1: without custom name.
-        schema.insert(
-            "1".to_string(),
-            ParameterSchema {
-                param_type: "bool".to_string(),
-                description: "Flag parameter".to_string(),
-                custom_name: None,
-                mutable: None,
-                parameter_index: None,
-            },
-        );
-
-        // Parameter 2: with custom name.
-        schema.insert(
-            "2".to_string(),
-            ParameterSchema {
-                param_type: "string".to_string(),
-                description: "Message parameter".to_string(),
-                custom_name: Some("message".to_string()),
-                mutable: None,
-                parameter_index: Some("2".to_string()),
-            },
-        );
-
-        // Convert schema.
-        let result = build_final_schema(schema).unwrap();
-
-        // Verify mixed keys.
-        assert!(result.contains_key("amount")); // Custom name.
-        assert!(result.contains_key("1")); // Integer key preserved.
-        assert!(result.contains_key("message")); // Custom name.
-        assert!(!result.contains_key("0")); // Replaced by custom name.
-        assert!(!result.contains_key("2")); // Replaced by custom name.
-
-        // Verify no metadata in results.
-        for (_, value) in result.iter() {
-            let obj = value.as_object().unwrap();
-            assert!(!obj.contains_key("custom_name"));
-            assert!(!obj.contains_key("parameter_index"));
-        }
+        assert!(error.contains("contiguous positional indices starting at 0"));
+        JSON_MODE.store(false, Ordering::Relaxed);
     }
 
     #[test]
@@ -945,64 +836,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_final_schema_preserves_all_fields() {
-        // Test that all field types are properly preserved during conversion using typed structs.
-        let mut schema = HashMap::new();
-
-        // Parameter with various field types.
-        schema.insert(
-            "0".to_string(),
-            ParameterSchema {
-                param_type: "object".to_string(),
-                description: "Test object".to_string(),
-                custom_name: Some("my_param".to_string()),
-                mutable: Some(true),
-                parameter_index: Some("0".to_string()),
-            },
-        );
-
-        // Convert.
-        let result = build_final_schema(schema).unwrap();
-
-        // Verify custom name is used and metadata removed.
-        assert!(result.contains_key("my_param"));
-        let my_param = result.get("my_param").unwrap().as_object().unwrap();
-
-        // Verify all non-metadata fields are preserved.
-        assert_eq!(my_param.get("type").unwrap(), "object");
-        assert_eq!(my_param.get("description").unwrap(), "Test object");
-        assert_eq!(my_param.get("mutable").unwrap(), true);
-
-        // Verify metadata fields are removed.
-        assert!(!my_param.contains_key("custom_name"));
-        assert!(!my_param.contains_key("parameter_index"));
-    }
-
-    #[test]
-    fn test_build_final_schema_with_none_custom_name() {
-        // Test that None custom_name is treated as no custom name using typed structs.
-        let mut schema = HashMap::new();
-
-        schema.insert(
-            "0".to_string(),
-            ParameterSchema {
-                param_type: "u64".to_string(),
-                description: "Test param".to_string(),
-                custom_name: None,
-                mutable: None,
-                parameter_index: None,
-            },
-        );
-
-        // Convert.
-        let result = build_final_schema(schema).unwrap();
-
-        // Verify integer key is preserved when custom_name is None.
-        assert!(result.contains_key("0"));
-        assert_eq!(result.get("0").unwrap()["type"], "u64");
-    }
-
-    #[test]
     #[serial(json_mode)]
     fn test_customize_parameter_descriptions_with_mock_input() {
         // Ensure JSON_MODE is off for this test.
@@ -1016,8 +849,8 @@ mod tests {
             }
         }"#;
 
-        // Mock user input: custom name "amount" + enter, then custom description "The amount to use" + enter.
-        let mock_input = "amount\nThe amount to use\n";
+        // Mock one description response. On-chain parameter names are not customizable.
+        let mock_input = "The amount to use\n";
         let mut reader = std::io::Cursor::new(mock_input.as_bytes());
 
         // Call the function with mock input.
@@ -1028,12 +861,9 @@ mod tests {
         // Parse the result.
         let result_value: Value = serde_json::from_str(&result).unwrap();
 
-        // Verify the custom name was applied.
-        assert!(result_value.get("amount").is_some());
-        assert!(result_value.get("0").is_none());
-
-        // Verify the custom description was applied.
-        let amount_param = result_value.get("amount").unwrap();
+        // Verify the positional key and custom description were preserved.
+        let amount_param = result_value.get("0").unwrap();
+        assert!(result_value.get("amount").is_none());
         assert_eq!(
             amount_param.get("description").unwrap().as_str().unwrap(),
             "The amount to use"
@@ -1058,8 +888,8 @@ mod tests {
             }
         }"#;
 
-        // Mock user input: empty (press enter) for both name and description to keep defaults.
-        let mock_input = "\n\n";
+        // Mock user input: empty (press enter) for the description to keep the default.
+        let mock_input = "\n";
         let mut reader = std::io::Cursor::new(mock_input.as_bytes());
 
         // Call the function.
@@ -1402,9 +1232,19 @@ mod tests {
             serde_json::from_str(&output_schema).expect("Output schema should be valid JSON");
         assert!(output_json.is_object());
 
-        // Verify input schema has expected parameters (counter and increase_with).
-        // After skipping internal tool parameters and TxContext, we should have 2 parameters.
-        assert_eq!(input_json.as_object().unwrap().len(), 2);
+        // Verify input schema has the current execution, counter, and increase parameters.
+        // Internal Tool parameters and TxContext remain hidden.
+        assert_eq!(input_json.as_object().unwrap().len(), 3);
+        let current_execution = &input_json["0"];
+        assert_eq!(current_execution["type"], "object");
+        assert_eq!(current_execution["mutable"], true);
+        assert!(current_execution["description"]
+            .as_str()
+            .unwrap()
+            .contains("DAGExecution"));
+        assert_eq!(input_json["1"]["type"], "object");
+        assert_eq!(input_json["1"]["mutable"], true);
+        assert_eq!(input_json["2"]["type"], "u64");
 
         // Verify output schema has expected variants.
         let output_obj = output_json.as_object().unwrap();

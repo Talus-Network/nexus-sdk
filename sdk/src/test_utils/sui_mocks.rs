@@ -1066,6 +1066,36 @@ pub mod grpc {
             });
     }
 
+    pub fn mock_get_dynamic_table_value_bcs<K, V>(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        name: K,
+        value: V,
+    ) where
+        K: Serialize,
+        V: Serialize,
+    {
+        #[derive(Serialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            id: sui::types::Address,
+            name: K,
+            value: V,
+        }
+
+        let field = DynamicFieldValueBcs {
+            id: *object_ref.object_id(),
+            name,
+            value,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref,
+            owner,
+            bcs::to_bytes(&field).expect("dynamic table field serializes"),
+        );
+    }
+
     /// Expect a `batch_get_objects` call and return an object populated with metadata
     /// and a JSON payload (converted into `prost_types::Value`).
     pub fn mock_get_objects_json(

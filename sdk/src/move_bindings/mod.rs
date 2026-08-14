@@ -5,8 +5,12 @@
 //! selected modules, but they should not duplicate Move ABI logic.
 
 mod extensions;
+pub(crate) mod protocol_limits {
+    include!(concat!(env!("OUT_DIR"), "/protocol_limits.rs"));
+}
 #[cfg(any(feature = "nexus", all(test, feature = "transactions")))]
 use self::registry::network_auth::IdentityKey;
+pub(crate) use extensions::canonical_walrus_blob_id;
 pub use extensions::VersionedAnchor;
 #[cfg(feature = "transactions")]
 pub use sui_move_ptb::CLOCK_OBJECT_ID;

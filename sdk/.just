@@ -23,8 +23,8 @@ test: _check-cargo
 # Regenerate the committed Nexus Move binding IR (src/move_bindings/ir/*.json).
 #
 # Accepts either a deployment objects TOML or a Nexus `sui` source directory and a running Sui
-# gRPC endpoint. A source directory resolves `bin/target/objects.localnet.toml` and restores source
-# parameter names automatically. Set source_root explicitly when using an objects TOML.
+# gRPC endpoint. Move source is required to regenerate protocol limits and parameter names. A source
+# directory resolves `bin/target/objects.localnet.toml`; set source_root when using an objects TOML.
 # The wrapper does not start Sui or publish packages.
 #
 # The offline render happens automatically in build.rs on the next build.

@@ -4,40 +4,50 @@
       "vertex": "add_input_and_default",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": -3
+        "one": {
+          "kind": "data",
+          "data": -3
+        }
       }
     },
     {
       "vertex": "mul_by_neg_3",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": -3
+        "one": {
+          "kind": "data",
+          "data": -3
+        }
       }
     },
     {
       "vertex": "mul_by_7",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 7
+        "one": {
+          "kind": "data",
+          "data": 7
+        }
       }
     },
     {
       "vertex": "is_negative",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 0
+        "one": {
+          "kind": "data",
+          "data": 0
+        }
       }
     },
     {
       "vertex": "add_1",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "one": {
+          "kind": "data",
+          "data": 1
+        }
       }
     }
   ],

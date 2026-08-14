@@ -5,12 +5,19 @@
 //! call targets or type tags.
 
 #[cfg(feature = "transactions")]
-use crate::move_bindings::primitives::data::NexusData;
+use crate::move_bindings::interface::meta_schema::{
+    MetaSchema,
+    OutputVariantSchema,
+    PortSchema,
+    ValueKind,
+};
+#[cfg(feature = "transactions")]
+use crate::move_bindings::primitives::data::NexusValue;
 use crate::sui;
 #[cfg(feature = "transactions")]
 use crate::{
     move_bindings::{interface, move_std, primitives, sui_framework},
-    types::NexusObjects,
+    types::{NexusData, NexusObjects},
 };
 #[cfg(feature = "transactions")]
 use std::{
@@ -31,7 +38,8 @@ pub const RANDOM_OBJECT_ID: sui::types::Address = sui::types::Address::from_stat
 #[cfg(feature = "transactions")]
 const MAX_PURE_INPUT_BYTES: usize = 16_384;
 #[cfg(feature = "transactions")]
-const MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS: usize = 64;
+// Each of 256 nested byte vectors can add a three-byte BCS length prefix: 256 * 3 = 768.
+const BYTE_VECTOR_CHUNK_BYTES: usize = MAX_PURE_INPUT_BYTES - (256 * 3);
 
 /// Normalize package dependency IDs for Sui publish commands.
 ///
@@ -321,97 +329,112 @@ impl NexusPtbBuilder {
         self.call_target(target, vec![])
     }
 
-    /// Build a generated `primitives::data::NexusData`.
-    pub(crate) fn nexus_data(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
-        let element_type = sui::types::TypeTag::Vector(Box::new(sui::types::TypeTag::U8));
-        let (one_target, many_target) = match value.storage.as_slice() {
-            b"inline" => (
-                primitives::data::inline_one_target
-                    as fn() -> Result<CallTarget, sui_move_call::CallSpecError>,
-                primitives::data::inline_many_target
-                    as fn() -> Result<CallTarget, sui_move_call::CallSpecError>,
-            ),
-            b"walrus" => (
-                primitives::data::walrus_one_target
-                    as fn() -> Result<CallTarget, sui_move_call::CallSpecError>,
-                primitives::data::walrus_many_target
-                    as fn() -> Result<CallTarget, sui_move_call::CallSpecError>,
-            ),
-            storage => anyhow::bail!(
-                "unsupported NexusData storage tag: {}",
-                hex::encode(storage)
-            ),
-        };
+    /// Build one generated `primitives::data::NexusValue` witness.
+    pub(crate) fn nexus_value(&mut self, value: &NexusValue) -> anyhow::Result<Argument> {
+        if !value.is_well_formed() {
+            anyhow::bail!("cannot build malformed NexusValue witness");
+        }
+        match value {
+            NexusValue::Object { id } => {
+                let id = self.object_id(id.address())?;
+                self.call_target(primitives::data::object_value_target, vec![id])
+            }
+            NexusValue::InlineData { bytes } => {
+                let bytes = self.byte_vector(bytes)?;
+                self.call_target(primitives::data::inline_data_value_target, vec![bytes])
+            }
+            NexusValue::WalrusData {
+                storage_key,
+                content_digest,
+            } => {
+                let storage_key = self.byte_vector(storage_key)?;
+                let content_digest = self.byte_vector(content_digest)?;
+                self.call_target(
+                    primitives::data::walrus_data_value_target,
+                    vec![storage_key, content_digest],
+                )
+            }
+        }
+    }
 
-        if !value.many.is_empty() || value.one.is_empty() {
-            let array = if value.many.is_empty() {
-                self.tx
-                    .make_move_vector(Some(element_type.clone()), vec![])?
-            } else {
-                let mut chunks = value
-                    .many
+    /// Build a schema port's exact ordered `NexusValue` witness group.
+    pub(crate) fn nexus_value_witnesses(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
+        if !value.is_well_formed() {
+            anyhow::bail!("cannot build malformed NexusData witnesses");
+        }
+        let values = value.values()?;
+        let values = values
+            .iter()
+            .map(|value| self.nexus_value(value))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(self.move_vector::<NexusValue>(values)?)
+    }
+
+    /// Build a generated immutable `interface::meta_schema::MetaSchema`.
+    pub(crate) fn meta_schema(&mut self, schema: &MetaSchema) -> anyhow::Result<Argument> {
+        let input_ports = schema
+            .input_ports
+            .iter()
+            .map(|port| self.port_schema(port))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let input_ports = self.move_vector::<PortSchema>(input_ports)?;
+        let output_variants = schema
+            .output_variants
+            .iter()
+            .map(|variant| {
+                let name = self.tx.arg(&variant.variant_name)?;
+                let ports = variant
+                    .ports
                     .iter()
-                    .cloned()
-                    .try_fold(Vec::<Vec<Vec<u8>>>::new(), |mut chunks, value| {
-                        let mut candidate = chunks.pop().unwrap_or_default();
-                        candidate.push(value);
+                    .map(|port| self.port_schema(port))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let ports = self.move_vector::<PortSchema>(ports)?;
+                self.call_target(
+                    interface::meta_schema::output_variant_schema_target,
+                    vec![name, ports],
+                )
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let output_variants = self.move_vector::<OutputVariantSchema>(output_variants)?;
+        self.call_target(
+            interface::meta_schema::new_target,
+            vec![input_ports, output_variants],
+        )
+    }
 
-                        if candidate.len() > MAX_NEXUS_DATA_ARRAY_CHUNK_ARGS
-                            || bcs::to_bytes(&candidate)?.len() > MAX_PURE_INPUT_BYTES
-                        {
-                            let last = candidate.pop().expect("candidate should not be empty");
+    fn port_schema(&mut self, schema: &PortSchema) -> anyhow::Result<Argument> {
+        let port_name = self.tx.arg(&schema.port_name)?;
+        let is_many = self.tx.arg(&schema.is_many)?;
+        let value_kind = self.value_kind(schema.value_kind)?;
+        self.call_target(
+            interface::meta_schema::port_schema_target,
+            vec![port_name, is_many, value_kind],
+        )
+    }
 
-                            if candidate.is_empty() {
-                                anyhow::bail!(
-                                    "single nexus data array element exceeds pure input size limit"
-                                );
-                            }
+    /// Build a `vector<u8>` without exceeding Sui's per-pure-input byte limit.
+    fn byte_vector(&mut self, bytes: &[u8]) -> anyhow::Result<Argument> {
+        let mut chunks = bytes.chunks(BYTE_VECTOR_CHUNK_BYTES);
+        let first = chunks.next().unwrap_or_default().to_vec();
+        let vector = self.tx.arg(&first)?;
 
-                            chunks.push(candidate);
-                            chunks.push(vec![last]);
-                        } else {
-                            chunks.push(candidate);
-                        }
-
-                        Ok::<_, anyhow::Error>(chunks)
-                    })?
-                    .into_iter();
-                let first = chunks
-                    .next()
-                    .expect("non empty values should yield a first chunk");
-                let first_args = first
-                    .into_iter()
-                    .map(|value| self.tx.arg(&value))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let array = self
-                    .tx
-                    .make_move_vector(Some(element_type.clone()), first_args)?;
-
-                for chunk in chunks {
-                    let chunk_args = chunk
-                        .into_iter()
-                        .map(|value| self.tx.arg(&value))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    let chunk = self
-                        .tx
-                        .make_move_vector(Some(element_type.clone()), chunk_args)?;
-                    let mut target = CallTarget::new(
-                        sui::types::Address::from_static("0x1"),
-                        "vector",
-                        "append",
-                    )?;
-                    target.type_arguments.push(element_type.clone());
-                    self.call_raw_target(target, vec![array, chunk])?;
-                }
-
-                array
-            };
-
-            return self.call_target(many_target, vec![array]);
+        for chunk in chunks {
+            let suffix = self.tx.arg(&chunk.to_vec())?;
+            let mut target =
+                CallTarget::new(sui::types::Address::from_static("0x1"), "vector", "append")?;
+            target.type_arguments.push(sui::types::TypeTag::U8);
+            self.call_raw_target(target, vec![vector, suffix])?;
         }
 
-        let one = self.tx.arg(&value.one)?;
-        self.call_target(one_target, vec![one])
+        Ok(vector)
+    }
+
+    fn value_kind(&mut self, kind: ValueKind) -> anyhow::Result<Argument> {
+        let target = match kind {
+            ValueKind::Object => interface::meta_schema::value_kind_object_target,
+            ValueKind::Data => interface::meta_schema::value_kind_data_target,
+        };
+        self.call_target(target, vec![])
     }
 
     /// Build a typed Move `vector<T>` from existing PTB arguments.
@@ -627,6 +650,165 @@ mod tests {
             priority_fee_vault_owner_cap: obj(9),
             us_token: UsTokenConfig::new(addr(0x66)),
         }
+    }
+
+    fn nexus_value_constructors(value: &NexusData) -> Vec<String> {
+        let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
+        transaction.nexus_value_witnesses(value).unwrap();
+        transaction
+            .finish()
+            .commands
+            .into_iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call.function.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn assert_sui_protocol_limits(transaction: &sui::types::ProgrammableTransaction) {
+        const MAX_PROGRAMMABLE_TX_COMMANDS: usize = 1_024;
+        const MAX_PROGRAMMABLE_TX_BYTES_WITH_HEADROOM: usize = 120 * 1_024;
+
+        assert!(transaction.commands.len() <= MAX_PROGRAMMABLE_TX_COMMANDS);
+        for input in &transaction.inputs {
+            if let sui::types::Input::Pure(bytes) = input {
+                assert!(bytes.len() < MAX_PURE_INPUT_BYTES);
+            }
+        }
+        assert!(
+            bcs::to_bytes(transaction).unwrap().len() <= MAX_PROGRAMMABLE_TX_BYTES_WITH_HEADROOM
+        );
+    }
+
+    #[test]
+    fn nexus_data_one_builds_one_inline_witness() {
+        let value = NexusData::inline_data(b"one").expect("fixture is bounded");
+
+        assert_eq!(nexus_value_constructors(&value), ["inline_data_value"]);
+    }
+
+    #[test]
+    fn nexus_data_many_builds_each_inline_witness() {
+        let value = NexusData::inline_data_many([b"one".to_vec(), b"two".to_vec()])
+            .expect("fixture shape matches");
+
+        assert_eq!(
+            nexus_value_constructors(&value),
+            ["inline_data_value", "inline_data_value"]
+        );
+    }
+
+    #[test]
+    fn nexus_data_empty_many_builds_no_ptb_inputs_or_commands() {
+        let value = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
+        let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
+
+        assert!(transaction
+            .nexus_value_witnesses(&value)
+            .unwrap_err()
+            .to_string()
+            .contains("cannot build malformed NexusData witnesses"));
+        let transaction = transaction.finish();
+        assert!(transaction.inputs.is_empty());
+        assert!(transaction.commands.is_empty());
+    }
+
+    #[test]
+    fn nexus_data_builds_object_and_walrus_values() {
+        let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
+        let object = NexusData::object(addr(0x99));
+        let walrus =
+            NexusData::walrus_data(b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", vec![7; 32])
+                .expect("fixture is valid");
+
+        transaction
+            .nexus_value_witnesses(&object)
+            .expect("typed Object should build");
+        transaction
+            .nexus_value_witnesses(&walrus)
+            .expect("typed Walrus Data should build");
+        let functions = transaction
+            .finish()
+            .commands
+            .into_iter()
+            .filter_map(|command| match command {
+                sui::types::Command::MoveCall(call) => Some(call.function.to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(functions.iter().any(|name| name == "object_value"));
+        assert!(functions.iter().any(|name| name == "walrus_data_value"));
+    }
+
+    #[test]
+    fn maximal_valid_inline_one_is_sui_ptb_buildable() {
+        let value = NexusData::inline_data(vec![0; 61_440]).unwrap();
+        let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
+
+        builder.nexus_value_witnesses(&value).unwrap();
+
+        assert_sui_protocol_limits(&builder.finish());
+    }
+
+    #[test]
+    fn aggregate_limit_inline_many_is_sui_ptb_buildable() {
+        let value = NexusData::inline_data_many((0..256).map(|_| vec![0; 240])).unwrap();
+        let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
+
+        builder.nexus_value_witnesses(&value).unwrap();
+
+        assert_sui_protocol_limits(&builder.finish());
+    }
+
+    #[test]
+    fn maximal_count_walrus_many_is_sui_ptb_buildable() {
+        let blob_id = b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let value =
+            NexusData::walrus_data_many((0..256).map(|_| (blob_id.to_vec(), vec![0; 32]))).unwrap();
+        let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
+
+        builder.nexus_value_witnesses(&value).unwrap();
+
+        assert_sui_protocol_limits(&builder.finish());
+    }
+
+    #[test]
+    fn maximal_meta_schema_is_sui_ptb_buildable() {
+        let input_ports = (0..32)
+            .map(|index| {
+                PortSchema::new(
+                    format!("input-{index}").into_bytes(),
+                    false,
+                    ValueKind::Data,
+                )
+            })
+            .collect();
+        let output_variants = (0..8)
+            .map(|variant| {
+                OutputVariantSchema::new(
+                    format!("variant-{variant}").into_bytes(),
+                    (0..16)
+                        .map(|port| {
+                            PortSchema::new(
+                                format!("port-{port}").into_bytes(),
+                                true,
+                                ValueKind::Data,
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        let schema = MetaSchema::new(input_ports, output_variants);
+        schema.validate_for_tool(false).unwrap();
+        let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
+
+        builder.meta_schema(&schema).unwrap();
+        let transaction = builder.finish();
+
+        assert_eq!(transaction.commands.len(), 339);
+        assert_sui_protocol_limits(&transaction);
     }
 
     #[test]

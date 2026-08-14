@@ -5883,6 +5883,7 @@ dependencies = [
  "blake3",
  "chrono",
  "ciborium",
+ "convert_case 0.7.1",
  "ed25519-dalek",
  "enum_dispatch",
  "futures",
