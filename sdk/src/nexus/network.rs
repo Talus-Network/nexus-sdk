@@ -324,15 +324,6 @@ async fn discover_priority_fee_deposits(
             ))
         })?;
 
-    for deposit in &deposits {
-        if deposit.data.id.id.bytes != deposit.object_id {
-            return Err(NexusError::Parsing(anyhow::anyhow!(
-                "Priority fee deposit '{}' contains embedded object ID '{}'",
-                deposit.object_id,
-                deposit.data.id.id.bytes
-            )));
-        }
-    }
     Ok(deposits)
 }
 
