@@ -2,6 +2,19 @@ mod actions;
 
 use {crate::prelude::*, actions::*};
 
+fn parse_priority_fee_batch_size(value: &str) -> Result<usize, String> {
+    let value = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid batch size '{value}': {error}"))?;
+    if !(1..=nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE).contains(&value) {
+        return Err(format!(
+            "batch size must be in 1..={}",
+            nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE
+        ));
+    }
+    Ok(value)
+}
+
 /// Nexus network fee commands.
 #[derive(Subcommand)]
 pub(crate) enum NetworkCommand {
@@ -65,6 +78,26 @@ pub(crate) enum NetworkCommand {
         #[command(flatten)]
         gas: GasArgs,
     },
+
+    #[command(about = "Collect one leader capability's priority fee deposits")]
+    CollectPriorityFees {
+        #[arg(
+            long = "leader-cap-id",
+            help = "Leader capability whose initially visible deposits will be collected",
+            value_name = "OBJECT_ID"
+        )]
+        leader_cap_id: sui::types::Address,
+        #[arg(
+            long = "batch-size",
+            help = "Maximum deposits per transaction",
+            value_name = "COUNT",
+            default_value_t = nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE,
+            value_parser = parse_priority_fee_batch_size
+        )]
+        batch_size: usize,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
 }
 
 pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliError> {
@@ -101,6 +134,19 @@ pub(crate) async fn handle(command: NetworkCommand) -> AnyResult<(), NexusCliErr
             )
             .await
         }
+        NetworkCommand::CollectPriorityFees {
+            leader_cap_id,
+            batch_size,
+            gas,
+        } => {
+            collect_priority_fees(
+                leader_cap_id,
+                batch_size,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
     }
 }
 
@@ -125,5 +171,65 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn parses_leader_priority_fee_collection_with_default_batch_size() {
+        let leader_cap_id = "0x701";
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--leader-cap-id",
+            leader_cap_id,
+        ])
+        .expect("leader priority fee collection should parse");
+        assert!(matches!(
+            cli.command,
+            crate::Command::Network(NetworkCommand::CollectPriorityFees {
+                leader_cap_id: parsed_leader_cap_id,
+                batch_size: nexus_sdk::nexus::network::MAX_PRIORITY_FEE_DEPOSIT_BATCH_SIZE,
+                ..
+            }) if parsed_leader_cap_id == sui::types::Address::from_static(leader_cap_id)
+        ));
+    }
+
+    #[test]
+    fn priority_fee_collection_requires_a_leader_and_bounded_batch_size() {
+        assert!(
+            crate::Cli::try_parse_from(["nexus", "network", "collect-priority-fees",]).is_err()
+        );
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--deposit",
+            "0x701",
+        ])
+        .is_err());
+        assert!(crate::Cli::try_parse_from(
+            ["nexus", "network", "collect-priority-fees", "--all",]
+        )
+        .is_err());
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--leader-cap-id",
+            "0x701",
+            "--batch-size",
+            "129",
+        ])
+        .is_err());
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "network",
+            "collect-priority-fees",
+            "--leader-cap-id",
+            "0x701",
+            "--batch-size",
+            "1",
+        ])
+        .is_ok());
     }
 }

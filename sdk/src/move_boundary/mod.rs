@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 #[cfg(feature = "transactions")]
-use sui_move_call::CallTarget;
+use sui_move_call::{CallTarget, ReceivingMoveObject};
 #[cfg(feature = "transactions")]
 pub use sui_move_ptb::CLOCK_OBJECT_ID;
 #[cfg(feature = "transactions")]
@@ -147,6 +147,17 @@ impl NexusPtbBuilder {
             sui_framework::object::id_from_address_target()?,
             vec![address],
         )
+    }
+
+    /// Add an object reference as a typed Sui receiving input.
+    pub fn receiving_object<T>(
+        &mut self,
+        object: &sui::types::ObjectReference,
+    ) -> Result<Argument, BuildError>
+    where
+        T: sui_move::MoveStruct + sui_move::HasKey,
+    {
+        self.tx.arg(&ReceivingMoveObject::<T>::new(object.clone()))
     }
 
     /// Withdraws the requested asset from the sender address balance and

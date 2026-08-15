@@ -5404,66 +5404,6 @@
           "return_types": []
         },
         {
-          "name": "migrate_on_chain_tool_package",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_authority",
-                              "name": "OverTool"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "target_package",
-              "ty": "Address"
-            }
-          ],
-          "return_types": []
-        },
-        {
           "name": "assert_admin",
           "visibility": "Private",
           "is_entry": false,
@@ -7020,6 +6960,66 @@
               }
             }
           ]
+        },
+        {
+          "name": "migrate_on_chain_tool_package",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "target_package",
+              "ty": "Address"
+            }
+          ],
+          "return_types": []
         },
         {
           "name": "migrate_tool_registry_to_v2",
