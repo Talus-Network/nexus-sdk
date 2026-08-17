@@ -628,6 +628,13 @@ pub mod grpc {
     ) {
         ledger_service
             .expect_get_object()
+            .withf(|request| {
+                request
+                    .get_ref()
+                    .read_mask
+                    .as_ref()
+                    .is_none_or(|mask| !mask.paths.iter().any(|path| path == "contents"))
+            })
             .times(1)
             .returning(move |_request| {
                 let mut response = sui::grpc::GetObjectResponse::default();
@@ -719,6 +726,21 @@ pub mod grpc {
                 response.set_object(grpc_object);
                 Ok(tonic::Response::new(response))
             });
+    }
+
+    /// Expect one object request for `object_id` and report that it is absent.
+    pub fn mock_get_object_not_found(
+        ledger_service: &mut MockLedgerService,
+        object_id: sui::types::Address,
+    ) {
+        let expected_id = object_id.to_string();
+        ledger_service
+            .expect_get_object()
+            .withf(move |request| {
+                request.get_ref().object_id.as_deref() == Some(expected_id.as_str())
+            })
+            .times(1)
+            .returning(|_| Err(tonic::Status::not_found("object is absent")));
     }
 
     pub fn mock_get_object_bcs_for(
@@ -849,6 +871,103 @@ pub mod grpc {
             });
     }
 
+    /// Expect one exact dynamic field request derived from its parent and typed key.
+    ///
+    /// The returned address is the canonical field object ID used by the mock.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the key or field fixture cannot be encoded as BCS.
+    pub fn mock_get_dynamic_field_by_key<K, V>(
+        ledger_service: &mut MockLedgerService,
+        parent_id: sui::types::Address,
+        key_type: &sui::types::TypeTag,
+        key: K,
+        value: V,
+    ) -> sui::types::Address
+    where
+        K: Serialize,
+        V: Serialize,
+    {
+        #[derive(Serialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            id: sui::types::Address,
+            name: K,
+            value: V,
+        }
+
+        let field_id = parent_id.derive_dynamic_child_id(
+            key_type,
+            &bcs::to_bytes(&key).expect("dynamic field key serializes"),
+        );
+        let field = DynamicFieldValueBcs {
+            id: field_id,
+            name: key,
+            value,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref_for_id(field_id),
+            sui::types::Owner::Object(parent_id),
+            bcs::to_bytes(&field).expect("dynamic field serializes"),
+        );
+        field_id
+    }
+
+    /// Expect an exact dynamic object wrapper request followed by its child request.
+    ///
+    /// The returned address is the canonical wrapper field ID used by the mock.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the key, wrapper field, or child cannot be encoded as BCS.
+    pub fn mock_get_dynamic_object_field_by_key<K, V>(
+        ledger_service: &mut MockLedgerService,
+        parent_id: sui::types::Address,
+        key_type: &sui::types::TypeTag,
+        key: K,
+        child_ref: sui::types::ObjectReference,
+        child_owner: sui::types::Owner,
+        child: V,
+    ) -> sui::types::Address
+    where
+        K: Serialize,
+        V: Serialize,
+    {
+        #[derive(Serialize)]
+        struct DynamicObjectFieldName<K> {
+            name: K,
+        }
+
+        #[derive(Serialize)]
+        struct ObjectId {
+            bytes: sui::types::Address,
+        }
+
+        let wrapper_type = sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_object_field"),
+            sui::types::Identifier::from_static("Wrapper"),
+            vec![key_type.clone()],
+        )));
+        let wrapper_id = mock_get_dynamic_field_by_key(
+            ledger_service,
+            parent_id,
+            &wrapper_type,
+            DynamicObjectFieldName { name: key },
+            ObjectId {
+                bytes: *child_ref.object_id(),
+            },
+        );
+        mock_get_object_bcs(
+            ledger_service,
+            child_ref,
+            child_owner,
+            bcs::to_bytes(&child).expect("dynamic object child serializes"),
+        );
+        wrapper_id
+    }
+
     pub fn mock_get_dynamic_field_values_bcs<T>(
         ledger_service: &mut MockLedgerService,
         objects: Vec<(sui::types::ObjectReference, sui::types::Owner, T)>,
@@ -945,6 +1064,36 @@ pub mod grpc {
                 response.set_objects(objs);
                 Ok(tonic::Response::new(response))
             });
+    }
+
+    pub fn mock_get_dynamic_table_value_bcs<K, V>(
+        ledger_service: &mut MockLedgerService,
+        object_ref: sui::types::ObjectReference,
+        owner: sui::types::Owner,
+        name: K,
+        value: V,
+    ) where
+        K: Serialize,
+        V: Serialize,
+    {
+        #[derive(Serialize)]
+        struct DynamicFieldValueBcs<K, V> {
+            id: sui::types::Address,
+            name: K,
+            value: V,
+        }
+
+        let field = DynamicFieldValueBcs {
+            id: *object_ref.object_id(),
+            name,
+            value,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref,
+            owner,
+            bcs::to_bytes(&field).expect("dynamic table field serializes"),
+        );
     }
 
     /// Expect a `batch_get_objects` call and return an object populated with metadata

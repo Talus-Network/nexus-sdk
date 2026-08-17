@@ -1,20 +1,19 @@
 use {
     crate::{prelude::*, workflow},
     nexus_sdk::{
+        nexus::client::NexusClient,
         scheduler::{
             FailurePolicy,
             Occurrence,
             Recurrence,
             Schedule,
             TaskFunding,
-            TaskInputs,
             TaskOperation,
             TaskSpec,
         },
         types::{DEFAULT_ENTRY_GROUP, DEFAULT_PRIORITY_FEE_PERCENTAGE},
         walrus::StorageConf,
     },
-    std::collections::BTreeMap,
 };
 
 /// Arguments that define the work and funding for one Task.
@@ -81,25 +80,44 @@ pub(crate) struct TaskArgs {
 }
 
 impl TaskArgs {
-    pub(crate) async fn into_spec(self) -> Result<TaskSpec, NexusCliError> {
+    pub(crate) async fn into_preparation(self) -> Result<TaskPreparation, NexusCliError> {
         let operation = self.operation.into_operation()?;
         let funding = self.funding.into_funding(self.prepay_amount_mist);
-        let inputs = prepare_inputs(self.input_json, self.remote).await?;
-        TaskSpec::new(
+        let task = TaskSpec::new(
             operation,
             self.entry_group,
             funding,
             self.occurrence_budget_mist,
         )
-        .map(|task| {
-            task.with_inputs(inputs)
-                .with_failure_policy(if self.pause_on_failure {
-                    FailurePolicy::Pause
-                } else {
-                    FailurePolicy::Continue
-                })
+        .map_err(NexusCliError::Schedule)?
+        .with_failure_policy(if self.pause_on_failure {
+            FailurePolicy::Pause
+        } else {
+            FailurePolicy::Continue
+        });
+        let (input_plan, storage_conf) = prepare_input_plan(self.input_json, self.remote).await?;
+        Ok(TaskPreparation {
+            task,
+            input_plan,
+            storage_conf,
         })
-        .map_err(NexusCliError::Schedule)
+    }
+}
+
+/// Locally validated Task authoring state awaiting authoritative DAG preflight and upload.
+#[derive(Debug)]
+pub(crate) struct TaskPreparation {
+    task: TaskSpec,
+    input_plan: workflow::EntryPortPlan,
+    storage_conf: StorageConf,
+}
+
+impl TaskPreparation {
+    pub(crate) async fn materialize(self, client: &NexusClient) -> Result<TaskSpec, NexusCliError> {
+        let preflight = self.task.clone().with_inputs(self.input_plan.task_inputs());
+        client.scheduler().preflight_task_inputs(&preflight).await?;
+        let inputs = self.input_plan.materialize(&self.storage_conf).await?;
+        Ok(self.task.with_inputs(inputs))
     }
 }
 
@@ -578,32 +596,189 @@ fn apply_occurrence_options(
     Ok(occurrence)
 }
 
-async fn prepare_inputs(
+async fn prepare_input_plan(
     input_json: Option<serde_json::Value>,
     remote: Vec<String>,
-) -> Result<TaskInputs, NexusCliError> {
+) -> Result<(workflow::EntryPortPlan, StorageConf), NexusCliError> {
     let conf = CliConf::load().await.unwrap_or_default();
     let input_json = input_json.unwrap_or_else(|| serde_json::json!({}));
     let preferred_remote_storage = conf.data_storage.preferred_remote_storage;
     let storage_conf: StorageConf = conf.data_storage.clone().into();
-    let ports_data =
-        workflow::process_entry_ports(&input_json, preferred_remote_storage, &remote).await?;
-    let mut inputs = BTreeMap::new();
-    for (vertex, data) in ports_data {
-        let committed = data.commit_all(&storage_conf).await.map_err(|error| {
-            NexusCliError::Any(anyhow!(
-                "failed to store input data: {error}. Configure remote storage before retrying"
-            ))
-        })?;
-        inputs.insert(vertex, committed.into_map().into_iter().collect());
-    }
+    let input_plan = workflow::EntryPortPlan::new(
+        &input_json,
+        preferred_remote_storage,
+        &remote,
+        &storage_conf,
+    )?;
     conf.save().await.map_err(NexusCliError::Any)?;
-    Ok(inputs)
+    Ok((input_plan, storage_conf))
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, nexus_sdk::scheduler::ScheduleError};
+    use {
+        super::*,
+        mockito::Server,
+        nexus_sdk::{
+            move_bindings::{
+                interface::{
+                    dag::{DAGStateV2, DAG},
+                    graph::{self, VertexInfoV2, VertexKind},
+                    meta_schema::{MetaSchema, PortSchema, ValueKind},
+                    verifier::ToolVerifierMode,
+                },
+                move_std::option::Option as MoveOption,
+                sui_framework::{
+                    linked_table::{LinkedTable, Node},
+                    object::{ID, UID},
+                    table::Table,
+                    vec_map::{Entry as VecMapEntry, VecMap},
+                    vec_set::VecSet,
+                    versioned::Versioned,
+                },
+            },
+            scheduler::{ScheduleError, SchedulerError},
+            test_utils::{nexus_mocks, sui_mocks},
+            types::NexusObjects,
+            walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
+        },
+        std::collections::BTreeMap,
+    };
+
+    const BLOB_ID_A: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    fn mock_dag(
+        ledger: &mut sui_mocks::grpc::MockLedgerService,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        nexus_objects: &NexusObjects,
+        dag_id: sui::types::Address,
+        entry_group: &str,
+        ports: &[(&str, &str, ValueKind)],
+    ) {
+        let state_id = sui::types::Address::from_static("0xe");
+        let vertices_id = sui::types::Address::from_static("0xf0");
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
+        let ports_by_vertex = ports.iter().fold(
+            BTreeMap::<String, Vec<(String, ValueKind)>>::new(),
+            |mut vertices, (vertex, port, kind)| {
+                vertices
+                    .entry((*vertex).to_owned())
+                    .or_default()
+                    .push(((*port).to_owned(), *kind));
+                vertices
+            },
+        );
+        let entry_ports = ports
+            .iter()
+            .map(|(vertex, port, _)| VecMapEntry {
+                key: graph::Vertex::new(*vertex),
+                value: VecSet {
+                    contents: vec![graph::InputPort::new(*port)],
+                },
+            })
+            .collect();
+        let state = DAGStateV2::new(
+            1,
+            LinkedTable::new(vertices_id, ports_by_vertex.len() as u64),
+            VecMap {
+                contents: vec![VecMapEntry {
+                    key: graph::EntryGroup::new(entry_group),
+                    value: VecMap {
+                        contents: entry_ports,
+                    },
+                }],
+            },
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            Table::new(dag_id, 0),
+            MoveOption::from_option(None::<graph::PostFailureAction>),
+        );
+        let vertex_fields = ports_by_vertex
+            .into_iter()
+            .enumerate()
+            .map(|(index, (vertex, ports))| {
+                let vertex = graph::Vertex::new(vertex);
+                let field_id = sui::types::Address::new([(index + 1) as u8; 32]);
+                let input_ports = ports
+                    .iter()
+                    .map(|(port, _)| graph::InputPort::new(port.as_str()))
+                    .collect::<Vec<_>>();
+                let meta_schema = MetaSchema::new(
+                    ports
+                        .iter()
+                        .map(|(port, kind)| PortSchema::new(port.as_bytes().to_vec(), false, *kind))
+                        .collect(),
+                    vec![],
+                );
+                let node = Node {
+                    prev: MoveOption::from_option(None::<graph::Vertex>),
+                    next: MoveOption::from_option(None::<graph::Vertex>),
+                    value: VertexInfoV2 {
+                        kind: VertexKind::OffChain {
+                            tool_fqn: "test::fixture".to_owned().into(),
+                        },
+                        input_ports: VecSet {
+                            contents: input_ports,
+                        },
+                        post_failure_action: MoveOption::from_option(
+                            None::<graph::PostFailureAction>,
+                        ),
+                        tool_id: ID::new(sui::types::Address::from_static("0xf1")),
+                        meta_schema: MoveOption::from_option(Some(meta_schema)),
+                        verifier_mode: ToolVerifierMode::None,
+                    },
+                };
+                (vertex, field_id, node)
+            })
+            .collect::<Vec<_>>();
+        sui_mocks::grpc::mock_list_dynamic_fields(
+            state_service,
+            vertex_fields
+                .iter()
+                .map(|(vertex, field_id, _)| (vertex.clone(), *field_id))
+                .collect(),
+        );
+        sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+            ledger,
+            vertex_fields
+                .into_iter()
+                .map(|(vertex, field_id, node)| {
+                    (
+                        sui_mocks::object_ref_for_id(field_id),
+                        sui::types::Owner::Object(vertices_id),
+                        vertex,
+                        node,
+                    )
+                })
+                .collect(),
+        );
+        sui_mocks::grpc::mock_get_object_value_bcs_for(
+            ledger,
+            sui_mocks::object_ref_for_id(dag_id),
+            sui::types::Owner::Shared(1),
+            &dag,
+            nexus_sdk::move_bindings::struct_tag::<DAG>(nexus_objects),
+        );
+        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 2, state);
+    }
+
+    fn task_preparation(
+        dag_id: sui::types::Address,
+        input_plan: workflow::EntryPortPlan,
+        storage_conf: StorageConf,
+    ) -> TaskPreparation {
+        TaskPreparation {
+            task: TaskSpec::new(
+                TaskOperation::default_dag(dag_id),
+                "main",
+                TaskFunding::address(1),
+                1,
+            )
+            .expect("Task fixture is valid"),
+            input_plan,
+            storage_conf,
+        }
+    }
 
     #[test]
     fn occurrence_defaults_to_current_chain_time() {
@@ -618,5 +793,311 @@ mod tests {
     fn zero_recurrence_interval_is_rejected() {
         let error = Recurrence::new(Occurrence::now(), 0).expect_err("zero interval must fail");
         assert_eq!(error, ScheduleError::ZeroRecurrenceInterval);
+    }
+
+    #[tokio::test]
+    async fn task_spec_validation_precedes_input_preparation() {
+        let args = TaskArgs {
+            operation: OperationArgs {
+                dag_id: Some(sui::types::Address::from_static("0xd")),
+                agent_id: None,
+                skill_id: None,
+            },
+            funding: FundingArgs {
+                agent_funded: false,
+                refund_recipient: None,
+            },
+            entry_group: DEFAULT_ENTRY_GROUP.to_owned(),
+            input_json: Some(serde_json::json!("not an input object")),
+            remote: Vec::new(),
+            prepay_amount_mist: 0,
+            occurrence_budget_mist: 0,
+            pause_on_failure: false,
+        };
+
+        let error = args
+            .into_preparation()
+            .await
+            .expect_err("zero budget must fail first");
+
+        assert!(matches!(
+            error,
+            NexusCliError::Schedule(ScheduleError::ZeroOccurrenceBudget)
+        ));
+    }
+
+    #[tokio::test]
+    async fn authoritative_dag_mismatch_precedes_walrus_requests() {
+        let mut walrus = Server::new_async().await;
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(walrus.url()),
+            walrus_aggregator_url: Some(walrus.url()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let put = walrus
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .expect(0)
+            .create_async()
+            .await;
+        let get = walrus
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .expect(0)
+            .create_async()
+            .await;
+        let plan = workflow::EntryPortPlan::new(
+            &serde_json::json!({ "sum": { "right": "value" } }),
+            None,
+            &["sum.right".to_owned()],
+            &storage_conf,
+        )
+        .expect("local preparation succeeds");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_dag(
+            &mut ledger,
+            &mut state_service,
+            &nexus_objects,
+            dag_id,
+            "main",
+            &[("sum", "left", ValueKind::Data)],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let error = task_preparation(dag_id, plan, storage_conf)
+            .materialize(&client)
+            .await
+            .expect_err("authoritative DAG mismatch must fail");
+
+        assert!(matches!(
+            error,
+            NexusCliError::Scheduler(SchedulerError::TaskInputsMismatch { .. })
+        ));
+        put.assert_async().await;
+        get.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn authoritative_schema_mismatch_precedes_walrus_requests() {
+        let mut walrus = Server::new_async().await;
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(walrus.url()),
+            walrus_aggregator_url: Some(walrus.url()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let put = walrus
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .expect(0)
+            .create_async()
+            .await;
+        let get = walrus
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .expect(0)
+            .create_async()
+            .await;
+        let plan = workflow::EntryPortPlan::new(
+            &serde_json::json!({ "sum": { "right": "value" } }),
+            None,
+            &["sum.right".to_owned()],
+            &storage_conf,
+        )
+        .expect("local preparation succeeds");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_dag(
+            &mut ledger,
+            &mut state_service,
+            &nexus_objects,
+            dag_id,
+            "main",
+            &[("sum", "right", ValueKind::Object)],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let error = task_preparation(dag_id, plan, storage_conf)
+            .materialize(&client)
+            .await
+            .expect_err("authoritative schema mismatch must fail");
+
+        assert!(matches!(
+            error,
+            NexusCliError::Scheduler(SchedulerError::TaskInputSchemaMismatch { .. })
+        ));
+        put.assert_async().await;
+        get.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn empty_many_input_precedes_walrus_requests() {
+        let mut walrus = Server::new_async().await;
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(walrus.url()),
+            walrus_aggregator_url: Some(walrus.url()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let put = walrus
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .expect(0)
+            .create_async()
+            .await;
+        let get = walrus
+            .mock("GET", "/v1/blobs/empty")
+            .expect(0)
+            .create_async()
+            .await;
+
+        let error = workflow::EntryPortPlan::new(
+            &serde_json::json!({ "sum": { "values": [] } }),
+            None,
+            &["sum.values".to_owned()],
+            &storage_conf,
+        )
+        .expect_err("empty Many must fail before remote materialization");
+
+        assert!(error.to_string().contains("requires at least one value"));
+        put.assert_async().await;
+        get.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn pinned_skill_selection_conflict_precedes_walrus_requests() {
+        let mut walrus = Server::new_async().await;
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(walrus.url()),
+            walrus_aggregator_url: Some(walrus.url()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let put = walrus
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .expect(0)
+            .create_async()
+            .await;
+        let get = walrus
+            .mock("GET", "/v1/blobs/json_blob_id")
+            .expect(0)
+            .create_async()
+            .await;
+        let plan = workflow::EntryPortPlan::new(
+            &serde_json::json!({ "sum": { "right": "value" } }),
+            None,
+            &["sum.right".to_owned()],
+            &storage_conf,
+        )
+        .expect("local preparation succeeds");
+        let agent_id = sui::types::Address::from_static("0xa");
+        let pinned_dag = sui::types::Address::from_static("0xd");
+        let selected_dag = sui::types::Address::from_static("0xe");
+        let client = nexus_mocks::mock_agent_skill_client_without_coins(
+            agent_id,
+            11,
+            nexus_sdk::move_bindings::interface::agent::SkillDagBinding::pinned(pinned_dag),
+        )
+        .await;
+        let task = TaskSpec::new(
+            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), vec![]),
+            "main",
+            TaskFunding::address(1),
+            1,
+        )
+        .expect("Task fixture is valid");
+
+        let error = TaskPreparation {
+            task,
+            input_plan: plan,
+            storage_conf,
+        }
+        .materialize(&client)
+        .await
+        .expect_err("a caller-selected DAG must conflict with a pinned skill");
+
+        assert!(
+            matches!(
+                error,
+                NexusCliError::Scheduler(SchedulerError::PinnedSkillDagSelectionConflict { .. })
+            ),
+            "unexpected preflight error: {error:?}"
+        );
+        put.assert_async().await;
+        get.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn authoritative_dag_match_allows_walrus_materialization() {
+        let mut walrus = Server::new_async().await;
+        let storage_conf = StorageConf {
+            walrus_publisher_url: Some(walrus.url()),
+            walrus_aggregator_url: Some(walrus.url()),
+            walrus_save_for_epochs: Some(2),
+        };
+        let upload = StorageInfo {
+            newly_created: Some(NewlyCreated {
+                blob_object: BlobObject {
+                    blob_id: BLOB_ID_A.to_owned(),
+                    id: "json_object_id".to_owned(),
+                    storage: BlobStorage { end_epoch: 200 },
+                },
+            }),
+            already_certified: None,
+        };
+        let put = walrus
+            .mock("PUT", "/v1/blobs?epochs=2")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::to_string(&upload).expect("upload response serializes"))
+            .create_async()
+            .await;
+        let get = walrus
+            .mock("GET", format!("/v1/blobs/{BLOB_ID_A}").as_str())
+            .with_status(200)
+            .with_body(br#""value""#)
+            .create_async()
+            .await;
+        let plan = workflow::EntryPortPlan::new(
+            &serde_json::json!({ "sum": { "right": "value" } }),
+            None,
+            &["sum.right".to_owned()],
+            &storage_conf,
+        )
+        .expect("local preparation succeeds");
+        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let dag_id = sui::types::Address::from_static("0xd");
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_dag(
+            &mut ledger,
+            &mut state_service,
+            &nexus_objects,
+            dag_id,
+            "main",
+            &[("sum", "right", ValueKind::Data)],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state_service),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+
+        let task = task_preparation(dag_id, plan, storage_conf)
+            .materialize(&client)
+            .await
+            .expect("matching authoritative DAG permits materialization");
+
+        assert!(task.inputs()["sum"]["right"].has_walrus());
+        put.assert_async().await;
+        get.assert_async().await;
     }
 }

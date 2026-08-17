@@ -348,3 +348,18 @@ fn allowed_leader_files_reject_bad_versions_duplicates_and_keys() {
         .contains("invalid Ed25519 public key"));
     }
 }
+
+#[test]
+fn v2_rejects_v3_signature_headers() {
+    let keys = allowed("leader", 7, [1; 32]);
+    assert!(matches!(
+        authenticate_request(
+            RequestHeadersRef {
+                signature_version: Some(crate::signed_http::v3::wire::SIGNATURE_VERSION_V3),
+                ..Default::default()
+            },
+            &keys,
+        ),
+        Err(SignedHttpError::UnsupportedVersion(_))
+    ));
+}

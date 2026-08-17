@@ -792,7 +792,6 @@ mod tests {
             "Output",
             "MILLIS",
             "MIST",
-            "Sui address balance",
             "nexus gas balance",
             "nexus gas deposit --amount",
         ] {

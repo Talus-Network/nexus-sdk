@@ -1,9 +1,11 @@
 //! Warp integration for the minimal signed Tool transport.
 
+#[cfg(test)]
+use nexus_sdk::signed_http::v3::wire::SIGNATURE_VERSION_V3;
 use {
     crate::{config::Config, AuthContext, ToolkitRuntimeConfig},
     ed25519_dalek::SigningKey,
-    nexus_sdk::signed_http::v2::{
+    nexus_sdk::signed_http::v3::{
         error::SignedHttpError,
         wire::{
             authenticate_request,
@@ -12,6 +14,7 @@ use {
             EncodedResponseHeaders,
             LeaderKeyResolver,
             RequestHeadersRef,
+            CANONICAL_TOOL_RESPONSE_CONTENT_TYPE,
         },
     },
     serde_json::json,
@@ -25,7 +28,6 @@ use {
 };
 const DEFAULT_IN_FLIGHT_LEASE_MS: u64 = 60_000;
 const JSON_CONTENT_TYPE: &str = "application/json";
-const TAGGED_OUTPUT_CONTENT_TYPE: &str = "application/vnd.nexus.tagged-output+bcs";
 
 struct RefreshingAllowedLeadersResolver {
     allowed_leaders: RwLock<AllowedLeaders>,
@@ -172,7 +174,7 @@ impl InvokeAuth {
 
 /// Handle one `/invoke` request.
 ///
-/// The callback's boolean marks whether its body is a canonical BCS `TaggedOutput`. Only those
+/// The callback's boolean marks whether its body is a canonical ordered BCS Tool output. Only those
 /// result bodies are signed; local HTTP errors remain JSON and never become verifier evidence.
 pub(crate) async fn handle_invoke<F, Fut>(
     auth: &InvokeAuthRuntime,
@@ -253,9 +255,11 @@ impl CachedResponse {
 
 #[derive(Clone)]
 pub(crate) struct ReplayCache {
-    inner: Arc<Mutex<HashMap<[u8; 32], ReplayEntry>>>,
+    inner: Arc<Mutex<HashMap<ReplayKey, ReplayEntry>>>,
     in_flight_lease_ms: u64,
 }
+
+type ReplayKey = [u8; 32];
 
 #[derive(Clone)]
 struct ReplayEntry {
@@ -295,7 +299,8 @@ impl ReplayCache {
     fn begin(&self, nonce: [u8; 32], input_hash: [u8; 32], now_ms: u64) -> ReplayDecision {
         let mut entries = self.inner.lock().unwrap();
         entries.retain(|_, entry| entry.expires_at_ms > now_ms);
-        match entries.get(&nonce) {
+        let key = nonce;
+        match entries.get(&key) {
             Some(ReplayEntry {
                 input_hash: cached_input_hash,
                 state: ReplayState::Complete(response),
@@ -312,7 +317,7 @@ impl ReplayCache {
             | None => {
                 let lease_expires_at_ms = now_ms.saturating_add(self.in_flight_lease_ms);
                 entries.insert(
-                    nonce,
+                    key,
                     ReplayEntry {
                         input_hash,
                         expires_at_ms: lease_expires_at_ms,
@@ -353,12 +358,13 @@ impl Drop for ReplayReservation {
             return;
         }
         let mut entries = self.cache.inner.lock().unwrap();
-        if entries.get(&self.nonce).is_some_and(|entry| {
+        let key = self.nonce;
+        if entries.get(&key).is_some_and(|entry| {
             entry.input_hash == self.input_hash
                 && entry.expires_at_ms == self.lease_expires_at_ms
                 && matches!(entry.state, ReplayState::InFlight)
         }) {
-            entries.remove(&self.nonce);
+            entries.remove(&key);
         }
     }
 }
@@ -385,7 +391,7 @@ fn response(
     response.headers_mut().insert(
         "content-type",
         HeaderValue::from_static(if is_result {
-            TAGGED_OUTPUT_CONTENT_TYPE
+            CANONICAL_TOOL_RESPONSE_CONTENT_TYPE
         } else {
             JSON_CONTENT_TYPE
         }),
@@ -421,7 +427,7 @@ mod tests {
     use {
         super::*,
         ed25519_dalek::SigningKey,
-        nexus_sdk::signed_http::v2::wire::{
+        nexus_sdk::signed_http::v3::wire::{
             sign_request,
             verify_response,
             AllowedLeaderFileV1,
@@ -467,7 +473,7 @@ mod tests {
     }
 
     fn headers_from_encoded(
-        encoded: nexus_sdk::signed_http::v2::wire::EncodedRequestHeaders,
+        encoded: nexus_sdk::signed_http::v3::wire::EncodedRequestHeaders,
     ) -> HeaderMap {
         let mut headers = HeaderMap::new();
         for (name, value) in encoded.to_pairs() {
@@ -501,7 +507,7 @@ mod tests {
         let leader_key_id = encoded.leader_key_id.to_string();
         let error = authenticate_request(
             RequestHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&encoded.leader_id),
                 leader_key_id: Some(&leader_key_id),
                 input_hash: Some(&encoded.input_hash),
@@ -771,7 +777,7 @@ mod tests {
         .await;
         assert_eq!(
             response.headers()["content-type"],
-            TAGGED_OUTPUT_CONTENT_TYPE
+            CANONICAL_TOOL_RESPONSE_CONTENT_TYPE
         );
         assert_eq!(to_bytes(response.into_body()).await.unwrap(), body);
     }
@@ -783,9 +789,9 @@ mod tests {
         let input_hash = [3; 32];
         let nonce = [1; 32];
         let request = sign_request("leader", 0, input_hash, nonce, &leader);
-        let leader_signature = nexus_sdk::signed_http::v2::wire::authenticate_request(
+        let leader_signature = nexus_sdk::signed_http::v3::wire::authenticate_request(
             RequestHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some("leader"),
                 leader_key_id: Some("0"),
                 input_hash: Some(&request.input_hash),
@@ -819,7 +825,7 @@ mod tests {
         let body = to_bytes(response.into_body()).await.unwrap();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 tool_signature: Some(&tool_signature),
             },
             &leader_signature,
@@ -937,7 +943,7 @@ mod tests {
         let request_a = sign_request("leader-a", 0, input_hash, nonce, &leader_a);
         let authenticated_a = authenticate_request(
             RequestHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&request_a.leader_id),
                 leader_key_id: Some("0"),
                 input_hash: Some(&request_a.input_hash),
@@ -967,7 +973,7 @@ mod tests {
             .to_owned();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 tool_signature: Some(&signature_a),
             },
             &authenticated_a.leader_signature,
@@ -980,7 +986,7 @@ mod tests {
         let request_b = sign_request("leader-b", 1, input_hash, nonce, &leader_b);
         let authenticated_b = authenticate_request(
             RequestHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 leader_id: Some(&request_b.leader_id),
                 leader_key_id: Some("1"),
                 input_hash: Some(&request_b.input_hash),
@@ -1004,7 +1010,7 @@ mod tests {
             .to_owned();
         verify_response(
             ResponseHeadersRef {
-                signature_version: Some("2"),
+                signature_version: Some(SIGNATURE_VERSION_V3),
                 tool_signature: Some(&signature_b),
             },
             &authenticated_b.leader_signature,

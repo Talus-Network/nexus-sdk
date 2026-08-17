@@ -5831,7 +5831,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-cli"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5873,7 +5873,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 dependencies = [
  "allocative",
  "anyhow",
@@ -5883,6 +5883,7 @@ dependencies = [
  "blake3",
  "chrono",
  "ciborium",
+ "convert_case 0.7.1",
  "ed25519-dalek",
  "enum_dispatch",
  "futures",
@@ -5938,7 +5939,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 dependencies = [
  "anyhow",
  "base64 0.21.7",

@@ -85,6 +85,7 @@ mod tests {
                     vec!["0".to_owned(), "1".to_owned(), "2".to_owned()],
                 )]),
             )]),
+            vertex_meta_schemas: BTreeMap::new(),
         };
 
         let output = render_dag(&snapshot);

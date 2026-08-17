@@ -8,7 +8,6 @@ use {
         is_onchain_tool_result_param,
         is_proof_of_uid_param,
         is_uid_requirements_param,
-        is_workflow_dag_execution_param,
     },
     crate::{sui, types::OnchainToolMode},
     anyhow::{anyhow, bail, Result as AnyResult},
@@ -112,10 +111,6 @@ pub async fn generate_input_schema_with_mode(
                 Value::Bool(reference_kind == sui::grpc::open_signature::Reference::Mutable),
             );
         }
-        if is_workflow_dag_execution_param(body) {
-            param_obj.insert("nexus_current_execution".to_string(), Value::Bool(true));
-        }
-
         schema_map.insert(param_index.to_string(), Value::Object(param_obj));
         param_index += 1;
     }
@@ -434,32 +429,43 @@ mod tests {
 
         // Verify schema structure.
         // The execute function has hidden internal parameters:
-        // execute(requirements: UIDRequirements, result: OnchainToolResult, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
+        // execute(requirements: UIDRequirements, result: OnchainToolResult, current_execution: &mut DAGExecution, counter: &mut RandomCounter, increase_with: u64, _ctx: &mut TxContext)
         // After skipping hidden internal parameters, we should have:
-        // - Parameter 0: counter (&mut RandomCounter) - object type, mutable
-        // - Parameter 1: increase_with (u64).
+        // - Parameter 0: current_execution (&mut DAGExecution) - object type, mutable
+        // - Parameter 1: counter (&mut RandomCounter) - object type, mutable
+        // - Parameter 2: increase_with (u64).
 
-        // Check parameter 0 (counter).
+        // Check parameter 0 (current_execution).
         let param0 = schema
             .get("0")
-            .expect("Schema should have parameter 0 (counter)");
+            .expect("Schema should have parameter 0 (current_execution)");
         assert_eq!(param0["type"], "object");
         assert_eq!(param0["mutable"], true);
         assert!(param0["description"]
             .as_str()
             .unwrap()
-            .contains("RandomCounter"));
-        assert_eq!(param0["mutable"], true);
+            .contains("DAGExecution"));
 
-        // Check parameter 1 (increase_with).
+        // Check parameter 1 (counter).
         let param1 = schema
             .get("1")
-            .expect("Schema should have parameter 1 (increase_with)");
-        assert_eq!(param1["type"], "u64");
-        assert_eq!(param1["description"], "64-bit unsigned integer");
-        assert!(param1.get("mutable").is_none());
+            .expect("Schema should have parameter 1 (counter)");
+        assert_eq!(param1["type"], "object");
+        assert_eq!(param1["mutable"], true);
+        assert!(param1["description"]
+            .as_str()
+            .unwrap()
+            .contains("RandomCounter"));
 
-        // Verify only 2 user inputs remain after internal params are skipped.
-        assert_eq!(schema.as_object().unwrap().len(), 2);
+        // Check parameter 2 (increase_with).
+        let param2 = schema
+            .get("2")
+            .expect("Schema should have parameter 2 (increase_with)");
+        assert_eq!(param2["type"], "u64");
+        assert_eq!(param2["description"], "64-bit unsigned integer");
+        assert!(param2.get("mutable").is_none());
+
+        // Verify only 3 user inputs remain after internal params are skipped.
+        assert_eq!(schema.as_object().unwrap().len(), 3);
     }
 }

@@ -4,7 +4,7 @@ members = ["toolkit-rust", "cli", "sdk"]
 
 [workspace.package]
 edition = "2021"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 repository = "https://github.com/Talus-Network/nexus-sdk"
 homepage = "https://talus.network"
 license = "Apache-2.0"
@@ -62,7 +62,7 @@ rpassword = "7.4.0"
 rstest = "0.25.0"
 schemars = "1.0.0"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_path_to_error = "0.1.17"
 serial_test = "3.2.0"
 strum = "0.27"

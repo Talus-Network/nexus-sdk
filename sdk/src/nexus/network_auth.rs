@@ -18,7 +18,7 @@
 //! can export the typed allowlist data consumed by nexus toolkit.
 
 #[cfg(feature = "signed_http")]
-use crate::signed_http::v2::wire::{
+use crate::signed_http::v3::wire::{
     AllowedLeaderFileV1,
     AllowedLeaderKeyFileV1,
     AllowedLeadersFileV1,
@@ -50,21 +50,11 @@ use {
 const POP_DOMAIN_V1: &[u8] = b"nexus_registry.network_auth.pop_v1";
 const KEY_SCHEME_ED25519: u8 = 0;
 const NETWORK_AUTH_SCHEMA_V1: u64 = 1;
-#[cfg(any(test, feature = "upgrade_test"))]
-const NETWORK_AUTH_SCHEMA_V2: u64 = 2;
-#[cfg(not(feature = "upgrade_test"))]
 const LATEST_NETWORK_AUTH_SCHEMA: u64 = NETWORK_AUTH_SCHEMA_V1;
-#[cfg(feature = "upgrade_test")]
-const LATEST_NETWORK_AUTH_SCHEMA: u64 = NETWORK_AUTH_SCHEMA_V2;
-
-#[cfg(feature = "upgrade_test")]
-use crate::move_bindings::registry::network_auth::NetworkAuthStateV2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NetworkAuthSchema {
     V1,
-    #[cfg(feature = "upgrade_test")]
-    V2,
 }
 
 fn resolve_network_auth_schema(
@@ -75,10 +65,6 @@ fn resolve_network_auth_schema(
     match actual {
         NETWORK_AUTH_SCHEMA_V1 if maximum_supported >= NETWORK_AUTH_SCHEMA_V1 => {
             Ok(NetworkAuthSchema::V1)
-        }
-        #[cfg(feature = "upgrade_test")]
-        NETWORK_AUTH_SCHEMA_V2 if maximum_supported >= NETWORK_AUTH_SCHEMA_V2 => {
-            Ok(NetworkAuthSchema::V2)
         }
         _ => Err(NexusError::UnsupportedStateSchema {
             object,
@@ -326,7 +312,7 @@ impl NetworkAuthActions {
 
     /// Export tool side allowlist data containing the active key for each leader.
     ///
-    /// The returned file model matches [`crate::signed_http::v2::wire::AllowedLeadersFileV1`].
+    /// The returned file model matches [`crate::signed_http::v3::wire::AllowedLeadersFileV1`].
     ///
     /// `leader_cap_ids` are leader capability ID values for
     /// [`crate::move_bindings::registry::leader_cap::OverNetwork`] objects.
@@ -363,24 +349,7 @@ impl NetworkAuthActions {
                 ))
             })?;
 
-            let keys = client
-                .crawler()
-                .get_dynamic_fields::<u64, KeyRecord>(
-                    binding.data.key_table_id(),
-                    binding.data.key_table_size(),
-                )
-                .await
-                .map_err(|e| {
-                    NexusError::Rpc(anyhow::anyhow!(
-                        "failed to fetch leader key records ({binding_object_id}): {e}"
-                    ))
-                })?;
-
-            let record = keys.get(&active_kid).ok_or_else(|| {
-                NexusError::Parsing(anyhow::anyhow!(
-                    "leader binding {binding_object_id} missing active key record kid={active_kid}"
-                ))
-            })?;
+            let record = fetch_key_record(client.crawler(), &binding, active_kid).await?;
             let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
                 NexusError::Parsing(anyhow::anyhow!(
                     "leader binding {binding_object_id} active key is not 32 bytes"
@@ -504,24 +473,7 @@ impl NetworkAuthActions {
             return Ok(None);
         };
 
-        let keys = client
-            .crawler()
-            .get_dynamic_fields::<u64, KeyRecord>(
-                binding.data.key_table_id(),
-                binding.data.key_table_size(),
-            )
-            .await
-            .map_err(|e| {
-                NexusError::Rpc(anyhow::anyhow!(
-                    "failed to fetch leader key records ({binding_object_id}): {e}"
-                ))
-            })?;
-
-        let record = keys.get(&active_kid).ok_or_else(|| {
-            NexusError::Parsing(anyhow::anyhow!(
-                "leader binding {binding_object_id} missing active key record kid={active_kid}"
-            ))
-        })?;
+        let record = fetch_key_record(client.crawler(), &binding, active_kid).await?;
         let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
             NexusError::Parsing(anyhow::anyhow!(
                 "leader binding {binding_object_id} active key is not 32 bytes"
@@ -747,17 +699,6 @@ async fn fetch_network_auth_leader_cap_ids(
             .data
             .leader_cap_ids()
             .collect::<Vec<_>>(),
-        #[cfg(feature = "upgrade_test")]
-        NetworkAuthSchema::V2 => crawler
-            .load_versioned_payload::<NetworkAuth, NetworkAuthStateV2>(
-                anchor,
-                NETWORK_AUTH_SCHEMA_V2,
-            )
-            .await
-            .map_err(|error| network_auth_state_error(object_id, error))?
-            .data
-            .leader_cap_ids()
-            .collect::<Vec<_>>(),
     };
     leaders.sort_unstable();
     leaders.dedup();
@@ -778,25 +719,7 @@ async fn try_get_active_ed25519_key(
         return Ok(None);
     };
 
-    let keys = crawler
-        .get_dynamic_fields::<u64, KeyRecord>(
-            binding.data.key_table_id(),
-            binding.data.key_table_size(),
-        )
-        .await
-        .map_err(|e| {
-            NexusError::Rpc(anyhow::anyhow!(
-                "failed to fetch key records ({}): {e}",
-                binding.object_id
-            ))
-        })?;
-
-    let record = keys.get(&active_kid).ok_or_else(|| {
-        NexusError::Parsing(anyhow::anyhow!(
-            "key binding {} is missing active key record kid={active_kid}",
-            binding.object_id
-        ))
-    })?;
+    let record = fetch_key_record(crawler, binding, active_kid).await?;
     let public_key: [u8; 32] = record.public_key.as_slice().try_into().map_err(|_| {
         NexusError::Parsing(anyhow::anyhow!(
             "key binding {} active key kid={active_kid} is not 32 bytes",
@@ -823,6 +746,32 @@ async fn try_get_active_ed25519_key(
         kid: active_kid,
         public_key,
     }))
+}
+
+async fn fetch_key_record(
+    crawler: &Crawler,
+    binding: &Response<KeyBindingStateV1>,
+    key_id: u64,
+) -> Result<KeyRecord, NexusError> {
+    crawler
+        .get_dynamic_field_by_key::<u64, KeyRecord>(
+            binding.data.key_table_id(),
+            key_id,
+            &sui::types::TypeTag::U64,
+        )
+        .await
+        .map_err(|error| {
+            NexusError::Rpc(anyhow::anyhow!(
+                "failed to fetch key record ({}, kid={key_id}): {error}",
+                binding.object_id
+            ))
+        })?
+        .ok_or_else(|| {
+            NexusError::Parsing(anyhow::anyhow!(
+                "key binding {} is missing key record kid={key_id}",
+                binding.object_id
+            ))
+        })
 }
 
 /// Internal helper that knows how to compute binding IDs.
@@ -920,36 +869,15 @@ fn sign_bytes(signing_key: &SigningKey, msg: &[u8]) -> [u8; 64] {
 mod tests {
     use super::*;
 
-    /// Verifies that the prepared consumer accepts every schema it can decode.
-    #[cfg(feature = "upgrade_test")]
+    /// Verifies that the reader accepts exactly the production schema it can decode.
     #[test]
-    fn upgrade_fixture_network_auth_schema_support_is_exact() {
+    fn network_auth_schema_support_is_exact() {
         let object = sui::types::Address::from_static("0x42");
 
         assert_eq!(
-            resolve_network_auth_schema(object, 1, 2).unwrap(),
+            resolve_network_auth_schema(object, 1, 1).unwrap(),
             NetworkAuthSchema::V1
         );
-        assert_eq!(
-            resolve_network_auth_schema(object, 2, 2).unwrap(),
-            NetworkAuthSchema::V2
-        );
-
-        let error = resolve_network_auth_schema(object, 3, 2).unwrap_err();
-        assert!(matches!(
-            error,
-            NexusError::UnsupportedStateSchema {
-                object: observed_object,
-                actual: 3,
-                expected: 2,
-            } if observed_object == object
-        ));
-    }
-
-    /// Verifies that a schema one reader rejects schema two state.
-    #[test]
-    fn schema_one_network_auth_reader_rejects_schema_two() {
-        let object = sui::types::Address::from_static("0x42");
         let error = resolve_network_auth_schema(object, 2, 1).unwrap_err();
 
         assert!(matches!(
@@ -973,7 +901,7 @@ mod tests {
             .parse()
             .expect("NEXUS_LOCAL_NETWORK_AUTH_OBJECT_ID must be an address");
         let expected_actual: u64 = std::env::var("NEXUS_LOCAL_EXPECT_NETWORK_AUTH_SCHEMA")
-            .unwrap_or_else(|_| NETWORK_AUTH_SCHEMA_V2.to_string())
+            .unwrap_or_else(|_| "2".to_owned())
             .parse()
             .expect("NEXUS_LOCAL_EXPECT_NETWORK_AUTH_SCHEMA must be an integer");
         let client = sui::grpc::client(&rpc).expect("the Sui RPC URL must be valid");
@@ -1154,19 +1082,6 @@ mod tests {
             )
         }
 
-        #[cfg(feature = "upgrade_test")]
-        fn raw_network_auth_v2_for_test(
-            id: sui::types::Address,
-            identities: Vec<IdentityKey>,
-        ) -> (NetworkAuth, NetworkAuthStateV2, sui::types::Address) {
-            let state_id = state_id_for(id);
-            (
-                NetworkAuth::new(UID::new(id), Versioned::new(UID::new(state_id), 2)),
-                NetworkAuthStateV2::new_for_test(identities, 2),
-                state_id,
-            )
-        }
-
         fn raw_key_binding_for_test(
             id: sui::types::Address,
             identity: IdentityKey,
@@ -1205,6 +1120,34 @@ mod tests {
             object
         }
 
+        fn mock_key_record_field(
+            ledger_service: &mut sui_mocks::grpc::MockLedgerService,
+            key_table_id: sui::types::Address,
+            key_id: u64,
+            record: KeyRecord,
+            times: usize,
+        ) {
+            let field_id = key_table_id.derive_dynamic_child_id(
+                &sui::types::TypeTag::U64,
+                &bcs::to_bytes(&key_id).expect("key ID serializes"),
+            );
+            let field = DynamicFieldValueBcs {
+                id: field_id,
+                name: key_id,
+                value: record,
+            };
+            let field_bytes = bcs::to_bytes(&field).expect("key record field serializes");
+
+            for _ in 0..times {
+                sui_mocks::grpc::mock_get_object_bcs(
+                    ledger_service,
+                    sui_mocks::object_ref_for_id(field_id),
+                    sui::types::Owner::Object(key_table_id),
+                    field_bytes.clone(),
+                );
+            }
+        }
+
         async fn build_reader(
             registry_pkg_id: sui::types::Address,
             network_auth_object_id: sui::types::Address,
@@ -1225,16 +1168,7 @@ mod tests {
                 MoveTable::new(key_table_id, 1),
             );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             sui_mocks::grpc::mock_get_object_bcs(
                 &mut ledger_service,
@@ -1249,27 +1183,10 @@ mod tests {
                 binding_state,
             );
 
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                &mut state_service,
-                vec![(active_kid, field_object_id)],
-            );
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(1)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 1);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 
@@ -1307,16 +1224,7 @@ mod tests {
                     ],
                 );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             sui_mocks::grpc::mock_get_object_bcs(
                 &mut ledger_service,
@@ -1343,27 +1251,10 @@ mod tests {
                 binding_state,
             );
 
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                &mut state_service,
-                vec![(active_kid, field_object_id)],
-            );
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(1)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 1);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 
@@ -1408,51 +1299,6 @@ mod tests {
             );
         }
 
-        #[cfg(feature = "upgrade_test")]
-        #[tokio::test]
-        async fn reader_decodes_network_auth_state_v2() {
-            let mut rng = rand::thread_rng();
-            let registry_pkg_id = sui::types::Address::generate(&mut rng);
-            let network_auth_object_id = sui::types::Address::generate(&mut rng);
-            let first_leader = sui::types::Address::generate(&mut rng);
-            let second_leader = sui::types::Address::generate(&mut rng);
-            let (network_auth, state, state_id) = raw_network_auth_v2_for_test(
-                network_auth_object_id,
-                vec![
-                    IdentityKey::leader(second_leader),
-                    IdentityKey::tool(sui::types::Address::generate(&mut rng)),
-                    IdentityKey::leader(first_leader),
-                    IdentityKey::leader(second_leader),
-                ],
-            );
-
-            let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            sui_mocks::grpc::mock_get_object_bcs(
-                &mut ledger_service,
-                sui_mocks::object_ref_for_id(network_auth_object_id),
-                sui::types::Owner::Shared(1),
-                bcs::to_bytes(&network_auth).unwrap(),
-            );
-            sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 2, state);
-            let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-                ledger_service_mock: Some(ledger_service),
-                ..Default::default()
-            });
-            let reader =
-                NetworkAuthReader::from_rpc_url(&rpc_url, registry_pkg_id, network_auth_object_id)
-                    .unwrap();
-
-            let mut expected = vec![first_leader, second_leader];
-            expected.sort_unstable();
-            assert_eq!(
-                reader
-                    .list_leader_cap_ids_from_network_auth()
-                    .await
-                    .unwrap(),
-                expected
-            );
-        }
-
         #[cfg(feature = "signed_http")]
         #[tokio::test]
         async fn actions_export_allowlists() {
@@ -1487,16 +1333,7 @@ mod tests {
                     ],
                 );
 
-            let field_object_id = sui::types::Address::from_static("0x333");
-            let field_value = DynamicFieldValueBcs {
-                id: sui::types::Address::from_static("0x444"),
-                name: active_kid,
-                value: record,
-            };
-            let field_bytes = bcs::to_bytes(&field_value).unwrap();
-
             let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-            let mut state_service = sui_mocks::grpc::MockStateService::new();
 
             for _ in 0..2 {
                 sui_mocks::grpc::mock_get_object_bcs(
@@ -1525,38 +1362,10 @@ mod tests {
                 );
             }
 
-            state_service
-                .expect_list_dynamic_fields()
-                .times(2)
-                .returning(move |_request| {
-                    let mut dynamic_field = sui::grpc::DynamicField::default();
-                    dynamic_field.set_child_id(field_object_id);
-                    dynamic_field.set_field_id(field_object_id);
-                    let mut name = sui::grpc::Bcs::default();
-                    name.value = Some(bcs::to_bytes(&active_kid).unwrap().into());
-                    dynamic_field.set_name(name);
-
-                    let mut response = sui::grpc::ListDynamicFieldsResponse::default();
-                    response.dynamic_fields = vec![dynamic_field];
-                    Ok(Response::new(response))
-                });
-
-            ledger_service
-                .expect_batch_get_objects()
-                .times(2)
-                .returning(move |_request| {
-                    let object = object_with_contents(Some(field_object_id), field_bytes.clone());
-                    let mut result = sui::grpc::GetObjectResult::default();
-                    result.result = Some(sui::grpc::get_object_result::Result::Object(object));
-
-                    let mut response = sui::grpc::BatchGetObjectsResponse::default();
-                    response.objects = vec![result];
-                    Ok(Response::new(response))
-                });
+            mock_key_record_field(&mut ledger_service, key_table_id, active_kid, record, 2);
 
             let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
                 ledger_service_mock: Some(ledger_service),
-                state_service_mock: Some(state_service),
                 ..Default::default()
             });
 

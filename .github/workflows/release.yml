@@ -3,10 +3,10 @@
 # * checks for a Git Tag in the format v*
 # * builds artifacts (archives, installers, hashes)
 # * uploads artifacts to workflow
-# * creates a draft GitHub Release only when explicitly requested for an existing tag
+# * on success, uploads the artifacts to a GitHub Release
 #
-# When requested, the GitHub Release is created with a generated title/body
-# based on the changelog.
+# The GitHub Release will be created with a generated
+# title/body based on the changelog.
 
 name: Release
 
@@ -24,8 +24,8 @@ on:
 
   workflow_dispatch:
     inputs:
-      create_release:
-        description: "Create a draft GitHub Release from the selected tag"
+      release:
+        description: "Create a release"
         required: false
         default: false
         type: boolean
@@ -75,24 +75,6 @@ jobs:
           file: Cargo.toml
           field: workspace.package.version
 
-      - name: Resolve release intent
-        id: release_intent
-        env:
-          RELEASE_REQUESTED: ${{ inputs.create_release || false }}
-        run: |
-          .github/scripts/resolve_release_intent.sh \
-            "${{ github.event_name }}" \
-            "${{ github.ref_type }}" \
-            "$RELEASE_REQUESTED"
-
-      - name: Validate release metadata
-        id: release_metadata
-        if: github.ref_type == 'tag'
-        run: |
-          .github/scripts/validate_release_tag.sh \
-            "${{ steps.get_version.outputs.value }}" \
-            "${{ github.ref_name }}"
-
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -115,10 +97,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build binary
-        run: |
-          # BUILD_STD is supplied by setup-cross-toolchain-action and must split into Cargo flags.
-          # shellcheck disable=SC2086
-          cargo build --package=nexus-cli --release --locked --target="${{ matrix.target }}" $BUILD_STD
+        run: cargo build --package=nexus-cli --release --locked --target=${{ matrix.target }} $BUILD_STD
 
       - name: Install cargo-deb
         uses: taiki-e/install-action@v2
@@ -148,10 +127,10 @@ jobs:
             *.zip
 
       - name: Create release
-        if: github.ref_type == 'tag' && steps.release_intent.outputs.create_release == 'true'
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ steps.release_metadata.outputs.prerelease == 'true' }}
+          prerelease: ${{ github.ref != format('refs/tags/v{0}', steps.get_version.outputs.value) }}
           draft: true
           files: |
             *.deb

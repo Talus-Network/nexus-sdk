@@ -272,30 +272,29 @@ impl<Q: EventQuery> EventIngestor<Q> {
             ));
         }
 
-        if let Some(checkpoint) = watermark.checkpoint_opt() {
-            Self::advance_checkpoint(resume_checkpoint, checkpoint);
-            if highest_output_checkpoint.is_none_or(|current| checkpoint > current) {
-                if !self
-                    .send_page(
-                        EventPage {
-                            events: Vec::new(),
-                            checkpoint,
-                        },
-                        send_page,
-                    )
-                    .await
-                {
-                    return Ok(false);
-                }
-                Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
-            }
-        }
-
         let Some(event) = event else {
+            if let Some(checkpoint) = watermark.checkpoint_opt() {
+                Self::advance_checkpoint(resume_checkpoint, checkpoint);
+                if highest_output_checkpoint.is_none_or(|current| checkpoint > current) {
+                    if !self
+                        .send_page(
+                            EventPage {
+                                events: Vec::new(),
+                                checkpoint,
+                            },
+                            send_page,
+                        )
+                        .await
+                    {
+                        return Ok(false);
+                    }
+                    Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
+                }
+            }
             return Ok(true);
         };
         FILTERED_EVENTS_RECEIVED.inc();
-        let checkpoint = event.checkpoint.ok_or_else(|| {
+        let event_checkpoint = event.checkpoint.ok_or_else(|| {
             EventIngestionError::Protocol("event is missing its checkpoint".to_owned())
         })?;
         let transaction_digest = event.transaction_digest.clone().ok_or_else(|| {
@@ -316,13 +315,18 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let decoded = self.query.decode(event);
         EVENT_PARSE_DURATION.observe(decode_started.elapsed().as_secs_f64());
         let event = decoded.map_err(|source| EventIngestionError::Decode {
-            checkpoint,
+            checkpoint: event_checkpoint,
             transaction_digest,
             event_index,
             source: anyhow::Error::new(source),
         })?;
         let events = event.into_iter().collect::<Vec<_>>();
         EVENTS_PER_PAGE.observe(events.len() as f64);
+        let checkpoint = watermark
+            .checkpoint_opt()
+            .map_or(event_checkpoint, |checkpoint| {
+                checkpoint.max(event_checkpoint)
+            });
         Self::advance_checkpoint(resume_checkpoint, checkpoint);
         let should_send = !events.is_empty()
             || highest_output_checkpoint.is_none_or(|current| checkpoint > current);

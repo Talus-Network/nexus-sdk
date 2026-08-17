@@ -138,21 +138,19 @@ fn register_off_chain_tool(
     let fqn = tx.ascii_string(meta.fqn.to_string())?;
     let url = tx.arg(&meta.url.as_bytes().to_vec())?;
     let description = tx.arg(&meta.description.as_bytes().to_vec())?;
-    let input_schema = tx.arg(&meta.input_schema)?;
-    let output_schema = tx.arg(&meta.output_schema)?;
+    let meta_schema = tx.meta_schema(&meta.meta_schema()?)?;
     let timeout_ms = timeout_millis(meta.timeout)?;
     let timeout_ms = tx.arg(&timeout_ms)?;
     let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
 
     tx.call_target(
-        tool_registry_binding::register_off_chain_tool_target,
+        tool_registry_binding::register_off_chain_tool_v2_target,
         vec![
             tool_registry,
             fqn,
             url,
             description,
-            input_schema,
-            output_schema,
+            meta_schema,
             timeout_ms,
             invocation_cost_mist,
             pay_with,
@@ -437,8 +435,12 @@ fn register_on_chain_for_self_with_collateral_ptb(
         let module_name = tx.ascii_string(module_name)?;
         let fqn = tx.ascii_string(fqn.to_string())?;
         let description = tx.arg(&description.as_bytes().to_vec())?;
-        let input_schema = tx.arg(&input_schema.as_bytes().to_vec())?;
-        let output_schema = tx.arg(&output_schema.as_bytes().to_vec())?;
+        let meta_schema =
+            crate::move_bindings::interface::meta_schema::MetaSchema::from_onchain_json_schemas(
+                input_schema,
+                output_schema,
+            )?;
+        let meta_schema = tx.meta_schema(&meta_schema)?;
         let timeout_ms = timeout_millis(timeout)?;
         let timeout_ms = tx.arg(&timeout_ms)?;
         let tool_witness_id = tx.object_id(tool_witness_id)?;
@@ -452,8 +454,7 @@ fn register_on_chain_for_self_with_collateral_ptb(
             module_name,
             fqn,
             description,
-            input_schema,
-            output_schema,
+            meta_schema,
             timeout_ms,
             tool_witness_id,
             invocation_cost_mist,
@@ -462,11 +463,11 @@ fn register_on_chain_for_self_with_collateral_ptb(
         ];
         let register_result = match mode {
             OnchainToolMode::Standard => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_target,
+                tool_registry_binding::register_on_chain_tool_v2_target,
                 arguments,
             )?,
             OnchainToolMode::WorkflowAuthorization => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
+                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_v2_target,
                 arguments,
             )?,
         };
@@ -513,6 +514,26 @@ pub fn unregister_ptb(
         tx.call_target(
             tool_registry_binding::unregister_target,
             vec![tool, registry, owner_cap, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// PTB template for updating an on-chain Tool package using its bound owner capability.
+pub fn migrate_on_chain_tool_package_ptb(
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    target_package: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let target_package = tx.arg(&target_package)?;
+
+        tx.call_target(
+            tool_registry_binding::migrate_on_chain_tool_package_target,
+            vec![tool, owner_cap, target_package],
         )?;
         Ok(())
     })
@@ -644,6 +665,34 @@ pub fn update_tool_timeout_ptb(
     })
 }
 
+/// Builds a transaction that replaces an off chain Tool URL.
+///
+/// The `tool` is the current shared Tool reference and `owner_cap` must grant
+/// authority over that Tool.
+///
+/// # Errors
+///
+/// Returns an error when an object argument, URL argument, or generated Move
+/// call cannot be added to the transaction.
+pub fn update_off_chain_tool_url_ptb(
+    objects: &NexusObjects,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    new_url: &str,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(objects, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let new_url = tx.arg(&new_url.as_bytes().to_vec())?;
+
+        tx.call_target(
+            tool_registry_binding::update_off_chain_tool_url_target,
+            vec![tool, owner_cap, new_url],
+        )?;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -652,6 +701,11 @@ mod tests {
         sui::types::{Command, WithdrawFrom},
         sui_move_call::CallArg,
     };
+
+    const OFFCHAIN_INPUT_SCHEMA: &[u8] = br#"{"type":"object","properties":{}}"#;
+    const OFFCHAIN_OUTPUT_SCHEMA: &[u8] = br#"{"oneOf":[{"const":"Ok"}]}"#;
+    const ONCHAIN_INPUT_SCHEMA: &str = "{}";
+    const ONCHAIN_OUTPUT_SCHEMA: &str = r#"{"Ok":{"fields":{}}}"#;
 
     fn addr(value: &'static str) -> sui::types::Address {
         sui::types::Address::from_static(value)
@@ -688,7 +742,6 @@ mod tests {
             },
             leader_registry: object_ref("0xe", 1, 14),
             priority_fee_vault: object_ref("0xf", 1, 15),
-
             priority_fee_vault_owner_cap: object_ref("0x10", 1, 16),
             us_token: crate::types::UsTokenConfig {
                 package_id: addr("0x11"),
@@ -753,8 +806,8 @@ mod tests {
                 url: format!("https://example.com/{name}"),
                 description: name.to_string(),
                 timeout: Duration::from_secs(1),
-                input_schema: b"{}".to_vec(),
-                output_schema: b"{}".to_vec(),
+                input_schema: OFFCHAIN_INPUT_SCHEMA.to_vec(),
+                output_schema: OFFCHAIN_OUTPUT_SCHEMA.to_vec(),
             },
             public_key: [key_byte; 32],
             pop_signature: [key_byte; 64],
@@ -808,6 +861,64 @@ mod tests {
         assert_eq!(calls[0].module.as_str(), "tool_registry");
         assert_eq!(calls[0].function.as_str(), "unregister");
         assert_eq!(calls[0].arguments.len(), 4);
+    }
+
+    #[test]
+    fn off_chain_url_update_uses_current_tool_registry_abi() {
+        let objects = nexus_objects();
+        let ptb = update_off_chain_tool_url_ptb(
+            &objects,
+            &object_ref("0x20", 2, 20),
+            &object_ref("0x21", 3, 21),
+            "https://example.com/invoke",
+        )
+        .unwrap();
+        let calls = move_calls(&ptb);
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].package, objects.tool_pkg_id());
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
+        assert_eq!(calls[0].function.as_str(), "update_off_chain_tool_url");
+        assert_eq!(calls[0].arguments.len(), 3);
+    }
+
+    #[test]
+    fn on_chain_package_migration_uses_only_tool_owner_and_target_package() {
+        let objects = nexus_objects();
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
+        let target_package = addr("0x23");
+
+        let ptb =
+            migrate_on_chain_tool_package_ptb(&objects, &tool, &owner_cap, target_package).unwrap();
+
+        let calls = move_calls(&ptb);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].package, objects.tool_pkg_id());
+        assert_eq!(calls[0].module.as_str(), "tool_registry");
+        assert_eq!(calls[0].function.as_str(), "migrate_on_chain_tool_package");
+        assert_eq!(calls[0].arguments.len(), 3);
+        let tool_input = ptb
+            .inputs
+            .iter()
+            .find_map(|input| match input {
+                CallArg::Shared(shared) if shared.object_id() == *tool.object_id() => Some(shared),
+                _ => None,
+            })
+            .expect("migration must use the mutable Tool");
+        assert!(tool_input.mutability().is_mutable());
+        assert!(!ptb.inputs.iter().any(|input| {
+            matches!(input, CallArg::Shared(shared) if shared.object_id() == *objects.tool_registry.object_id())
+        }));
+        assert_eq!(
+            ptb.inputs
+                .iter()
+                .filter(|input| {
+                    matches!(input, CallArg::ImmutableOrOwned(object) if *object.object_id() == *owner_cap.object_id())
+                })
+                .count(),
+            1,
+        );
     }
 
     #[test]
@@ -952,7 +1063,7 @@ mod tests {
         .unwrap();
 
         for (module, function) in [
-            ("tool_registry", "register_off_chain_tool"),
+            ("tool_registry", "register_off_chain_tool_v2"),
             ("transfer", "public_share_object"),
         ] {
             assert_eq!(move_call_indices(&ptb, module, function).len(), 1);
@@ -961,10 +1072,10 @@ mod tests {
             .into_iter()
             .find(|call| {
                 call.module.as_str() == "tool_registry"
-                    && call.function.as_str() == "register_off_chain_tool"
+                    && call.function.as_str() == "register_off_chain_tool_v2"
             })
             .expect("single registration must create the Tool and both capabilities");
-        assert_eq!(register.arguments.len(), 10);
+        assert_eq!(register.arguments.len(), 9);
         let transfer = ptb
             .commands
             .iter()
@@ -1058,7 +1169,7 @@ mod tests {
             1
         );
         assert_eq!(
-            move_call_indices(&first, "tool_registry", "register_off_chain_tool").len(),
+            move_call_indices(&first, "tool_registry", "register_off_chain_tool_v2").len(),
             2
         );
         let key_calls = move_call_indices(&first, "network_auth", "register_key");
@@ -1126,8 +1237,8 @@ mod tests {
             url: "https://example.com".into(),
             description: "example".into(),
             timeout: Duration::from_secs(1),
-            input_schema: b"{}".to_vec(),
-            output_schema: b"{}".to_vec(),
+            input_schema: OFFCHAIN_INPUT_SCHEMA.to_vec(),
+            output_schema: OFFCHAIN_OUTPUT_SCHEMA.to_vec(),
         };
 
         let ptb =
@@ -1148,11 +1259,11 @@ mod tests {
         for (mode, expected_function) in [
             (
                 crate::types::OnchainToolMode::Standard,
-                "register_on_chain_tool",
+                "register_on_chain_tool_v2",
             ),
             (
                 crate::types::OnchainToolMode::WorkflowAuthorization,
-                "register_on_chain_tool_with_workflow_authorization_cap",
+                "register_on_chain_tool_with_workflow_authorization_cap_v2",
             ),
         ] {
             let ptb = register_on_chain_for_self_with_address_balance_ptb(
@@ -1161,8 +1272,8 @@ mod tests {
                 "example",
                 &fqn,
                 "example",
-                "{}",
-                "{}",
+                ONCHAIN_INPUT_SCHEMA,
+                ONCHAIN_OUTPUT_SCHEMA,
                 Duration::from_secs(1),
                 witness,
                 7,
@@ -1181,6 +1292,7 @@ mod tests {
                 })
                 .expect("on chain registration call");
             assert_eq!(registration.package, objects.tool_pkg_id());
+            assert_eq!(registration.arguments.len(), 11);
         }
     }
 
@@ -1198,8 +1310,8 @@ mod tests {
             "example",
             &fqn,
             "example",
-            "{}",
-            "{}",
+            ONCHAIN_INPUT_SCHEMA,
+            ONCHAIN_OUTPUT_SCHEMA,
             Duration::MAX,
             witness,
             7,
