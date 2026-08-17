@@ -20,7 +20,7 @@ pub use {
     secret::Secret,
     secret_value::SecretValue,
     tap::*,
-    tool::{OnchainToolMode, Tool, ToolAnchor, ToolRef, ToolStateV2},
+    tool::{OnchainToolMode, Tool, ToolAnchor, ToolRef, ToolState},
     tool_meta::ToolMeta,
     workflow_models::{ExecutionTerminalRecord, ExternalVerifierRuntimeCall, RequestWalkContext},
 };

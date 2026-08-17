@@ -5,7 +5,7 @@ use {
                 agent::SkillDagBinding,
                 meta_schema::{MetaSchema, PortSchema, ValueKind},
             },
-            scheduler::task::{Task, TaskController, TaskStateV2},
+            scheduler::task::{Task, TaskController, TaskState},
             sui_framework::clock::Clock,
         },
         move_boundary,
@@ -41,7 +41,7 @@ use {
 };
 
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<TaskStateV2>,
+    pub(super) object: Response<TaskState>,
     pub(super) authority: ResolvedAuthority,
 }
 
@@ -303,7 +303,7 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<TaskStateV2>, SchedulerError> {
+) -> Result<Response<TaskState>, SchedulerError> {
     let anchor = client
         .crawler()
         .get_optional_object::<Task>(task_id)
@@ -312,7 +312,7 @@ pub(super) async fn fetch_task(
         .ok_or(SchedulerError::TaskNotFound { task_id })?;
     client
         .crawler()
-        .load_versioned_payload(anchor, 2)
+        .load_versioned_payload(anchor, 1)
         .await
         .map_err(SchedulerError::transport)
 }
@@ -328,7 +328,7 @@ pub(super) async fn resolve_task(
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<TaskStateV2>,
+    task: &Response<TaskState>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {
@@ -458,7 +458,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::{
-                    dag::{DAGStateV2, DAG},
+                    dag::{DAGState, DAG},
                     graph,
                 },
                 move_std::option::Option as MoveOption,
@@ -618,7 +618,7 @@ mod tests {
         schema.input_ports[0].is_many = true;
         inputs.get_mut("sum").unwrap().insert(
             "0".to_owned(),
-            crate::types::NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new()),
+            crate::types::NexusData::Many { values: Vec::new() },
         );
         assert!(matches!(
             validate_task_inputs(&dag, "_default_group", &inputs),
@@ -631,7 +631,7 @@ mod tests {
             }) if vertex == "sum"
                 && port == "0"
                 && expected.as_ref() == "many/object"
-                && received.as_ref() == "one/empty"
+                && received.as_ref() == "many/empty"
         ));
     }
 
@@ -694,8 +694,8 @@ mod tests {
             &crate::sui::types::TypeTag::U64,
             &bcs::to_bytes(&u64::MAX).expect("the state key serializes"),
         );
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
-        let state = DAGStateV2::new(
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
+        let state = DAGState::new(
             1,
             LinkedTable::new(dag_id, 0),
             VecMap {
@@ -715,7 +715,7 @@ mod tests {
             crate::sui::types::Owner::Shared(1),
             bcs::to_bytes(&dag).expect("the DAG anchor serializes"),
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 2, state);
+        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 1, state);
     }
 
     #[tokio::test]

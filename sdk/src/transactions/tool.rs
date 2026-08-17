@@ -144,7 +144,7 @@ fn register_off_chain_tool(
     let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
 
     tx.call_target(
-        tool_registry_binding::register_off_chain_tool_v2_target,
+        tool_registry_binding::register_off_chain_tool_target,
         vec![
             tool_registry,
             fqn,
@@ -463,11 +463,11 @@ fn register_on_chain_for_self_with_collateral_ptb(
         ];
         let register_result = match mode {
             OnchainToolMode::Standard => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_v2_target,
+                tool_registry_binding::register_on_chain_tool_target,
                 arguments,
             )?,
             OnchainToolMode::WorkflowAuthorization => tx.call_target(
-                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_v2_target,
+                tool_registry_binding::register_on_chain_tool_with_workflow_authorization_cap_target,
                 arguments,
             )?,
         };
@@ -1063,7 +1063,7 @@ mod tests {
         .unwrap();
 
         for (module, function) in [
-            ("tool_registry", "register_off_chain_tool_v2"),
+            ("tool_registry", "register_off_chain_tool"),
             ("transfer", "public_share_object"),
         ] {
             assert_eq!(move_call_indices(&ptb, module, function).len(), 1);
@@ -1072,7 +1072,7 @@ mod tests {
             .into_iter()
             .find(|call| {
                 call.module.as_str() == "tool_registry"
-                    && call.function.as_str() == "register_off_chain_tool_v2"
+                    && call.function.as_str() == "register_off_chain_tool"
             })
             .expect("single registration must create the Tool and both capabilities");
         assert_eq!(register.arguments.len(), 9);
@@ -1169,7 +1169,7 @@ mod tests {
             1
         );
         assert_eq!(
-            move_call_indices(&first, "tool_registry", "register_off_chain_tool_v2").len(),
+            move_call_indices(&first, "tool_registry", "register_off_chain_tool").len(),
             2
         );
         let key_calls = move_call_indices(&first, "network_auth", "register_key");
@@ -1259,11 +1259,11 @@ mod tests {
         for (mode, expected_function) in [
             (
                 crate::types::OnchainToolMode::Standard,
-                "register_on_chain_tool_v2",
+                "register_on_chain_tool",
             ),
             (
                 crate::types::OnchainToolMode::WorkflowAuthorization,
-                "register_on_chain_tool_with_workflow_authorization_cap_v2",
+                "register_on_chain_tool_with_workflow_authorization_cap",
             ),
         ] {
             let ptb = register_on_chain_for_self_with_address_balance_ptb(

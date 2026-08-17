@@ -33,7 +33,7 @@ mod tests {
         super::*,
         crate::{
             move_bindings::{
-                primitives::data::{NexusData as StoredNexusData, NexusValue},
+                primitives::data::NexusData as StoredNexusData,
                 sui_framework::vec_map::{Entry, VecMap},
             },
             types::NexusData,
@@ -41,12 +41,7 @@ mod tests {
     };
 
     fn stored_inline(value: &'static [u8]) -> StoredNexusData {
-        let value = NexusValue::inline_data(value).expect("fixture is bounded");
-        StoredNexusData::new(
-            b"nexus_value".to_vec(),
-            bcs::to_bytes(&value).expect("fixture should encode"),
-            Vec::new(),
-        )
+        StoredNexusData::inline_data(value).expect("fixture is bounded")
     }
 
     #[test]
