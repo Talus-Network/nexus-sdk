@@ -7019,10 +7019,10 @@
           "type_name": {
             "address": "0xa5",
             "module": "task",
-            "name": "TaskState"
+            "name": "TaskStateV1"
           },
           "module": "task",
-          "name": "TaskState",
+          "name": "TaskStateV1",
           "abilities": [
             "Store"
           ],
@@ -8421,7 +8421,7 @@
                     "type_name": {
                       "address": "0xa5",
                       "module": "task",
-                      "name": "TaskState"
+                      "name": "TaskStateV1"
                     },
                     "type_arguments": []
                   }
@@ -8464,7 +8464,7 @@
                     "type_name": {
                       "address": "0xa5",
                       "module": "task",
-                      "name": "TaskState"
+                      "name": "TaskStateV1"
                     },
                     "type_arguments": []
                   }

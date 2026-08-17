@@ -5,7 +5,7 @@ use {
                 agent::SkillDagBinding,
                 meta_schema::{MetaSchema, PortSchema, ValueKind},
             },
-            scheduler::task::{Task, TaskController, TaskState},
+            scheduler::task::{Task, TaskController, TaskStateV1},
             sui_framework::clock::Clock,
         },
         move_boundary,
@@ -41,7 +41,7 @@ use {
 };
 
 pub(super) struct ResolvedTask {
-    pub(super) object: Response<TaskState>,
+    pub(super) object: Response<TaskStateV1>,
     pub(super) authority: ResolvedAuthority,
 }
 
@@ -303,7 +303,7 @@ pub(super) async fn prepare_recurrence(
 pub(super) async fn fetch_task(
     client: &NexusClient,
     task_id: crate::sui::types::Address,
-) -> Result<Response<TaskState>, SchedulerError> {
+) -> Result<Response<TaskStateV1>, SchedulerError> {
     let anchor = client
         .crawler()
         .get_optional_object::<Task>(task_id)
@@ -328,7 +328,7 @@ pub(super) async fn resolve_task(
 
 async fn resolve_authority(
     client: &NexusClient,
-    task: &Response<TaskState>,
+    task: &Response<TaskStateV1>,
 ) -> Result<ResolvedAuthority, SchedulerError> {
     match &task.data.controller {
         TaskController::Address { pos0 } => {

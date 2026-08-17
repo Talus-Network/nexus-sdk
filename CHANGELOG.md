@@ -26,10 +26,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Regenerated bindings and transaction builders now target canonical schema-bound DAG, graph, execution, Task, Tool, and ToolRegistry state with explicit entry groups, direct typed inputs and outputs, and post-failure actions.
 - On-chain Tool preparation and result submission now preserve ordered pure and object arguments from `MetaSchema`, enforce immutable/shared ownership and shared-version semantics, reject caller-owned objects and Leader capabilities, and verify Walrus content commitments before building a PTB.
 - `NexusData` PTB materialization now preserves explicit ordered object requirements for accepted inline and aligned many-value forms, rejects Walrus-one object requirements, and passes only the canonical `LeaderRegistry` required by the Move ABI.
+- Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
+- Generated primitives bindings now expose the single validation-independent `is_many` Move target required across package boundaries.
 
 #### Removed
 
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
+- Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
 
 ### `nexus-cli`
 
