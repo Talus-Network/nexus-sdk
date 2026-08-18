@@ -1,9 +1,8 @@
 //! Build script for `nexus-sdk`.
 //!
-//! Three responsibilities:
-//! 1. Expose the pinned Sui SDK tag as a compile time env var.
-//! 2. Render Move-derived protocol limits from committed generated metadata.
-//! 3. Render generated Move bindings from committed package IR in `src/move_bindings/ir/*.json`.
+//! Two responsibilities:
+//! 1. Render Move derived protocol limits from committed generated metadata.
+//! 2. Render generated Move bindings from committed package IR in `src/move_bindings/ir/*.json`.
 
 use {
     std::{collections::BTreeMap, fmt::Write as _, fs, path::Path},
@@ -23,20 +22,8 @@ const EVENT_PACKAGES: [&str; 6] = [
 ];
 
 fn main() {
-    emit_sui_sdk_tag();
     render_protocol_limits();
     render_move_bindings();
-}
-
-fn emit_sui_sdk_tag() {
-    let cargo_toml = fs::read_to_string("Cargo.toml").expect("Should find Cargo.toml");
-    let parsed: toml::Value = cargo_toml.parse().expect("Cargo.toml should valid");
-
-    let sui_sdk_tag = &parsed["dependencies"]["sui_package_management"]["tag"]
-        .as_str()
-        .expect("Should read dependencies.sui_package_management tag");
-
-    println!("cargo:rustc-env=SUI_SDK_TAG={sui_sdk_tag}");
 }
 
 /// Renders protocol limits extracted from authoritative Nexus Move source during rebind.
