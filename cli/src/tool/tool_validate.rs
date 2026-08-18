@@ -10,7 +10,7 @@ use {
     },
     nexus_sdk::{
         move_bindings::interface::meta_schema::MetaSchema,
-        types::{OnchainToolMode, ToolMeta, ToolStateV2},
+        types::{OnchainToolMode, ToolMeta, ToolState},
     },
     reqwest::StatusCode,
     serde::Deserialize,
@@ -209,7 +209,7 @@ pub(crate) async fn validate_off_chain_tool_with_client(
 }
 
 /// Validate a registered on-chain Tool against its live Move signature.
-pub(crate) async fn validate_on_chain_tool(fqn: ToolFqn) -> AnyResult<ToolStateV2, NexusCliError> {
+pub(crate) async fn validate_on_chain_tool(fqn: ToolFqn) -> AnyResult<ToolState, NexusCliError> {
     command_title!("Validating on-chain Tool '{fqn}'");
 
     let nexus_client = get_read_only_nexus_client().await?;
@@ -263,7 +263,7 @@ pub(crate) async fn validate_on_chain_tool(fqn: ToolFqn) -> AnyResult<ToolStateV
     Ok(tool)
 }
 
-fn require_on_chain_tool(fqn: &ToolFqn, tool: Option<ToolStateV2>) -> anyhow::Result<ToolStateV2> {
+fn require_on_chain_tool(fqn: &ToolFqn, tool: Option<ToolState>) -> anyhow::Result<ToolState> {
     let Some(tool) = tool else {
         bail!("On-chain Tool '{fqn}' does not exist")
     };
@@ -275,7 +275,7 @@ fn require_on_chain_tool(fqn: &ToolFqn, tool: Option<ToolStateV2>) -> anyhow::Re
 
 fn validate_on_chain_tool_signature(
     fqn: &ToolFqn,
-    tool: &ToolStateV2,
+    tool: &ToolState,
     generated_meta_schema: &MetaSchema,
     generated_mode: OnchainToolMode,
 ) -> anyhow::Result<()> {
@@ -296,14 +296,14 @@ fn validate_on_chain_tool_signature(
     Ok(())
 }
 
-pub(crate) fn output_on_chain_validation(tool: &ToolStateV2) -> AnyResult<(), NexusCliError> {
+pub(crate) fn output_on_chain_validation(tool: &ToolState) -> AnyResult<(), NexusCliError> {
     let fqn = tool.parsed_fqn().map_err(NexusCliError::Any)?;
     notify_success!("Tool '{fqn}' is valid.");
     json_output(&on_chain_validation_result_json(tool)?)
 }
 
 fn on_chain_validation_result_json(
-    tool: &ToolStateV2,
+    tool: &ToolState,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
     let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
     let tool = ToolOutput::try_from_state(tool, None).map_err(NexusCliError::Any)?;
@@ -376,8 +376,8 @@ mod tests {
         )
     }
 
-    fn on_chain_tool(workflow_authorization_cap_first: bool) -> ToolStateV2 {
-        ToolStateV2 {
+    fn on_chain_tool(workflow_authorization_cap_first: bool) -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(sui::types::Address::from_static("0x42")),
             fqn: ascii::String::from("xyz.taluslabs.example@1"),

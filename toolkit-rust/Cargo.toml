@@ -14,7 +14,6 @@ categories.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-base64.workspace = true
 bcs.workspace = true
 bytes = "1"
 ed25519-dalek = "2"
