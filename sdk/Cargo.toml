@@ -20,8 +20,7 @@ required-features = ["binding_codegen"]
 [features]
 default = ["tool_fqn"]
 
-# Enables protocol version two support only for the end to end upgrade fixture.
-# Released consumers use the protocol version one boundary by default.
+# Marker feature used by the end to end upgrade fixture.
 upgrade_test = []
 
 # Tool FQN feature enables the use of the `ToolFqn` struct and `fqn!` macro.
