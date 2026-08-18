@@ -5,12 +5,12 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolStateV2};
+pub use tool_registry::{Tool as ToolAnchor, ToolRef, ToolState};
 /// Current logical Tool state.
 ///
 /// [`ToolAnchor`] is the stable object shell. Most callers operate on the
 /// selected state payload, so this alias preserves the public Tool model.
-pub type Tool = ToolStateV2;
+pub type Tool = ToolState;
 use {
     crate::{
         move_bindings::{move_std::ascii, tool::tool_registry},
@@ -36,7 +36,7 @@ impl ToolAnchor {
     }
 }
 
-impl ToolStateV2 {
+impl ToolState {
     /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
     pub fn derive_id(
         registry_id: sui::types::Address,
@@ -183,8 +183,8 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool(reference: ToolRef) -> ToolStateV2 {
-        ToolStateV2 {
+    fn fixture_tool(reference: ToolRef) -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 sui_mocks::mock_sui_address(),
@@ -234,7 +234,7 @@ mod tests {
         });
 
         let bytes = bcs::to_bytes(&tool).expect("generated Tool serializes as BCS");
-        let decoded: ToolStateV2 =
+        let decoded: ToolState =
             bcs::from_bytes(&bytes).expect("generated Tool state deserializes as BCS");
 
         assert_eq!(

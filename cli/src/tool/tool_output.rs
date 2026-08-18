@@ -5,12 +5,12 @@ use {
             tool::external_verifier::ExternalVerifier,
         },
         sui,
-        types::{ToolRef, ToolStateV2},
+        types::{ToolRef, ToolState},
     },
     serde::Serialize,
 };
 
-/// Semantic CLI view of [`ToolStateV2`].
+/// Semantic CLI view of [`ToolState`].
 #[derive(Debug, Serialize)]
 pub(super) struct ToolOutput {
     pub(super) minimum_protocol_version: u64,
@@ -30,7 +30,7 @@ pub(super) struct ToolOutput {
 
 impl ToolOutput {
     pub(super) fn try_from_state(
-        tool: &ToolStateV2,
+        tool: &ToolState,
         timeout_ms: Option<u64>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
@@ -178,12 +178,12 @@ mod tests {
                 move_std::{ascii, option::Option as MoveOption},
                 sui_framework::{balance::Balance, object::ID},
             },
-            types::{ToolRef, ToolStateV2},
+            types::{ToolRef, ToolState},
         },
     };
 
-    fn fixture_tool() -> ToolStateV2 {
-        ToolStateV2 {
+    fn fixture_tool() -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(nexus_sdk::sui::types::Address::from_static("0x42")),
             fqn: ascii::String::from("xyz.taluslabs.example@1"),

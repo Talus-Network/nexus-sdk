@@ -5,9 +5,9 @@ use {
         move_bindings::{
             move_std::ascii::String as MoveAsciiString,
             sui_framework::linked_table::Node as LinkedTableNode,
-            tool::tool_registry::{ToolRegistry, ToolRegistryStateV2},
+            tool::tool_registry::{ToolRegistry, ToolRegistryState},
         },
-        types::{Tool, ToolAnchor, ToolStateV2},
+        types::{Tool, ToolAnchor, ToolState},
     },
     prettytable::{row, Table},
 };
@@ -73,7 +73,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
 fn tool_list_output(
     timeouts: &HashMap<String, u64>,
-    tools: &[ToolStateV2],
+    tools: &[ToolState],
 ) -> AnyResult<Vec<ToolOutput>, NexusCliError> {
     tools
         .iter()
@@ -87,11 +87,11 @@ fn tool_list_output(
 
 async fn fetch_tools_with_client(
     nexus_client: &nexus_sdk::nexus::client::NexusClient,
-) -> AnyResult<(HashMap<String, u64>, Vec<ToolStateV2>), NexusCliError> {
+) -> AnyResult<(HashMap<String, u64>, Vec<ToolState>), NexusCliError> {
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
     let tool_registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV2>(
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(
             *nexus_objects.tool_registry.object_id(),
             2,
         )
@@ -121,7 +121,7 @@ async fn fetch_tools_with_client(
     for tool_id in tool_ids {
         tools.push(
             crawler
-                .get_versioned_object::<ToolAnchor, ToolStateV2>(tool_id, 2)
+                .get_versioned_object::<ToolAnchor, ToolState>(tool_id, 2)
                 .await
                 .map_err(NexusCliError::Any)?
                 .data,
@@ -152,8 +152,8 @@ mod tests {
         },
     };
 
-    fn fixture_tool() -> ToolStateV2 {
-        ToolStateV2 {
+    fn fixture_tool() -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(sui::types::Address::from_static("0x42")),
             fqn: MoveAsciiString::from("xyz.taluslabs.example@1"),
@@ -196,7 +196,7 @@ mod tests {
         let state_id = sui::types::Address::from_static("0x107");
         let registry =
             ToolRegistry::new(UID::new(registry_id), Versioned::new(UID::new(state_id), 2));
-        let state = ToolRegistryStateV2::new(
+        let state = ToolRegistryState::new(
             ID::new(*nexus_objects.protocol.object_id()),
             nexus_objects.protocol_version,
             LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x101"), 0),

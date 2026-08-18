@@ -329,10 +329,10 @@ impl NexusPtbBuilder {
         self.call_target(target, vec![])
     }
 
-    /// Build one generated `primitives::data::NexusValue` witness.
+    /// Build one generated `primitives::data::NexusValue`.
     pub(crate) fn nexus_value(&mut self, value: &NexusValue) -> anyhow::Result<Argument> {
         if !value.is_well_formed() {
-            anyhow::bail!("cannot build malformed NexusValue witness");
+            anyhow::bail!("cannot build malformed NexusValue");
         }
         match value {
             NexusValue::Object { id } => {
@@ -344,30 +344,38 @@ impl NexusPtbBuilder {
                 self.call_target(primitives::data::inline_data_value_target, vec![bytes])
             }
             NexusValue::WalrusData {
-                storage_key,
+                blob_id,
                 content_digest,
             } => {
-                let storage_key = self.byte_vector(storage_key)?;
+                let blob_id = self.byte_vector(blob_id)?;
                 let content_digest = self.byte_vector(content_digest)?;
                 self.call_target(
                     primitives::data::walrus_data_value_target,
-                    vec![storage_key, content_digest],
+                    vec![blob_id, content_digest],
                 )
             }
         }
     }
 
-    /// Build a schema port's exact ordered `NexusValue` witness group.
-    pub(crate) fn nexus_value_witnesses(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
+    /// Build one direct generated `primitives::data::NexusData` value.
+    pub(crate) fn nexus_data(&mut self, value: &NexusData) -> anyhow::Result<Argument> {
         if !value.is_well_formed() {
-            anyhow::bail!("cannot build malformed NexusData witnesses");
+            anyhow::bail!("cannot build malformed NexusData");
         }
-        let values = value.values()?;
-        let values = values
-            .iter()
-            .map(|value| self.nexus_value(value))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(self.move_vector::<NexusValue>(values)?)
+        match value {
+            NexusData::One { value } => {
+                let value = self.nexus_value(value)?;
+                self.call_target(primitives::data::one_target, vec![value])
+            }
+            NexusData::Many { values } => {
+                let values = values
+                    .iter()
+                    .map(|value| self.nexus_value(value))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let values = self.move_vector::<NexusValue>(values)?;
+                self.call_target(primitives::data::many_target, vec![values])
+            }
+        }
     }
 
     /// Build a generated immutable `interface::meta_schema::MetaSchema`.
@@ -654,7 +662,7 @@ mod tests {
 
     fn nexus_value_constructors(value: &NexusData) -> Vec<String> {
         let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
-        transaction.nexus_value_witnesses(value).unwrap();
+        transaction.nexus_data(value).unwrap();
         transaction
             .finish()
             .commands
@@ -682,33 +690,36 @@ mod tests {
     }
 
     #[test]
-    fn nexus_data_one_builds_one_inline_witness() {
+    fn nexus_data_one_builds_direct_inline_value() {
         let value = NexusData::inline_data(b"one").expect("fixture is bounded");
 
-        assert_eq!(nexus_value_constructors(&value), ["inline_data_value"]);
+        assert_eq!(
+            nexus_value_constructors(&value),
+            ["inline_data_value", "one"]
+        );
     }
 
     #[test]
-    fn nexus_data_many_builds_each_inline_witness() {
+    fn nexus_data_many_builds_direct_inline_values() {
         let value = NexusData::inline_data_many([b"one".to_vec(), b"two".to_vec()])
             .expect("fixture shape matches");
 
         assert_eq!(
             nexus_value_constructors(&value),
-            ["inline_data_value", "inline_data_value"]
+            ["inline_data_value", "inline_data_value", "many"]
         );
     }
 
     #[test]
     fn nexus_data_empty_many_builds_no_ptb_inputs_or_commands() {
-        let value = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
+        let value = NexusData::Many { values: Vec::new() };
         let mut transaction = NexusPtbBuilder::new(Arc::new(objects()));
 
         assert!(transaction
-            .nexus_value_witnesses(&value)
+            .nexus_data(&value)
             .unwrap_err()
             .to_string()
-            .contains("cannot build malformed NexusData witnesses"));
+            .contains("cannot build malformed NexusData"));
         let transaction = transaction.finish();
         assert!(transaction.inputs.is_empty());
         assert!(transaction.commands.is_empty());
@@ -723,10 +734,10 @@ mod tests {
                 .expect("fixture is valid");
 
         transaction
-            .nexus_value_witnesses(&object)
+            .nexus_data(&object)
             .expect("typed Object should build");
         transaction
-            .nexus_value_witnesses(&walrus)
+            .nexus_data(&walrus)
             .expect("typed Walrus Data should build");
         let functions = transaction
             .finish()
@@ -746,7 +757,7 @@ mod tests {
         let value = NexusData::inline_data(vec![0; 61_440]).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }
@@ -756,7 +767,7 @@ mod tests {
         let value = NexusData::inline_data_many((0..256).map(|_| vec![0; 240])).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }
@@ -768,7 +779,7 @@ mod tests {
             NexusData::walrus_data_many((0..256).map(|_| (blob_id.to_vec(), vec![0; 32]))).unwrap();
         let mut builder = NexusPtbBuilder::new(Arc::new(objects()));
 
-        builder.nexus_value_witnesses(&value).unwrap();
+        builder.nexus_data(&value).unwrap();
 
         assert_sui_protocol_limits(&builder.finish());
     }

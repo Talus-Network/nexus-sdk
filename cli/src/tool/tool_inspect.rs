@@ -11,7 +11,7 @@ use {
     },
     nexus_sdk::{
         nexus::{client::NexusClient, tool::ToolInspection},
-        types::{ToolRef, ToolStateV2},
+        types::{ToolRef, ToolState},
     },
 };
 
@@ -36,7 +36,7 @@ pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
 pub(crate) fn inspect_tool_result_json(
     inspection: &ToolInspection,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
-    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolStateV2::reference))?;
+    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolState::reference))?;
     let tool = inspection
         .tool
         .as_ref()
@@ -278,7 +278,7 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
     Ok(())
 }
 
-fn print_tool_reference(tool: &ToolStateV2) -> AnyResult<(), NexusCliError> {
+fn print_tool_reference(tool: &ToolState) -> AnyResult<(), NexusCliError> {
     match &tool.r#ref {
         ToolRef::Http { .. } => {
             let url = tool
@@ -342,8 +342,8 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool() -> ToolStateV2 {
-        ToolStateV2 {
+    fn fixture_tool() -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(sui::types::Address::from_static("0x42")),
             fqn: ascii("xyz.taluslabs.example@1"),

@@ -7,7 +7,7 @@ use {
                 OccurrenceRecord,
                 OccurrenceRecordKey,
                 TaskController as MoveTaskController,
-                TaskStateV2 as MoveTaskStateV2,
+                TaskStateV1 as MoveTaskStateV1,
                 TaskStatus as MoveTaskStatus,
             },
             workflow::execution::DAGExecution,
@@ -316,7 +316,7 @@ impl TaskHandle {
 }
 
 fn task_snapshot(
-    task: &crate::nexus::crawler::Response<MoveTaskStateV2>,
+    task: &crate::nexus::crawler::Response<MoveTaskStateV1>,
 ) -> Result<TaskSnapshot, SchedulerError> {
     let task_id = task.object_id;
     let controller = match task.data.controller {

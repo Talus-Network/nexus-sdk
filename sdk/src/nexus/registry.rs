@@ -12,7 +12,7 @@ use {
             sui_framework::object::ID,
             tool::{
                 external_verifier::ExternalVerifier,
-                tool_registry::{ToolRegistry, ToolRegistryStateV2},
+                tool_registry::{ToolRegistry, ToolRegistryState},
             },
         },
         nexus::crawler::Crawler,
@@ -111,7 +111,7 @@ pub async fn fetch_current_tool_registration(
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<CurrentToolRegistration>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV2>(*registry_ref.object_id(), 2)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
 
     if registry.data.registered_tools.size() == 0 {
@@ -160,7 +160,7 @@ pub async fn fetch_tool_invocation_cost(
     tool_fqn: &ToolFqn,
 ) -> anyhow::Result<Option<u64>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV2>(*registry_ref.object_id(), 2)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
     if registry.data.invocation_costs_mist.size() == 0 {
         return Ok(None);
@@ -188,7 +188,7 @@ pub async fn fetch_external_verifier_record(
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<ExternalVerifier>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV2>(*registry_ref.object_id(), 2)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
     if registry.data.external_verifiers.size() == 0 {
         return Ok(None);
@@ -341,9 +341,9 @@ fn validate_external_verifier_function(
     if !function.type_parameters().is_empty() {
         bail!("External verifier function must not declare type parameters");
     }
-    if function.parameters().len() < 5 {
+    if function.parameters().len() < 4 {
         bail!(
-            "External verifier function must accept worksheet, result, output witnesses, auxiliary, and at least one witness object"
+            "External verifier function must accept worksheet, result, auxiliary, and at least one witness object"
         );
     }
 
@@ -365,11 +365,10 @@ fn validate_external_verifier_function(
         "TaggedOutput",
         "result",
     )?;
-    require_output_witnesses(&function.parameters()[2], objects)?;
-    require_bytes(&function.parameters()[3], "auxiliary")?;
+    require_bytes(&function.parameters()[2], "auxiliary")?;
 
-    let mut object_types = Vec::with_capacity(function.parameters().len() - 4);
-    for (index, parameter) in function.parameters()[4..].iter().enumerate() {
+    let mut object_types = Vec::with_capacity(function.parameters().len() - 3);
+    for (index, parameter) in function.parameters()[3..].iter().enumerate() {
         require_reference(parameter, Reference::Immutable, "verifier object")?;
         let object_type = signature_body_to_type_tag(
             parameter
@@ -383,7 +382,7 @@ fn validate_external_verifier_function(
     }
 
     if function.returns().len() != 1 {
-        bail!("External verifier function must return exactly one VerificationVerdictV2");
+        bail!("External verifier function must return exactly one VerificationVerdict");
     }
     let verdict = &function.returns()[0];
     require_reference(verdict, Reference::Unknown, "return value")?;
@@ -391,7 +390,7 @@ fn validate_external_verifier_function(
         verdict,
         objects.interface_type_origin_pkg_id(),
         "verifier",
-        "VerificationVerdictV2",
+        "VerificationVerdict",
         "return value",
     )?;
 
@@ -433,39 +432,6 @@ fn require_bytes(signature: &sui::grpc::OpenSignature, label: &str) -> anyhow::R
         && inner[0].r#type.and_then(|kind| Type::try_from(kind).ok()) == Some(Type::U8);
     if kind != Type::Vector || !is_u8 {
         bail!("External verifier {label} must be vector<u8>");
-    }
-    Ok(())
-}
-
-fn require_output_witnesses(
-    signature: &sui::grpc::OpenSignature,
-    objects: &NexusObjects,
-) -> anyhow::Result<()> {
-    require_reference(
-        signature,
-        sui::grpc::open_signature::Reference::Unknown,
-        "output witnesses",
-    )?;
-    let ty = signature_body_to_type_tag(
-        signature
-            .body_opt()
-            .ok_or_else(|| anyhow!("External verifier output witnesses have no type"))?,
-    )?;
-    let sui::types::TypeTag::Vector(ports) = ty else {
-        bail!("External verifier output witnesses must be vector<vector<NexusValue>>");
-    };
-    let sui::types::TypeTag::Vector(values) = *ports else {
-        bail!("External verifier output witnesses must be vector<vector<NexusValue>>");
-    };
-    let sui::types::TypeTag::Struct(value) = *values else {
-        bail!("External verifier output witnesses must be vector<vector<NexusValue>>");
-    };
-    if *value.address() != objects.primitives_type_origin_pkg_id()
-        || value.module().as_str() != "data"
-        || value.name().as_str() != "NexusValue"
-        || !value.type_params().is_empty()
-    {
-        bail!("External verifier output witnesses must be vector<vector<NexusValue>>");
     }
     Ok(())
 }
@@ -780,9 +746,9 @@ mod tests {
         registered_tools_size: u64,
         external_verifiers_id: sui::types::Address,
         external_verifiers_size: u64,
-    ) -> ToolRegistryStateV2 {
+    ) -> ToolRegistryState {
         let id = sui::types::Address::from_static;
-        ToolRegistryStateV2::new(
+        ToolRegistryState::new(
             ID::new(registry_id),
             1,
             LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
@@ -813,7 +779,7 @@ mod tests {
         let state_id = sui::types::Address::from_static("0x205");
         let registry = ToolRegistry::new(
             UID::new(*registry_ref.object_id()),
-            Versioned::new(UID::new(state_id), 2),
+            Versioned::new(UID::new(state_id), 1),
         );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -826,7 +792,7 @@ mod tests {
         sui_mocks::grpc::mock_versioned_payload(
             &mut ledger_service_mock,
             state_id,
-            2,
+            1,
             registry_state,
         );
 
@@ -884,7 +850,7 @@ mod tests {
         let state_id = sui::types::Address::from_static("0x308");
         let registry = ToolRegistry::new(
             UID::new(*registry_ref.object_id()),
-            Versioned::new(UID::new(state_id), 2),
+            Versioned::new(UID::new(state_id), 1),
         );
         let registry_state = tool_registry_fixture(
             *registry_ref.object_id(),
@@ -907,7 +873,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&registry).unwrap(),
         );
-        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 2, registry_state);
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 1, registry_state);
         sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service,
             sui_mocks::object_ref_for_id(field_id),
@@ -1193,24 +1159,6 @@ mod tests {
         )
     }
 
-    fn output_witnesses(objects: &NexusObjects) -> sui::grpc::OpenSignature {
-        let value = datatype(
-            objects.primitives_type_origin_pkg_id(),
-            "data",
-            "NexusValue",
-        )
-        .body
-        .expect("datatype helper has a body");
-        let values = sui::grpc::OpenSignatureBody::default()
-            .with_type(Type::Vector)
-            .with_type_parameter_instantiation(vec![value]);
-        sui::grpc::OpenSignature::default().with_body(
-            sui::grpc::OpenSignatureBody::default()
-                .with_type(Type::Vector)
-                .with_type_parameter_instantiation(vec![values]),
-        )
-    }
-
     fn valid_external_function(objects: &NexusObjects) -> sui::grpc::FunctionDescriptor {
         let worksheet = datatype(
             objects.primitives_type_origin_pkg_id(),
@@ -1223,7 +1171,7 @@ mod tests {
         let verdict = datatype(
             objects.interface_type_origin_pkg_id(),
             "verifier",
-            "VerificationVerdictV2",
+            "VerificationVerdict",
         );
         let result = datatype(
             objects.primitives_type_origin_pkg_id(),
@@ -1233,13 +1181,7 @@ mod tests {
         sui::grpc::FunctionDescriptor::default()
             .with_name("verify")
             .with_visibility(Visibility::Public)
-            .with_parameters(vec![
-                worksheet,
-                result,
-                output_witnesses(objects),
-                bytes(),
-                witness,
-            ])
+            .with_parameters(vec![worksheet, result, bytes(), witness])
             .with_returns(vec![verdict])
     }
 
@@ -1279,7 +1221,7 @@ mod tests {
     fn external_verifier_abi_rejects_mutable_objects_and_wrong_return() {
         let objects = sui_mocks::mock_nexus_objects();
         let mut mutable_object = valid_external_function(&objects);
-        mutable_object.parameters[4] = mutable_object.parameters[4]
+        mutable_object.parameters[3] = mutable_object.parameters[3]
             .clone()
             .with_reference(Reference::Mutable);
         assert!(
@@ -1300,7 +1242,7 @@ mod tests {
     fn external_verifier_abi_rejects_invalid_fixed_parameters() {
         let objects = sui_mocks::mock_nexus_objects();
 
-        let too_short = valid_external_function(&objects).with_parameters(vec![bytes(); 4]);
+        let too_short = valid_external_function(&objects).with_parameters(vec![bytes(); 3]);
         assert!(validate_external_verifier_function(&too_short, &objects)
             .unwrap_err()
             .to_string()
@@ -1337,17 +1279,8 @@ mod tests {
             .to_string()
             .contains("result has the wrong type"));
 
-        let mut wrong_output_witnesses = valid_external_function(&objects);
-        wrong_output_witnesses.parameters[2] = bytes();
-        assert!(
-            validate_external_verifier_function(&wrong_output_witnesses, &objects)
-                .unwrap_err()
-                .to_string()
-                .contains("output witnesses must be vector<vector<NexusValue>>")
-        );
-
         let mut missing_auxiliary_type = valid_external_function(&objects);
-        missing_auxiliary_type.parameters[3] = sui::grpc::OpenSignature::default();
+        missing_auxiliary_type.parameters[2] = sui::grpc::OpenSignature::default();
         assert!(
             validate_external_verifier_function(&missing_auxiliary_type, &objects)
                 .unwrap_err()
@@ -1361,7 +1294,7 @@ mod tests {
         let objects = sui_mocks::mock_nexus_objects();
 
         let mut missing_object_type = valid_external_function(&objects);
-        missing_object_type.parameters[4] =
+        missing_object_type.parameters[3] =
             sui::grpc::OpenSignature::default().with_reference(Reference::Immutable);
         assert!(
             validate_external_verifier_function(&missing_object_type, &objects)
@@ -1371,7 +1304,7 @@ mod tests {
         );
 
         let mut primitive_object = valid_external_function(&objects);
-        primitive_object.parameters[4] = sui::grpc::OpenSignature::default()
+        primitive_object.parameters[3] = sui::grpc::OpenSignature::default()
             .with_reference(Reference::Immutable)
             .with_body(sui::grpc::OpenSignatureBody::default().with_type(Type::U64));
         assert!(

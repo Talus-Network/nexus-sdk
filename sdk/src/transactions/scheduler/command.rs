@@ -164,7 +164,7 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_default_task_v2_target,
+                    scheduler_binding::new_default_task_target,
                     vec![
                         registry,
                         leader_registry,
@@ -198,7 +198,7 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_user_task_v2_target,
+                    scheduler_binding::new_user_task_target,
                     vec![
                         registry,
                         leader_registry,
@@ -227,7 +227,7 @@ pub(super) fn create_unshared_task(
                 .map_err(SchedulerError::transaction)?;
             let result = transaction
                 .call_target(
-                    scheduler_binding::new_agent_task_v2_target,
+                    scheduler_binding::new_agent_task_target,
                     vec![
                         registry,
                         leader_registry,
@@ -895,11 +895,11 @@ mod tests {
 
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
         const STRUCTURAL_CALLS: &[&str] = &[
-            "new_default_agent_execution_config_v2",
-            "new_agent_execution_config_v2",
-            "new_default_task_v2",
-            "new_user_task_v2",
-            "new_agent_task_v2",
+            "new_default_agent_execution_config",
+            "new_agent_execution_config",
+            "new_default_task",
+            "new_user_task",
+            "new_agent_task",
             "schedule",
             "schedule_as_agent",
             "set_recurrence",
@@ -922,8 +922,8 @@ mod tests {
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_default_agent_execution_config_v2",
-                "new_default_task_v2",
+                "new_default_agent_execution_config",
+                "new_default_task",
                 "schedule",
                 "schedule",
                 "set_recurrence",
@@ -941,13 +941,13 @@ mod tests {
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_default_agent_execution_config_v2",
-                "new_default_task_v2",
+                "new_default_agent_execution_config",
+                "new_default_task",
                 "share",
             ]
         );
         let constructor = move_calls(&transaction)
-            .find(|call| call.function.as_str() == "new_default_task_v2")
+            .find(|call| call.function.as_str() == "new_default_task")
             .expect("default Task constructor");
         assert_shared_argument(
             &transaction,
@@ -1004,8 +1004,8 @@ mod tests {
         assert_eq!(
             scheduler_sequence(&transaction),
             [
-                "new_agent_execution_config_v2",
-                "new_agent_task_v2",
+                "new_agent_execution_config",
+                "new_agent_task",
                 "schedule_as_agent",
                 "share",
             ]
@@ -1022,7 +1022,7 @@ mod tests {
             .position(|command| {
                 matches!(
                     command,
-                    Command::MoveCall(call) if call.function.as_str() == "new_default_task_v2"
+                    Command::MoveCall(call) if call.function.as_str() == "new_default_task"
                 )
             })
             .expect("Task constructor");
