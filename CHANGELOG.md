@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
 - Generated primitives bindings now expose the single validation-independent `is_many` Move target required across package boundaries.
@@ -30,6 +31,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
 - Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Updated Warp to 0.4.3 and migrated signed response bodies and custom TLS serving to the HTTP/Hyper 1 APIs.
 
 ## [`2.0.0-rc.7`] - 2026-08-18
 

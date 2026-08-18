@@ -386,7 +386,7 @@ fn response(
     is_result: bool,
     signature: Option<&EncodedResponseHeaders>,
 ) -> warp::reply::Response {
-    let mut response = warp::reply::Response::new(warp::hyper::Body::from(body));
+    let mut response = warp::reply::Response::new(body.into());
     *response.status_mut() = status;
     response.headers_mut().insert(
         "content-type",
@@ -427,6 +427,7 @@ mod tests {
     use {
         super::*,
         ed25519_dalek::SigningKey,
+        http_body_util::BodyExt as _,
         nexus_sdk::signed_http::v3::wire::{
             sign_request,
             verify_response,
@@ -438,7 +439,6 @@ mod tests {
             HEADER_TOOL_SIGNATURE,
         },
         std::sync::atomic::{AtomicUsize, Ordering},
-        warp::hyper::body::to_bytes,
     };
 
     fn allowed_leaders_file(leader_id: &str, kid: u64, key: &SigningKey) -> AllowedLeadersFileV1 {
@@ -751,7 +751,7 @@ mod tests {
             )
             .await;
             assert_eq!(response.status(), StatusCode::CONFLICT);
-            let body = to_bytes(response.into_body()).await.unwrap();
+            let body = response.into_body().collect().await.unwrap().to_bytes();
             assert_eq!(
                 serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
                 json!({
@@ -779,7 +779,10 @@ mod tests {
             response.headers()["content-type"],
             CANONICAL_TOOL_RESPONSE_CONTENT_TYPE
         );
-        assert_eq!(to_bytes(response.into_body()).await.unwrap(), body);
+        assert_eq!(
+            response.into_body().collect().await.unwrap().to_bytes(),
+            body
+        );
     }
 
     #[tokio::test]
@@ -822,7 +825,7 @@ mod tests {
             .to_str()
             .unwrap()
             .to_owned();
-        let body = to_bytes(response.into_body()).await.unwrap();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
         verify_response(
             ResponseHeadersRef {
                 signature_version: Some(SIGNATURE_VERSION_V3),
