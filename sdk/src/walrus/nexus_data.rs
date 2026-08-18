@@ -122,30 +122,28 @@ impl NexusData {
             .collect::<Vec<_>>();
         let mut mismatch = None;
         for (index, value) in source_values.into_iter().enumerate() {
-            match value {
-                NexusValue::WalrusData {
-                    blob_id,
-                    content_digest,
-                } => {
-                    let blob_id = blob_id_from_bytes(&blob_id)
-                        .map_err(|source| WalrusFetchError::Unavailable { source })?;
-                    let max_bytes = resolved_blob_byte_limit(&resolved, index, many)
-                        .map_err(|source| WalrusFetchError::Unavailable { source })?;
-                    let bytes = client
-                        .as_ref()
-                        .expect("Walrus client exists when a reference is present")
-                        .read_file_bounded(&blob_id, max_bytes)
-                        .await
-                        .map_err(|source| WalrusFetchError::Unavailable {
-                            source: source.into(),
-                        })?;
-                    let actual_digest: [u8; 32] = Sha256::digest(&bytes).into();
-                    if actual_digest.as_slice() != content_digest && mismatch.is_none() {
-                        mismatch = Some(WalrusContentDigestMismatch { blob_id });
-                    }
-                    resolved[index] = NexusValue::InlineData { bytes };
+            if let NexusValue::WalrusData {
+                blob_id,
+                content_digest,
+            } = value
+            {
+                let blob_id = blob_id_from_bytes(&blob_id)
+                    .map_err(|source| WalrusFetchError::Unavailable { source })?;
+                let max_bytes = resolved_blob_byte_limit(&resolved, index, many)
+                    .map_err(|source| WalrusFetchError::Unavailable { source })?;
+                let bytes = client
+                    .as_ref()
+                    .expect("Walrus client exists when a reference is present")
+                    .read_file_bounded(&blob_id, max_bytes)
+                    .await
+                    .map_err(|source| WalrusFetchError::Unavailable {
+                        source: source.into(),
+                    })?;
+                let actual_digest: [u8; 32] = Sha256::digest(&bytes).into();
+                if actual_digest.as_slice() != content_digest && mismatch.is_none() {
+                    mismatch = Some(WalrusContentDigestMismatch { blob_id });
                 }
-                _ => {}
+                resolved[index] = NexusValue::InlineData { bytes };
             }
         }
         let resolved = NexusData::from_values(resolved, many)

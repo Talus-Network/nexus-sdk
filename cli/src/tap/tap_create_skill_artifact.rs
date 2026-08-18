@@ -112,7 +112,7 @@ async fn fetch_input_commitment_with_client(
 ) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
     let dag = crawler
-        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGState>(dag_id, 2)
+        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGState>(dag_id, 1)
         .await
         .map_err(|error| {
             NexusCliError::Any(anyhow!(
@@ -307,7 +307,7 @@ mod tests {
         let dag_id = sui::types::Address::from_static("0xd");
         let dag_ref = sui_mocks::object_ref_for_id(dag_id);
         let state_id = sui::types::Address::from_static("0xe");
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
         let state = DAGState::new(
             1,
             LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
@@ -326,7 +326,7 @@ mod tests {
             &dag,
             nexus_sdk::move_bindings::struct_tag::<DAG>(&nexus_objects),
         );
-        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 2, state);
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, state);
         sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
         sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 1);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
