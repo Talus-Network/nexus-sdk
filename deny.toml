@@ -81,6 +81,7 @@ ignore = [
     { id = "RUSTSEC-2026-0097", reason = "owner=Talus Engineering; scope=rand 0.7 enters through fail in the Sui Move VM graph; review=2026-08-23; remediation=update the Sui Move VM boundary so fail no longer resolves an affected rand release" },
     { id = "RUSTSEC-2026-0194", reason = "owner=Talus Engineering; scope=quick-xml 0.39 enters through object_store in the optional Sui Move publishing graph; review=2026-08-23; remediation=update the Sui and object_store boundary to a release that allows quick-xml 0.41" },
     { id = "RUSTSEC-2026-0195", reason = "owner=Talus Engineering; scope=quick-xml 0.39 enters through object_store in the optional Sui Move publishing graph; review=2026-08-23; remediation=update the Sui and object_store boundary to a release that allows quick-xml 0.41" },
+    { id = "RUSTSEC-2026-0258", reason = "owner=Talus Engineering; scope=h2 0.3 enters through warp 0.3 in nexus-toolkit and nexus-cli; review=2026-09-15; remediation=upgrade the warp stack to a release using h2 0.4.16 or newer" },
 ]
 
 # This section is considered when running `cargo deny check licenses`

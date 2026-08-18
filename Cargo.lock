@@ -3242,9 +3242,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.14"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3557,7 +3557,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
- "h2 0.4.14",
+ "h2 0.4.16",
  "http 1.4.1",
  "http-body 1.0.1",
  "httparse",
@@ -5831,7 +5831,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-cli"
-version = "2.0.0-rc.6"
+version = "2.0.0-rc.7"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -5873,7 +5873,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-sdk"
-version = "2.0.0-rc.6"
+version = "2.0.0-rc.7"
 dependencies = [
  "allocative",
  "anyhow",
@@ -5939,7 +5939,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-toolkit"
-version = "2.0.0-rc.6"
+version = "2.0.0-rc.7"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -7587,7 +7587,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.4.14",
+ "h2 0.4.16",
  "http 1.4.1",
  "http-body 1.0.1",
  "http-body-util",
@@ -7630,7 +7630,7 @@ dependencies = [
  "bytes",
  "encoding_rs",
  "futures-core",
- "h2 0.4.14",
+ "h2 0.4.16",
  "http 1.4.1",
  "http-body 1.0.1",
  "http-body-util",
@@ -10593,7 +10593,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.14",
+ "h2 0.4.16",
  "http 1.4.1",
  "http-body 1.0.1",
  "http-body-util",
