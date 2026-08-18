@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Fixed
+
+- Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
+- Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
+
 #### Changed
 
 - Remove usage of V2 for clean LTS version.
@@ -18,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
 - Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
+
+### `nexus-cli`
+
+#### Fixed
+
+- Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
+- Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
 
 ## [`2.0.0-rc.6`] - 2026-08-17
 
