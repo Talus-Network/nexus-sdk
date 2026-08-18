@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## Unreleased
 
+### `nexus-cli`
+
+#### Added
+
+- Implement onchain tool validation.
+
 ## [`2.0.0-rc.7`] - 2026-08-18
 
 ### `nexus-sdk`

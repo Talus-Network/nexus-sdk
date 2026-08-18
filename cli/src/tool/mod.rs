@@ -26,7 +26,12 @@ use {
     tool_register_onchain::register_onchain_tool,
     tool_set_invocation_cost::*,
     tool_unregister::*,
-    tool_validate::{output_validation, validate_off_chain_tool, validate_on_chain_tool},
+    tool_validate::{
+        output_on_chain_validation,
+        output_validation,
+        validate_off_chain_tool,
+        validate_on_chain_tool,
+    },
 };
 
 #[derive(Subcommand)]
@@ -338,9 +343,10 @@ pub(crate) enum ValidateCommand {
         #[arg(
             long = "ident",
             short = 'i',
-            help = "The identifier of the onchain tool to validate"
+            help = "The FQN of the registered onchain tool to validate",
+            value_name = "FQN"
         )]
-        ident: String,
+        ident: ToolFqn,
     },
 }
 
@@ -535,8 +541,8 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 output_validation(&meta)
             }
             ValidateCommand::Onchain { ident } => {
-                let meta = validate_on_chain_tool(ident).await?;
-                output_validation(&meta)
+                let tool = validate_on_chain_tool(ident).await?;
+                output_on_chain_validation(&tool)
             }
         },
 
@@ -707,6 +713,19 @@ mod tests {
             "--tool-witness-id",
             "0x2",
             "--workflow-authorization-cap-first",
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn onchain_validation_rejects_invalid_tool_fqn() {
+        assert!(crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "validate",
+            "onchain",
+            "--ident",
+            "not-a-tool-fqn",
         ])
         .is_err());
     }
