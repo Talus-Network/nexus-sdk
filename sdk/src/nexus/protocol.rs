@@ -46,11 +46,9 @@ use {
 
 /// Newest Nexus protocol version whose behavior this SDK understands.
 ///
-/// The repository defines the initial consumer for protocol version one.
-/// The `upgrade_test` feature raises this boundary only for the version two release
-/// fixture.
+/// The release consumer supports protocol version two.
 #[cfg(not(feature = "upgrade_test"))]
-pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 1;
+pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 2;
 
 /// Protocol support boundary used by the version two release fixture.
 #[cfg(feature = "upgrade_test")]
@@ -849,12 +847,6 @@ mod tests {
         },
     };
 
-    #[cfg(not(feature = "upgrade_test"))]
-    #[test]
-    fn initial_consumer_supports_protocol_version_one() {
-        assert_eq!(MAX_SUPPORTED_PROTOCOL_VERSION, 1);
-    }
-
     #[cfg(feature = "upgrade_test")]
     #[test]
     fn upgrade_fixture_consumer_supports_protocol_version_two() {
@@ -1183,6 +1175,32 @@ mod tests {
         let object = resolve_shared_object(&valid, "Registry", &info).unwrap();
         assert_eq!(*object.object_id(), object_id);
         assert_eq!(object.version(), 3);
+    }
+
+    #[tokio::test]
+    async fn resolver_does_not_reject_protocol_version_two_as_unsupported() {
+        let protocol_id = address("0x70");
+        let protocol = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
+        let client = Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let extras = ProtocolExtras {
+            priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
+                address("0x71"),
+                1,
+                sui::types::Digest::ZERO,
+            ),
+            us_token: UsTokenConfig::new(address("0x72")),
+        };
+        let resolver = ProtocolResolver::new(protocol.object_ref(), client).with_extras(extras);
+
+        let error = resolver
+            .resolve_config_inner(protocol, &config(2))
+            .await
+            .unwrap_err();
+
+        assert!(!matches!(
+            error,
+            NexusError::UnsupportedProtocolVersion { .. }
+        ));
     }
 
     #[tokio::test]
