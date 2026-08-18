@@ -9,11 +9,6 @@ use crate::move_bindings::{
     tool::tool_cashier as tool_cashier_move,
     workflow::execution as execution_move,
 };
-#[cfg(feature = "nexus")]
-use {
-    crate::sui::traits::FieldMaskUtil as _,
-    std::{collections::BTreeMap, sync::Arc},
-};
 use {
     crate::{
         move_bindings::{
@@ -28,10 +23,18 @@ use {
             talus::us::US,
         },
         sui,
-        types::{DatatypeKey, DefaultDagExecutorTarget, NexusPackages, PackageVersion},
+        types::{DefaultDagExecutorTarget, NexusPackages},
     },
     serde::{Deserialize, Serialize},
     sui_move::{MoveStruct, MoveType},
+};
+#[cfg(feature = "nexus")]
+use {
+    crate::{
+        sui::traits::FieldMaskUtil as _,
+        types::{DatatypeKey, PackageVersion},
+    },
+    std::{collections::BTreeMap, sync::Arc},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

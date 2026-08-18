@@ -134,6 +134,10 @@ pub(super) fn create_unshared_task(
         return Err(ScheduleError::ZeroOccurrenceBudget.into());
     }
 
+    let leader_registry_ref = transaction.objects().leader_registry.clone();
+    let leader_registry = transaction
+        .shared_object(&leader_registry_ref, false)
+        .map_err(SchedulerError::transaction)?;
     let registry_ref = transaction.objects().agent_registry.clone();
     let registry = transaction
         .shared_object(&registry_ref, true)
@@ -143,7 +147,6 @@ pub(super) fn create_unshared_task(
         .arg(&task.occurrence_budget_mist)
         .map_err(SchedulerError::transaction)?;
     let failure_policy = failure_policy_arg(transaction, task.failure_policy)?;
-
     match (&task.operation, &task.funding, &task.agent) {
         (
             TaskOperation::DefaultDag { .. },
@@ -164,6 +167,7 @@ pub(super) fn create_unshared_task(
                     scheduler_binding::new_default_task_target,
                     vec![
                         registry,
+                        leader_registry,
                         execution,
                         prepayment,
                         refund_recipient,
@@ -197,6 +201,7 @@ pub(super) fn create_unshared_task(
                     scheduler_binding::new_user_task_target,
                     vec![
                         registry,
+                        leader_registry,
                         agent_argument,
                         execution,
                         prepayment,
@@ -225,6 +230,7 @@ pub(super) fn create_unshared_task(
                     scheduler_binding::new_agent_task_target,
                     vec![
                         registry,
+                        leader_registry,
                         agent_argument,
                         execution,
                         prepay_amount_mist,
@@ -870,6 +876,23 @@ mod tests {
         u64::from_le_bytes(bytes.as_slice().try_into().expect("u64 input"))
     }
 
+    fn assert_shared_argument(
+        transaction: &ProgrammableTransaction,
+        argument: Argument,
+        expected: &sui::types::ObjectReference,
+        expected_mutable: bool,
+    ) {
+        let Argument::Input(index) = argument else {
+            panic!("expected input argument");
+        };
+        let Input::Shared(shared) = &transaction.inputs[usize::from(index)] else {
+            panic!("expected shared object input");
+        };
+        assert_eq!(shared.object_id(), *expected.object_id());
+        assert_eq!(shared.version(), expected.version());
+        assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
     fn scheduler_sequence(transaction: &ProgrammableTransaction) -> Vec<&str> {
         const STRUCTURAL_CALLS: &[&str] = &[
             "new_default_agent_execution_config",
@@ -911,8 +934,9 @@ mod tests {
 
     #[test]
     fn empty_creation_is_composable() {
-        let transaction = create_task_ptb(&mock_nexus_objects(), &task(), address("0x46"))
-            .expect("empty Task compiles");
+        let objects = mock_nexus_objects();
+        let transaction =
+            create_task_ptb(&objects, &task(), address("0x46")).expect("empty Task compiles");
 
         assert_eq!(
             scheduler_sequence(&transaction),
@@ -921,6 +945,15 @@ mod tests {
                 "new_default_task",
                 "share",
             ]
+        );
+        let constructor = move_calls(&transaction)
+            .find(|call| call.function.as_str() == "new_default_task")
+            .expect("default Task constructor");
+        assert_shared_argument(
+            &transaction,
+            constructor.arguments[1],
+            &objects.leader_registry,
+            false,
         );
     }
 

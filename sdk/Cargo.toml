@@ -20,8 +20,7 @@ required-features = ["binding_codegen"]
 [features]
 default = ["tool_fqn"]
 
-# Enables protocol version two support only for the end to end upgrade fixture.
-# Released consumers use the protocol version one boundary by default.
+# Marker feature used by the end to end upgrade fixture.
 upgrade_test = []
 
 # Tool FQN feature enables the use of the `ToolFqn` struct and `fqn!` macro.
@@ -36,7 +35,7 @@ signed_http = ["base64", "serde_json", "sha2", "hex", "thiserror", "ed25519-dale
 dag = ["types", "serde_json", "petgraph"]
 
 # On-chain tool schema generation by introspecting published Move modules.
-onchain_schema_gen = ["types", "sui_types", "serde_json", "tokio"]
+onchain_schema_gen = ["types", "sui_types", "serde_json", "tokio", "convert_case"]
 
 # Sui Types feature gives access to the re-exported Sui types.
 sui_types = [
@@ -77,11 +76,10 @@ types = [
     "sui-move",
     "sui-move-call",
     "sui-move-ptb",
-    "enum_dispatch",
     "zeroize",
     "bcs",
     "hex",
-    "jsonschema",
+    "base64",
     "serde_json",
     "sha2",
 ]
@@ -116,9 +114,8 @@ nexus = [
     "tokio",
 ]
 
-# Test utils feature enables the use of the `test_utils` module. Also adds
-# tempfile, tokio-retry, sui_move_build, sui_package_management and
-# testcontainers-modules as dependencies.
+# Test utils feature enables the use of the `test_utils` module. It includes
+# Move package compilation, container fixtures and mock dependencies.
 test_utils = [
     "types",
     "sui-transaction-builder",
@@ -127,8 +124,6 @@ test_utils = [
     "tokio-retry",
     "tokio-stream",
     "sui_move_build",
-    "sui_package_management",
-    "move_package",
     "move_package_alt",
     "portpicker",
     "testcontainers",
@@ -155,11 +150,9 @@ full = [
 
 [dependencies]
 anyhow.workspace = true
-allocative.workspace = true
 chrono.workspace = true
 serde.workspace = true
 
-# === Optional deps for features ===
 [dependencies.base64]
 workspace = true
 optional = true
@@ -168,16 +161,12 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.enum_dispatch]
+[dependencies.convert_case]
 workspace = true
 optional = true
 
 [dependencies.futures]
 workspace = true
-optional = true
-
-[dependencies.hmac]
-version = "0.12"
 optional = true
 
 [dependencies.http]
@@ -186,10 +175,6 @@ optional = true
 
 [dependencies.hex]
 version = "0.4"
-optional = true
-
-[dependencies.jsonschema]
-workspace = true
 optional = true
 
 [dependencies.lazy_static]
@@ -212,36 +197,13 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.rand_core]
-version = "0.6.4"
-optional = true
-
 [dependencies.sha2]
 version = "0.10"
-optional = true
-
-[dependencies.subtle]
-version = "2"
-optional = true
-
-[dependencies.x25519-dalek]
-version = "2"
-features = ["zeroize"]
-optional = true
-
-[dependencies.xeddsa]
-version = "1.0.2"
-default-features = false
-features = ["xed25519"]
 optional = true
 
 [dependencies.zeroize]
 workspace = true
 features = ["zeroize_derive"]
-optional = true
-
-[dependencies.ciborium]
-version = "0.2"
 optional = true
 
 # === Optional deps ===
@@ -310,10 +272,6 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.tracing]
-workspace = true
-optional = true
-
 # === Move binding ===
 [dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
@@ -357,25 +315,13 @@ optional = true
 
 [dependencies.sui_move_build]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.76.0"
+tag = "testnet-v1.77.2"
 package = "sui-move-build"
-optional = true
-
-[dependencies.sui_package_management]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.76.0"
-package = "sui-package-management"
-optional = true
-
-[dependencies.move_package]
-git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.76.0"
-package = "move-package"
 optional = true
 
 [dependencies.move_package_alt]
 git = "https://github.com/MystenLabs/sui"
-tag = "testnet-v1.76.0"
+tag = "testnet-v1.77.2"
 package = "move-package-alt"
 optional = true
 
@@ -413,11 +359,3 @@ toml.workspace = true
 [build-dependencies.sui-move-codegen]
 git = "https://github.com/Talus-Network/move-binding"
 rev = "2d42967137b760b8b133625565255e12f5022cc1"
-
-[dependencies.blake3]
-version = "1.3"
-optional = true
-
-[dependencies.lru]
-version = "0.16.3"
-optional = true

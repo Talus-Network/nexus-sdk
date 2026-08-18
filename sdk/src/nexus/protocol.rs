@@ -12,7 +12,10 @@ use {
                 ProtocolVersionActivatedV1Event,
                 SharedObjectInfo,
             },
-            registry::leader::{LeaderRegistry, LeaderRegistryStateV1},
+            registry::{
+                agent_registry::DefaultDagExecutorFieldKey,
+                leader::{LeaderRegistry, LeaderRegistryStateV1},
+            },
         },
         nexus::{
             crawler::{Crawler, Response},
@@ -43,11 +46,9 @@ use {
 
 /// Newest Nexus protocol version whose behavior this SDK understands.
 ///
-/// The repository defines the initial consumer for protocol version one.
-/// The `upgrade_test` feature raises this boundary only for the version two release
-/// fixture.
+/// The release consumer supports protocol version two.
 #[cfg(not(feature = "upgrade_test"))]
-pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 1;
+pub const MAX_SUPPORTED_PROTOCOL_VERSION: u64 = 2;
 
 /// Protocol support boundary used by the version two release fixture.
 #[cfg(feature = "upgrade_test")]
@@ -230,14 +231,17 @@ impl ProtocolResolver {
             &config.shared_objects.contents[3].value,
         )
         .await?;
-        let default_dag_executor =
-            tap::fetch_default_dag_executor(&crawler, *refs.agent_registry.object_id())
-                .await
-                .map_err(NexusError::Rpc)?
-                .ok_or_else(|| {
-                    protocol_error("Configured AgentRegistry has no default DAG executor")
-                })?
-                .target();
+        let default_dag_executor = tap::fetch_default_dag_executor(
+            &crawler,
+            *refs.agent_registry.object_id(),
+            &crate::move_bindings::registry_type_tag::<DefaultDagExecutorFieldKey>(
+                &packages.registry,
+            ),
+        )
+        .await
+        .map_err(NexusError::Rpc)?
+        .ok_or_else(|| protocol_error("Configured AgentRegistry has no default DAG executor"))?
+        .target();
         let priority_fee_vault_owner_cap =
             refresh_optional_authority(&crawler, &self.extras.priority_fee_vault_owner_cap).await?;
 
@@ -843,12 +847,6 @@ mod tests {
         },
     };
 
-    #[cfg(not(feature = "upgrade_test"))]
-    #[test]
-    fn initial_consumer_supports_protocol_version_one() {
-        assert_eq!(MAX_SUPPORTED_PROTOCOL_VERSION, 1);
-    }
-
     #[cfg(feature = "upgrade_test")]
     #[test]
     fn upgrade_fixture_consumer_supports_protocol_version_two() {
@@ -877,7 +875,7 @@ mod tests {
                 .collect(),
         );
         let shared_objects = VecMap::new(
-            ["0x21", "0x22", "0x23", "0x24", "0x25"]
+            ["0x21", "0x22", "0x23", "0x24", "0x25", "0x26"]
                 .into_iter()
                 .zip(SHARED_OBJECT_ROLES)
                 .map(|(id, (role, _))| Entry::new(role, shared(id)))
@@ -1177,6 +1175,32 @@ mod tests {
         let object = resolve_shared_object(&valid, "Registry", &info).unwrap();
         assert_eq!(*object.object_id(), object_id);
         assert_eq!(object.version(), 3);
+    }
+
+    #[tokio::test]
+    async fn resolver_does_not_reject_protocol_version_two_as_unsupported() {
+        let protocol_id = address("0x70");
+        let protocol = protocol_response(protocol_id, sui::types::Owner::Shared(1), 1);
+        let client = Arc::new(sui::grpc::client("http://127.0.0.1:1").unwrap());
+        let extras = ProtocolExtras {
+            priority_fee_vault_owner_cap: sui::types::ObjectReference::new(
+                address("0x71"),
+                1,
+                sui::types::Digest::ZERO,
+            ),
+            us_token: UsTokenConfig::new(address("0x72")),
+        };
+        let resolver = ProtocolResolver::new(protocol.object_ref(), client).with_extras(extras);
+
+        let error = resolver
+            .resolve_config_inner(protocol, &config(2))
+            .await
+            .unwrap_err();
+
+        assert!(!matches!(
+            error,
+            NexusError::UnsupportedProtocolVersion { .. }
+        ));
     }
 
     #[tokio::test]

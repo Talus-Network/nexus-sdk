@@ -1,13 +1,21 @@
 use crate::{
     move_bindings::{
+        interface::{
+            agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
+            payment::SkillPaymentPolicy,
+            version::InterfaceVersion,
+        },
         move_std::option::Option as MoveOption,
-        registry::network_auth::{
-            IdentityKey,
-            KeyBinding,
-            KeyBindingStateV1,
-            KeyRecord,
-            NetworkAuth,
-            NetworkAuthStateV1,
+        registry::{
+            agent_registry::{AgentRecord, AgentRegistry, AgentRegistryStateV1, SkillRecord},
+            network_auth::{
+                IdentityKey,
+                KeyBinding,
+                KeyBindingStateV1,
+                KeyRecord,
+                NetworkAuth,
+                NetworkAuthStateV1,
+            },
         },
         sui_framework::{
             object::{ID, UID},
@@ -58,6 +66,90 @@ pub async fn mock_nexus_client_without_coins(
         .expect("Failed to build coin-free NexusClient")
 }
 
+/// Create a coin-free client whose configured Agent registry contains one active skill.
+pub async fn mock_agent_skill_client_without_coins(
+    agent_id: sui::types::Address,
+    skill_id: u64,
+    dag_binding: SkillDagBinding,
+) -> NexusClient {
+    let nexus_objects = sui_mocks::mock_nexus_objects();
+    let registry_id = *nexus_objects.agent_registry.object_id();
+    let registry_state_id = sui::types::Address::from_static("0x9001");
+    let agents_table_id = sui::types::Address::from_static("0x9002");
+    let skills_table_id = sui::types::Address::from_static("0x9003");
+    let agent_key = ID::new(agent_id);
+    let agent_field_id = agents_table_id.derive_dynamic_child_id(
+        &<ID as sui_move::MoveType>::type_tag_static(),
+        &bcs::to_bytes(&agent_key).expect("Agent key serializes"),
+    );
+    let agent_field_ref = sui_mocks::object_ref_for_id(agent_field_id);
+    let skill_field_id = skills_table_id.derive_dynamic_child_id(
+        &sui::types::TypeTag::U64,
+        &bcs::to_bytes(&skill_id).expect("Skill key serializes"),
+    );
+    let skill_field_ref = sui_mocks::object_ref_for_id(skill_field_id);
+    let registry = AgentRegistry::new(
+        UID::new(registry_id),
+        Versioned::new(UID::new(registry_state_id), 1),
+    );
+    let registry_state = AgentRegistryStateV1::new(
+        ID::new(sui::types::Address::ZERO),
+        1,
+        MoveTable::new(agents_table_id, 1),
+    );
+    let agent_record = AgentRecord {
+        active: true,
+        skills: MoveTable::new(skills_table_id, 1),
+    };
+    let skill_record = SkillRecord {
+        description: vec![],
+        active: true,
+        dag_binding,
+        requirements: SkillRequirement {
+            input_commitment: vec![2],
+            payment_policy: SkillPaymentPolicy::default(),
+            schedule_policy: SkillSchedulePolicy::default(),
+            fixed_tools: vec![],
+        },
+        current_interface_revision: InterfaceVersion::new(1),
+        scheduled_task_count: 0,
+    };
+    let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
+    sui_mocks::grpc::mock_get_object_value_bcs_for(
+        &mut ledger_service,
+        nexus_objects.agent_registry.clone(),
+        sui::types::Owner::Shared(1),
+        &registry,
+        crate::move_bindings::struct_tag::<AgentRegistry>(&nexus_objects),
+    );
+    sui_mocks::grpc::mock_versioned_payload(
+        &mut ledger_service,
+        registry_state_id,
+        1,
+        registry_state,
+    );
+    sui_mocks::grpc::mock_get_dynamic_table_value_bcs(
+        &mut ledger_service,
+        agent_field_ref,
+        sui::types::Owner::Shared(1),
+        agent_key,
+        agent_record,
+    );
+    sui_mocks::grpc::mock_get_dynamic_table_value_bcs(
+        &mut ledger_service,
+        skill_field_ref,
+        sui::types::Owner::Shared(1),
+        skill_id,
+        skill_record,
+    );
+    let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+        ledger_service_mock: Some(ledger_service),
+        ..Default::default()
+    });
+
+    mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await
+}
+
 /// Create a read only Nexus client with one mocked allowed leader.
 pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
     let nexus_objects = sui_mocks::mock_nexus_objects();
@@ -104,9 +196,7 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
         MoveTable::new(key_table_id, 1),
     );
     let key_record = KeyRecord::new(0, vec![9; 32], 0, MoveOption::from_option(None::<u64>));
-    let field_ref = sui_mocks::mock_sui_object_ref();
     let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-    let mut state_service = sui_mocks::grpc::MockStateService::new();
     sui_mocks::grpc::mock_get_object_value_bcs_for(
         &mut ledger_service,
         nexus_objects.network_auth.clone(),
@@ -133,22 +223,15 @@ pub async fn mock_network_auth_client_without_wallet() -> NexusClient {
         1,
         binding_state,
     );
-    sui_mocks::grpc::mock_list_dynamic_fields(
-        &mut state_service,
-        vec![(active_kid, *field_ref.object_id())],
-    );
-    sui_mocks::grpc::mock_get_dynamic_table_values_bcs(
+    sui_mocks::grpc::mock_get_dynamic_field_by_key(
         &mut ledger_service,
-        vec![(
-            field_ref,
-            sui::types::Owner::Shared(1),
-            active_kid,
-            key_record,
-        )],
+        key_table_id,
+        &sui::types::TypeTag::U64,
+        active_kid,
+        key_record,
     );
     let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
         ledger_service_mock: Some(ledger_service),
-        state_service_mock: Some(state_service),
         ..Default::default()
     });
 

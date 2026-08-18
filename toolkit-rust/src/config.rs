@@ -21,13 +21,13 @@
 //! If the config includes a `signed_http` section in `required` mode, the runtime:
 //! - Rejects any `/invoke` request that does not carry valid signature headers.
 //! - Rejects any request signed by a Leader not present in the local allowlist.
-//! - Signs the exact BCS `TaggedOutput` result bytes so they can be submitted onchain.
+//! - Signs the exact ordered BCS Tool output bytes so they can be reconstructed from typed fields onchain.
 //!
 //! Operational note: if you run tools behind a gateway/proxy, ensure it forwards the `X-Nexus-Sig-*`
 //! headers. If these headers are stripped, signed HTTP will fail closed.
 //!
 //! The signature protocol itself lives in `nexus-sdk` under
-//! [`nexus_sdk::signed_http::v2`](nexus_sdk::signed_http::v2).
+//! [`nexus_sdk::signed_http::v3`](nexus_sdk::signed_http::v3).
 //!
 //! # Example config (v2)
 //! ```json
@@ -101,7 +101,7 @@ use {
     ed25519_dalek::SigningKey,
     nexus_sdk::signed_http::{
         keys::parse_ed25519_signing_key,
-        v2::wire::{AllowedLeaders, AllowedLeadersFileV1},
+        v3::wire::{AllowedLeaders, AllowedLeadersFileV1},
     },
     notify::{Event, RecommendedWatcher, RecursiveMode, Watcher},
     serde::Deserialize,

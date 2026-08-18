@@ -4,9 +4,14 @@ use {
     super::types::convert_move_type_to_schema,
     crate::sui,
     anyhow::{anyhow, bail, Result as AnyResult},
+    convert_case::{Case, Casing as _},
     serde_json::{json, Map, Value},
     std::sync::Arc,
 };
+
+fn output_variant_tag(variant_name: &str) -> String {
+    variant_name.to_case(Case::Snake)
+}
 
 /// Generate output schema by introspecting the Move module's Output enum.
 ///
@@ -84,7 +89,7 @@ pub async fn generate_output_schema(
             "fields": fields_schema
         });
 
-        schema_map.insert(variant_name.to_lowercase(), variant_schema);
+        schema_map.insert(output_variant_tag(variant_name), variant_schema);
     }
 
     let schema_json = Value::Object(schema_map);
@@ -96,6 +101,11 @@ pub async fn generate_output_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_variant_tag_preserves_pascal_case_word_boundaries() {
+        assert_eq!(output_variant_tag("LargeIncrement"), "large_increment");
+    }
 
     #[tokio::test]
     #[cfg(feature = "test_utils")]
@@ -188,10 +198,10 @@ mod tests {
         let err_fields = err_variant["fields"].as_object().unwrap();
         assert_eq!(err_fields["reason"]["type"], "string");
 
-        // Check "largeincrement" variant (lowercase).
+        // Check "large_increment" variant (snake case).
         let large_variant = schema
-            .get("largeincrement")
-            .expect("Schema should have 'largeincrement' variant");
+            .get("large_increment")
+            .expect("Schema should have 'large_increment' variant");
         assert_eq!(large_variant["type"], "variant");
         assert!(large_variant["description"]
             .as_str()

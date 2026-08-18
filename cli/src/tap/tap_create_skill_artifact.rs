@@ -112,9 +112,7 @@ async fn fetch_input_commitment_with_client(
 ) -> AnyResult<Vec<u8>, NexusCliError> {
     let crawler = nexus_client.crawler();
     let dag = crawler
-        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGStateV1>(
-            dag_id, 1,
-        )
+        .get_versioned_object::<DAG, nexus_sdk::move_bindings::interface::dag::DAGState>(dag_id, 1)
         .await
         .map_err(|error| {
             NexusCliError::Any(anyhow!(
@@ -192,7 +190,7 @@ mod tests {
         super::*,
         nexus_sdk::{
             move_bindings::{
-                interface::{dag::DAGStateV1, graph},
+                interface::{dag::DAGState, graph},
                 move_std::option::Option as MoveOption,
                 sui_framework::{
                     linked_table::LinkedTable,
@@ -310,7 +308,7 @@ mod tests {
         let dag_ref = sui_mocks::object_ref_for_id(dag_id);
         let state_id = sui::types::Address::from_static("0xe");
         let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
-        let state = DAGStateV1::new(
+        let state = DAGState::new(
             1,
             LinkedTable::new(sui::types::Address::from_static("0x10"), 0),
             VecMap { contents: vec![] },

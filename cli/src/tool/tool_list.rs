@@ -5,9 +5,9 @@ use {
         move_bindings::{
             move_std::ascii::String as MoveAsciiString,
             sui_framework::linked_table::Node as LinkedTableNode,
-            tool::tool_registry::{ToolRegistry, ToolRegistryStateV1},
+            tool::tool_registry::{ToolRegistry, ToolRegistryState},
         },
-        types::{Tool, ToolAnchor, ToolStateV1},
+        types::{Tool, ToolAnchor, ToolState},
     },
     prettytable::{row, Table},
 };
@@ -73,7 +73,7 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
 
 fn tool_list_output(
     timeouts: &HashMap<String, u64>,
-    tools: &[ToolStateV1],
+    tools: &[ToolState],
 ) -> AnyResult<Vec<ToolOutput>, NexusCliError> {
     tools
         .iter()
@@ -87,13 +87,13 @@ fn tool_list_output(
 
 async fn fetch_tools_with_client(
     nexus_client: &nexus_sdk::nexus::client::NexusClient,
-) -> AnyResult<(HashMap<String, u64>, Vec<ToolStateV1>), NexusCliError> {
+) -> AnyResult<(HashMap<String, u64>, Vec<ToolState>), NexusCliError> {
     let nexus_objects = &*nexus_client.get_nexus_objects();
     let crawler = nexus_client.crawler();
     let tool_registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(
             *nexus_objects.tool_registry.object_id(),
-            1,
+            2,
         )
         .await
         .map_err(NexusCliError::Any)?
@@ -121,7 +121,7 @@ async fn fetch_tools_with_client(
     for tool_id in tool_ids {
         tools.push(
             crawler
-                .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
+                .get_versioned_object::<ToolAnchor, ToolState>(tool_id, 2)
                 .await
                 .map_err(NexusCliError::Any)?
                 .data,
@@ -137,7 +137,7 @@ mod tests {
         super::*,
         nexus_sdk::{
             move_bindings::{
-                interface::verifier::ToolVerifierSupport,
+                interface::{meta_schema::MetaSchema, verifier::ToolVerifierSupport},
                 sui_framework::{
                     balance::Balance,
                     linked_table::LinkedTable,
@@ -152,8 +152,8 @@ mod tests {
         },
     };
 
-    fn fixture_tool() -> ToolStateV1 {
-        ToolStateV1 {
+    fn fixture_tool() -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(sui::types::Address::from_static("0x42")),
             fqn: MoveAsciiString::from("xyz.taluslabs.example@1"),
@@ -161,8 +161,7 @@ mod tests {
                 url: b"https://example.com/tool".to_vec(),
             },
             description: b"Example tool".to_vec(),
-            input_schema: br#"{"type":"object"}"#.to_vec(),
-            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+            meta_schema: MetaSchema::new(vec![], vec![]),
             verified: true,
             vault: Balance {
                 value: 25,
@@ -196,12 +195,13 @@ mod tests {
         let registry_id = *nexus_objects.tool_registry.object_id();
         let state_id = sui::types::Address::from_static("0x107");
         let registry =
-            ToolRegistry::new(UID::new(registry_id), Versioned::new(UID::new(state_id), 1));
-        let state = ToolRegistryStateV1::new(
+            ToolRegistry::new(UID::new(registry_id), Versioned::new(UID::new(state_id), 2));
+        let state = ToolRegistryState::new(
             ID::new(*nexus_objects.protocol.object_id()),
             nexus_objects.protocol_version,
             LinkedTable::<MoveAsciiString, ID>::new(sui::types::Address::from_static("0x101"), 0),
             MoveTable::<ID, bool>::new(sui::types::Address::from_static("0x102"), 0),
+            MoveTable::<ID, MetaSchema>::new(sui::types::Address::from_static("0x110"), 0),
             LinkedTable::<MoveAsciiString, u64>::new(sui::types::Address::from_static("0x103"), 0),
             MoveTable::<ID, ToolVerifierSupport>::new(sui::types::Address::from_static("0x104"), 0),
             MoveTable::<ID, ExternalVerifier>::new(sui::types::Address::from_static("0x108"), 0),
@@ -220,7 +220,7 @@ mod tests {
             &registry,
             nexus_sdk::move_bindings::struct_tag::<ToolRegistry>(&nexus_objects),
         );
-        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 1, state);
+        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service_mock, state_id, 2, state);
         sui_mocks::grpc::mock_empty_dynamic_fields(&mut state_service_mock, 1);
         sui_mocks::grpc::mock_empty_batch_get_objects(&mut ledger_service_mock, 2);
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {

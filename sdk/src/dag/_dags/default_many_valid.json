@@ -1,0 +1,37 @@
+{
+  "vertices": [
+    {
+      "kind": {
+        "variant": "off_chain",
+        "tool_fqn": "xyz.taluslabs.default_many@1"
+      },
+      "name": "root",
+      "entry_ports": [
+        {
+          "name": "trigger"
+        }
+      ]
+    }
+  ],
+  "default_values": [
+    {
+      "vertex": "root",
+      "input_port": "items",
+      "value": {
+        "many": [
+          {
+            "kind": "data",
+            "data": 1
+          },
+          {
+            "kind": "data",
+            "data": {
+              "ordered": 2
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "edges": []
+}

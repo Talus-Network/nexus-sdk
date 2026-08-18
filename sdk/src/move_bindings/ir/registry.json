@@ -830,51 +830,6 @@
           "return_types": []
         },
         {
-          "name": "assert_dag_registered",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "tool_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "dag",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
           "name": "assert_default_dag_executor_agent_skill",
           "visibility": "Private",
           "is_entry": false,
@@ -5393,6 +5348,107 @@
           "return_types": []
         },
         {
+          "name": "assert_current_leader_cap",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_execution_inputs_allowed",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "operation",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "assert_leader_cap_issued_by_registry",
           "visibility": "Public",
           "is_entry": false,
@@ -5509,6 +5565,112 @@
                               "address": "0xa3",
                               "module": "leader_cap",
                               "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_object_id_allowed",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "object_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_output_objects_allowed",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "output",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "graph",
+                              "name": "OutputPort"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa1",
+                              "module": "data",
+                              "name": "NexusData"
                             },
                             "type_arguments": []
                           }
@@ -9934,88 +10096,6 @@
           "type_name": {
             "address": "0xa3",
             "module": "network_auth",
-            "name": "NetworkAuthStateV2"
-          },
-          "module": "network_auth",
-          "name": "NetworkAuthStateV2",
-          "abilities": [
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "protocol_id",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "minimum_protocol_version",
-                  "position": 1,
-                  "ty": "U64"
-                },
-                {
-                  "name": "registered_key_witness",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "identities",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "vec_set",
-                        "name": "VecSet"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa3",
-                              "module": "network_auth",
-                              "name": "IdentityKey"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                },
-                {
-                  "name": "migration_marker",
-                  "position": 4,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa3",
-            "module": "network_auth",
             "name": "ProofOfIdentity"
           },
           "module": "network_auth",
@@ -10718,7 +10798,7 @@
           ]
         },
         {
-          "name": "load_registry_v2",
+          "name": "load_registry_v1",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -10751,7 +10831,7 @@
                     "type_name": {
                       "address": "0xa3",
                       "module": "network_auth",
-                      "name": "NetworkAuthStateV2"
+                      "name": "NetworkAuthStateV1"
                     },
                     "type_arguments": []
                   }
@@ -10761,7 +10841,7 @@
           ]
         },
         {
-          "name": "load_registry_v2_mut",
+          "name": "load_registry_v1_mut",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -10794,7 +10874,7 @@
                     "type_name": {
                       "address": "0xa3",
                       "module": "network_auth",
-                      "name": "NetworkAuthStateV2"
+                      "name": "NetworkAuthStateV1"
                     },
                     "type_arguments": []
                   }
@@ -10802,51 +10882,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "migrate_to_v2",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "network_auth",
-                        "name": "NetworkAuth"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "admin",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "protocol",
-                        "name": "ProtocolAdminCap"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
         },
         {
           "name": "minimum_protocol_version",
@@ -11096,6 +11131,24 @@
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "leader_cap",
               "ty": {
@@ -11719,15 +11772,29 @@
           "module": "priority_fee_vault",
           "name": "PriorityFeeDeposit",
           "abilities": [
-            "Store"
+            "Key"
           ],
           "type_parameters": [],
           "kind": {
             "Struct": {
               "fields": [
                 {
-                  "name": "amount",
+                  "name": "id",
                   "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "amount",
+                  "position": 1,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -11752,7 +11819,7 @@
                 },
                 {
                   "name": "leader_cap_id",
-                  "position": 1,
+                  "position": 2,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -11772,10 +11839,10 @@
           "type_name": {
             "address": "0xa3",
             "module": "priority_fee_vault",
-            "name": "PriorityFeeDepositEvent"
+            "name": "PriorityFeeDepositCreatedEvent"
           },
           "module": "priority_fee_vault",
-          "name": "PriorityFeeDepositEvent",
+          "name": "PriorityFeeDepositCreatedEvent",
           "abilities": [
             "Copy",
             "Drop"
@@ -11799,7 +11866,7 @@
                   }
                 },
                 {
-                  "name": "leader_cap_id",
+                  "name": "deposit_id",
                   "position": 1,
                   "ty": {
                     "Datatype": {
@@ -11813,8 +11880,121 @@
                   }
                 },
                 {
-                  "name": "amount",
+                  "name": "leader_cap_id",
                   "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "amount",
+                  "position": 3,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "priority_fee_vault",
+            "name": "PriorityFeeShareChange"
+          },
+          "module": "priority_fee_vault",
+          "name": "PriorityFeeShareChange",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "leader_cap_id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "share_delta",
+                  "position": 1,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa3",
+            "module": "priority_fee_vault",
+            "name": "PriorityFeeSharesCollectedEvent"
+          },
+          "module": "priority_fee_vault",
+          "name": "PriorityFeeSharesCollectedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "vault",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "deposit_count",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "changes",
+                  "position": 2,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa3",
+                          "module": "priority_fee_vault",
+                          "name": "PriorityFeeShareChange"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "total_share_delta",
+                  "position": 3,
                   "ty": "U64"
                 }
               ]
@@ -12247,6 +12427,77 @@
           "return_types": []
         },
         {
+          "name": "collect_deposits",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "priority_fee_vault",
+                        "name": "PriorityFeeVault"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "deposits",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa3",
+                            "module": "priority_fee_vault",
+                            "name": "PriorityFeeDeposit"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "configure",
           "visibility": "Public",
           "is_entry": false,
@@ -12296,65 +12547,7 @@
           "return_types": []
         },
         {
-          "name": "deposit",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "priority_fee_vault",
-                        "name": "PriorityFeeVault"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "deposit",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa3",
-                    "module": "priority_fee_vault",
-                    "name": "PriorityFeeDeposit"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "deposit_balance",
+          "name": "create_deposit",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -12363,7 +12556,7 @@
               "name": "self",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -12374,37 +12567,6 @@
                       "type_arguments": []
                     }
                   }
-                }
-              }
-            },
-            {
-              "name": "leader_registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
                 }
               }
             },
@@ -12433,8 +12595,35 @@
               }
             },
             {
-              "name": "charged_amount",
-              "ty": "U64"
+              "name": "leader_cap_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": []
@@ -12623,63 +12812,6 @@
           ],
           "return_types": [
             "U64"
-          ]
-        },
-        {
-          "name": "new_deposit",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "amount",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "balance",
-                    "name": "Balance"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            {
-              "name": "leader_cap_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa3",
-                  "module": "priority_fee_vault",
-                  "name": "PriorityFeeDeposit"
-                },
-                "type_arguments": []
-              }
-            }
           ]
         },
         {

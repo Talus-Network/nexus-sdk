@@ -11,7 +11,7 @@ use {
     },
     nexus_sdk::{
         nexus::{client::NexusClient, tool::ToolInspection},
-        types::{ToolRef, ToolStateV1},
+        types::{ToolRef, ToolState},
     },
 };
 
@@ -36,7 +36,7 @@ pub(crate) async fn inspect_tool(fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
 pub(crate) fn inspect_tool_result_json(
     inspection: &ToolInspection,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
-    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolStateV1::reference))?;
+    let tool_ref = normalized_tool_ref_json(inspection.tool.as_ref().map(ToolState::reference))?;
     let tool = inspection
         .tool
         .as_ref()
@@ -278,7 +278,7 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
     Ok(())
 }
 
-fn print_tool_reference(tool: &ToolStateV1) -> AnyResult<(), NexusCliError> {
+fn print_tool_reference(tool: &ToolState) -> AnyResult<(), NexusCliError> {
     match &tool.r#ref {
         ToolRef::Http { .. } => {
             let url = tool
@@ -327,7 +327,10 @@ mod tests {
         nexus_sdk::{
             fqn,
             move_bindings::{
-                interface::verifier::{ToolVerifierSupport, VerifierMethodId},
+                interface::{
+                    meta_schema::{MetaSchema, OutputVariantSchema},
+                    verifier::{ToolVerifierSupport, VerifierMethodId},
+                },
                 move_std::{ascii, option::Option as MoveOption},
                 sui_framework::{balance::Balance, object::ID},
                 tool::external_verifier::ExternalVerifier,
@@ -339,8 +342,8 @@ mod tests {
         ascii::String::from(value)
     }
 
-    fn fixture_tool() -> ToolStateV1 {
-        ToolStateV1 {
+    fn fixture_tool() -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: ID::new(sui::types::Address::from_static("0x42")),
             fqn: ascii("xyz.taluslabs.example@1"),
@@ -348,8 +351,7 @@ mod tests {
                 url: b"https://example.com/tool".to_vec(),
             },
             description: b"Example tool".to_vec(),
-            input_schema: br#"{"type":"object"}"#.to_vec(),
-            output_schema: br#"{"oneOf":[]}"#.to_vec(),
+            meta_schema: fixture_meta_schema(),
             verified: true,
             vault: Balance {
                 value: 25,
@@ -360,6 +362,13 @@ mod tests {
             registered_at_ms: 0,
             unregistered_at_ms: MoveOption::from(None),
         }
+    }
+
+    fn fixture_meta_schema() -> MetaSchema {
+        MetaSchema::new(
+            vec![],
+            vec![OutputVariantSchema::new(b"Ok".to_vec(), vec![])],
+        )
     }
 
     #[test]
@@ -380,7 +389,11 @@ mod tests {
         assert_eq!(json["fqn"], "xyz.taluslabs.example@1");
         assert_eq!(json["tool"]["fqn"], "xyz.taluslabs.example@1");
         assert_eq!(json["tool"]["description"], "Example tool");
-        assert_eq!(json["tool"]["input_schema"]["type"], "object");
+        assert_eq!(json["tool"]["meta_schema"]["input_ports"], json!([]));
+        assert_eq!(
+            json["tool"]["meta_schema"]["output_variants"][0]["variant_name"],
+            "Ok"
+        );
         assert!(!json.to_string().contains("\"bytes\""));
     }
 

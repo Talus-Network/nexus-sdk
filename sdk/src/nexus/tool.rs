@@ -20,7 +20,7 @@ use {
         },
         sui,
         transactions::{tool, tool_cashier},
-        types::{Tool, ToolAnchor, ToolRef, ToolStateV1},
+        types::{Tool, ToolAnchor, ToolRef, ToolState},
         ToolFqn,
     },
     std::time::Duration,
@@ -43,14 +43,14 @@ pub struct ToolCashierActionResult {
 /// Result of [`ToolActions::inspect_tool`].
 ///
 /// The object IDs are derived locally even when the Tool does not exist.
-/// An existing Tool includes its complete [`ToolStateV1`] record.
+/// An existing Tool includes its complete [`ToolState`] record.
 #[derive(Clone, Debug)]
 pub struct ToolInspection {
     pub fqn: ToolFqn,
     pub tool_id: sui::types::Address,
     pub tool_cashier_id: sui::types::Address,
     pub exists: bool,
-    pub tool: Option<ToolStateV1>,
+    pub tool: Option<ToolState>,
     pub verifier_support: Option<ToolVerifierSupport>,
     pub external_verifier: Option<ExternalVerifier>,
     pub invocation_cost_mist: Option<u64>,
@@ -445,7 +445,7 @@ impl ToolActions {
     /// Derive the [`Tool`] and [`crate::move_bindings::tool::tool_cashier::ToolCashier`]
     /// object IDs for `fqn` and probe the [`Tool`] object. Returns
     /// `exists: false` when neither object is present yet, and the full
-    /// [`ToolStateV1`] record when both exist. The same shape
+    /// [`ToolState`] record when both exist. The same shape
     /// works for HTTP and Sui tools. Callers can inspect the generated
     /// `Tool::r#ref` field or use [`ToolRef`] helper
     /// methods for ergonomic projections.
@@ -492,7 +492,7 @@ impl ToolActions {
         }
 
         let tool = crawler
-            .get_versioned_object::<ToolAnchor, ToolStateV1>(tool_id, 1)
+            .get_versioned_object::<ToolAnchor, ToolState>(tool_id, 1)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -561,7 +561,7 @@ mod tests {
                 },
                 tool::{
                     external_verifier::ExternalVerifier,
-                    tool_registry::{ToolRegistry, ToolRegistryStateV1},
+                    tool_registry::{ToolRegistry, ToolRegistryState},
                 },
             },
             test_utils::{nexus_mocks, sui_mocks},
@@ -621,8 +621,8 @@ mod tests {
         fixture: &InspectionFixture,
         reference: ToolRef,
         workflow_authorization_cap_first: bool,
-    ) -> ToolStateV1 {
-        ToolStateV1 {
+    ) -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 *fixture.nexus_objects.tool_registry.object_id(),
@@ -630,8 +630,10 @@ mod tests {
             fqn: ascii(&fixture.fqn.to_string()),
             r#ref: reference,
             description: b"demo".to_vec(),
-            input_schema: b"{}".to_vec(),
-            output_schema: b"{}".to_vec(),
+            meta_schema: crate::move_bindings::interface::meta_schema::MetaSchema::new(
+                vec![],
+                vec![],
+            ),
             verified: false,
             vault: sui_framework::balance::Balance {
                 value: 0,
@@ -658,11 +660,15 @@ mod tests {
             Versioned::new(UID::new(tool_registry_state_id), 1),
         );
         for _ in 0..reads {
-            let tool_registry_state = ToolRegistryStateV1::new(
+            let tool_registry_state = ToolRegistryState::new(
                 ID::new(sui::types::Address::ZERO),
                 1,
                 LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
                 Table::<ID, bool>::new(id("0x102"), 0),
+                Table::<ID, crate::move_bindings::interface::meta_schema::MetaSchema>::new(
+                    id("0x110"),
+                    0,
+                ),
                 LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
                 Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
                 Table::<ID, ExternalVerifier>::new(id("0x107"), 0),

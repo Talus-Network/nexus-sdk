@@ -53,32 +53,40 @@
       "vertex": "add_1_to_element",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "one": {
+          "kind": "data",
+          "data": 1
+        }
       }
     },
     {
       "vertex": "add_1",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 1
+        "one": {
+          "kind": "data",
+          "data": 1
+        }
       }
     },
     {
       "vertex": "add_2",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 2
+        "one": {
+          "kind": "data",
+          "data": 2
+        }
       }
     },
     {
       "vertex": "until_11",
       "input_port": "b",
       "value": {
-        "storage": "inline",
-        "data": 11
+        "one": {
+          "kind": "data",
+          "data": 11
+        }
       }
     }
   ],

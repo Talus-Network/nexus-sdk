@@ -80,25 +80,29 @@ impl NexusTool for DummyErrTool {
 mod tests {
     use {
         super::*,
-        nexus_sdk::move_bindings::primitives::tagged_output::TaggedOutput,
+        nexus_sdk::{move_bindings::primitives::data::NexusValue, types::OffchainToolOutput},
         reqwest::Client,
         serde_json::json,
     };
 
-    async fn assert_tagged_output(
+    async fn assert_canonical_output(
         response: reqwest::Response,
         expected_tag: &[u8],
-        expected_field: &[u8],
+        expected_port: &[u8],
         expected_value: &[u8],
     ) {
         let body = response.bytes().await.unwrap();
-        let output: TaggedOutput = bcs::from_bytes(&body).unwrap();
+        let output: OffchainToolOutput = bcs::from_bytes(&body).unwrap();
         assert_eq!(bcs::to_bytes(&output).unwrap(), body);
         assert_eq!(output.tag, expected_tag);
-        assert_eq!(output.named_payload.contents.len(), 1);
-        let field = &output.named_payload.contents[0];
-        assert_eq!(field.key, expected_field);
-        assert_eq!(field.value.inline_one_bytes(), Some(expected_value));
+        let [port] = output.ports.as_slice() else {
+            panic!("response should contain one output group")
+        };
+        let [NexusValue::InlineData { bytes }] = port.values.as_slice() else {
+            panic!("response group should contain one inline value")
+        };
+        assert_eq!(port.port_name, expected_port);
+        assert_eq!(bytes, expected_value);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -147,7 +151,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Ok", b"message", br#""You said: Hello, world!""#).await;
+        assert_canonical_output(invoke, b"Ok", b"message", br#""You said: Hello, world!""#).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -187,7 +191,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
+        assert_canonical_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Default health ep exists.
         let health = Client::new()
@@ -216,7 +220,7 @@ mod tests {
 
         assert_eq!(invoke.status(), 200);
 
-        assert_tagged_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
+        assert_canonical_output(invoke, b"Err", b"reason", br#""Something went wrong""#).await;
 
         // Invoke / tool.
         let invoke = Client::new()

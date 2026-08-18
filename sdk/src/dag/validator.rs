@@ -670,7 +670,7 @@ fn try_into_graph(dag: &DagSpec) -> AnyResult<GraphAndVertexEntryGroups> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, assert_matches::assert_matches};
+    use {super::*, crate::types::NexusData, assert_matches::assert_matches};
 
     fn parse(input: &str) -> Result<DagSpec, serde_json::Error> {
         crate::dag::json::parse_dag_spec(input)
@@ -683,6 +683,28 @@ mod tests {
         let dag = parse(include_str!("_dags/ig_story_planner_valid.json")).unwrap();
 
         assert!(validate(&dag).is_ok());
+    }
+
+    #[test]
+    fn test_ordered_many_default_valid() {
+        let dag = parse(include_str!("_dags/default_many_valid.json")).unwrap();
+
+        let validation = validate(&dag);
+        assert!(
+            validation.is_ok(),
+            "unexpected validation error: {validation:?}"
+        );
+        assert_eq!(
+            dag.default_values[0].value,
+            serde_json::json!({
+                "many": [
+                    { "kind": "data", "data": 1 },
+                    { "kind": "data", "data": { "ordered": 2 } },
+                ],
+            }),
+        );
+        let typed = NexusData::from_json_value(&dag.default_values[0].value).unwrap();
+        assert_eq!(typed.to_json_value().unwrap(), dag.default_values[0].value,);
     }
 
     #[test]

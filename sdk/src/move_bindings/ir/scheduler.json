@@ -4421,6 +4421,24 @@
               }
             },
             {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "agent",
               "ty": {
                 "Ref": {
@@ -4531,6 +4549,24 @@
                         "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -4655,6 +4691,24 @@
                         "address": "0xa3",
                         "module": "agent_registry",
                         "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
                       },
                       "type_arguments": []
                     }
@@ -8334,7 +8388,7 @@
           ]
         },
         {
-          "name": "load_v1",
+          "name": "load",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -8377,7 +8431,7 @@
           ]
         },
         {
-          "name": "load_v1_mut",
+          "name": "load_mut",
           "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
@@ -8816,7 +8870,7 @@
         },
         {
           "name": "operation",
-          "visibility": "Public",
+          "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [

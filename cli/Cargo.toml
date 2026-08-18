@@ -45,7 +45,6 @@ serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
-url.workspace = true
 
 [dependencies.nexus-sdk]
 workspace = true
@@ -60,7 +59,7 @@ schemars.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true
 tonic.workspace = true
-warp = "0.3.7"
+warp.workspace = true
 
 [dev-dependencies.nexus-sdk]
 workspace = true

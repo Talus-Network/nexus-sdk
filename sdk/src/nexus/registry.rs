@@ -1,15 +1,18 @@
 //! Read-only helpers for registry-owned capability and verifier discovery.
 
+#[cfg(test)]
+use crate::move_bindings::interface::meta_schema::MetaSchema;
 use {
     crate::{
         move_bindings::{
             interface::verifier::ToolVerifierSupport,
+            move_std::ascii,
             primitives,
             registry::{self, leader::LeaderRegistryStateV1},
             sui_framework::object::ID,
             tool::{
                 external_verifier::ExternalVerifier,
-                tool_registry::{ToolRegistry, ToolRegistryStateV1},
+                tool_registry::{ToolRegistry, ToolRegistryState},
             },
         },
         nexus::crawler::Crawler,
@@ -20,6 +23,7 @@ use {
     },
     anyhow::{anyhow, bail},
     std::collections::HashMap,
+    sui_move::MoveType as _,
 };
 
 type AnyCloneableOwnerCap =
@@ -86,19 +90,28 @@ fn object_version(object: &sui::grpc::Object) -> Option<u64> {
 ///
 /// Outer `None` means the Tool ID is absent from the authoritative
 /// `ToolRegistry.registered_tools` table. A present registration may still have no verifier
-/// support because per-vertex `None` requires no global verifier configuration.
+/// support because per vertex `None` requires no global verifier configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CurrentToolRegistration {
     pub verifier_support: Option<ToolVerifierSupport>,
 }
 
+/// Fetch the [`CurrentToolRegistration`] for one Tool object ID.
+///
+/// Registration and verifier support are read by their exact [`ID`] keys.
+/// An unregistered Tool returns [`None`].
+///
+/// # Errors
+///
+/// Returns an error when the registry or a requested field cannot be fetched,
+/// validated, or decoded.
 pub async fn fetch_current_tool_registration(
     crawler: &Crawler,
     registry_ref: &sui::types::ObjectReference,
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<CurrentToolRegistration>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
 
     if registry.data.registered_tools.size() == 0 {
@@ -107,7 +120,11 @@ pub async fn fetch_current_tool_registration(
 
     let tool_id = ID::new(tool_id);
     let is_registered = crawler
-        .get_optional_dynamic_field::<ID, bool>(registry.data.registered_tools.id(), tool_id)
+        .get_dynamic_field_by_key::<ID, bool>(
+            registry.data.registered_tools.id(),
+            tool_id,
+            &ID::type_tag_static(),
+        )
         .await?
         .is_some();
     if !is_registered {
@@ -118,9 +135,10 @@ pub async fn fetch_current_tool_registration(
         None
     } else {
         crawler
-            .get_optional_dynamic_field::<ID, ToolVerifierSupport>(
+            .get_dynamic_field_by_key::<ID, ToolVerifierSupport>(
                 registry.data.verifier_support.id(),
                 tool_id,
+                &ID::type_tag_static(),
             )
             .await?
     };
@@ -128,42 +146,58 @@ pub async fn fetch_current_tool_registration(
     Ok(Some(CurrentToolRegistration { verifier_support }))
 }
 
-/// Return the invocation price retained for one Tool FQN, when present.
+/// Fetch the invocation price retained for one [`ToolFqn`], when present.
+///
+/// The price is read by its exact Move ASCII string key.
+///
+/// # Errors
+///
+/// Returns an error when the registry or price field cannot be fetched,
+/// validated, or decoded.
 pub async fn fetch_tool_invocation_cost(
     crawler: &Crawler,
     registry_ref: &sui::types::ObjectReference,
     tool_fqn: &ToolFqn,
 ) -> anyhow::Result<Option<u64>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
     if registry.data.invocation_costs_mist.size() == 0 {
         return Ok(None);
     }
     crawler
-        .get_optional_dynamic_field(
+        .get_dynamic_field_by_key(
             registry.data.invocation_costs_mist.id(),
-            crate::move_bindings::move_std::ascii::String::from(tool_fqn.to_string()),
+            ascii::String::from(tool_fqn.to_string()),
+            &ascii::String::type_tag_static(),
         )
         .await
 }
 
-/// Current Tool-bound external verifier record, when one exists.
+/// Fetch the current external verifier record for one Tool, when present.
+///
+/// The record is read by its exact [`ID`] key and validated against `tool_id`.
+///
+/// # Errors
+///
+/// Returns an error when the registry or record cannot be fetched or decoded,
+/// or when the record does not belong to `tool_id`.
 pub async fn fetch_external_verifier_record(
     crawler: &Crawler,
     registry_ref: &sui::types::ObjectReference,
     tool_id: sui::types::Address,
 ) -> anyhow::Result<Option<ExternalVerifier>> {
     let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryStateV1>(*registry_ref.object_id(), 1)
+        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
         .await?;
     if registry.data.external_verifiers.size() == 0 {
         return Ok(None);
     }
     let record = crawler
-        .get_optional_dynamic_field::<ID, ExternalVerifier>(
+        .get_dynamic_field_by_key::<ID, ExternalVerifier>(
             registry.data.external_verifiers.id(),
             ID::new(tool_id),
+            &ID::type_tag_static(),
         )
         .await?;
     if let Some(record) = record.as_ref() {
@@ -712,13 +746,14 @@ mod tests {
         registered_tools_size: u64,
         external_verifiers_id: sui::types::Address,
         external_verifiers_size: u64,
-    ) -> ToolRegistryStateV1 {
+    ) -> ToolRegistryState {
         let id = sui::types::Address::from_static;
-        ToolRegistryStateV1::new(
+        ToolRegistryState::new(
             ID::new(registry_id),
             1,
             LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
             Table::<ID, bool>::new(registered_tools_id, registered_tools_size),
+            Table::<ID, MetaSchema>::new(id("0x107"), registered_tools_size),
             LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
             Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
             Table::<ID, ExternalVerifier>::new(external_verifiers_id, external_verifiers_size),
@@ -761,20 +796,18 @@ mod tests {
             registry_state,
         );
 
-        let mut state_service_mock = sui_mocks::grpc::MockStateService::new();
         if registered {
-            let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x204"));
             let key = ID::new(tool_id);
-            sui_mocks::grpc::mock_list_dynamic_fields(
-                &mut state_service_mock,
-                vec![(key, *field_ref.object_id())],
+            let field_id = registered_tools_id.derive_dynamic_child_id(
+                &ID::type_tag_static(),
+                &bcs::to_bytes(&key).expect("Tool ID serializes"),
             );
             sui_mocks::grpc::mock_get_object_bcs(
                 &mut ledger_service_mock,
-                field_ref.clone(),
+                sui_mocks::object_ref_for_id(field_id),
                 sui::types::Owner::Shared(1),
                 bcs::to_bytes(&DynamicFieldFixture {
-                    id: *field_ref.object_id(),
+                    id: field_id,
                     name: key,
                     value: true,
                 })
@@ -784,7 +817,6 @@ mod tests {
 
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service_mock),
-            state_service_mock: Some(state_service_mock),
             ..Default::default()
         });
         let client = sui::grpc::Client::new(rpc_url).unwrap();
@@ -812,7 +844,6 @@ mod tests {
     ) -> anyhow::Result<ExternalVerifierRuntimeCall> {
         let registry_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x301"));
         let methods_table_id = sui::types::Address::from_static("0x302");
-        let field_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x303"));
         let tool_id = sui::types::Address::from_static("0x304");
         let witness = sui::types::Address::from_static("0x305");
         let config = sui::types::Address::from_static("0x306");
@@ -829,6 +860,11 @@ mod tests {
             1,
         );
         let record = external_record(tool_id, witness, &[witness, config]);
+        let key = ID::new(tool_id);
+        let field_id = methods_table_id.derive_dynamic_child_id(
+            &ID::type_tag_static(),
+            &bcs::to_bytes(&key).expect("Tool ID serializes"),
+        );
 
         let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
         sui_mocks::grpc::mock_get_object_bcs(
@@ -840,25 +876,19 @@ mod tests {
         sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 1, registry_state);
         sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger_service,
-            field_ref.clone(),
+            sui_mocks::object_ref_for_id(field_id),
             sui::types::Owner::Shared(1),
             bcs::to_bytes(&DynamicFieldFixture {
-                id: *field_ref.object_id(),
-                name: ID::new(tool_id),
+                id: field_id,
+                name: key,
                 value: record,
             })
             .unwrap(),
         );
         sui_mocks::grpc::mock_get_objects_metadata(&mut ledger_service, metadata);
 
-        let mut state_service = sui_mocks::grpc::MockStateService::new();
-        sui_mocks::grpc::mock_list_dynamic_fields(
-            &mut state_service,
-            vec![(ID::new(tool_id), sui::types::Address::from_static("0x303"))],
-        );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
-            state_service_mock: Some(state_service),
             ..Default::default()
         });
         let crawler = Crawler::new(Arc::new(sui::grpc::Client::new(rpc_url)?));

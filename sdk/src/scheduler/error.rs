@@ -146,6 +146,48 @@ pub enum SchedulerError {
         received: String,
     },
 
+    /// One provided Task input does not conform to the immutable Tool schema stored on its DAG vertex.
+    #[error(
+        "Task input '{vertex}.{port}' on DAG '{dag_id}' does not conform to MetaSchema; expected \
+         {expected}, received {received}"
+    )]
+    TaskInputSchemaMismatch {
+        /// Effective DAG identifier.
+        dag_id: sui::types::Address,
+        /// Entry vertex name.
+        vertex: String,
+        /// Entry input port name.
+        port: String,
+        /// Required cardinality and value kind.
+        expected: Box<str>,
+        /// Received cardinality and value kind.
+        received: Box<str>,
+    },
+
+    /// A pinned Agent skill forbids a caller-selected DAG, even when it repeats the pinned ID.
+    #[error(
+        "Agent '{agent_id}' skill {skill_id} is pinned to DAG '{pinned_dag}' and rejects caller-selected DAG '{selected_dag}'"
+    )]
+    PinnedSkillDagSelectionConflict {
+        /// Selected Agent.
+        agent_id: sui::types::Address,
+        /// Selected Agent-local skill.
+        skill_id: u64,
+        /// Authoritative registered DAG.
+        pinned_dag: sui::types::Address,
+        /// Rejected caller-selected DAG.
+        selected_dag: sui::types::Address,
+    },
+
+    /// A runtime-selected Agent skill requires the Task author to choose a DAG.
+    #[error("Agent '{agent_id}' skill {skill_id} requires a caller-selected DAG")]
+    RuntimeSelectedSkillDagRequired {
+        /// Selected Agent.
+        agent_id: sui::types::Address,
+        /// Selected Agent-local skill.
+        skill_id: u64,
+    },
+
     /// The configured signer cannot satisfy the Task controller.
     #[error("authority for Task '{task_id}' is unavailable: {message}")]
     AuthorityUnavailable {

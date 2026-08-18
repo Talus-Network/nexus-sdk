@@ -2,12 +2,9 @@
 
 use {
     crate::{
-        move_bindings::{
-            interface::{
-                graph::{EdgeKind, PostFailureAction},
-                verifier::ToolVerifierMode,
-            },
-            primitives::data::NexusData,
+        move_bindings::interface::{
+            graph::{EdgeKind, PostFailureAction},
+            verifier::ToolVerifierMode,
         },
         types::{
             DagDefaultValue,
@@ -19,6 +16,7 @@ use {
             DagSpec,
             DagVertex,
             DagVertexKind,
+            NexusData,
         },
         ToolFqn,
     },
@@ -34,7 +32,7 @@ pub fn parse_dag_spec(input: &str) -> Result<DagSpec, serde_json::Error> {
             "on-chain vertices cannot configure an off-chain verifier",
         ));
     }
-    Ok(document.into())
+    DagSpec::try_from(document).map_err(serde::de::Error::custom)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -48,17 +46,19 @@ struct DagDocument {
     outputs: Option<Vec<OutputPortDocument>>,
 }
 
-impl From<DagDocument> for DagSpec {
-    fn from(document: DagDocument) -> Self {
-        Self {
+impl TryFrom<DagDocument> for DagSpec {
+    type Error = String;
+
+    fn try_from(document: DagDocument) -> Result<Self, Self::Error> {
+        Ok(Self {
             vertices: document.vertices.into_iter().map(Into::into).collect(),
             edges: document.edges.into_iter().map(Into::into).collect(),
             default_values: document
                 .default_values
                 .unwrap_or_default()
                 .into_iter()
-                .map(Into::into)
-                .collect(),
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
             post_failure_action: document.post_failure_action,
             entry_groups: document
                 .entry_groups
@@ -72,7 +72,7 @@ impl From<DagDocument> for DagSpec {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
-        }
+        })
     }
 }
 
@@ -219,69 +219,24 @@ impl From<EntryGroupDocument> for DagEntryGroup {
 struct DefaultValueDocument {
     vertex: String,
     input_port: String,
-    #[serde(deserialize_with = "deserialize_nexus_data")]
-    value: NexusData,
+    value: serde_json::Value,
 }
 
-impl From<DefaultValueDocument> for DagDefaultValue {
-    fn from(document: DefaultValueDocument) -> Self {
-        Self {
+impl TryFrom<DefaultValueDocument> for DagDefaultValue {
+    type Error = String;
+
+    fn try_from(document: DefaultValueDocument) -> Result<Self, Self::Error> {
+        NexusData::validate_json_value(&document.value).map_err(|error| error.to_string())?;
+        Ok(Self {
             vertex: document.vertex,
             input_port: document.input_port,
             value: document.value,
-        }
-    }
-}
-
-fn deserialize_nexus_data<'de, D>(deserializer: D) -> Result<NexusData, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    nexus_data_from_json(value).map_err(serde::de::Error::custom)
-}
-
-fn nexus_data_from_json(value: serde_json::Value) -> Result<NexusData, String> {
-    let serde_json::Value::Object(mut object) = value else {
-        return serde_json::from_value(value).map_err(|error| error.to_string());
-    };
-
-    let Some(data) = object.remove("data") else {
-        return serde_json::from_value(serde_json::Value::Object(object))
-            .map_err(|error| error.to_string());
-    };
-
-    let storage = object
-        .remove("storage")
-        .and_then(|value| value.as_str().map(storage_tag_bytes))
-        .ok_or_else(|| "missing nexus data storage".to_string())??;
-
-    match data {
-        serde_json::Value::Array(values) => Ok(NexusData {
-            storage,
-            one: Vec::new(),
-            many: values
-                .into_iter()
-                .map(|value| serde_json::to_vec(&value).map_err(|error| error.to_string()))
-                .collect::<Result<Vec<_>, _>>()?,
-        }),
-        value => Ok(NexusData {
-            storage,
-            one: serde_json::to_vec(&value).map_err(|error| error.to_string())?,
-            many: Vec::new(),
-        }),
-    }
-}
-
-fn storage_tag_bytes(name: &str) -> Result<Vec<u8>, String> {
-    match name {
-        "inline" => Ok(b"inline".to_vec()),
-        "walrus" => Ok(b"walrus".to_vec()),
-        _ => Err(format!("unknown nexus data storage `{name}`")),
+        })
     }
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EdgeDocument {
     from: OutputPortDocument,
     to: InputPortDocument,
@@ -523,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn default_value_accepts_readable_inline_storage_shape() {
+    fn default_value_accepts_canonical_direct_shape() {
         let dag = parse_dag_spec(
             r#"{
                 "vertices": [
@@ -537,8 +492,10 @@ mod tests {
                         "vertex": "root",
                         "input_port": "amount",
                         "value": {
-                            "storage": "inline",
-                            "data": -3
+                            "one": {
+                                "kind": "data",
+                                "data": -3
+                            }
                         }
                     }
                 ],
@@ -547,10 +504,81 @@ mod tests {
         )
         .unwrap();
 
-        let value = &dag.default_values[0].value;
-        assert_eq!(value.storage, b"inline".to_vec());
-        assert_eq!(value.one, b"-3".to_vec());
-        assert!(value.many.is_empty());
+        assert_eq!(
+            dag.default_values[0].value,
+            serde_json::json!({ "one": { "kind": "data", "data": -3 } }),
+        );
+    }
+
+    #[test]
+    fn default_value_rejects_inline_bytes_shape() {
+        let error = parse_dag_spec(
+            r#"{
+                "vertices": [{
+                    "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                    "name": "root"
+                }],
+                "default_values": [{
+                    "vertex": "root",
+                    "input_port": "amount",
+                    "value": { "one": { "kind": "data", "bytes": "LTM=" } }
+                }],
+                "edges": []
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("kind, data"),
+            "unexpected parse error: {error}"
+        );
+    }
+
+    #[test]
+    fn default_value_rejects_legacy_storage_data_shape() {
+        let error = parse_dag_spec(
+            r#"{
+                "vertices": [{
+                    "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                    "name": "root"
+                }],
+                "default_values": [{
+                    "vertex": "root",
+                    "input_port": "amount",
+                    "value": { "storage": "inline", "data": -3 }
+                }],
+                "edges": []
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("exactly one of 'one' or 'many'"),
+            "unexpected parse error: {error}"
+        );
+    }
+
+    #[test]
+    fn default_value_rejects_generated_serde_shape() {
+        let generated = serde_json::to_value(NexusData::inline_data(b"-3").unwrap()).unwrap();
+        let document = serde_json::json!({
+            "vertices": [{
+                "kind": { "variant": "off_chain", "tool_fqn": "xyz.tool.test@1" },
+                "name": "root"
+            }],
+            "default_values": [{
+                "vertex": "root",
+                "input_port": "amount",
+                "value": generated
+            }],
+            "edges": []
+        });
+        let error = parse_dag_spec(&serde_json::to_string(&document).unwrap()).unwrap_err();
+
+        assert!(
+            error.to_string().contains("exactly one of 'one' or 'many'"),
+            "unexpected parse error: {error}"
+        );
     }
 
     #[test]
@@ -627,5 +655,25 @@ mod tests {
         )
         .unwrap();
         assert_eq!(default_edge.kind, EdgeKind::Normal);
+    }
+
+    #[test]
+    fn edge_routing_config_is_rejected() {
+        let error = serde_json::from_str::<EdgeDocument>(
+            r#"{
+                "from": {
+                    "vertex": "first",
+                    "output_variant": "ok",
+                    "output_port": "result"
+                },
+                "to": {
+                    "vertex": "sum",
+                    "input_port": "items"
+                },
+                "routing": "merge"
+            }"#,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unknown field `routing`"));
     }
 }

@@ -264,18 +264,6 @@ fn signature_body_is_agent_vertex_authorization(move_type: &sui::grpc::OpenSigna
     struct_shape_matches::<AgentVertexAuthorization>(&struct_tag)
 }
 
-pub fn is_workflow_dag_execution_param(move_type: &sui::grpc::OpenSignatureBody) -> bool {
-    let Some(type_name) = move_type.type_name_opt() else {
-        return false;
-    };
-
-    let Ok(struct_tag) = type_name.parse::<sui::types::StructTag>() else {
-        return false;
-    };
-
-    struct_tag.module().as_str() == "execution" && struct_tag.name().as_str() == "DAGExecution"
-}
-
 #[cfg(test)]
 mod tests {
     use {super::*, sui::grpc::open_signature_body::Type};
@@ -430,11 +418,6 @@ mod tests {
         )));
         assert!(!is_hidden_internal_tool_param(&make_struct(
             "0x2", "random", "Random"
-        )));
-        assert!(is_workflow_dag_execution_param(&make_struct(
-            "0x44",
-            "execution",
-            "DAGExecution"
         )));
     }
 

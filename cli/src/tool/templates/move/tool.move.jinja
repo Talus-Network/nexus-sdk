@@ -90,17 +90,17 @@ entry fun execute(
     let output = if (input_value == 0) {
         // Return error variant.
         tagged_output::new(b"err")
-            .with_named_payload(b"reason", data::inline_one(b"\"Input value cannot be zero\""))
+            .with_named_payload(b"reason", data::inline_data_value(b"\"Input value cannot be zero\""))
     } else if (input_value > 1000) {
         // Return custom variant.
         tagged_output::new(b"custom_result")
-            .with_named_payload(b"data", data::inline_one(b"\"large_value_processed\""))
-            .with_named_payload(b"timestamp", data::inline_one(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
+            .with_named_payload(b"data", data::inline_data_value(b"\"large_value_processed\""))
+            .with_named_payload(b"timestamp", data::inline_data_value(sui::clock::timestamp_ms(clock).to_string().into_bytes()))
     } else {
         // Return success variant.
         let computed = input_value * 2;
         tagged_output::new(b"ok")
-            .with_named_payload(b"result", data::inline_one(computed.to_string().into_bytes()))
+            .with_named_payload(b"result", data::inline_data_value(computed.to_string().into_bytes()))
     };
     onchain_tool_result::finalize_and_share(result, requirements, output, ctx);
 }
