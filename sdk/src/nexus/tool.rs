@@ -20,7 +20,7 @@ use {
         },
         sui,
         transactions::{tool, tool_cashier},
-        types::{Tool, ToolAnchor, ToolRef, ToolStateV2},
+        types::{Tool, ToolAnchor, ToolRef, ToolState},
         ToolFqn,
     },
     std::time::Duration,
@@ -43,14 +43,14 @@ pub struct ToolCashierActionResult {
 /// Result of [`ToolActions::inspect_tool`].
 ///
 /// The object IDs are derived locally even when the Tool does not exist.
-/// An existing Tool includes its complete [`ToolStateV2`] record.
+/// An existing Tool includes its complete [`ToolState`] record.
 #[derive(Clone, Debug)]
 pub struct ToolInspection {
     pub fqn: ToolFqn,
     pub tool_id: sui::types::Address,
     pub tool_cashier_id: sui::types::Address,
     pub exists: bool,
-    pub tool: Option<ToolStateV2>,
+    pub tool: Option<ToolState>,
     pub verifier_support: Option<ToolVerifierSupport>,
     pub external_verifier: Option<ExternalVerifier>,
     pub invocation_cost_mist: Option<u64>,
@@ -445,7 +445,7 @@ impl ToolActions {
     /// Derive the [`Tool`] and [`crate::move_bindings::tool::tool_cashier::ToolCashier`]
     /// object IDs for `fqn` and probe the [`Tool`] object. Returns
     /// `exists: false` when neither object is present yet, and the full
-    /// [`ToolStateV2`] record when both exist. The same shape
+    /// [`ToolState`] record when both exist. The same shape
     /// works for HTTP and Sui tools. Callers can inspect the generated
     /// `Tool::r#ref` field or use [`ToolRef`] helper
     /// methods for ergonomic projections.
@@ -492,7 +492,7 @@ impl ToolActions {
         }
 
         let tool = crawler
-            .get_versioned_object::<ToolAnchor, ToolStateV2>(tool_id, 2)
+            .get_versioned_object::<ToolAnchor, ToolState>(tool_id, 1)
             .await
             .map_err(NexusError::Rpc)?
             .data;
@@ -561,7 +561,7 @@ mod tests {
                 },
                 tool::{
                     external_verifier::ExternalVerifier,
-                    tool_registry::{ToolRegistry, ToolRegistryStateV2},
+                    tool_registry::{ToolRegistry, ToolRegistryState},
                 },
             },
             test_utils::{nexus_mocks, sui_mocks},
@@ -621,8 +621,8 @@ mod tests {
         fixture: &InspectionFixture,
         reference: ToolRef,
         workflow_authorization_cap_first: bool,
-    ) -> ToolStateV2 {
-        ToolStateV2 {
+    ) -> ToolState {
+        ToolState {
             minimum_protocol_version: 1,
             registry: crate::move_bindings::sui_framework::object::ID::new(
                 *fixture.nexus_objects.tool_registry.object_id(),
@@ -657,10 +657,10 @@ mod tests {
         let tool_registry_state_id = id("0x109");
         let tool_registry = ToolRegistry::new(
             UID::new(*fixture.nexus_objects.tool_registry.object_id()),
-            Versioned::new(UID::new(tool_registry_state_id), 2),
+            Versioned::new(UID::new(tool_registry_state_id), 1),
         );
         for _ in 0..reads {
-            let tool_registry_state = ToolRegistryStateV2::new(
+            let tool_registry_state = ToolRegistryState::new(
                 ID::new(sui::types::Address::ZERO),
                 1,
                 LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
@@ -687,7 +687,7 @@ mod tests {
             sui_mocks::grpc::mock_versioned_payload(
                 ledger_service,
                 tool_registry_state_id,
-                2,
+                1,
                 tool_registry_state,
             );
         }
@@ -798,7 +798,7 @@ mod tests {
         let tool_state_id = sui::types::Address::from_static("0x2010");
         let tool = ToolAnchor::new(
             UID::new(fixture.tool_id),
-            Versioned::new(UID::new(tool_state_id), 2),
+            Versioned::new(UID::new(tool_state_id), 1),
         );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -824,7 +824,7 @@ mod tests {
         sui_mocks::grpc::mock_versioned_payload(
             &mut ledger_service_mock,
             tool_state_id,
-            2,
+            1,
             tool_state,
         );
         mock_empty_tool_registry_state(&mut ledger_service_mock, &fixture, 1);
@@ -924,7 +924,7 @@ mod tests {
         let tool_state_id = sui::types::Address::from_static("0x2020");
         let http_tool = ToolAnchor::new(
             UID::new(fixture.tool_id),
-            Versioned::new(UID::new(tool_state_id), 2),
+            Versioned::new(UID::new(tool_state_id), 1),
         );
 
         let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
@@ -950,7 +950,7 @@ mod tests {
         sui_mocks::grpc::mock_versioned_payload(
             &mut ledger_service_mock,
             tool_state_id,
-            2,
+            1,
             http_tool_state,
         );
         mock_empty_tool_registry_state(&mut ledger_service_mock, &fixture, 3);

@@ -1,18 +1,21 @@
 #![cfg(feature = "test_utils")]
 
-use nexus_sdk::{
-    move_bindings::{
-        scheduler::{
-            schedule::OccurrenceWithdrawalReason,
-            task::{OccurrenceState, TaskStatus},
+use {
+    nexus_sdk::{
+        move_bindings::{
+            scheduler::{
+                schedule::OccurrenceWithdrawalReason,
+                task::{OccurrenceState, TaskStateV1, TaskStatus},
+            },
+            sui_framework::object::ID,
         },
-        sui_framework::object::ID,
+        sui,
     },
-    sui,
+    sui_move::MoveStruct as _,
 };
 
 #[test]
-fn task_state_roundtrips_through_bcs() {
+fn task_status_roundtrips_through_bcs() {
     for state in [
         TaskStatus::Active,
         TaskStatus::Paused,
@@ -24,6 +27,16 @@ fn task_state_roundtrips_through_bcs() {
         let decoded: TaskStatus = bcs::from_bytes(&bytes).expect("bcs deserialize TaskStatus");
         assert_eq!(decoded, state);
     }
+}
+
+#[test]
+fn task_state_v1_uses_versioned_move_type_name() {
+    let tag = TaskStateV1::struct_tag_static();
+
+    assert_eq!(
+        (tag.module().as_str(), tag.name().as_str()),
+        ("task", "TaskStateV1"),
+    );
 }
 
 #[test]

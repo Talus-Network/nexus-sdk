@@ -25,8 +25,8 @@ pub type RedisContainer = ContainerAsync<Redis>;
 pub type ExecCommand = testcontainers::core::ExecCommand;
 
 const SUI_TOOLS_IMAGE: &str = "mysten/sui-tools";
-const SUI_TOOLS_TAG_AMD64: &str = "testnet-v1.76.0";
-const SUI_TOOLS_TAG_ARM64: &str = "testnet-v1.76.0-arm64";
+const SUI_TOOLS_TAG_AMD64: &str = "testnet-v1.77.2";
+const SUI_TOOLS_TAG_ARM64: &str = "testnet-v1.77.2-arm64";
 const SUI_RPC_PORT: ContainerPort = ContainerPort::Tcp(9000);
 const SUI_FAUCET_PORT: ContainerPort = ContainerPort::Tcp(9123);
 const SUI_GRAPHQL_PORT: ContainerPort = ContainerPort::Tcp(9125);
@@ -227,7 +227,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(command, vec!["start", "--force-regenesis", "--with-faucet"]);
-        assert_eq!(request.descriptor(), "mysten/sui-tools:testnet-v1.76.0");
+        assert_eq!(request.descriptor(), "mysten/sui-tools:testnet-v1.77.2");
         assert_eq!(request.entrypoint(), Some("sui"));
         assert_eq!(
             request.image().expose_ports(),

@@ -2,6 +2,11 @@
 
 use {
     anyhow::Context as _,
+    hyper_util::{
+        rt::{TokioExecutor, TokioIo},
+        server::conn::auto,
+        service::TowerToHyperService,
+    },
     std::{
         io,
         net::SocketAddr,
@@ -147,6 +152,36 @@ pub async fn bind(
     Ok((address, incoming))
 }
 
+/// Serves Warp routes over accepted TLS connections.
+pub async fn serve<F, S, I>(routes: F, incoming: S)
+where
+    F: warp::Filter<Error = warp::Rejection> + Clone + Send + Sync + 'static,
+    F::Extract: warp::Reply,
+    S: Stream<Item = io::Result<I>>,
+    I: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+{
+    tokio::pin!(incoming);
+    while let Some(connection) = incoming.next().await {
+        let connection = match connection {
+            Ok(connection) => connection,
+            Err(error) => {
+                log::debug!("TLS listener failed: {error}");
+                continue;
+            }
+        };
+        let service = TowerToHyperService::new(warp::service(routes.clone()));
+        tokio::spawn(async move {
+            let builder = auto::Builder::new(TokioExecutor::new());
+            if let Err(error) = builder
+                .serve_connection_with_upgrades(TokioIo::new(connection), service)
+                .await
+            {
+                log::debug!("TLS connection failed: {error}");
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {
@@ -169,9 +204,7 @@ mod tests {
         let (address, incoming) = bind(([127, 0, 0, 1], 0).into(), cert_path, key_path)
             .await
             .unwrap();
-        let server = tokio::spawn(
-            warp::serve(warp::path("health").map(|| StatusCode::OK)).run_incoming(incoming),
-        );
+        let server = tokio::spawn(serve(warp::path("health").map(|| StatusCode::OK), incoming));
         let stalled_connection = TcpStream::connect(address).await.unwrap();
 
         let root = reqwest::Certificate::from_pem(cert_pem.as_bytes()).unwrap();

@@ -41,7 +41,7 @@ fn proof_for_leader(
     leader_cap: Argument,
 ) -> anyhow::Result<Argument> {
     tx.call_target(
-        network_auth_binding::prove_leader_v2_target,
+        network_auth_binding::prove_leader_target,
         vec![leader_registry, leader_cap],
     )
 }

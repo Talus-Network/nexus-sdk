@@ -60,7 +60,7 @@ schemars.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true
 tonic.workspace = true
-warp = "0.3.7"
+warp.workspace = true
 
 [dev-dependencies.nexus-sdk]
 workspace = true

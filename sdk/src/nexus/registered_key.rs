@@ -170,10 +170,8 @@ mod tests {
                 vec![OutputVariantSchema::new(b"ok".to_vec(), vec![])],
             )
         };
-        let inputs = HashMap::from([(
-            "values".to_string(),
-            NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new()),
-        )]);
+        let inputs =
+            HashMap::from([("values".to_string(), NexusData::Many { values: Vec::new() })]);
         let data_error = canonical_tool_inputs_sha256(&schema_for(ValueKind::Data), &inputs)
             .expect_err("empty Many must fail before commitment");
         let object_error = canonical_tool_inputs_sha256(&schema_for(ValueKind::Object), &inputs)

@@ -7,9 +7,6 @@ pub(crate) mod agent_input;
 /// Transactions concerning operations around Nexus DAGs.
 pub mod dag;
 
-/// Transactions that activate published V1 objects through production V2 migrations.
-pub mod migration;
-
 /// Transactions that use the Sui gas coin directly.
 pub mod gas;
 

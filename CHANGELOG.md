@@ -18,6 +18,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
+- Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
+
+#### Changed
+
+- Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
+- Remove usage of V2 for clean LTS version.
+- Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
+- Generated primitives bindings now expose the single validation-independent `is_many` Move target required across package boundaries.
+
+#### Removed
+
+- Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
+- Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
+
+### `nexus-cli`
+
+#### Fixed
+
+- Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
+- Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
+
+#### Added
+
+- Implement onchain tool validation.
+
+### `nexus-toolkit`
+
+#### Changed
+
+- Updated Warp to 0.4.3 and migrated signed response bodies and custom TLS serving to the HTTP/Hyper 1 APIs.
+
+## [`2.0.0-rc.7`] - 2026-08-18
+
 - Production consumers now support protocol version two.
 
 ## [`2.0.0-rc.6`] - 2026-08-17

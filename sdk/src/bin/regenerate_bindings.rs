@@ -63,7 +63,6 @@ const PROTOCOL_LIMIT_MODULES: &[(&str, &str, &str, &[&str])] = &[
             "MAX_IDENTIFIER_BYTES",
             "MAX_INPUT_PORTS",
             "MAX_META_SCHEMA_BYTES",
-            "MAX_NEXUS_DATA_BYTES",
             "MAX_OUTPUT_VARIANTS",
             "MAX_PORTS_PER_OUTPUT_VARIANT",
             "MAX_RAW_OUTPUT_BYTES",

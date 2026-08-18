@@ -622,8 +622,8 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 interface::{
-                    dag::{DAGStateV2, DAG},
-                    graph::{self, VertexInfoV2, VertexKind},
+                    dag::{DAGState, DAG},
+                    graph::{self, VertexInfo, VertexKind},
                     meta_schema::{MetaSchema, PortSchema, ValueKind},
                     verifier::ToolVerifierMode,
                 },
@@ -657,7 +657,7 @@ mod tests {
     ) {
         let state_id = sui::types::Address::from_static("0xe");
         let vertices_id = sui::types::Address::from_static("0xf0");
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 2));
+        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
         let ports_by_vertex = ports.iter().fold(
             BTreeMap::<String, Vec<(String, ValueKind)>>::new(),
             |mut vertices, (vertex, port, kind)| {
@@ -677,7 +677,7 @@ mod tests {
                 },
             })
             .collect();
-        let state = DAGStateV2::new(
+        let state = DAGState::new(
             1,
             LinkedTable::new(vertices_id, ports_by_vertex.len() as u64),
             VecMap {
@@ -713,7 +713,7 @@ mod tests {
                 let node = Node {
                     prev: MoveOption::from_option(None::<graph::Vertex>),
                     next: MoveOption::from_option(None::<graph::Vertex>),
-                    value: VertexInfoV2 {
+                    value: VertexInfo {
                         kind: VertexKind::OffChain {
                             tool_fqn: "test::fixture".to_owned().into(),
                         },
@@ -759,7 +759,7 @@ mod tests {
             &dag,
             nexus_sdk::move_bindings::struct_tag::<DAG>(nexus_objects),
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 2, state);
+        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 1, state);
     }
 
     fn task_preparation(

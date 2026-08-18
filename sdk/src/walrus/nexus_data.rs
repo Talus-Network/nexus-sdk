@@ -5,6 +5,7 @@ use {
         move_bindings::{
             canonical_walrus_blob_id,
             interface::graph::{InputPort, OutputPort},
+            protocol_limits::primitives::data::MAX_INLINE_DATA_BYTES,
             sui_framework::vec_map::{Entry as VecMapEntry, VecMap},
         },
         types::{NexusData, NexusValue},
@@ -17,9 +18,9 @@ use {
 
 /// A successful Walrus fetch whose bytes do not match the committed SHA-256 digest.
 #[derive(Debug, Error, PartialEq, Eq)]
-#[error("Walrus content digest mismatch for storage key '{storage_key}'")]
+#[error("Walrus content digest mismatch for blob ID '{blob_id}'")]
 pub struct WalrusContentDigestMismatch {
-    pub storage_key: String,
+    pub blob_id: String,
 }
 
 /// A Walrus resolution failure that distinguishes unavailable content from fetched bytes that fail integrity.
@@ -86,7 +87,7 @@ impl StorageConf {
 
 impl NexusData {
     /// Resolves Walrus Data to transient Tool data after verifying its committed digest.
-    pub async fn fetch(self, conf: &StorageConf) -> anyhow::Result<Vec<NexusValue>> {
+    pub async fn fetch(self, conf: &StorageConf) -> anyhow::Result<NexusData> {
         self.resolve(conf)
             .await
             .map_err(WalrusFetchError::into_strict_error)
@@ -96,7 +97,7 @@ impl NexusData {
     pub async fn resolve(
         self,
         conf: &StorageConf,
-    ) -> Result<Vec<NexusValue>, WalrusFetchError<Vec<NexusValue>>> {
+    ) -> Result<NexusData, WalrusFetchError<NexusData>> {
         if !self.is_well_formed() {
             return Err(WalrusFetchError::Unavailable {
                 source: anyhow::anyhow!("cannot resolve malformed NexusData"),
@@ -108,38 +109,45 @@ impl NexusData {
         } else {
             None
         };
-        let mut resolved = Vec::new();
-        let mut mismatch = None;
-        for value in self
+        let many = self.is_many();
+        let source_values = self
             .into_values()
-            .map_err(|source| WalrusFetchError::Unavailable { source })?
-        {
-            match value {
-                NexusValue::WalrusData {
-                    storage_key,
-                    content_digest,
-                } => {
-                    let blob_id = blob_id_from_bytes(&storage_key)
-                        .map_err(|source| WalrusFetchError::Unavailable { source })?;
-                    let bytes = client
-                        .as_ref()
-                        .expect("Walrus client exists when a reference is present")
-                        .read_file(&blob_id)
-                        .await
-                        .map_err(|source| WalrusFetchError::Unavailable {
-                            source: source.into(),
-                        })?;
-                    let actual_digest: [u8; 32] = Sha256::digest(&bytes).into();
-                    if actual_digest.as_slice() != content_digest && mismatch.is_none() {
-                        mismatch = Some(WalrusContentDigestMismatch {
-                            storage_key: blob_id,
-                        });
-                    }
-                    resolved.push(NexusValue::InlineData { bytes });
+            .map_err(|source| WalrusFetchError::Unavailable { source })?;
+        let mut resolved = source_values
+            .iter()
+            .map(|value| match value {
+                NexusValue::WalrusData { .. } => NexusValue::InlineData { bytes: Vec::new() },
+                value => value.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut mismatch = None;
+        for (index, value) in source_values.into_iter().enumerate() {
+            if let NexusValue::WalrusData {
+                blob_id,
+                content_digest,
+            } = value
+            {
+                let blob_id = blob_id_from_bytes(&blob_id)
+                    .map_err(|source| WalrusFetchError::Unavailable { source })?;
+                let max_bytes = resolved_blob_byte_limit(&resolved, index, many)
+                    .map_err(|source| WalrusFetchError::Unavailable { source })?;
+                let bytes = client
+                    .as_ref()
+                    .expect("Walrus client exists when a reference is present")
+                    .read_file_bounded(&blob_id, max_bytes)
+                    .await
+                    .map_err(|source| WalrusFetchError::Unavailable {
+                        source: source.into(),
+                    })?;
+                let actual_digest: [u8; 32] = Sha256::digest(&bytes).into();
+                if actual_digest.as_slice() != content_digest && mismatch.is_none() {
+                    mismatch = Some(WalrusContentDigestMismatch { blob_id });
                 }
-                value => resolved.push(value),
+                resolved[index] = NexusValue::InlineData { bytes };
             }
         }
+        let resolved = NexusData::from_values(resolved, many)
+            .map_err(|source| WalrusFetchError::Unavailable { source })?;
         match mismatch {
             Some(mismatch) => Err(WalrusFetchError::DigestMismatch { resolved, mismatch }),
             None => Ok(resolved),
@@ -168,15 +176,15 @@ impl NexusData {
                     let response = client
                         .upload_bytes(bytes.clone(), store_for_epochs, None)
                         .await?;
-                    let storage_key = blob_id_from_storage_info(response)?.into_bytes();
-                    let blob_id = blob_id_from_bytes(&storage_key)?;
+                    let blob_id_bytes = blob_id_from_storage_info(response)?.into_bytes();
+                    let blob_id = blob_id_from_bytes(&blob_id_bytes)?;
                     let read_back = client.read_file_bounded(&blob_id, bytes.len()).await?;
                     let read_back_digest: [u8; 32] = Sha256::digest(&read_back).into();
                     anyhow::ensure!(
                         read_back == bytes && read_back_digest.as_slice() == digest,
-                        "Walrus upload read-back mismatch for storage key '{blob_id}'"
+                        "Walrus upload read-back mismatch for blob ID '{blob_id}'"
                     );
-                    uploaded.push(NexusValue::walrus_data(storage_key, digest)?);
+                    uploaded.push(NexusValue::walrus_data(blob_id_bytes, digest)?);
                 }
                 NexusValue::WalrusData { .. } => {
                     anyhow::bail!("Data upload received an already remote value");
@@ -200,7 +208,7 @@ impl VecMap<InputPort, NexusData> {
     pub async fn fetch_all(
         self,
         storage_conf: &StorageConf,
-    ) -> anyhow::Result<VecMap<InputPort, Vec<NexusValue>>> {
+    ) -> anyhow::Result<VecMap<InputPort, NexusData>> {
         resolve_entries(self.contents, storage_conf)
             .await
             .map(|contents| VecMap { contents })
@@ -211,10 +219,7 @@ impl VecMap<InputPort, NexusData> {
     pub async fn resolve_all(
         self,
         storage_conf: &StorageConf,
-    ) -> Result<
-        VecMap<InputPort, Vec<NexusValue>>,
-        WalrusFetchError<VecMap<InputPort, Vec<NexusValue>>>,
-    > {
+    ) -> Result<VecMap<InputPort, NexusData>, WalrusFetchError<VecMap<InputPort, NexusData>>> {
         match resolve_entries(self.contents, storage_conf).await {
             Ok(contents) => Ok(VecMap { contents }),
             Err(WalrusFetchError::Unavailable { source }) => {
@@ -240,7 +245,7 @@ impl VecMap<OutputPort, NexusData> {
     pub async fn fetch_all(
         self,
         storage_conf: &StorageConf,
-    ) -> anyhow::Result<VecMap<OutputPort, Vec<NexusValue>>> {
+    ) -> anyhow::Result<VecMap<OutputPort, NexusData>> {
         resolve_entries(self.contents, storage_conf)
             .await
             .map(|contents| VecMap { contents })
@@ -251,10 +256,8 @@ impl VecMap<OutputPort, NexusData> {
     pub async fn resolve_all(
         self,
         storage_conf: &StorageConf,
-    ) -> Result<
-        VecMap<OutputPort, Vec<NexusValue>>,
-        WalrusFetchError<VecMap<OutputPort, Vec<NexusValue>>>,
-    > {
+    ) -> Result<VecMap<OutputPort, NexusData>, WalrusFetchError<VecMap<OutputPort, NexusData>>>
+    {
         match resolve_entries(self.contents, storage_conf).await {
             Ok(contents) => Ok(VecMap { contents }),
             Err(WalrusFetchError::Unavailable { source }) => {
@@ -291,10 +294,7 @@ async fn commit_entries<P>(
 async fn resolve_entries<P>(
     contents: Vec<VecMapEntry<P, NexusData>>,
     storage_conf: &StorageConf,
-) -> Result<
-    Vec<VecMapEntry<P, Vec<NexusValue>>>,
-    WalrusFetchError<Vec<VecMapEntry<P, Vec<NexusValue>>>>,
-> {
+) -> Result<Vec<VecMapEntry<P, NexusData>>, WalrusFetchError<Vec<VecMapEntry<P, NexusData>>>> {
     validate_entries(&contents).map_err(|source| WalrusFetchError::Unavailable { source })?;
     let fetched = join_all(
         contents
@@ -331,6 +331,32 @@ fn validate_entries<P>(contents: &[VecMapEntry<P, NexusData>]) -> anyhow::Result
         "cannot process malformed NexusData map",
     );
     Ok(())
+}
+
+fn resolved_blob_byte_limit(
+    resolved: &[NexusValue],
+    index: usize,
+    many: bool,
+) -> anyhow::Result<usize> {
+    anyhow::ensure!(
+        index < resolved.len(),
+        "Walrus value index is out of bounds"
+    );
+    let mut lower = 0;
+    let mut upper = MAX_INLINE_DATA_BYTES as usize;
+    while lower < upper {
+        let candidate = lower + (upper - lower).div_ceil(2);
+        let mut values = resolved.to_vec();
+        values[index] = NexusValue::InlineData {
+            bytes: vec![0; candidate],
+        };
+        if NexusData::from_values(values, many).is_ok() {
+            lower = candidate;
+        } else {
+            upper = candidate - 1;
+        }
+    }
+    Ok(lower)
 }
 
 fn walrus_reader(conf: &StorageConf) -> anyhow::Result<WalrusClient> {
@@ -416,14 +442,14 @@ mod tests {
             .unwrap();
 
         assert!(matches!(
-            fetched.as_slice(),
+            fetched.values().unwrap().as_slice(),
             [NexusValue::InlineData { bytes }] if bytes == b"payload"
         ));
     }
 
     #[tokio::test]
     async fn empty_many_is_rejected_before_walrus_configuration() {
-        let value = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
+        let value = NexusData::Many { values: Vec::new() };
 
         assert!(value
             .clone()
@@ -456,7 +482,7 @@ mod tests {
             .create_async()
             .await;
         let valid = NexusData::walrus_data(BLOB_ID.as_bytes(), vec![0; 32]).unwrap();
-        let malformed = NexusData::new(b"nexus_value".to_vec(), Vec::new(), Vec::new());
+        let malformed = NexusData::Many { values: Vec::new() };
         let map = || VecMap {
             contents: vec![
                 VecMapEntry {
@@ -520,8 +546,8 @@ mod tests {
 
         assert!(matches!(
             committed.values().unwrap().as_slice(),
-            [NexusValue::WalrusData { storage_key, .. }]
-                if storage_key == BLOB_ID.as_bytes()
+            [NexusValue::WalrusData { blob_id, .. }]
+                if blob_id == BLOB_ID.as_bytes()
         ));
         put.assert_async().await;
         get.assert_async().await;
@@ -548,7 +574,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn typed_fetch_accepts_content_larger_than_onchain_inline_data() {
+    async fn typed_fetch_rejects_content_larger_than_inline_limit() {
         let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
         let bytes = vec![b'x'; 61_441];
         let get = server
@@ -560,12 +586,7 @@ mod tests {
         let value =
             NexusData::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(&bytes).to_vec()).unwrap();
 
-        let resolved = value.fetch(&storage_conf).await.unwrap();
-
-        assert!(matches!(
-            resolved.as_slice(),
-            [NexusValue::InlineData { bytes: resolved_bytes }] if resolved_bytes == &bytes
-        ));
+        assert!(value.fetch(&storage_conf).await.is_err());
         get.assert_async().await;
     }
 
@@ -587,9 +608,9 @@ mod tests {
             panic!("successful fetch with unequal bytes must be an integrity mismatch");
         };
 
-        assert_eq!(mismatch.storage_key, BLOB_ID);
+        assert_eq!(mismatch.blob_id, BLOB_ID);
         assert!(matches!(
-            resolved.as_slice(),
+            resolved.values().unwrap().as_slice(),
             [NexusValue::InlineData { bytes }] if bytes == b"different"
         ));
         get.assert_async().await;
@@ -611,6 +632,62 @@ mod tests {
             WalrusFetchError::Unavailable { .. }
         ));
         get.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn typed_fetch_preserves_many_cardinality_and_order() {
+        let (mut server, storage_conf) = setup_mock_server_and_conf().await.unwrap();
+        let get = server
+            .mock("GET", format!("/v1/blobs/{BLOB_ID}").as_str())
+            .with_status(200)
+            .with_body("remote")
+            .create_async()
+            .await;
+        let value = NexusData::many(vec![
+            NexusValue::inline_data(b"inline").unwrap(),
+            NexusValue::walrus_data(BLOB_ID.as_bytes(), Sha256::digest(b"remote").to_vec())
+                .unwrap(),
+        ])
+        .unwrap();
+
+        let resolved = value.fetch(&storage_conf).await.unwrap();
+
+        assert!(matches!(
+            resolved,
+            NexusData::Many { values }
+                if matches!(
+                    values.as_slice(),
+                    [
+                        NexusValue::InlineData { bytes: first },
+                        NexusValue::InlineData { bytes: second },
+                    ] if first == b"inline" && second == b"remote"
+                )
+        ));
+        get.assert_async().await;
+    }
+
+    #[test]
+    fn resolved_blob_limit_accounts_for_full_many_bcs_size() {
+        let resolved = vec![
+            NexusValue::InlineData {
+                bytes: vec![0; 61_440],
+            },
+            NexusValue::InlineData { bytes: Vec::new() },
+        ];
+
+        let limit = resolved_blob_byte_limit(&resolved, 1, true).unwrap();
+        let mut at_limit = resolved.clone();
+        at_limit[1] = NexusValue::InlineData {
+            bytes: vec![0; limit],
+        };
+        let mut over_limit = resolved;
+        over_limit[1] = NexusValue::InlineData {
+            bytes: vec![0; limit + 1],
+        };
+
+        assert!(limit < MAX_INLINE_DATA_BYTES as usize);
+        assert!(NexusData::from_values(at_limit, true).is_ok());
+        assert!(NexusData::from_values(over_limit, true).is_err());
     }
 
     #[test]

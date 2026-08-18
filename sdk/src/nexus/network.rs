@@ -7,7 +7,7 @@ use {
             registry::{
                 leader::{Leader, LeaderRegistry, LeaderRegistryStateV1},
                 priority_fee_vault::{
-                    PriorityFeeDepositV2,
+                    PriorityFeeDeposit,
                     PriorityFeeVault,
                     PriorityFeeVaultStateV1,
                 },
@@ -310,13 +310,12 @@ fn validate_priority_fee_batch_size(batch_size: usize) -> Result<(), NexusError>
 
 async fn discover_priority_fee_deposits(
     client: &NexusClient,
-) -> Result<Vec<Response<PriorityFeeDepositV2>>, NexusError> {
+) -> Result<Vec<Response<PriorityFeeDeposit>>, NexusError> {
     let vault_id = *client.nexus_objects.priority_fee_vault.object_id();
-    let object_type =
-        crate::move_bindings::struct_tag::<PriorityFeeDepositV2>(&client.nexus_objects);
+    let object_type = crate::move_bindings::struct_tag::<PriorityFeeDeposit>(&client.nexus_objects);
     let deposits = client
         .crawler()
-        .get_object_owned_objects::<PriorityFeeDepositV2>(vault_id, object_type)
+        .get_object_owned_objects::<PriorityFeeDeposit>(vault_id, object_type)
         .await
         .map_err(|error| {
             NexusError::Rpc(anyhow::anyhow!(
@@ -333,7 +332,7 @@ async fn prepare_priority_fee_deposit_batch(
     reject_missing: bool,
 ) -> Result<
     (
-        Vec<Response<PriorityFeeDepositV2>>,
+        Vec<Response<PriorityFeeDeposit>>,
         Vec<SkippedPriorityFeeDeposit>,
         Vec<sui::types::Address>,
     ),
@@ -631,14 +630,14 @@ mod tests {
         scans: Vec<Vec<(sui::types::ObjectReference, sui::types::Address)>>,
     ) {
         let vault_id = *objects.priority_fee_vault.object_id();
-        let object_type = crate::move_bindings::struct_tag::<PriorityFeeDepositV2>(objects);
+        let object_type = crate::move_bindings::struct_tag::<PriorityFeeDeposit>(objects);
         let grpc_scans = scans
             .into_iter()
             .map(|deposits| {
                 deposits
                     .into_iter()
                     .map(|(object_ref, leader_cap_id)| {
-                        let deposit = PriorityFeeDepositV2::new(
+                        let deposit = PriorityFeeDeposit::new(
                             UID::new(*object_ref.object_id()),
                             Balance::<SUI>::new(1),
                             ID::new(leader_cap_id),

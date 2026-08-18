@@ -2,7 +2,7 @@
 
 use crate::{
     move_bindings::{
-        registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDepositV2},
+        registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDeposit},
         sui_framework::transfer::Receiving,
     },
     move_boundary,
@@ -24,11 +24,11 @@ pub fn collect_priority_fee_deposits(
         let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
         let deposits = deposits
             .iter()
-            .map(|deposit| transaction.receiving_object::<PriorityFeeDepositV2>(deposit))
+            .map(|deposit| transaction.receiving_object::<PriorityFeeDeposit>(deposit))
             .collect::<Result<Vec<_>, _>>()?;
-        let deposits = transaction.move_vector::<Receiving<PriorityFeeDepositV2>>(deposits)?;
+        let deposits = transaction.move_vector::<Receiving<PriorityFeeDeposit>>(deposits)?;
         transaction.call_target(
-            priority_fee_vault_binding::collect_deposits_v2_target,
+            priority_fee_vault_binding::collect_deposits_target,
             vec![vault, leader_registry, deposits],
         )?;
         Ok(())
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(
             vector.type_,
             Some(crate::move_bindings::type_tag::<
-                Receiving<PriorityFeeDepositV2>,
+                Receiving<PriorityFeeDeposit>,
             >(&objects))
         );
         assert_eq!(vector.elements.len(), 2);
@@ -200,7 +200,7 @@ mod tests {
             .find_map(|command| match command {
                 Command::MoveCall(call)
                     if call.module.as_str() == "priority_fee_vault"
-                        && call.function.as_str() == "collect_deposits_v2" =>
+                        && call.function.as_str() == "collect_deposits" =>
                 {
                     Some(call)
                 }
