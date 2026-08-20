@@ -35,7 +35,7 @@ pub struct ConfigureToolVerifierResult {
     pub tool_id: sui::types::Address,
 }
 
-/// Result of a [`Tool`] cashier configuration or ticket transaction.
+/// Result of a [`Tool`] cashier policy transaction.
 pub struct ToolCashierActionResult {
     pub tx_digest: sui::types::Digest,
 }
@@ -239,22 +239,26 @@ impl ToolActions {
         })
     }
 
-    /// Enable expiry payment tickets for a [`Tool`].
-    pub async fn enable_expiry_tickets(
+    /// Enables time pass sales and admission for a [`Tool`].
+    pub async fn enable_time_passes(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
-        cost_per_minute: u64,
+        price_per_ms: u64,
+        minimum_duration_ms: u64,
+        maximum_duration_ms: u64,
     ) -> Result<ToolCashierActionResult, NexusError> {
         let client = self.client.operation_client().await?;
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::enable_expiry_ptb(
+        let transaction = tool_cashier::enable_time_pass_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &cashier_admin,
-            cost_per_minute,
+            price_per_ms,
+            minimum_duration_ms,
+            maximum_duration_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -287,8 +291,8 @@ impl ToolActions {
         })
     }
 
-    /// Disable expiry payment tickets for a [`Tool`].
-    pub async fn disable_expiry_tickets(
+    /// Disables time pass sales and admission for a [`Tool`].
+    pub async fn disable_time_passes(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
@@ -297,25 +301,28 @@ impl ToolActions {
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction =
-            tool_cashier::disable_expiry_ptb(&client.nexus_objects, &tool_cashier, &cashier_admin)
-                .map_err(NexusError::TransactionBuilding)?;
+        let transaction = tool_cashier::disable_time_pass_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
         Ok(ToolCashierActionResult {
             tx_digest: response.digest,
         })
     }
 
-    /// Buy an expiry payment ticket for a [`Tool`].
-    pub async fn buy_expiry_ticket(
+    /// Buys and freezes a time pass for a [`Tool`].
+    pub async fn buy_time_pass(
         &self,
         tool_fqn: &ToolFqn,
-        minutes: u64,
+        duration_ms: u64,
         pay_with: sui::types::Address,
     ) -> Result<ToolCashierActionResult, NexusError> {
-        if minutes == 0 {
+        if duration_ms == 0 {
             return Err(NexusError::Configuration(
-                "Ticket duration must be at least one minute".to_owned(),
+                "Time pass duration must be greater than zero".to_owned(),
             ));
         }
         let client = self.client.operation_client().await?;
@@ -331,11 +338,12 @@ impl ToolActions {
                 ))
             })?
             .object_ref();
-        let transaction = tool_cashier::buy_expiry_payment_ticket_ptb(
+        let transaction = tool_cashier::buy_time_pass_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &pay_with,
-            minutes,
+            crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(address),
+            duration_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -344,36 +352,36 @@ impl ToolActions {
         })
     }
 
-    /// Enable limited invocation payment tickets for a [`Tool`].
-    pub async fn enable_limited_invocation_tickets(
+    /// Enables finite credit sales and admission for a [`Tool`].
+    pub async fn enable_finite_credits(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
-        cost_per_invocation: u64,
-        min_invocations: u64,
-        max_invocations: u64,
+        price_per_credit: u64,
+        minimum_credits: u64,
+        maximum_credits: u64,
     ) -> Result<ToolCashierActionResult, NexusError> {
-        if min_invocations == 0 {
+        if minimum_credits == 0 {
             return Err(NexusError::Configuration(
-                "Minimum invocations must be at least one".to_owned(),
+                "Minimum credits must be at least one".to_owned(),
             ));
         }
-        if min_invocations > max_invocations {
+        if minimum_credits > maximum_credits {
             return Err(NexusError::Configuration(format!(
-                "Minimum invocations '{min_invocations}' cannot exceed maximum invocations '{max_invocations}'"
+                "Minimum credits '{minimum_credits}' cannot exceed maximum credits '{maximum_credits}'"
             )));
         }
         let client = self.client.operation_client().await?;
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::enable_limited_invocations_ptb(
+        let transaction = tool_cashier::enable_finite_credits_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &cashier_admin,
-            cost_per_invocation,
-            min_invocations,
-            max_invocations,
+            price_per_credit,
+            minimum_credits,
+            maximum_credits,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -382,8 +390,8 @@ impl ToolActions {
         })
     }
 
-    /// Disable limited invocation payment tickets for a [`Tool`].
-    pub async fn disable_limited_invocation_tickets(
+    /// Disables finite credit sales and admission for a [`Tool`].
+    pub async fn disable_finite_credits(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
@@ -392,7 +400,7 @@ impl ToolActions {
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::disable_limited_invocations_ptb(
+        let transaction = tool_cashier::disable_finite_credits_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &cashier_admin,
@@ -404,16 +412,16 @@ impl ToolActions {
         })
     }
 
-    /// Buy a limited invocation payment ticket for a [`Tool`].
-    pub async fn buy_limited_invocation_ticket(
+    /// Buys shared finite credits for a [`Tool`].
+    pub async fn buy_finite_credits(
         &self,
         tool_fqn: &ToolFqn,
-        invocations: u64,
+        credits: u64,
         pay_with: sui::types::Address,
     ) -> Result<ToolCashierActionResult, NexusError> {
-        if invocations == 0 {
+        if credits == 0 {
             return Err(NexusError::Configuration(
-                "Ticket invocations must be at least one".to_owned(),
+                "Credits must be at least one".to_owned(),
             ));
         }
         let client = self.client.operation_client().await?;
@@ -429,11 +437,13 @@ impl ToolActions {
                 ))
             })?
             .object_ref();
-        let transaction = tool_cashier::buy_limited_invocations_payment_ticket_ptb(
+        let transaction = tool_cashier::buy_finite_credits_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &pay_with,
-            invocations,
+            crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(address),
+            address,
+            credits,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -1038,13 +1048,13 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum PaymentAction {
-        EnableExpiry,
+        EnableTimePass,
         SetInvocationCost,
-        DisableExpiry,
-        BuyExpiry,
-        EnableLimited,
-        DisableLimited,
-        BuyLimited,
+        DisableTimePass,
+        BuyTimePass,
+        EnableFiniteCredits,
+        DisableFiniteCredits,
+        BuyFiniteCredits,
     }
 
     async fn assert_payment_action_succeeds(action: PaymentAction) {
@@ -1104,9 +1114,9 @@ mod tests {
         let actions = client.tool();
 
         let result = match action {
-            PaymentAction::EnableExpiry => {
+            PaymentAction::EnableTimePass => {
                 actions
-                    .enable_expiry_tickets(&tool_fqn, auxiliary_id, 7)
+                    .enable_time_passes(&tool_fqn, auxiliary_id, 7, 1, 100)
                     .await
             }
             PaymentAction::SetInvocationCost => {
@@ -1114,26 +1124,22 @@ mod tests {
                     .set_invocation_cost(&tool_fqn, auxiliary_id, 11)
                     .await
             }
-            PaymentAction::DisableExpiry => {
+            PaymentAction::DisableTimePass => {
+                actions.disable_time_passes(&tool_fqn, auxiliary_id).await
+            }
+            PaymentAction::BuyTimePass => actions.buy_time_pass(&tool_fqn, 3, auxiliary_id).await,
+            PaymentAction::EnableFiniteCredits => {
                 actions
-                    .disable_expiry_tickets(&tool_fqn, auxiliary_id)
+                    .enable_finite_credits(&tool_fqn, auxiliary_id, 13, 2, 9)
                     .await
             }
-            PaymentAction::BuyExpiry => actions.buy_expiry_ticket(&tool_fqn, 3, auxiliary_id).await,
-            PaymentAction::EnableLimited => {
+            PaymentAction::DisableFiniteCredits => {
                 actions
-                    .enable_limited_invocation_tickets(&tool_fqn, auxiliary_id, 13, 2, 9)
+                    .disable_finite_credits(&tool_fqn, auxiliary_id)
                     .await
             }
-            PaymentAction::DisableLimited => {
-                actions
-                    .disable_limited_invocation_tickets(&tool_fqn, auxiliary_id)
-                    .await
-            }
-            PaymentAction::BuyLimited => {
-                actions
-                    .buy_limited_invocation_ticket(&tool_fqn, 4, auxiliary_id)
-                    .await
+            PaymentAction::BuyFiniteCredits => {
+                actions.buy_finite_credits(&tool_fqn, 4, auxiliary_id).await
             }
         }
         .expect("Tool payment action succeeds");
@@ -1144,13 +1150,13 @@ mod tests {
     #[tokio::test]
     async fn tool_cashier_actions_resolve_objects_and_submit() {
         for action in [
-            PaymentAction::EnableExpiry,
+            PaymentAction::EnableTimePass,
             PaymentAction::SetInvocationCost,
-            PaymentAction::DisableExpiry,
-            PaymentAction::BuyExpiry,
-            PaymentAction::EnableLimited,
-            PaymentAction::DisableLimited,
-            PaymentAction::BuyLimited,
+            PaymentAction::DisableTimePass,
+            PaymentAction::BuyTimePass,
+            PaymentAction::EnableFiniteCredits,
+            PaymentAction::DisableFiniteCredits,
+            PaymentAction::BuyFiniteCredits,
         ] {
             assert_payment_action_succeeds(action).await;
         }

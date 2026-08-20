@@ -1,23 +1,20 @@
 //! Client scoped programmable transaction composition.
 
-use {
-    crate::{
-        move_boundary::NexusPtbBuilder,
-        nexus::{
-            client::NexusClient,
-            error::NexusError,
-            scheduler::resolve,
-            signer::ExecutedTransaction,
-        },
-        scheduler::{DispatchOffer, OccurrenceRef, Schedule, SchedulerError, TaskSpec},
-        sui,
-        transactions::scheduler::{
-            compile_append_dispatch_occurrence,
-            compile_append_expire_occurrence,
-            TaskDraftCompiler,
-        },
+use crate::{
+    move_boundary::NexusPtbBuilder,
+    nexus::{
+        client::NexusClient,
+        error::NexusError,
+        scheduler::resolve,
+        signer::ExecutedTransaction,
     },
-    std::collections::HashSet,
+    scheduler::{DispatchOffer, OccurrenceRef, Schedule, SchedulerError, TaskSpec},
+    sui,
+    transactions::scheduler::{
+        compile_append_dispatch_occurrence,
+        compile_append_expire_occurrence,
+        TaskDraftCompiler,
+    },
 };
 
 /// One programmable transaction scoped to a [`NexusClient`].
@@ -105,7 +102,6 @@ impl SchedulerTransaction<'_> {
         dag: &sui::types::ObjectReference,
         leader_cap: &sui::types::ObjectReference,
         gas_charge: u64,
-        tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
     ) -> Result<(), SchedulerError> {
         if offer.occurrence().task_id() != *task.object_id() {
             return Err(SchedulerError::InvalidRequest {
@@ -123,7 +119,6 @@ impl SchedulerTransaction<'_> {
             leader_cap,
             offer.occurrence().occurrence_id(),
             gas_charge,
-            tool_cashiers,
         )
     }
 

@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-sdk`
 
+#### Added
+
+- Added dynamic Invocation policy composition, finite credits, time passes, and exact Invocation timeout refunds.
+
 #### Fixed
 
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
@@ -15,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Changed
 
+- Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
@@ -22,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Removed
 
+- Removed ticket lookup and cashier based settlement APIs in favor of exact Invocation objects.
 - Removed migration-only transaction builders, coexistence-suffixed generated targets and state names, duplicate Nexus value witnesses, and the Walrus storage-key API in favor of the fresh canonical package graph and Blob IDs.
 - Removed generated Move call targets for `NexusData::is_one` and `NexusData::is_valid`; generated `is_many` now represents the variant-only discriminator while SDK-native cardinality discriminants remain unchanged.
 

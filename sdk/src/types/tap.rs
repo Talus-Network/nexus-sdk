@@ -648,7 +648,7 @@ mod tests {
         crate::move_bindings::{
             interface::{
                 agent::{Agent, SkillSchedulePolicy},
-                payment::{ExecutionPaymentFinalState, VertexExecutionPaymentSettlementKind},
+                payment::ExecutionPaymentFinalState,
             },
             registry::agent_registry::AgentRegistryStateV1,
             sui_framework::table::Table as MoveTable,
@@ -886,19 +886,6 @@ mod tests {
         ] {
             assert_eq!(
                 bcs::from_bytes::<PaymentSourceKind>(&bcs::to_bytes(&value).unwrap()).unwrap(),
-                value
-            );
-        }
-
-        for value in [
-            VertexExecutionPaymentSettlementKind::Paid,
-            VertexExecutionPaymentSettlementKind::Ticket,
-        ] {
-            assert_eq!(
-                bcs::from_bytes::<VertexExecutionPaymentSettlementKind>(
-                    &bcs::to_bytes(&value).unwrap()
-                )
-                .unwrap(),
                 value
             );
         }

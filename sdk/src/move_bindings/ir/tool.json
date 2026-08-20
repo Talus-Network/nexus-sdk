@@ -420,6 +420,2957 @@
         }
       ]
     },
+    "finite_credits": {
+      "name": "finite_credits",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "finite_credits",
+            "name": "Config"
+          },
+          "module": "finite_credits",
+          "name": "Config",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "price_per_credit",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "minimum_credits",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "maximum_credits",
+                  "position": 2,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "finite_credits",
+            "name": "CreditReserve"
+          },
+          "module": "finite_credits",
+          "name": "CreditReserve",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "tool",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "cashier",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "beneficiary",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "PaymentSourceKind"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "refund_to",
+                  "position": 3,
+                  "ty": "Address"
+                },
+                {
+                  "name": "units",
+                  "position": 4,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "finite_credits",
+            "name": "Credits"
+          },
+          "module": "finite_credits",
+          "name": "Credits",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "tool",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "cashier",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "beneficiary",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "PaymentSourceKind"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "refund_to",
+                  "position": 4,
+                  "ty": "Address"
+                },
+                {
+                  "name": "remaining",
+                  "position": 5,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "finite_credits",
+            "name": "Policy"
+          },
+          "module": "finite_credits",
+          "name": "Policy",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "buy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "pay_with",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "coin",
+                        "name": "Coin"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "sui",
+                              "name": "SUI"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "beneficiary",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "PaymentSourceKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "refund_to",
+              "ty": "Address"
+            },
+            {
+              "name": "credits",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "finite_credits",
+                  "name": "Credits"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "checked_multiply",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "left",
+              "ty": "U64"
+            },
+            {
+              "name": "right",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "claim_refund",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "refunded",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "finite_credits",
+                  "name": "Credits"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "collect",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "invocations",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "disable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "enable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "price_per_credit",
+              "ty": "U64"
+            },
+            {
+              "name": "minimum_credits",
+              "ty": "U64"
+            },
+            {
+              "name": "maximum_credits",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "get_invocation",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "credits",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "finite_credits",
+                        "name": "Credits"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "issue",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "beneficiary",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "PaymentSourceKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "refund_to",
+              "ty": "Address"
+            },
+            {
+              "name": "credits",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "finite_credits",
+                  "name": "Credits"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "join",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "finite_credits",
+                        "name": "Credits"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "other",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "finite_credits",
+                    "name": "Credits"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "new_credits",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "beneficiary",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "PaymentSourceKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "refund_to",
+              "ty": "Address"
+            },
+            {
+              "name": "credits",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "finite_credits",
+                  "name": "Credits"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "remaining",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "finite_credits",
+                        "name": "Credits"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "share",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "credits",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "finite_credits",
+                    "name": "Credits"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "split",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "finite_credits",
+                        "name": "Credits"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "credits",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "finite_credits",
+                  "name": "Credits"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "fixed_price": {
+      "name": "fixed_price",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "fixed_price",
+            "name": "Policy"
+          },
+          "module": "fixed_price",
+          "name": "Policy",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "collect",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "invocations",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "disable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "enable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "get_invocation",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "free_invocation": {
+      "name": "free_invocation",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "free_invocation",
+            "name": "Policy"
+          },
+          "module": "free_invocation",
+          "name": "Policy",
+          "abilities": [
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "collect",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "invocations",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "disable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "enable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "get_invocation",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "invocation": {
+      "name": "invocation",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "invocation",
+            "name": "Invocation"
+          },
+          "module": "invocation",
+          "name": "Invocation",
+          "abilities": [
+            "Key"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "id",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "execution_id",
+                  "position": 1,
+                  "ty": "Address"
+                },
+                {
+                  "name": "vertex_key",
+                  "position": 2,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "tool_id",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "tool_fqn",
+                  "position": 4,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "cashier_id",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "policy",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "type_name",
+                        "name": "TypeName"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "sources",
+                  "position": 7,
+                  "ty": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "object",
+                          "name": "ID"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "amount",
+                  "position": 8,
+                  "ty": "U64"
+                },
+                {
+                  "name": "refund_to",
+                  "position": 9,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
+                      },
+                      "type_arguments": [
+                        "Address"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "funds",
+                  "position": 10,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "balance",
+                        "name": "Balance"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "sui",
+                              "name": "SUI"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "invocation",
+            "name": "ReserveKey"
+          },
+          "module": "invocation",
+          "name": "ReserveKey",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": true
+            }
+          ],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "amount",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "cashier",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "claim_refund",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "invocation",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "TypeParameter": 1
+            }
+          ]
+        },
+        {
+          "name": "collect",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "invocations",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "collect_with_reserve",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "invocations",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "Vector": {
+                "TypeParameter": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "destroy_empty",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "invocation",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "execution_id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Address"
+          ]
+        },
+        {
+          "name": "id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_invocation",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "sources",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "object",
+                      "name": "ID"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            },
+            {
+              "name": "amount",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_invocation_with_reserve",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "policy",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "reserve",
+              "ty": {
+                "TypeParameter": 1
+              }
+            },
+            {
+              "name": "refund_to",
+              "ty": "Address"
+            },
+            {
+              "name": "sources",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "object",
+                      "name": "ID"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            },
+            {
+              "name": "amount",
+              "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "place",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "invocation",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "receipt",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationLockReceipt"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "policy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "type_name",
+                  "name": "TypeName"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "receive",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "receiving",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "transfer",
+                    "name": "Receiving"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa7",
+                          "module": "invocation",
+                          "name": "Invocation"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "receive_completed",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "receiving",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "transfer",
+                    "name": "Receiving"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa7",
+                          "module": "invocation",
+                          "name": "Invocation"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "resolve",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "invocation",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "invocation",
+                    "name": "Invocation"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "paid",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "balance",
+                    "name": "Balance"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "receipt",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationSettlementReceipt"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "sources",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "tool",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "tool_fqn",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        },
+        {
+          "name": "vertex_key",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "invocation",
+                        "name": "Invocation"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Vector": "U8"
+            }
+          ]
+        }
+      ]
+    },
     "main": {
       "name": "main",
       "datatypes": [
@@ -527,21 +3478,53 @@
         }
       ]
     },
-    "payment_extension": {
-      "name": "payment_extension",
+    "time_pass": {
+      "name": "time_pass",
       "datatypes": [
         {
           "type_name": {
             "address": "0xa7",
-            "module": "payment_extension",
-            "name": "ExpiryCashierAdminCapKey"
+            "module": "time_pass",
+            "name": "Config"
           },
-          "module": "payment_extension",
-          "name": "ExpiryCashierAdminCapKey",
+          "module": "time_pass",
+          "name": "Config",
           "abilities": [
-            "Copy",
-            "Drop",
             "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "price_per_ms",
+                  "position": 0,
+                  "ty": "U64"
+                },
+                {
+                  "name": "minimum_duration_ms",
+                  "position": 1,
+                  "ty": "U64"
+                },
+                {
+                  "name": "maximum_duration_ms",
+                  "position": 2,
+                  "ty": "U64"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "time_pass",
+            "name": "Policy"
+          },
+          "module": "time_pass",
+          "name": "Policy",
+          "abilities": [
+            "Drop"
           ],
           "type_parameters": [],
           "kind": {
@@ -559,128 +3542,84 @@
         {
           "type_name": {
             "address": "0xa7",
-            "module": "payment_extension",
-            "name": "ExpiryCostPerMinuteKey"
+            "module": "time_pass",
+            "name": "TimePass"
           },
-          "module": "payment_extension",
-          "name": "ExpiryCostPerMinuteKey",
+          "module": "time_pass",
+          "name": "TimePass",
           "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
+            "Store",
+            "Key"
           ],
           "type_parameters": [],
           "kind": {
             "Struct": {
               "fields": [
                 {
-                  "name": "dummy_field",
+                  "name": "id",
                   "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "payment_extension",
-            "name": "LimitedInvocationsCashierAdminCapKey"
-          },
-          "module": "payment_extension",
-          "name": "LimitedInvocationsCashierAdminCapKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
                 {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "payment_extension",
-            "name": "LimitedInvocationsCostPerInvocationKey"
-          },
-          "module": "payment_extension",
-          "name": "LimitedInvocationsCostPerInvocationKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                  "name": "tool",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
                 {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "payment_extension",
-            "name": "LimitedInvocationsMaxInvocationsKey"
-          },
-          "module": "payment_extension",
-          "name": "LimitedInvocationsMaxInvocationsKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                  "name": "cashier",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
                 {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "payment_extension",
-            "name": "LimitedInvocationsMinInvocationsKey"
-          },
-          "module": "payment_extension",
-          "name": "LimitedInvocationsMinInvocationsKey",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
+                  "name": "beneficiary",
+                  "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "PaymentSourceKind"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
                 {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
+                  "name": "valid_from_ms",
+                  "position": 4,
+                  "ty": "U64"
+                },
+                {
+                  "name": "valid_until_ms",
+                  "position": 5,
+                  "ty": "U64"
                 }
               ]
             }
@@ -689,16 +3628,16 @@
       ],
       "functions": [
         {
-          "name": "buy_expiry_payment_ticket",
+          "name": "buy",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "cashier",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -711,10 +3650,6 @@
                   }
                 }
               }
-            },
-            {
-              "name": "minutes",
-              "ty": "U64"
             },
             {
               "name": "pay_with",
@@ -764,6 +3699,23 @@
               }
             },
             {
+              "name": "beneficiary",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "PaymentSourceKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "duration_ms",
+              "ty": "U64"
+            },
+            {
               "name": "ctx",
               "ty": {
                 "Ref": {
@@ -782,16 +3734,56 @@
               }
             }
           ],
-          "return_types": []
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "time_pass",
+                  "name": "TimePass"
+                },
+                "type_arguments": []
+              }
+            },
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
         },
         {
-          "name": "buy_limited_invocations_payment_ticket",
+          "name": "checked_multiply",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "left",
+              "ty": "U64"
+            },
+            {
+              "name": "right",
+              "ty": "U64"
+            }
+          ],
+          "return_types": [
+            "U64"
+          ]
+        },
+        {
+          "name": "collect",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
@@ -803,6 +3795,35 @@
                         "name": "ToolCashier"
                       },
                       "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
                     }
                   }
                 }
@@ -810,27 +3831,154 @@
             },
             {
               "name": "invocations",
-              "ty": "U64"
-            },
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "invocation",
+                            "name": "Invocation"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
             {
-              "name": "pay_with",
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "balance",
+                  "name": "Balance"
+                },
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "sui",
+                        "name": "SUI"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "disable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
               "ty": {
                 "Ref": {
                   "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "coin",
-                        "name": "Coin"
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
                       },
                       "type_arguments": [
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "enable",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
@@ -842,20 +3990,72 @@
               }
             },
             {
-              "name": "clock",
+              "name": "price_per_ms",
+              "ty": "U64"
+            },
+            {
+              "name": "minimum_duration_ms",
+              "ty": "U64"
+            },
+            {
+              "name": "maximum_duration_ms",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "get_invocation",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "cashier",
               "ty": {
                 "Ref": {
                   "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
                   }
+                }
+              }
+            },
+            {
+              "name": "pass",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "time_pass",
+                        "name": "TimePass"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "request",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "InvocationRequest"
+                  },
+                  "type_arguments": []
                 }
               }
             },
@@ -878,75 +4078,30 @@
               }
             }
           ],
-          "return_types": []
-        },
-        {
-          "name": "disable_expiry",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
+          "return_types": [
             {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "OverToolCashier"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "invocation",
+                  "name": "Invocation"
+                },
+                "type_arguments": []
               }
             }
-          ],
-          "return_types": []
+          ]
         },
         {
-          "name": "disable_limited_invocations",
+          "name": "issue",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "self",
+              "name": "cashier",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -964,63 +4119,7 @@
               "name": "owner_cap",
               "ty": {
                 "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "OverToolCashier"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "enable_expiry",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
@@ -1046,7 +4145,24 @@
               }
             },
             {
-              "name": "cost_per_minute",
+              "name": "beneficiary",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa2",
+                    "module": "payment",
+                    "name": "PaymentSourceKind"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "valid_from_ms",
+              "ty": "U64"
+            },
+            {
+              "name": "valid_until_ms",
               "ty": "U64"
             },
             {
@@ -1068,93 +4184,18 @@
               }
             }
           ],
-          "return_types": []
-        },
-        {
-          "name": "enable_limited_invocations",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
+          "return_types": [
             {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "OverToolCashier"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "cost_per_invocation",
-              "ty": "U64"
-            },
-            {
-              "name": "min_invocations",
-              "ty": "U64"
-            },
-            {
-              "name": "max_invocations",
-              "ty": "U64"
-            },
-            {
-              "name": "ctx",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "time_pass",
+                  "name": "TimePass"
+                },
+                "type_arguments": []
               }
             }
-          ],
-          "return_types": []
+          ]
         }
       ]
     },
@@ -1263,55 +4304,108 @@
           "type_name": {
             "address": "0xa7",
             "module": "tool_cashier",
-            "name": "ModusOperandi"
+            "name": "CashierDeposit"
           },
           "module": "tool_cashier",
-          "name": "ModusOperandi",
+          "name": "CashierDeposit",
           "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
+            "Key"
           ],
           "type_parameters": [],
           "kind": {
-            "Enum": {
-              "variants": [
+            "Struct": {
+              "fields": [
                 {
-                  "name": "Expiry",
+                  "name": "id",
                   "position": 0,
-                  "fields": [
-                    {
-                      "name": "valid_for_ms",
-                      "position": 0,
-                      "ty": "U64"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
                     }
-                  ]
+                  }
                 },
                 {
-                  "name": "LimitedInvocations",
+                  "name": "funds",
                   "position": 1,
-                  "fields": [
-                    {
-                      "name": "total",
-                      "position": 0,
-                      "ty": "U64"
-                    },
-                    {
-                      "name": "used",
-                      "position": 1,
-                      "ty": "U64"
-                    },
-                    {
-                      "name": "locked",
-                      "position": 2,
-                      "ty": "U64"
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "balance",
+                        "name": "Balance"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "sui",
+                              "name": "SUI"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
                     }
-                  ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "tool_cashier",
+            "name": "CashierDepositCreatedEvent"
+          },
+          "module": "tool_cashier",
+          "name": "CashierDepositCreatedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "cashier",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 },
                 {
-                  "name": "UponDiscretionOfTheTool",
+                  "name": "deposit",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "amount",
                   "position": 2,
-                  "fields": []
+                  "ty": "U64"
                 }
               ]
             }
@@ -1345,128 +4439,30 @@
           "type_name": {
             "address": "0xa7",
             "module": "tool_cashier",
-            "name": "PaymentTicket"
+            "name": "PolicyKey"
           },
           "module": "tool_cashier",
-          "name": "PaymentTicket",
-          "abilities": [
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "created_at_ms",
-                  "position": 0,
-                  "ty": "U64"
-                },
-                {
-                  "name": "modus_operandi",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ModusOperandi"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_cashier",
-            "name": "Scope"
-          },
-          "module": "tool_cashier",
-          "name": "Scope",
+          "name": "PolicyKey",
           "abilities": [
             "Copy",
             "Drop",
             "Store"
           ],
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": true
+            }
+          ],
           "kind": {
-            "Enum": {
-              "variants": [
+            "Struct": {
+              "fields": [
                 {
-                  "name": "Execution",
+                  "name": "dummy_field",
                   "position": 0,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "Agent",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x2",
-                            "module": "object",
-                            "name": "ID"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "WorksheetType",
-                  "position": 2,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0x1",
-                            "module": "type_name",
-                            "name": "TypeName"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "InvokerAddress",
-                  "position": 3,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": "Address"
-                    }
-                  ]
+                  "ty": "Bool"
                 }
               ]
             }
@@ -1594,22 +4590,22 @@
                   }
                 },
                 {
-                  "name": "vault",
+                  "name": "policies",
                   "position": 3,
                   "ty": {
                     "Datatype": {
                       "type_name": {
                         "address": "0x2",
-                        "module": "balance",
-                        "name": "Balance"
+                        "module": "vec_set",
+                        "name": "VecSet"
                       },
                       "type_arguments": [
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0x2",
-                              "module": "sui",
-                              "name": "SUI"
+                              "address": "0x1",
+                              "module": "type_name",
+                              "name": "TypeName"
                             },
                             "type_arguments": []
                           }
@@ -1617,261 +4613,6 @@
                       ]
                     }
                   }
-                },
-                {
-                  "name": "settings",
-                  "position": 4,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "bag",
-                        "name": "Bag"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "tickets",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "table",
-                        "name": "Table"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "Scope"
-                            },
-                            "type_arguments": []
-                          }
-                        },
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "PaymentTicket"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_cashier",
-            "name": "ToolPaymentInsufficientFundsEvent"
-          },
-          "module": "tool_cashier",
-          "name": "ToolPaymentInsufficientFundsEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "execution",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "vertex",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "graph",
-                        "name": "RuntimeVertex"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "tool_fqn",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "required_tool_fee",
-                  "position": 3,
-                  "ty": "U64"
-                },
-                {
-                  "name": "available_funds",
-                  "position": 4,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_cashier",
-            "name": "ToolPaymentLockUpdatedEvent"
-          },
-          "module": "tool_cashier",
-          "name": "ToolPaymentLockUpdatedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "execution",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "vertex",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "graph",
-                        "name": "RuntimeVertex"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "tool_fqn",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "was_locked",
-                  "position": 3,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_cashier",
-            "name": "ToolPaymentSettledEvent"
-          },
-          "module": "tool_cashier",
-          "name": "ToolPaymentSettledEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "execution",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "vertex",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "graph",
-                        "name": "RuntimeVertex"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "tool_fqn",
-                  "position": 2,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "was_refunded",
-                  "position": 3,
-                  "ty": "Bool"
                 }
               ]
             }
@@ -1880,10 +4621,17 @@
       ],
       "functions": [
         {
-          "name": "add_payment_ticket",
+          "name": "add_policy",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
             {
               "name": "self",
@@ -1933,111 +4681,32 @@
               }
             },
             {
-              "name": "scope",
+              "name": "_",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "Scope"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "modus_operandi",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "ModusOperandi"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
+                "TypeParameter": 0
               }
             }
           ],
           "return_types": []
         },
         {
-          "name": "assert_cashier_owner",
-          "visibility": "Private",
+          "name": "add_policy_with_config",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [
             {
-              "constraints": [],
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
               "is_phantom": false
             }
           ],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "TypeParameter": 0
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "claim",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
           "parameters": [
             {
               "name": "self",
@@ -2074,14 +4743,164 @@
                           "Datatype": {
                             "type_name": {
                               "address": "0xa7",
-                              "module": "tool_authority",
-                              "name": "OverTool"
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
                             },
                             "type_arguments": []
                           }
                         }
                       ]
                     }
+                  }
+                }
+              }
+            },
+            {
+              "name": "policy",
+              "ty": {
+                "TypeParameter": 0
+              }
+            },
+            {
+              "name": "config",
+              "ty": {
+                "TypeParameter": 1
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "assert_owner",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "collect_deposits",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "deposits",
+              "ty": {
+                "Vector": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "transfer",
+                      "name": "Receiving"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0xa7",
+                            "module": "tool_cashier",
+                            "name": "CashierDeposit"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
                   }
                 }
               }
@@ -2112,57 +4931,91 @@
           ]
         },
         {
-          "name": "create_and_share",
-          "visibility": "Friend",
+          "name": "derive_id",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
               "name": "tool",
               "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "has_policy",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "UID"
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
                   }
                 }
               }
-            },
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "id",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
             {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "minimum_protocol_version",
-              "ty": "U64"
-            },
-            {
-              "name": "ctx",
+              "name": "self",
               "ty": {
                 "Ref": {
-                  "mutable": true,
+                  "mutable": false,
                   "inner": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0x2",
-                        "module": "tx_context",
-                        "name": "TxContext"
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -2175,518 +5028,13 @@
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xa1",
-                  "module": "owner_cap",
-                  "name": "CloneableOwnerCap"
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
                 },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "OverToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
+                "type_arguments": []
               }
             }
-          ]
-        },
-        {
-          "name": "donate_to_tool",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "amount",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "balance",
-                    "name": "Balance"
-                  },
-                  "type_arguments": [
-                    {
-                      "Datatype": {
-                        "type_name": {
-                          "address": "0x2",
-                          "module": "sui",
-                          "name": "SUI"
-                        },
-                        "type_arguments": []
-                      }
-                    }
-                  ]
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "emit_insufficient_funds_event",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "vertex",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "RuntimeVertex"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "required_tool_fee",
-              "ty": "U64"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "finalize_ticket_if_needed",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "settlement_kind",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "payment",
-                    "name": "VertexExecutionPaymentSettlementKind"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "was_refunded",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "finalize_ticket_scope",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scope",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "Scope"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "was_refunded",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "finalize_user_ticket",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "was_refunded",
-              "ty": "Bool"
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "has_remaining_execution_funds",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_fee",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "has_ticket",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "has_ticket_scope",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scope",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "Scope"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "has_user_ticket",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "is_payment_vertex_locked",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "vertex_key",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "tool_fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
           ]
         },
         {
@@ -2805,14 +5153,63 @@
           ]
         },
         {
-          "name": "modus_operandi_expiry",
-          "visibility": "Public",
+          "name": "new",
+          "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "valid_for_ms",
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_fqn",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x1",
+                    "module": "ascii",
+                    "name": "String"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "minimum_protocol_version",
               "ty": "U64"
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
             }
           ],
           "return_types": [
@@ -2821,60 +5218,30 @@
                 "type_name": {
                   "address": "0xa7",
                   "module": "tool_cashier",
-                  "name": "ModusOperandi"
+                  "name": "ToolCashier"
                 },
                 "type_arguments": []
               }
-            }
-          ]
-        },
-        {
-          "name": "modus_operandi_limited_invocations",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "total",
-              "ty": "U64"
             },
-            {
-              "name": "used",
-              "ty": "U64"
-            },
-            {
-              "name": "locked",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
             {
               "Datatype": {
                 "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "ModusOperandi"
+                  "address": "0xa1",
+                  "module": "owner_cap",
+                  "name": "CloneableOwnerCap"
                 },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "modus_operandi_upon_discretion_of_the_tool",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "ModusOperandi"
-                },
-                "type_arguments": []
+                "type_arguments": [
+                  {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "OverToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                ]
               }
             }
           ]
@@ -2947,6 +5314,199 @@
           ]
         },
         {
+          "name": "policies",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "vec_set",
+                      "name": "VecSet"
+                    },
+                    "type_arguments": [
+                      {
+                        "Datatype": {
+                          "type_name": {
+                            "address": "0x1",
+                            "module": "type_name",
+                            "name": "TypeName"
+                          },
+                          "type_arguments": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "policy_config",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "TypeParameter": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "policy_config_mut",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "_",
+              "ty": {
+                "TypeParameter": 0
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "TypeParameter": 1
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "raise_minimum_protocol_version",
           "visibility": "Public",
           "is_entry": false,
@@ -3007,10 +5567,17 @@
           "return_types": []
         },
         {
-          "name": "revoke_payment_ticket",
+          "name": "remove_policy",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
             {
               "name": "self",
@@ -3060,147 +5627,96 @@
               }
             },
             {
-              "name": "scope",
+              "name": "_",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "Scope"
-                  },
-                  "type_arguments": []
-                }
+                "TypeParameter": 0
               }
             }
           ],
           "return_types": []
         },
         {
-          "name": "scope_agent",
+          "name": "remove_policy_with_config",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [
+                "Drop"
+              ],
+              "is_phantom": false
+            },
+            {
+              "constraints": [
+                "Store"
+              ],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
             {
-              "name": "agent_id",
+              "name": "self",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_cashier",
+                        "name": "ToolCashier"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
-            }
-          ],
-          "return_types": [
+            },
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "Scope"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scope_execution",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "execution_id",
+              "name": "owner_cap",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
                 }
               }
-            }
-          ],
-          "return_types": [
+            },
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "Scope"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scope_invoker_address",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "invoker_address",
-              "ty": "Address"
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "Scope"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "scope_worksheet_type",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "worksheet_type_name",
+              "name": "policy",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "type_name",
-                    "name": "TypeName"
-                  },
-                  "type_arguments": []
-                }
+                "TypeParameter": 0
               }
             }
           ],
           "return_types": [
             {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_cashier",
-                  "name": "Scope"
-                },
-                "type_arguments": []
-              }
+              "TypeParameter": 1
             }
           ]
         },
         {
-          "name": "settings",
-          "visibility": "Friend",
+          "name": "send_deposit",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -3221,167 +5737,84 @@
                   }
                 }
               }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x2",
-                      "module": "bag",
-                      "name": "Bag"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "settings_mut",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
             },
             {
-              "name": "owner_cap",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa1",
-                        "module": "owner_cap",
-                        "name": "CloneableOwnerCap"
-                      },
-                      "type_arguments": [
-                        {
-                          "Datatype": {
-                            "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_cashier",
-                              "name": "OverToolCashier"
-                            },
-                            "type_arguments": []
-                          }
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x2",
-                      "module": "bag",
-                      "name": "Bag"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "settle_payment_vertex",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "vertex",
+              "name": "funds",
               "ty": {
                 "Datatype": {
                   "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "RuntimeVertex"
+                    "address": "0x2",
+                    "module": "balance",
+                    "name": "Balance"
+                  },
+                  "type_arguments": [
+                    {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0x2",
+                          "module": "sui",
+                          "name": "SUI"
+                        },
+                        "type_arguments": []
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x2",
+                  "module": "object",
+                  "name": "ID"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "share",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "tool_cashier",
+                    "name": "ToolCashier"
                   },
                   "type_arguments": []
                 }
               }
-            },
-            {
-              "name": "vertex_key",
-              "ty": {
-                "Vector": "U8"
-              }
-            },
-            {
-              "name": "was_refunded",
-              "ty": "Bool"
             }
           ],
-          "return_types": [
-            "Bool"
-          ]
+          "return_types": []
         },
         {
           "name": "state_schema",
@@ -3489,37 +5922,8 @@
           ]
         },
         {
-          "name": "tool_vault_value",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
-          "name": "try_lock_payment_vertex",
-          "visibility": "Public",
+          "name": "uid_mut",
+          "visibility": "Friend",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -3540,269 +5944,24 @@
                   }
                 }
               }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            },
-            {
-              "name": "vertex",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "RuntimeVertex"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "vertex_key",
-              "ty": {
-                "Vector": "U8"
-              }
             }
           ],
           "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "try_lock_payment_vertex_internal",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
             {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0x2",
+                      "module": "object",
+                      "name": "UID"
+                    },
+                    "type_arguments": []
                   }
                 }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            },
-            {
-              "name": "vertex",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa2",
-                    "module": "graph",
-                    "name": "RuntimeVertex"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "vertex_key",
-              "ty": {
-                "Vector": "U8"
               }
             }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "try_stamp",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "try_stamp_scope",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "scope",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_cashier",
-                    "name": "Scope"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "try_stamp_user_scope",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "payment",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "payment",
-                        "name": "ExecutionPayment"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "execution_created_at",
-              "ty": "U64"
-            }
-          ],
-          "return_types": [
-            "Bool"
           ]
         }
       ]

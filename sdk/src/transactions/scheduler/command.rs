@@ -8,7 +8,7 @@ use {
             scheduler::scheduler as scheduler_binding,
             workflow::{
                 execution_entries as execution_entries_binding,
-                tool_cashier_adapter as tool_cashier_adapter_binding,
+                invocation_adapter as invocation_adapter_binding,
             },
         },
         move_boundary::NexusPtbBuilder,
@@ -17,7 +17,6 @@ use {
         transactions::agent_input::AgentInput,
         types::NexusObjects,
     },
-    std::collections::HashSet,
     sui_sdk_types::{Argument, ProgrammableTransaction},
 };
 
@@ -654,7 +653,6 @@ pub(crate) fn append_dispatch_occurrence(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
     append_dispatch_occurrence_(
         transaction,
@@ -663,7 +661,6 @@ pub(crate) fn append_dispatch_occurrence(
         leader_cap,
         occurrence_id,
         gas_charge,
-        tool_cashiers,
     )
 }
 
@@ -675,7 +672,6 @@ pub fn dispatch_occurrence_ptb(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<ProgrammableTransaction, SchedulerError> {
     ptb(objects, |transaction| {
         append_dispatch_occurrence_(
@@ -685,7 +681,6 @@ pub fn dispatch_occurrence_ptb(
             leader_cap,
             occurrence_id,
             gas_charge,
-            tool_cashiers,
         )
     })
 }
@@ -697,7 +692,6 @@ fn append_dispatch_occurrence_(
     leader_cap: &sui::types::ObjectReference,
     occurrence_id: u64,
     gas_charge: u64,
-    tool_cashiers: &HashSet<(sui::types::Address, sui::types::Version)>,
 ) -> Result<(), SchedulerError> {
     let protocol_ref = transaction.objects().protocol.clone();
     let protocol = transaction
@@ -749,24 +743,10 @@ fn append_dispatch_occurrence_(
 
     transaction
         .call_target(
-            tool_cashier_adapter_binding::snapshot_dag_invocation_costs_target,
+            invocation_adapter_binding::snapshot_dag_invocation_costs_target,
             vec![tool_registry, execution, dag],
         )
         .map_err(SchedulerError::transaction)?;
-
-    let mut tool_cashiers = tool_cashiers.iter().copied().collect::<Vec<_>>();
-    tool_cashiers.sort_unstable();
-    for (address, version) in tool_cashiers {
-        let tool_cashier = transaction
-            .shared_object_by_id(address, version, true)
-            .map_err(SchedulerError::transaction)?;
-        transaction
-            .call_target(
-                tool_cashier_adapter_binding::lock_payment_state_for_tool_target,
-                vec![tool_cashier, dag, execution],
-            )
-            .map_err(SchedulerError::transaction)?;
-    }
     transaction
         .call_target(
             execution_entries_binding::start_and_share_target,
@@ -1053,16 +1033,8 @@ mod tests {
         let leader_cap = object_ref_for_id(address("0x52"));
         let mut builder = NexusPtbBuilder::new(std::sync::Arc::new(objects.clone()));
 
-        append_dispatch_occurrence(
-            &mut builder,
-            &task,
-            &dag,
-            &leader_cap,
-            7,
-            0,
-            &HashSet::new(),
-        )
-        .expect("dispatch compiles");
+        append_dispatch_occurrence(&mut builder, &task, &dag, &leader_cap, 7, 0)
+            .expect("dispatch compiles");
         let transaction = builder.finish();
         let dispatch = move_calls(&transaction)
             .find(|call| call.function.as_str() == "dispatch_next")
@@ -1088,9 +1060,8 @@ mod tests {
         let dag = object_ref_for_id(address("0x51"));
         let leader_cap = object_ref_for_id(address("0x52"));
 
-        let transaction =
-            dispatch_occurrence_ptb(&objects, &task, &dag, &leader_cap, 7, 42, &HashSet::new())
-                .expect("charged dispatch compiles");
+        let transaction = dispatch_occurrence_ptb(&objects, &task, &dag, &leader_cap, 7, 42)
+            .expect("charged dispatch compiles");
         let dispatch = move_calls(&transaction)
             .find(|call| call.function.as_str() == "dispatch_next")
             .expect("charged dispatch call");

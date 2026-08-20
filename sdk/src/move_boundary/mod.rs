@@ -527,7 +527,7 @@ mod tests {
         crate::{
             move_bindings::{
                 interface::agent::FixedTool,
-                tool::tool_cashier::{settle_payment_vertex_target, ToolCashier},
+                tool::tool_cashier::{send_deposit_target, ToolCashier},
             },
             sui,
             types::{DefaultDagExecutorTarget, UsTokenConfig},
@@ -828,7 +828,7 @@ mod tests {
 
         let (target, tag) = crate::move_bindings::with_nexus_scope(&objects, || {
             (
-                settle_payment_vertex_target().unwrap(),
+                send_deposit_target().unwrap(),
                 ToolCashier::struct_tag_static(),
             )
         });
