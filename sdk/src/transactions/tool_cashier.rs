@@ -2,13 +2,40 @@
 
 use crate::{
     move_bindings::{
-        tool::payment_extension as payment_extension_binding,
+        sui_framework::{coin as coin_binding, sui::SUI},
+        tool::{
+            payment_extension as payment_extension_binding,
+            tool_cashier as tool_cashier_binding,
+        },
         workflow::tool_cashier_adapter as tool_cashier_adapter_binding,
     },
     move_boundary,
     sui,
-    types::NexusObjects,
+    types::NexusContext,
 };
+
+/// Builds a transaction that drains settled SUI from a
+/// [`ToolCashier`](tool_cashier_binding::ToolCashier).
+pub fn drain_for_self_ptb(
+    context: &NexusContext,
+    tool_cashier: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    recipient: sui::types::Address,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(context, |transaction| {
+        let tool_cashier = transaction.shared_object(tool_cashier, true)?;
+        let owner_cap = transaction.owned_object(owner_cap)?;
+        let balance = transaction.call_target(
+            tool_cashier_binding::claim_target,
+            vec![tool_cashier, owner_cap],
+        )?;
+        let coin =
+            transaction.call_target(coin_binding::from_balance_target::<SUI>, vec![balance])?;
+        let recipient = transaction.arg(&recipient)?;
+        transaction.transfer_objects(vec![coin], recipient)?;
+        Ok(())
+    })
+}
 
 fn cashier_admin_args(
     transaction: &mut move_boundary::NexusPtbBuilder,
@@ -37,7 +64,7 @@ fn payment_ticket_args(
 
 /// Enable expiry payment tickets for a Tool.
 pub(crate) fn enable_expiry_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     cost_per_minute: u64,
@@ -52,7 +79,7 @@ pub(crate) fn enable_expiry_ptb(
 
 /// Disable expiry payment tickets for a Tool.
 pub(crate) fn disable_expiry_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -65,7 +92,7 @@ pub(crate) fn disable_expiry_ptb(
 
 /// Buy an expiry payment ticket.
 pub(crate) fn buy_expiry_payment_ticket_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     minutes: u64,
@@ -82,7 +109,7 @@ pub(crate) fn buy_expiry_payment_ticket_ptb(
 
 /// Enable limited invocation payment tickets for a Tool.
 pub(crate) fn enable_limited_invocations_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
     cost_per_invocation: u64,
@@ -104,7 +131,7 @@ pub(crate) fn enable_limited_invocations_ptb(
 
 /// Disable limited invocation payment tickets for a Tool.
 pub(crate) fn disable_limited_invocations_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     cashier_admin: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
@@ -120,7 +147,7 @@ pub(crate) fn disable_limited_invocations_ptb(
 
 /// Buy a limited invocation payment ticket.
 pub(crate) fn buy_limited_invocations_payment_ticket_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     pay_with: &sui::types::ObjectReference,
     invocations: u64,
@@ -151,7 +178,7 @@ pub(crate) fn settle_payment_state_for_vertex(
 
 /// Abort an expired execution after refunding its matching Tool payment lock.
 pub fn abort_expired_execution_with_tool_cashier_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool_cashier: &sui::types::ObjectReference,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,

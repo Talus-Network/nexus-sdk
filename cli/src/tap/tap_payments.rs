@@ -43,13 +43,12 @@ async fn show_payment(payment_id: sui::types::Address) -> AnyResult<(), NexusCli
     command_title!("Reading standard TAP execution payment '{payment_id}'");
 
     let nexus_client = get_read_only_nexus_client().await?;
-    let payment = fetch_execution_payment(nexus_client.crawler(), payment_id)
+    let payment = fetch_execution_payment(&nexus_client, payment_id)
         .await
-        .map_err(NexusCliError::Any)?
-        .data;
+        .map_err(NexusCliError::Any)?;
 
-    human_output(&render_payment(&payment));
-    json_output(&payment_show_result_json(&payment))
+    human_output(&render_payment(payment.object_id, &payment.data));
+    json_output(&payment_show_result_json(payment.object_id, &payment.data))
 }
 
 async fn wait_payment(

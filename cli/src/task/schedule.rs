@@ -14,6 +14,7 @@ use {
 };
 
 pub(crate) async fn run(
+    scheduler_package: sui::types::Address,
     task: TaskArgs,
     schedule: ScheduleArgs,
     gas: GasArgs,
@@ -22,9 +23,12 @@ pub(crate) async fn run(
     let task = task.into_preparation().await?;
     let schedule = schedule.into_schedule().await?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-    let task = task.materialize(&client).await?;
+    let task = task.materialize(&client, scheduler_package).await?;
     let progress = loading!("Submitting atomic Task schedule transaction...");
-    let receipt = client.scheduler().schedule_task(task, schedule).await?;
+    let receipt = client
+        .scheduler()
+        .schedule_task(scheduler_package, task, schedule)
+        .await?;
     progress.success();
 
     notify_success!(

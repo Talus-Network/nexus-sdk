@@ -18,7 +18,7 @@ use {
         },
         sui,
         transactions::tool,
-        types::OnchainToolMode,
+        types::{NexusContext, OnchainToolMode},
     },
     serde::{Deserialize, Serialize},
     serde_json::{Map, Value},
@@ -73,6 +73,10 @@ pub(crate) async fn register_onchain_tool(
 
     let address = nexus_client.owner().map_err(NexusCliError::Nexus)?;
     let nexus_objects = nexus_client.get_nexus_objects();
+    let context = nexus_client
+        .context_for_root(&nexus_objects.tool_registry)
+        .await
+        .map_err(NexusCliError::Nexus)?;
     let collateral_coin = nexus_client
         .fetch_coin_by_type(collateral_coin, 0, nexus_objects.us_token.coin_type_tag())
         .await
@@ -85,7 +89,7 @@ pub(crate) async fn register_onchain_tool(
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match tool::register_on_chain_for_self_ptb(
-        nexus_objects.as_ref(),
+        &context,
         package,
         module.as_str(),
         &fqn,
@@ -134,7 +138,7 @@ pub(crate) async fn register_onchain_tool(
     };
 
     // Extract the OwnerCap<OverTool> and OwnerCap<OverToolCashier> object IDs.
-    let (over_tool_id, cashier_admin_id) = extract_owner_caps(&response.objects, &nexus_objects)?;
+    let (over_tool_id, cashier_admin_id) = extract_owner_caps(&response.objects, &context)?;
 
     notify_success!(
         "Transaction digest: {digest}",
@@ -227,7 +231,7 @@ async fn generate_and_customize_schemas(
 /// transaction response.
 fn extract_owner_caps(
     objects: &[sui::types::Object],
-    nexus_objects: &NexusObjects,
+    context: &NexusContext,
 ) -> AnyResult<(sui::types::Address, Option<sui::types::Address>), NexusCliError> {
     let mut over_tool = None;
     let mut cashier_admin = None;
@@ -237,7 +241,7 @@ fn extract_owner_caps(
             continue;
         };
 
-        if !struct_tag_matches::<CloneableOwnerCap<OverTool>>(nexus_objects, &object_type) {
+        if !struct_tag_matches::<CloneableOwnerCap<OverTool>>(context, &object_type) {
             continue;
         }
 
@@ -247,9 +251,9 @@ fn extract_owner_caps(
             continue;
         };
 
-        if struct_tag_matches::<OverTool>(nexus_objects, inner) {
+        if struct_tag_matches::<OverTool>(context, inner) {
             over_tool = Some(obj.object_id());
-        } else if struct_tag_matches::<OverToolCashier>(nexus_objects, inner) {
+        } else if struct_tag_matches::<OverToolCashier>(context, inner) {
             cashier_admin = Some(obj.object_id());
         }
     }
@@ -1027,14 +1031,15 @@ mod tests {
     /// extractor can be exercised against both `OverTool` and `OverToolCashier`.
     fn cloneable_owner_cap(
         rng: &mut rand::rngs::ThreadRng,
-        nexus_objects: &NexusObjects,
+        context: &NexusContext,
         inner: sui::types::StructTag,
         owner_cap_id: sui::types::Address,
     ) -> sui::types::Object {
+        let outer = cloneable_owner_cap_tag(context);
         let cap_tag = sui::types::StructTag::new(
-            nexus_objects.primitives_type_origin_pkg_id(),
-            cloneable_owner_cap_tag(nexus_objects).module().clone(),
-            cloneable_owner_cap_tag(nexus_objects).name().clone(),
+            *outer.address(),
+            outer.module().clone(),
+            outer.name().clone(),
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
         );
 
@@ -1049,35 +1054,35 @@ mod tests {
         )
     }
 
-    fn cloneable_owner_cap_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
-        nexus_sdk::move_bindings::struct_tag::<CloneableOwnerCap<OverTool>>(nexus_objects)
+    fn cloneable_owner_cap_tag(context: &NexusContext) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<CloneableOwnerCap<OverTool>>(context)
     }
 
-    fn over_tool_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
-        nexus_sdk::move_bindings::struct_tag::<OverTool>(nexus_objects)
+    fn over_tool_tag(context: &NexusContext) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverTool>(context)
     }
 
-    fn cashier_admin_tag(nexus_objects: &NexusObjects) -> sui::types::StructTag {
-        nexus_sdk::move_bindings::struct_tag::<OverToolCashier>(nexus_objects)
+    fn cashier_admin_tag(context: &NexusContext) -> sui::types::StructTag {
+        nexus_sdk::move_bindings::struct_tag::<OverToolCashier>(context)
     }
 
     #[test]
     fn test_extract_owner_caps_over_tool_only() {
         let mut rng = rand::thread_rng();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
         // Create a mock object vector with only an OwnerCap<OverTool>.
         let owner_cap_id = sui::types::Address::generate(&mut rng);
 
         let objects = vec![cloneable_owner_cap(
             &mut rng,
-            &nexus_objects,
-            over_tool_tag(&nexus_objects),
+            &context,
+            over_tool_tag(&context),
             owner_cap_id,
         )];
 
         // OverTool is found; OverToolCashier is absent.
-        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &context).unwrap();
         assert_eq!(over_tool, owner_cap_id);
         assert_eq!(cashier_admin, None);
     }
@@ -1085,19 +1090,19 @@ mod tests {
     #[test]
     fn test_extract_owner_caps_does_not_treat_cashier_admin_as_over_tool() {
         let mut rng = rand::thread_rng();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
         // An OverToolCashier cap shares the outer CloneableOwnerCap struct and must not
         // be misidentified as the OverTool cap.
         let cashier_admin_id = sui::types::Address::generate(&mut rng);
         let objects = vec![cloneable_owner_cap(
             &mut rng,
-            &nexus_objects,
-            cashier_admin_tag(&nexus_objects),
+            &context,
+            cashier_admin_tag(&context),
             cashier_admin_id,
         )];
 
-        let result = extract_owner_caps(&objects, &nexus_objects);
+        let result = extract_owner_caps(&objects, &context);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1108,7 +1113,7 @@ mod tests {
     #[test]
     fn test_extract_owner_caps_returns_both_caps() {
         let mut rng = rand::thread_rng();
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
         // Both caps present, as the workflow-authorization registration path
         // returns; the extractor must return each id under its own type param.
@@ -1117,29 +1122,24 @@ mod tests {
         let objects = vec![
             cloneable_owner_cap(
                 &mut rng,
-                &nexus_objects,
-                cashier_admin_tag(&nexus_objects),
+                &context,
+                cashier_admin_tag(&context),
                 cashier_admin_id,
             ),
-            cloneable_owner_cap(
-                &mut rng,
-                &nexus_objects,
-                over_tool_tag(&nexus_objects),
-                over_tool_id,
-            ),
+            cloneable_owner_cap(&mut rng, &context, over_tool_tag(&context), over_tool_id),
         ];
 
-        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &nexus_objects).unwrap();
+        let (over_tool, cashier_admin) = extract_owner_caps(&objects, &context).unwrap();
         assert_eq!(over_tool, over_tool_id);
         assert_eq!(cashier_admin, Some(cashier_admin_id));
     }
 
     #[test]
     fn test_extract_owner_caps_not_found() {
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
         // Should fail because no owner cap is found.
-        let result = extract_owner_caps(&[], &nexus_objects);
+        let result = extract_owner_caps(&[], &context);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

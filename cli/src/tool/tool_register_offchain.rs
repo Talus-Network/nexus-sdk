@@ -16,18 +16,115 @@ use {
             validate_off_chain_tool_with_client,
         },
     },
+    clap::{Args, ValueEnum},
     nexus_sdk::{
         move_bindings::{
             primitives::owner_cap::CloneableOwnerCap,
             struct_tag_matches,
             tool::{tool_authority::OverTool, tool_cashier::OverToolCashier},
         },
-        nexus::client::NexusClient,
-        transactions::tool,
-        types::ToolMeta,
+        nexus::{client::NexusClient, registry::preflight_external_verifier_registration},
+        transactions::tool::{self, ToolVerifierContractInput},
+        types::{NexusContext, ToolMeta},
     },
     std::io::Read as _,
 };
+
+/// Verifier contract stored in a new off chain Tool definition.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum ToolVerifierKind {
+    /// Store no result verifier.
+    #[default]
+    None,
+    /// Use keys registered through the Network Auth root.
+    RegisteredKey,
+    /// Use one public Move verifier and its immutable shared objects.
+    External,
+}
+
+/// Complete immutable verifier selection for Tool registration.
+#[derive(Args, Clone, Debug)]
+pub(crate) struct ToolVerifierArgs {
+    /// Verifier contract stored in the Tool definition.
+    #[arg(long = "verifier", value_enum, default_value_t = ToolVerifierKind::None)]
+    kind: ToolVerifierKind,
+
+    /// Package that publishes an external verifier.
+    #[arg(long = "verifier-package", value_name = "PACKAGE_ID")]
+    package: Option<sui::types::Address>,
+
+    /// Module that contains an external verifier.
+    #[arg(long = "verifier-module", value_name = "MODULE")]
+    module: Option<sui::types::Identifier>,
+
+    /// Public external verifier function.
+    #[arg(long = "verifier-function", value_name = "FUNCTION")]
+    function: Option<sui::types::Identifier>,
+
+    /// Ordered immutable shared objects required by an external verifier.
+    #[arg(long = "verifier-object", value_name = "OBJECT_ID")]
+    objects: Vec<sui::types::Address>,
+}
+
+impl ToolVerifierArgs {
+    async fn resolve(
+        &self,
+        client: &NexusClient,
+        context: &NexusContext,
+    ) -> AnyResult<ToolVerifierContractInput, NexusCliError> {
+        let has_external_input = self.package.is_some()
+            || self.module.is_some()
+            || self.function.is_some()
+            || !self.objects.is_empty();
+
+        match self.kind {
+            ToolVerifierKind::None => {
+                if has_external_input {
+                    return Err(NexusCliError::Any(anyhow!(
+                        "External verifier arguments require '--verifier external'"
+                    )));
+                }
+                Ok(ToolVerifierContractInput::None)
+            }
+            ToolVerifierKind::RegisteredKey => {
+                if has_external_input {
+                    return Err(NexusCliError::Any(anyhow!(
+                        "External verifier arguments cannot be used with '--verifier registered-key'"
+                    )));
+                }
+                Ok(ToolVerifierContractInput::RegisteredKey)
+            }
+            ToolVerifierKind::External => {
+                let package = self.package.ok_or_else(|| {
+                    NexusCliError::Any(anyhow!(
+                        "'--verifier-package' is required for an external verifier"
+                    ))
+                })?;
+                let module = self.module.as_ref().ok_or_else(|| {
+                    NexusCliError::Any(anyhow!(
+                        "'--verifier-module' is required for an external verifier"
+                    ))
+                })?;
+                let function = self.function.as_ref().ok_or_else(|| {
+                    NexusCliError::Any(anyhow!(
+                        "'--verifier-function' is required for an external verifier"
+                    ))
+                })?;
+                let input = preflight_external_verifier_registration(
+                    client.crawler(),
+                    context,
+                    package,
+                    module.as_str(),
+                    function.as_str(),
+                    &self.objects,
+                )
+                .await
+                .map_err(NexusCliError::Any)?;
+                Ok(ToolVerifierContractInput::External(input))
+            }
+        }
+    }
+}
 
 /// Load `ToolMeta` from a file path or stdin (`-`), optionally overriding the `url` field.
 ///
@@ -87,6 +184,8 @@ fn load_meta_from_source(
 async fn register_one_tool(
     meta: ToolMeta,
     nexus_client: &NexusClient,
+    context: &NexusContext,
+    verifier_contract: &ToolVerifierContractInput,
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
 ) -> AnyResult<(serde_json::Value, Option<(ToolFqn, ToolOwnerCaps)>), NexusCliError> {
@@ -111,8 +210,9 @@ async fn register_one_tool(
     let tx_handle = loading!("Crafting transaction...");
 
     let tx = match tool::register_off_chain_for_self_ptb(
-        &nexus_objects,
+        context,
         &meta,
+        verifier_contract,
         address,
         &collateral_coin,
         invocation_cost,
@@ -165,7 +265,7 @@ async fn register_one_tool(
                 return None;
             };
 
-            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(&nexus_objects, &object_type) {
+            if struct_tag_matches::<CloneableOwnerCap<OverTool>>(context, &object_type) {
                 Some((obj.object_id(), object_type))
             } else {
                 None
@@ -177,7 +277,7 @@ async fn register_one_tool(
     let over_tool = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverTool>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverTool>(context, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -195,7 +295,7 @@ async fn register_one_tool(
     let cashier_admin = owner_caps.iter().find_map(|(object_id, object_type)| {
         match object_type.type_params().first() {
             Some(sui::types::TypeTag::Struct(what_for))
-                if struct_tag_matches::<OverToolCashier>(&nexus_objects, what_for.as_ref()) =>
+                if struct_tag_matches::<OverToolCashier>(context, what_for.as_ref()) =>
             {
                 Some(*object_id)
             }
@@ -279,12 +379,19 @@ pub(crate) async fn register_off_chain_tool(
     from_meta: Option<String>,
     collateral_coin: Option<sui::types::Address>,
     invocation_cost: u64,
+    verifier: ToolVerifierArgs,
     batch: bool,
     no_save: bool,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
     let nexus_client = get_nexus_client(sui_gas_coin, sui_gas_budget).await?;
+    let nexus_objects = nexus_client.get_nexus_objects();
+    let context = nexus_client
+        .context_for_root(&nexus_objects.tool_registry)
+        .await
+        .map_err(NexusCliError::Nexus)?;
+    let verifier_contract = verifier.resolve(&nexus_client, &context).await?;
 
     let mut registration_results = Vec::new();
     let mut caps_to_save: Vec<(ToolFqn, ToolOwnerCaps)> = Vec::new();
@@ -299,8 +406,15 @@ pub(crate) async fn register_off_chain_tool(
             url = meta.url
         );
 
-        let (result, caps) =
-            register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
+        let (result, caps) = register_one_tool(
+            meta,
+            &nexus_client,
+            &context,
+            &verifier_contract,
+            collateral_coin,
+            invocation_cost,
+        )
+        .await?;
 
         registration_results.push(result);
         caps_to_save.extend(caps);
@@ -339,8 +453,15 @@ pub(crate) async fn register_off_chain_tool(
                 url = meta.url
             );
 
-            let (result, caps) =
-                register_one_tool(meta, &nexus_client, collateral_coin, invocation_cost).await?;
+            let (result, caps) = register_one_tool(
+                meta,
+                &nexus_client,
+                &context,
+                &verifier_contract,
+                collateral_coin,
+                invocation_cost,
+            )
+            .await?;
 
             registration_results.push(result);
             caps_to_save.extend(caps);

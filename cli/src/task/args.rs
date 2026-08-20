@@ -113,9 +113,16 @@ pub(crate) struct TaskPreparation {
 }
 
 impl TaskPreparation {
-    pub(crate) async fn materialize(self, client: &NexusClient) -> Result<TaskSpec, NexusCliError> {
+    pub(crate) async fn materialize(
+        self,
+        client: &NexusClient,
+        scheduler_package: sui::types::Address,
+    ) -> Result<TaskSpec, NexusCliError> {
         let preflight = self.task.clone().with_inputs(self.input_plan.task_inputs());
-        client.scheduler().preflight_task_inputs(&preflight).await?;
+        client
+            .scheduler()
+            .preflight_task_inputs(scheduler_package, &preflight)
+            .await?;
         let inputs = self.input_plan.materialize(&self.storage_conf).await?;
         Ok(self.task.with_inputs(inputs))
     }
@@ -166,7 +173,7 @@ impl OperationArgs {
                 agent_id,
                 skill_id,
                 self.dag_id,
-                Vec::new(),
+                Default::default(),
             )),
             _ => Err(NexusCliError::Any(anyhow!(
                 "--agent-id and --skill-id must be supplied together"
@@ -622,24 +629,33 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 interface::{
-                    dag::{DAGState, DAG},
+                    dag::{DAGInnerV1, DAG},
                     graph::{self, VertexInfo, VertexKind},
                     meta_schema::{MetaSchema, PortSchema, ValueKind},
                     verifier::ToolVerifierMode,
+                    witness::V1 as InterfaceWitnessV1,
                 },
                 move_std::option::Option as MoveOption,
+                registry::{
+                    agent_registry::{AgentRegistry, AgentRegistryInnerV1},
+                    leader::{LeaderRegistry, LeaderRegistryInnerV1},
+                    witness::V1 as RegistryWitnessV1,
+                },
                 sui_framework::{
                     linked_table::{LinkedTable, Node},
                     object::{ID, UID},
                     table::Table,
                     vec_map::{Entry as VecMapEntry, VecMap},
                     vec_set::VecSet,
-                    versioned::Versioned,
+                },
+                tool::{
+                    tool_registry::{ToolRegistry, ToolRegistryInnerV1},
+                    witness::V1 as ToolWitnessV1,
                 },
             },
             scheduler::{ScheduleError, SchedulerError},
             test_utils::{nexus_mocks, sui_mocks},
-            types::NexusObjects,
+            types::{NexusContext, PackageRole},
             walrus::{BlobObject, BlobStorage, NewlyCreated, StorageInfo},
         },
         std::collections::BTreeMap,
@@ -650,14 +666,13 @@ mod tests {
     fn mock_dag(
         ledger: &mut sui_mocks::grpc::MockLedgerService,
         state_service: &mut sui_mocks::grpc::MockStateService,
-        nexus_objects: &NexusObjects,
+        context: &NexusContext,
         dag_id: sui::types::Address,
         entry_group: &str,
         ports: &[(&str, &str, ValueKind)],
     ) {
-        let state_id = sui::types::Address::from_static("0xe");
         let vertices_id = sui::types::Address::from_static("0xf0");
-        let dag = DAG::new(UID::new(dag_id), Versioned::new(UID::new(state_id), 1));
+        let dag = DAG::new(UID::new(dag_id));
         let ports_by_vertex = ports.iter().fold(
             BTreeMap::<String, Vec<(String, ValueKind)>>::new(),
             |mut vertices, (vertex, port, kind)| {
@@ -677,8 +692,7 @@ mod tests {
                 },
             })
             .collect();
-        let state = DAGState::new(
-            1,
+        let state = DAGInnerV1::new(
             LinkedTable::new(vertices_id, ports_by_vertex.len() as u64),
             VecMap {
                 contents: vec![VecMapEntry {
@@ -731,8 +745,9 @@ mod tests {
                 (vertex, field_id, node)
             })
             .collect::<Vec<_>>();
-        sui_mocks::grpc::mock_list_dynamic_fields(
+        sui_mocks::grpc::mock_list_dynamic_fields_for(
             state_service,
+            vertices_id,
             vertex_fields
                 .iter()
                 .map(|(vertex, field_id, _)| (vertex.clone(), *field_id))
@@ -752,14 +767,67 @@ mod tests {
                 })
                 .collect(),
         );
-        sui_mocks::grpc::mock_get_object_value_bcs_for(
+        sui_mocks::grpc::mock_object_state::<DAG, InterfaceWitnessV1, DAGInnerV1>(
             ledger,
+            state_service,
+            context,
             sui_mocks::object_ref_for_id(dag_id),
             sui::types::Owner::Shared(1),
-            &dag,
-            nexus_sdk::move_bindings::struct_tag::<DAG>(nexus_objects),
+            dag,
+            state,
         );
-        sui_mocks::grpc::mock_versioned_payload(ledger, state_id, 1, state);
+    }
+
+    fn mock_creator_boundary(
+        ledger: &mut sui_mocks::grpc::MockLedgerService,
+        package_service: &mut sui_mocks::grpc::MockMovePackageService,
+        state_service: &mut sui_mocks::grpc::MockStateService,
+        context: &NexusContext,
+    ) {
+        sui_mocks::grpc::mock_nexus_package_graph(ledger, package_service, context.packages());
+
+        let objects = context.objects();
+        let agent_registry = objects.agent_registry.object_id();
+        sui_mocks::grpc::mock_object_state_observation::<
+            AgentRegistry,
+            RegistryWitnessV1,
+            AgentRegistryInnerV1,
+        >(
+            ledger,
+            state_service,
+            context,
+            sui_mocks::object_ref_for_id(agent_registry),
+            sui::types::Owner::Shared(objects.agent_registry.initial_shared_version),
+            AgentRegistry::new(UID::new(agent_registry)),
+        );
+
+        let leader_registry = objects.leader_registry.object_id();
+        sui_mocks::grpc::mock_object_state_observation::<
+            LeaderRegistry,
+            RegistryWitnessV1,
+            LeaderRegistryInnerV1,
+        >(
+            ledger,
+            state_service,
+            context,
+            sui_mocks::object_ref_for_id(leader_registry),
+            sui::types::Owner::Shared(objects.leader_registry.initial_shared_version),
+            LeaderRegistry::new(UID::new(leader_registry)),
+        );
+
+        let tool_registry = objects.tool_registry.object_id();
+        sui_mocks::grpc::mock_object_state_observation::<
+            ToolRegistry,
+            ToolWitnessV1,
+            ToolRegistryInnerV1,
+        >(
+            ledger,
+            state_service,
+            context,
+            sui_mocks::object_ref_for_id(tool_registry),
+            sui::types::Owner::Shared(objects.tool_registry.initial_shared_version),
+            ToolRegistry::new(UID::new(tool_registry)),
+        );
     }
 
     fn task_preparation(
@@ -851,27 +919,37 @@ mod tests {
             &storage_conf,
         )
         .expect("local preparation succeeds");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let dag_id = sui::types::Address::from_static("0xd");
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
         let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_creator_boundary(
+            &mut ledger,
+            &mut package_service,
+            &mut state_service,
+            &context,
+        );
         mock_dag(
             &mut ledger,
             &mut state_service,
-            &nexus_objects,
+            &context,
             dag_id,
             "main",
             &[("sum", "left", ValueKind::Data)],
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
+            package_service_mock: Some(package_service),
             state_service_mock: Some(state_service),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+        let scheduler_package = context.package_id(PackageRole::Scheduler).unwrap();
 
         let error = task_preparation(dag_id, plan, storage_conf)
-            .materialize(&client)
+            .materialize(&client, scheduler_package)
             .await
             .expect_err("authoritative DAG mismatch must fail");
 
@@ -908,27 +986,37 @@ mod tests {
             &storage_conf,
         )
         .expect("local preparation succeeds");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let dag_id = sui::types::Address::from_static("0xd");
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
         let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_creator_boundary(
+            &mut ledger,
+            &mut package_service,
+            &mut state_service,
+            &context,
+        );
         mock_dag(
             &mut ledger,
             &mut state_service,
-            &nexus_objects,
+            &context,
             dag_id,
             "main",
             &[("sum", "right", ValueKind::Object)],
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
+            package_service_mock: Some(package_service),
             state_service_mock: Some(state_service),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+        let scheduler_package = context.package_id(PackageRole::Scheduler).unwrap();
 
         let error = task_preparation(dag_id, plan, storage_conf)
-            .materialize(&client)
+            .materialize(&client, scheduler_package)
             .await
             .expect_err("authoritative schema mismatch must fail");
 
@@ -1007,7 +1095,7 @@ mod tests {
         )
         .await;
         let task = TaskSpec::new(
-            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), vec![]),
+            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), Default::default()),
             "main",
             TaskFunding::address(1),
             1,
@@ -1019,7 +1107,7 @@ mod tests {
             input_plan: plan,
             storage_conf,
         }
-        .materialize(&client)
+        .materialize(&client, sui::types::Address::from_static("0xa5"))
         .await
         .expect_err("a caller-selected DAG must conflict with a pinned skill");
 
@@ -1072,27 +1160,37 @@ mod tests {
             &storage_conf,
         )
         .expect("local preparation succeeds");
-        let nexus_objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let dag_id = sui::types::Address::from_static("0xd");
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut package_service = sui_mocks::grpc::MockMovePackageService::new();
         let mut state_service = sui_mocks::grpc::MockStateService::new();
+        mock_creator_boundary(
+            &mut ledger,
+            &mut package_service,
+            &mut state_service,
+            &context,
+        );
         mock_dag(
             &mut ledger,
             &mut state_service,
-            &nexus_objects,
+            &context,
             dag_id,
             "main",
             &[("sum", "right", ValueKind::Data)],
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
+            package_service_mock: Some(package_service),
             state_service_mock: Some(state_service),
             ..Default::default()
         });
-        let client = nexus_mocks::mock_nexus_client_without_coins(&nexus_objects, &rpc_url).await;
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+        let scheduler_package = context.package_id(PackageRole::Scheduler).unwrap();
 
         let task = task_preparation(dag_id, plan, storage_conf)
-            .materialize(&client)
+            .materialize(&client, scheduler_package)
             .await
             .expect("matching authoritative DAG permits materialization");
 

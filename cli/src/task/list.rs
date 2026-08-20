@@ -16,7 +16,11 @@ struct TaskListOutput<'a> {
     next_cursor: Option<String>,
 }
 
-pub(crate) async fn run(cursor: Option<String>, limit: usize) -> AnyResult<(), NexusCliError> {
+pub(crate) async fn run(
+    scheduler_package: sui::types::Address,
+    cursor: Option<String>,
+    limit: usize,
+) -> AnyResult<(), NexusCliError> {
     command_title!("Listing Tasks");
     let cursor = cursor
         .map(|cursor| {
@@ -27,7 +31,10 @@ pub(crate) async fn run(cursor: Option<String>, limit: usize) -> AnyResult<(), N
         .map_err(NexusCliError::Any)?;
     let client = get_owner_nexus_client().await?;
     let progress = loading!("Reading owned TaskPointer objects...");
-    let page = client.scheduler().task_pointers(cursor, limit).await?;
+    let page = client
+        .scheduler()
+        .task_pointers(scheduler_package, cursor, limit)
+        .await?;
     progress.success();
     let next_cursor = page.next_cursor().map(hex::encode);
     human_output(&output::render_task_list(

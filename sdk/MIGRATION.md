@@ -21,27 +21,23 @@ The new SDK has four layers.
 
 The main invariant is simple: every value that crosses the Move boundary must come from `nexus_sdk::move_bindings` or from an SDK helper that returns such a value. Old local mirror types are no longer the authority.
 
-The active `Protocol` root is the authority for package and shared object bindings. A standard `NexusClient` action resolves that configuration once at the start of an operation and uses the resulting immutable snapshot throughout the operation.
+`NexusObjects` contains only stable environment identities. Live package authority and state layouts come from each durable object's `Inner` and `Witness` markers. A standard `NexusClient` action resolves the object state and its immutable package graph once at the start of an operation, then uses that context throughout the operation.
 
-## Protocol Resolution
+## Object State Resolution
 
-Build normal clients from the stable `Protocol` object rather than from a saved set of package and shared object references. Every standard action resolves the active supported protocol before reading state or building a transaction, then uses one immutable snapshot for all nested work.
+Build normal clients with the stable identities in `NexusObjects`. Do not save current Nexus package IDs in environment configuration. Every standard action selects its package graph from the witness on the object it mutates or from the package that creates a new object.
 
-`NexusClient::refresh_protocol` returns a new client when explicit snapshot control is needed. It does not mutate the original client.
+Creating a custom `NexusTransaction` is an operation boundary. Use `transaction_for_object` when an existing object's witness selects the graph. Use `transaction_for_creator` when a package creates a new object. Declare every canonical root the transaction touches so the SDK can prove that all participants belong to one compatible graph.
 
-Creating a custom `NexusTransaction` is an operation boundary. Call `client.transaction().await?`; the returned transaction owns the resolved snapshot and uses it for every call added to that transaction.
+If an object rotates after a transaction has been built but before submission, the chain rejects stale mutation authority. The SDK does not repeat the failed action because an ambiguous submission may already have executed. Inspect transaction or object state before deciding whether a retry is safe.
 
-If activation occurs after an operation has been built but before submission, submission returns `NexusError::StaleProtocol`. The next standard action uses the active protocol automatically. The SDK does not repeat the failed action because an ambiguous submission may already have executed. The caller must inspect transaction or object state before deciding whether a retry is safe.
+`NexusError::ClientUpgradeRequired` means a live object uses a witness or inner layout that this SDK build cannot interpret. Install an SDK or CLI that contains that exact binding. The error reports the stable object ID, observed witness, observed inner type when available, and the SDK build that rejected it.
 
-`NexusError::UnsupportedProtocolVersion` means the active protocol is newer than this SDK understands. Install a newer SDK or CLI. Selecting an older live protocol is not supported.
-
-Protocol support does not imply that the SDK can decode every future object schema. Each versioned state read checks the exact schema before decoding it. `NexusError::UnsupportedStateSchema` means the operation requires a state binding that this SDK does not contain. Install the SDK built for that state schema. The SDK never attempts to decode the payload as an older type.
-
-The initial NetworkAuth reader supports schema one and rejects schema two before decoding. Supporting a new schema requires its generated binding, an explicit projection in the reader, and a consumer release whose protocol support includes that change. The end to end release fixture prepares such a consumer for schema two without changing the initial release boundary.
+The SDK checks the complete `(Witness, Inner)` pair before decoding. It never guesses that a future layout is compatible and never treats the package that originally created an object as its current mutation authority.
 
 ## Migration Order
 
-1. Build the client from the stable `Protocol` root.
+1. Build the client from stable `NexusObjects` identities.
 2. Replace imports from removed mirror modules with generated bindings.
 3. Move Tool registration and payment code from `gas` to `tool`.
 4. Rebuild TAP skill inputs around `TapPublishArtifact`.

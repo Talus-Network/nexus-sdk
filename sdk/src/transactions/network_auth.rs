@@ -8,7 +8,7 @@ use {
         },
         move_boundary,
         sui,
-        types::NexusObjects,
+        types::NexusContext,
     },
     sui::types::{Argument, ProgrammableTransaction},
 };
@@ -73,8 +73,8 @@ fn create_binding(
     proof: Argument,
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<Argument> {
-    let network_auth = tx.objects().network_auth.clone();
-    let network_auth = tx.shared_object(&network_auth, true)?;
+    let network_auth = tx.objects().network_auth;
+    let network_auth = tx.shared_root(&network_auth, true)?;
     let description = description_option(tx, description)?;
 
     tx.call_target(
@@ -113,7 +113,7 @@ pub(super) fn create_tool_binding_and_register_key(
 /// This is used when the binding object does not yet exist.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn create_tool_binding_and_register_key_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -139,7 +139,7 @@ pub(crate) fn create_tool_binding_and_register_key_ptb(
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn register_tool_key_on_existing_binding_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     binding: &sui::types::ObjectReference,
     tool: &sui::types::ObjectReference,
     owner_cap_over_tool: &sui::types::ObjectReference,
@@ -161,14 +161,14 @@ pub(crate) fn register_tool_key_on_existing_binding_ptb(
 /// This is used when the binding object does not yet exist.
 #[allow(clippy::too_many_arguments)]
 pub fn create_leader_binding_and_register_key_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
     pop_signature: [u8; 64],
     description: Option<Vec<u8>>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
         let proof_for_binding = proof_for_leader(tx, leader_registry, leader_cap)?;
@@ -185,7 +185,7 @@ pub fn create_leader_binding_and_register_key_ptb(
 /// This is used for rotation when the `KeyBinding` already exists.
 #[allow(clippy::too_many_arguments)]
 pub fn register_leader_key_on_existing_binding_ptb(
-    objects: &NexusObjects,
+    objects: &NexusContext,
     binding: &sui::types::ObjectReference,
     leader_cap_over_network: &sui::types::ObjectReference,
     public_key: [u8; 32],
@@ -193,7 +193,7 @@ pub fn register_leader_key_on_existing_binding_ptb(
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let binding = tx.shared_object(binding, true)?;
-        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
+        let leader_registry = tx.shared_root(&objects.leader_registry, false)?;
         let leader_cap = tx.shared_object(leader_cap_over_network, false)?;
 
         let proof = proof_for_leader(tx, leader_registry, leader_cap)?;
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn tool_binding_composition_matches_the_standalone_builder() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let objects = sui_mocks::mock_nexus_context();
         let tool = sui_mocks::mock_sui_object_ref();
         let owner_cap = sui_mocks::mock_sui_object_ref();
         let public_key = [3u8; 32];

@@ -306,7 +306,7 @@ fn on_chain_validation_result_json(
     tool: &ToolState,
 ) -> AnyResult<serde_json::Value, NexusCliError> {
     let fqn = tool.fqn_string().map_err(NexusCliError::Any)?;
-    let tool = ToolOutput::try_from_state(tool, None).map_err(NexusCliError::Any)?;
+    let tool = ToolOutput::try_from_state(tool).map_err(NexusCliError::Any)?;
     Ok(json!({
         "valid": true,
         "fqn": fqn,
@@ -326,8 +326,14 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 interface::meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
-                move_std::{ascii, option::Option as MoveOption},
+                move_std::ascii,
                 sui_framework::{balance::Balance, object::ID},
+                tool::tool_registry::{
+                    ToolDefinition,
+                    ToolInnerV1,
+                    ToolLifecycle,
+                    ToolVerifierContract,
+                },
             },
             types::ToolRef,
         },
@@ -377,27 +383,33 @@ mod tests {
     }
 
     fn on_chain_tool(workflow_authorization_cap_first: bool) -> ToolState {
-        ToolState {
-            minimum_protocol_version: 1,
-            registry: ID::new(sui::types::Address::from_static("0x42")),
-            fqn: ascii::String::from("xyz.taluslabs.example@1"),
-            r#ref: ToolRef::Sui {
-                package_address: sui::types::Address::from_static("0x1234"),
-                module_name: ascii::String::from("example_tool"),
-                tool_witness_id: ID::new(sui::types::Address::from_static("0x5678")),
-            },
-            description: b"Example on-chain Tool".to_vec(),
-            meta_schema: on_chain_meta_schema(),
-            verified: true,
-            vault: Balance {
-                value: 25,
-                phantom_t0: std::marker::PhantomData,
-            },
-            workflow_authorization_cap_first,
-            lock_duration_ms: 5_000,
-            registered_at_ms: 0,
-            unregistered_at_ms: MoveOption::from(None),
-        }
+        ToolState::new(
+            sui::types::Address::from_static("0x43"),
+            ToolDefinition::new(
+                ascii::String::from("xyz.taluslabs.example@1"),
+                ToolRef::Sui {
+                    package_address: sui::types::Address::from_static("0x1234"),
+                    module_name: ascii::String::from("example_tool"),
+                    tool_witness_id: ID::new(sui::types::Address::from_static("0x5678")),
+                },
+                b"Example on-chain Tool".to_vec(),
+                on_chain_meta_schema(),
+                5_000,
+                ToolVerifierContract::RegisteredKey,
+                workflow_authorization_cap_first,
+                0,
+            ),
+            ToolInnerV1::new(
+                ID::new(sui::types::Address::from_static("0x42")),
+                Balance {
+                    value: 25,
+                    phantom_t0: std::marker::PhantomData,
+                },
+                5_000,
+                0,
+                ToolLifecycle::Open,
+            ),
+        )
     }
 
     #[test]

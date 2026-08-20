@@ -8,14 +8,13 @@ pub(crate) async fn handle_vault_command(command: VaultCommand) -> AnyResult<(),
             command_title!("Reading payment vault for agent '{agent_id}'");
             let nexus_client = get_read_only_nexus_client().await?;
             ensure_cli_agent_owner(&nexus_client, agent_id).await?;
-            let nexus_objects = nexus_client.get_nexus_objects();
-            let vault = fetch_agent_payment_vault_for_agent(
-                nexus_client.crawler(),
-                &nexus_objects,
-                agent_id,
-            )
-            .await
-            .map_err(NexusCliError::Any)?;
+            let context = nexus_client
+                .context_for_object(agent_id)
+                .await
+                .map_err(NexusCliError::Nexus)?;
+            let vault = fetch_agent_payment_vault_for_agent(&nexus_client, &context, agent_id)
+                .await
+                .map_err(NexusCliError::Any)?;
             human_output(&render_vault_balance(agent_id, &vault));
             json_output(&vault_balance_result_json(agent_id, &vault))
         }

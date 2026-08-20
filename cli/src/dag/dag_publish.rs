@@ -12,6 +12,7 @@ use crate::{
 /// performs validation on the DAG before publishing.
 pub(crate) async fn publish_dag(
     path: PathBuf,
+    workflow_package: sui::types::Address,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -23,7 +24,7 @@ pub(crate) async fn publish_dag(
 
     let tx_handle = loading!("Crafting and executing transaction...");
 
-    let response = match nexus_client.workflow().publish(dag).await {
+    let response = match nexus_client.workflow().publish(workflow_package, dag).await {
         Ok(res) => res,
         Err(e) => {
             tx_handle.error();

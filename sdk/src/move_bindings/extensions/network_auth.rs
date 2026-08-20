@@ -17,10 +17,10 @@ use crate::{
         registry::network_auth::{
             IdentityKey,
             KeyBinding,
-            KeyBindingStateV1,
+            KeyBindingInnerV1,
             KeyRecord,
             NetworkAuth,
-            NetworkAuthStateV1,
+            NetworkAuthInnerV1,
         },
         sui_framework::object::ID,
     },
@@ -67,7 +67,7 @@ impl KeyBinding {
     }
 }
 
-impl KeyBindingStateV1 {
+impl KeyBindingInnerV1 {
     pub fn description(&self) -> Option<&[u8]> {
         self.description.as_option().map(Vec::as_slice)
     }
@@ -93,7 +93,6 @@ impl KeyBindingStateV1 {
         keys: MoveTable<u64, KeyRecord>,
     ) -> Self {
         Self {
-            minimum_protocol_version: 1,
             identity,
             description: MoveOption::from_option(description),
             next_key_id,
@@ -130,7 +129,7 @@ impl NetworkAuth {
     }
 }
 
-impl NetworkAuthStateV1 {
+impl NetworkAuthInnerV1 {
     pub fn leader_cap_ids(&self) -> impl Iterator<Item = sui::types::Address> + '_ {
         self.identities
             .contents
@@ -141,8 +140,6 @@ impl NetworkAuthStateV1 {
     #[cfg(test)]
     pub(crate) fn new_for_test(identities: Vec<IdentityKey>) -> Self {
         Self {
-            protocol_id: ID::new(sui::types::Address::ZERO),
-            minimum_protocol_version: 1,
             registered_key_witness: UID::new(sui::types::Address::ZERO),
             identities: VecSet {
                 contents: identities,
@@ -184,7 +181,7 @@ mod tests {
     fn key_binding_bcs_roundtrip() {
         let mut rng = rand::thread_rng();
         let active_key_id = Some(4);
-        let binding = KeyBindingStateV1::new_for_test(
+        let binding = KeyBindingInnerV1::new_for_test(
             IdentityKey::leader(sui::types::Address::generate(&mut rng)),
             Some(b"nexus".to_vec()),
             7,
@@ -193,7 +190,7 @@ mod tests {
         );
 
         let bytes = bcs::to_bytes(&binding).unwrap();
-        let decoded: KeyBindingStateV1 = bcs::from_bytes(&bytes).unwrap();
+        let decoded: KeyBindingInnerV1 = bcs::from_bytes(&bytes).unwrap();
         assert_eq!(decoded.key_table_id(), binding.key_table_id());
         assert_eq!(decoded.key_table_size(), 2);
         assert_eq!(decoded.next_key_id, binding.next_key_id);
@@ -211,7 +208,7 @@ mod tests {
 
         assert_eq!(record.revoked_at_ms(), Some(20));
         assert_eq!(
-            NetworkAuthStateV1::new_for_test(vec![
+            NetworkAuthInnerV1::new_for_test(vec![
                 IdentityKey::leader(first_leader),
                 IdentityKey::tool(id),
                 IdentityKey::leader(second_leader),
@@ -220,7 +217,7 @@ mod tests {
             .collect::<Vec<_>>(),
             vec![first_leader, second_leader]
         );
-        assert!(NetworkAuthStateV1::new_for_test(vec![])
+        assert!(NetworkAuthInnerV1::new_for_test(vec![])
             .leader_cap_ids()
             .next()
             .is_none());

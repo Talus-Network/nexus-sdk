@@ -62,6 +62,7 @@ binding_codegen = [
     "tokio/full",
     "sui-move-codegen",
     "sui-sdk-types",
+    "serde_json",
     "toml",
 ]
 

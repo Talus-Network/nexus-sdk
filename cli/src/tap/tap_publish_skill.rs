@@ -51,6 +51,7 @@ fn pick_publish_environment(
 
 pub(crate) async fn publish_skill(
     config_path: PathBuf,
+    workflow_package: sui::types::Address,
     out: Option<PathBuf>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
@@ -81,6 +82,7 @@ pub(crate) async fn publish_skill(
     let publish = nexus_client
         .tap()
         .publish_skill(
+            workflow_package,
             &config,
             dag,
             TapPackagePublishOptions {
@@ -166,6 +168,7 @@ mod tests {
 
         let error = publish_skill(
             tempdir.path().join("weather-skill/skill.tap.json"),
+            sui::types::Address::from_static("0xa4"),
             None,
             None,
             DEFAULT_GAS_BUDGET,

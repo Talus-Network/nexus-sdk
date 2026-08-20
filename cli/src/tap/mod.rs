@@ -138,6 +138,12 @@ pub(crate) enum TapCommand {
         config: PathBuf,
         #[arg(
             long,
+            value_name = "PACKAGE_ID",
+            help = "Workflow package used to create the DAG"
+        )]
+        workflow_package: sui::types::Address,
+        #[arg(
+            long,
             help = "Write the publish artifact JSON to this path.",
             value_parser = ValueParser::from(expand_tilde)
         )]
@@ -445,8 +451,20 @@ pub(crate) async fn handle(command: TapCommand) -> AnyResult<(), NexusCliError> 
     match command {
         TapCommand::Scaffold { name, target } => scaffold_tap_skill(name, target).await,
         TapCommand::ValidateSkill { config } => validate_skill_command(config).await,
-        TapCommand::PublishSkill { config, out, gas } => {
-            publish_skill(config, out, gas.sui_gas_coin, gas.sui_gas_budget).await
+        TapCommand::PublishSkill {
+            config,
+            workflow_package,
+            out,
+            gas,
+        } => {
+            publish_skill(
+                config,
+                workflow_package,
+                out,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
         }
         TapCommand::CreateSkillArtifact {
             skill_name,
@@ -610,6 +628,7 @@ mod tests {
 
         let publish_error = handle(TapCommand::PublishSkill {
             config: config.clone(),
+            workflow_package: sui::types::Address::from_static("0xa4"),
             out: None,
             gas: gas_args(),
         })

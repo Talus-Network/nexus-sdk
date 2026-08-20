@@ -1,16 +1,13 @@
 use {
     super::{mutation_receipt, occurrence, resolve},
     crate::{
-        move_bindings::{
-            scheduler::task::{
-                FailureMode as MoveFailureMode,
-                OccurrenceRecord,
-                OccurrenceRecordKey,
-                TaskController as MoveTaskController,
-                TaskStateV1 as MoveTaskStateV1,
-                TaskStatus as MoveTaskStatus,
-            },
-            workflow::execution::DAGExecution,
+        move_bindings::scheduler::task::{
+            FailureMode as MoveFailureMode,
+            OccurrenceRecord,
+            OccurrenceRecordKey,
+            TaskController as MoveTaskController,
+            TaskInnerV1 as MoveTaskInnerV1,
+            TaskStatus as MoveTaskStatus,
         },
         nexus::client::NexusClient,
         scheduler::{
@@ -64,13 +61,6 @@ impl TaskHandle {
         )
     }
 
-    async fn operation_client(&self) -> Result<NexusClient, SchedulerError> {
-        self.client
-            .operation_client()
-            .await
-            .map_err(SchedulerError::from)
-    }
-
     /// Reads the current Task object into a public snapshot.
     ///
     /// # Errors
@@ -78,9 +68,8 @@ impl TaskHandle {
     /// Returns [`SchedulerError::TaskNotFound`] when the Task is absent, or a
     /// transport error when the object cannot be read.
     pub async fn snapshot(&self) -> Result<TaskSnapshot, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::fetch_task(&client, self.task_id).await?;
-        task_snapshot(&task)
+        let task = resolve::fetch_task(&self.client, self.task_id).await?;
+        task_snapshot(&task.object)
     }
 
     /// Reads one RPC page of permanent occurrence records.
@@ -102,9 +91,9 @@ impl TaskHandle {
                 message: "occurrence page limit must be greater than zero".to_owned(),
             });
         }
-        let client = self.operation_client().await?;
-        let task = resolve::fetch_task(&client, self.task_id).await?;
-        let page = client
+        let task = resolve::fetch_task(&self.client, self.task_id).await?;
+        let page = self
+            .client
             .crawler()
             .get_dynamic_field_page_matching_types::<OccurrenceRecordKey, OccurrenceRecord>(
                 self.task_id,
@@ -119,12 +108,12 @@ impl TaskHandle {
             .iter()
             .filter_map(|(_, record)| occurrence::state_execution_id(&record.state))
             .collect::<Vec<_>>();
-        let mut executions = client
-            .crawler()
-            .get_optional_objects::<DAGExecution>(&execution_ids)
-            .await
-            .map_err(SchedulerError::transport)?
-            .into_iter();
+        let mut executions = Vec::with_capacity(execution_ids.len());
+        for execution_id in execution_ids {
+            executions
+                .push(resolve::fetch_execution(&self.client, &task.context, execution_id).await?);
+        }
+        let mut executions = executions.into_iter();
         let mut occurrences = Vec::with_capacity(records.len());
         for (key, record) in records {
             let execution = if occurrence::state_execution_id(&record.state).is_some() {
@@ -139,11 +128,11 @@ impl TaskHandle {
             };
             occurrences.push(occurrence::snapshot_from_record(
                 self.task_id,
-                &task.data,
+                &task.object.data,
                 key.pos0,
                 &record,
                 execution.as_ref().map(|response| &response.data),
-                task.version,
+                task.object.version,
             )?);
         }
         if executions.next().is_some() {
@@ -164,16 +153,17 @@ impl TaskHandle {
         &self,
         occurrence: Occurrence,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let occurrence = resolve::prepare_occurrence(&client, &occurrence).await?;
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.leader_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let occurrence = resolve::prepare_occurrence(&self.client, &occurrence).await?;
         let transaction = compile_add_occurrence_ptb(
-            &client.nexus_objects,
+            &task.context,
             &task.object.object_ref(),
             &task.authority,
             &occurrence,
         )?;
-        self.submit(&client, transaction).await
+        self.submit(&self.client, transaction).await
     }
 
     /// Replaces the Task recurrence.
@@ -186,16 +176,17 @@ impl TaskHandle {
         &self,
         recurrence: Recurrence,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let recurrence = resolve::prepare_recurrence(&client, &recurrence).await?;
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.leader_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let recurrence = resolve::prepare_recurrence(&self.client, &recurrence).await?;
         let transaction = compile_set_recurrence_ptb(
-            &client.nexus_objects,
+            &task.context,
             &task.object.object_ref(),
             &task.authority,
             &recurrence,
         )?;
-        self.submit(&client, transaction).await
+        self.submit(&self.client, transaction).await
     }
 
     /// Clears the Task recurrence and retains its withdrawn record.
@@ -205,14 +196,15 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn clear_recurrence(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.leader_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
         let transaction = compile_clear_recurrence_ptb(
-            &client.nexus_objects,
+            &task.context,
             &task.object.object_ref(),
             &task.authority,
         )?;
-        self.submit(&client, transaction).await
+        self.submit(&self.client, transaction).await
     }
 
     /// Pauses future dispatch while retaining scheduled work.
@@ -222,14 +214,10 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn pause(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let transaction = compile_pause_task_ptb(
-            &client.nexus_objects,
-            &task.object.object_ref(),
-            &task.authority,
-        )?;
-        self.submit(&client, transaction).await
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
+        let transaction =
+            compile_pause_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
+        self.submit(&self.client, transaction).await
     }
 
     /// Resumes dispatch for retained scheduled work.
@@ -239,14 +227,12 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn resume(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let transaction = compile_resume_task_ptb(
-            &client.nexus_objects,
-            &task.object.object_ref(),
-            &task.authority,
-        )?;
-        self.submit(&client, transaction).await
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.leader_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let transaction =
+            compile_resume_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
+        self.submit(&self.client, transaction).await
     }
 
     /// Cancels future work and retains all occurrence records.
@@ -256,14 +242,10 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn cancel(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let transaction = compile_cancel_task_ptb(
-            &client.nexus_objects,
-            &task.object.object_ref(),
-            &task.authority,
-        )?;
-        self.submit(&client, transaction).await
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
+        let transaction =
+            compile_cancel_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
+        self.submit(&self.client, transaction).await
     }
 
     /// Adds MIST to the Task payment reserve.
@@ -273,15 +255,16 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn refill(&self, amount_mist: u64) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.leader_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
         let transaction = compile_refill_task_ptb(
-            &client.nexus_objects,
+            &task.context,
             &task.object.object_ref(),
             &task.authority,
             amount_mist,
         )?;
-        self.submit(&client, transaction).await
+        self.submit(&self.client, transaction).await
     }
 
     /// Releases live resources while retaining the Task and its records.
@@ -291,14 +274,12 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn close(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let client = self.operation_client().await?;
-        let task = resolve::resolve_task(&client, self.task_id).await?;
-        let transaction = compile_close_task_ptb(
-            &client.nexus_objects,
-            &task.object.object_ref(),
-            &task.authority,
-        )?;
-        self.submit(&client, transaction).await
+        let objects = self.client.get_nexus_objects();
+        let required_roots = [objects.agent_registry];
+        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let transaction =
+            compile_close_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
+        self.submit(&self.client, transaction).await
     }
 
     async fn submit(
@@ -316,7 +297,7 @@ impl TaskHandle {
 }
 
 fn task_snapshot(
-    task: &crate::nexus::crawler::Response<MoveTaskStateV1>,
+    task: &crate::nexus::crawler::Response<MoveTaskInnerV1>,
 ) -> Result<TaskSnapshot, SchedulerError> {
     let task_id = task.object_id;
     let controller = match task.data.controller {

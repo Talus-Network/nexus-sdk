@@ -3,10 +3,7 @@
 
 use {
     crate::{
-        move_bindings::{
-            sui_framework::{object::ID, table_vec::TableVec, versioned::Versioned},
-            VersionedAnchor,
-        },
+        move_bindings::sui_framework::{object::ID, table_vec::TableVec},
         sui::{self, traits::FieldMaskUtil},
     },
     anyhow::{anyhow, bail, Context as _},
@@ -108,6 +105,96 @@ pub struct DynamicFieldReference<K> {
     pub field_id: sui::types::Address,
 }
 
+/// Immutable type metadata for one ordinary dynamic field.
+///
+/// The key and value types come from the complete
+/// `0x2::dynamic_field::Field<K, V>` object type. The value bytes are never
+/// decoded while this metadata is collected.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DynamicFieldMetadata {
+    /// Object ID of the dynamic field wrapper.
+    pub field_id: sui::types::Address,
+    /// Exact Move type of the field key.
+    pub key_type: sui::types::TypeTag,
+    /// Exact Move type of the field value.
+    pub value_type: sui::types::TypeTag,
+}
+
+/// Identity, owner, and Move type of one live object.
+///
+/// Mutable version and digest data are deliberately absent because neither is
+/// package authority or stable object identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ObjectMetadata {
+    /// Stable Sui object ID.
+    pub object_id: sui::types::Address,
+    /// Current object owner.
+    pub owner: sui::types::Owner,
+    /// Exact Move type of the object anchor.
+    pub object_type: sui::types::StructTag,
+}
+
+fn parse_dynamic_field_metadata(
+    parent_id: sui::types::Address,
+    field: &sui::grpc::DynamicField,
+) -> anyhow::Result<Option<DynamicFieldMetadata>> {
+    match field.kind {
+        Some(kind) if kind == sui::grpc::dynamic_field::DynamicFieldKind::Object as i32 => {
+            return Ok(None);
+        }
+        Some(kind) if kind != sui::grpc::dynamic_field::DynamicFieldKind::Field as i32 => {
+            bail!("Dynamic field for parent '{parent_id}' has unknown kind '{kind}'");
+        }
+        _ => {}
+    }
+
+    let field_id = field
+        .field_id_opt()
+        .ok_or_else(|| anyhow!("Dynamic field ID missing for parent '{parent_id}'"))?
+        .parse()
+        .map_err(|error| anyhow!("Could not parse dynamic field ID: {error}"))?;
+    let object_type = field
+        .field_object_opt()
+        .and_then(|object| object.object_type_opt())
+        .ok_or_else(|| anyhow!("Dynamic field '{field_id}' has no field object type"))?;
+    let field_type = object_type
+        .parse::<sui::types::StructTag>()
+        .map_err(|error| anyhow!("Dynamic field '{field_id}' has invalid type: {error}"))?;
+    if *field_type.address() != sui::types::Address::from_static("0x2")
+        || field_type.module().as_str() != "dynamic_field"
+        || field_type.name().as_str() != "Field"
+        || field_type.type_params().len() != 2
+    {
+        bail!(
+            "Dynamic field '{field_id}' has object type '{field_type}', expected \
+             '0x2::dynamic_field::Field<K, V>'"
+        );
+    }
+
+    let key_type = field_type.type_params()[0].clone();
+    let value_type = field_type.type_params()[1].clone();
+    if let Some(reported_value_type) = field.value_type_opt() {
+        let reported_value_type =
+            reported_value_type
+                .parse::<sui::types::TypeTag>()
+                .map_err(|error| {
+                    anyhow!("Dynamic field '{field_id}' has invalid reported value type: {error}")
+                })?;
+        if reported_value_type != value_type {
+            bail!(
+                "Dynamic field '{field_id}' reports value type '{reported_value_type}', but its \
+                 field object contains '{value_type}'"
+            );
+        }
+    }
+
+    Ok(Some(DynamicFieldMetadata {
+        field_id,
+        key_type,
+        value_type,
+    }))
+}
+
 /// One RPC page of typed dynamic field values.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DynamicFieldPage<K, V> {
@@ -203,6 +290,107 @@ impl Crawler {
 
     pub(crate) fn clone_grpc_client(&self) -> sui::grpc::Client {
         self.client.as_ref().clone()
+    }
+
+    /// Fetches stable identity, owner, and exact Move type for `object_id`.
+    ///
+    /// Object contents are not requested or decoded.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the object cannot be fetched or its identity,
+    /// owner, or Move type is absent or invalid.
+    pub async fn observe_object_metadata(
+        &self,
+        object_id: sui::types::Address,
+    ) -> anyhow::Result<ObjectMetadata> {
+        let object = self
+            .fetch_object(
+                object_id,
+                sui::grpc::FieldMask::from_paths(["object_id", "owner", "object_type"]),
+            )
+            .await?;
+        let returned_id = Self::parse_object_id(&object)?;
+        if returned_id != object_id {
+            bail!("Requested object '{object_id}', received object '{returned_id}'");
+        }
+        let owner = object
+            .owner_opt()
+            .ok_or_else(|| anyhow!("Owner missing for object '{object_id}'"))?
+            .try_into()
+            .map_err(|_| anyhow!("Could not parse owner for object '{object_id}'"))?;
+        let object_type = object
+            .object_type_opt()
+            .ok_or_else(|| anyhow!("Object type missing for object '{object_id}'"))?
+            .parse()
+            .map_err(|error| anyhow!("Could not parse type for object '{object_id}': {error}"))?;
+
+        Ok(ObjectMetadata {
+            object_id,
+            owner,
+            object_type,
+        })
+    }
+
+    /// Lists exact key and value types for every dynamic field below `parent_id`.
+    ///
+    /// This method reads only field identities and type metadata. In particular,
+    /// it does not decode field names or values, so an unknown value layout can
+    /// still be reported to compatibility logic.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RPC request fails or a returned field does not
+    /// have a valid `0x2::dynamic_field::Field<K, V>` object type.
+    pub async fn get_dynamic_field_metadata(
+        &self,
+        parent_id: sui::types::Address,
+    ) -> anyhow::Result<Vec<DynamicFieldMetadata>> {
+        let field_mask = sui::grpc::FieldMask::from_paths([
+            "kind",
+            "field_id",
+            "field_object.object_type",
+            "value_type",
+        ]);
+        let mut metadata = Vec::new();
+        let mut page_token = None;
+        let mut client = self.clone_grpc_client();
+
+        loop {
+            let mut request = sui::grpc::ListDynamicFieldsRequest::default()
+                .with_parent(parent_id)
+                .with_page_size(1000)
+                .with_read_mask(field_mask.clone());
+            if let Some(token) = page_token {
+                request = request.with_page_token(token);
+            }
+
+            let response = client
+                .state_client()
+                .list_dynamic_fields(request)
+                .await
+                .map(|response| response.into_inner())
+                .map_err(anyhow::Error::new)
+                .with_context(|| {
+                    format!("Could not fetch dynamic fields for parent '{parent_id}'")
+                })?;
+            page_token = response.next_page_token;
+            metadata.extend(
+                response
+                    .dynamic_fields
+                    .iter()
+                    .map(|field| parse_dynamic_field_metadata(parent_id, field))
+                    .collect::<anyhow::Result<Vec<_>>>()?
+                    .into_iter()
+                    .flatten(),
+            );
+
+            if page_token.is_none() {
+                break;
+            }
+        }
+
+        Ok(metadata)
     }
 
     /// Fetch a published Move package descriptor for ABI inspection.
@@ -455,12 +643,23 @@ impl Crawler {
         .await
     }
 
-    /// Fetch the connected RPC's chain identifier in the 8-hex-char form
-    /// Sui's Move builder uses for `[environments]` lookups (the same value
-    /// `sui client chain-identifier` prints). The gRPC service-info call
-    /// returns the genesis checkpoint digest base58-encoded; we decode it
-    /// and hex-encode the first four bytes to derive the short identifier.
+    /// Fetches the short chain identifier used by Move environments.
+    ///
+    /// This is the first four bytes of [`Self::get_chain_digest`] encoded as
+    /// hexadecimal, matching `sui client chain-identifier`. It is an
+    /// environment selector, not the complete chain identity used for replay
+    /// protection.
     pub async fn get_chain_id(&self) -> anyhow::Result<String> {
+        let digest = self.get_chain_digest().await?;
+        Ok(hex::encode(&digest.as_bytes()[..4]))
+    }
+
+    /// Fetches the complete genesis checkpoint digest that identifies the chain.
+    ///
+    /// Use this value for durable environment identity and transaction replay
+    /// protection. Use [`Self::get_chain_id`] only when selecting a Move build
+    /// environment.
+    pub async fn get_chain_digest(&self) -> anyhow::Result<sui::types::Digest> {
         let mut client = self.clone_grpc_client();
         let response = client
             .ledger_client()
@@ -471,10 +670,8 @@ impl Crawler {
             .into_inner()
             .chain_id
             .ok_or_else(|| anyhow!("connected RPC did not return a chain id in service info"))?;
-        let digest = sui::types::Digest::from_base58(&base58).map_err(|e| {
-            anyhow!("connected RPC returned an unparsable chain id '{base58}': {e}")
-        })?;
-        Ok(hex::encode(&digest.as_bytes()[..4]))
+        sui::types::Digest::from_base58(&base58)
+            .map_err(|e| anyhow!("connected RPC returned an unparsable chain id '{base58}': {e}"))
     }
 
     /// Fetch an object's metadata only, omitting its content.
@@ -1102,99 +1299,6 @@ impl Crawler {
         }
 
         Ok(values)
-    }
-
-    /// Fetch the payload selected by a [`Versioned`] container.
-    ///
-    /// The Sui framework stores each payload as a `u64` keyed dynamic field
-    /// below the container UID. The container version is therefore both the
-    /// schema discriminator and the dynamic field key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the schema is not the expected schema, when the
-    /// field cannot be fetched or decoded, or when the container points at a
-    /// payload that does not exist.
-    pub async fn get_versioned_state<V>(
-        &self,
-        state: &Versioned,
-        expected_schema: u64,
-    ) -> anyhow::Result<V>
-    where
-        V: DeserializeOwned,
-    {
-        let parent_id = state.id.id.bytes;
-        if state.version != expected_schema {
-            bail!(
-                "Versioned container '{parent_id}' uses unsupported state schema '{}'; expected \
-                 state schema '{expected_schema}'",
-                state.version,
-            );
-        }
-        self.get_dynamic_field_by_key(parent_id, state.version, &sui::types::TypeTag::U64)
-            .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "Versioned container '{parent_id}' has no payload for schema version '{}'",
-                    state.version
-                )
-            })
-    }
-
-    /// Fetch a stable object anchor and decode its selected payload.
-    ///
-    /// The returned [`Response`] keeps the anchor object metadata while its
-    /// `data` contains the current payload. This is the normal read path for
-    /// Nexus objects backed by `sui::versioned`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the anchor or payload cannot be decoded, when the
-    /// payload is absent, or when the embedded anchor ID differs from the
-    /// requested object ID.
-    pub async fn get_versioned_object<A, V>(
-        &self,
-        object_id: sui::types::Address,
-        expected_schema: u64,
-    ) -> anyhow::Result<Response<V>>
-    where
-        A: DeserializeOwned + VersionedAnchor,
-        V: DeserializeOwned,
-    {
-        let anchor = self.get_object::<A>(object_id).await?;
-        self.load_versioned_payload(anchor, expected_schema).await
-    }
-
-    /// Replace a fetched anchor value with its selected versioned payload.
-    ///
-    /// This form avoids fetching an anchor twice when it was discovered
-    /// through a dynamic object field.
-    pub async fn load_versioned_payload<A, V>(
-        &self,
-        anchor: Response<A>,
-        expected_schema: u64,
-    ) -> anyhow::Result<Response<V>>
-    where
-        A: VersionedAnchor,
-        V: DeserializeOwned,
-    {
-        let object_id = anchor.object_id;
-        let embedded_id = anchor.data.object_id();
-        if embedded_id != object_id {
-            bail!("Versioned anchor '{object_id}' contains embedded object ID '{embedded_id}'");
-        }
-        let data = self
-            .get_versioned_state::<V>(anchor.data.versioned_state(), expected_schema)
-            .await?;
-
-        Ok(Response {
-            object_id: anchor.object_id,
-            owner: anchor.owner,
-            version: anchor.version,
-            data,
-            digest: anchor.digest,
-            balance: anchor.balance,
-        })
     }
 
     /// Fetch one RPC page of dynamic fields matching a key and value type.
@@ -2162,29 +2266,94 @@ mod tests {
         object
     }
 
-    #[tokio::test]
-    async fn versioned_state_rejects_unknown_schema_before_rpc() {
-        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
-        let client = sui::grpc::client(rpc_url).expect("mock client");
-        let crawler = Crawler::new(Arc::new(client));
-        let state_id = sui::types::Address::from_static("0x91");
-        let state = Versioned::new(
-            crate::move_bindings::sui_framework::object::UID::new(state_id),
-            2,
+    #[test]
+    fn dynamic_field_metadata_reports_unknown_value_type_without_bcs_decode() {
+        let parent_id = sui::types::Address::from_static("0x91");
+        let field_id = sui::types::Address::from_static("0x92");
+        let key_type = "0xa1::object_state::Inner"
+            .parse::<sui::types::TypeTag>()
+            .unwrap();
+        let value_type = "0xf0::future::UnknownInner"
+            .parse::<sui::types::TypeTag>()
+            .unwrap();
+        let field_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![key_type.clone(), value_type.clone()],
         );
+        let mut field_object = sui::grpc::Object::default();
+        field_object.set_object_type(field_type.to_string());
+        let mut invalid_value = sui::grpc::Bcs::default();
+        invalid_value.set_value(vec![0xff]);
+        let mut field = sui::grpc::DynamicField::default();
+        field.set_field_id(field_id.to_string());
+        field.set_field_object(field_object);
+        field.set_value_type(value_type.to_string());
+        field.set_value(invalid_value);
 
-        let error = crawler
-            .get_versioned_state::<TestValue>(&state, 1)
-            .await
-            .expect_err("unknown schema must be rejected");
+        let metadata = parse_dynamic_field_metadata(parent_id, &field)
+            .unwrap()
+            .unwrap();
 
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "Versioned container '{state_id}' uses unsupported state schema '2'; expected \
-                 state schema '1'"
-            )
+        assert_eq!(metadata.field_id, field_id);
+        assert_eq!(metadata.key_type, key_type);
+        assert_eq!(metadata.value_type, value_type);
+    }
+
+    #[test]
+    fn dynamic_field_metadata_rejects_an_incomplete_field_shape() {
+        let parent_id = sui::types::Address::from_static("0x91");
+        let field_id = sui::types::Address::from_static("0x92");
+        let mut field_object = sui::grpc::Object::default();
+        field_object.set_object_type("0x2::dynamic_field::Field<u64>".to_owned());
+        let mut field = sui::grpc::DynamicField::default();
+        field.set_field_id(field_id.to_string());
+        field.set_field_object(field_object);
+
+        let error = parse_dynamic_field_metadata(parent_id, &field)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("Field<K, V>"));
+    }
+
+    #[test]
+    fn dynamic_object_field_metadata_is_excluded_from_ordinary_state_metadata() {
+        let parent_id = sui::types::Address::from_static("0x91");
+        let field_id = sui::types::Address::from_static("0x92");
+        let key_type = "0xa1::task::AuthorizationKey"
+            .parse::<sui::types::TypeTag>()
+            .unwrap();
+        let wrapper_type = dynamic_object_field_wrapper_type(&key_type);
+        let child_type = "0xb1::authorization::AgentSkillAuthorization"
+            .parse::<sui::types::TypeTag>()
+            .unwrap();
+        let field_type = sui::types::StructTag::new(
+            sui::types::Address::from_static("0x2"),
+            sui::types::Identifier::from_static("dynamic_field"),
+            sui::types::Identifier::from_static("Field"),
+            vec![
+                wrapper_type,
+                sui::types::TypeTag::Struct(Box::new(sui::types::StructTag::new(
+                    sui::types::Address::from_static("0x2"),
+                    sui::types::Identifier::from_static("object"),
+                    sui::types::Identifier::from_static("ID"),
+                    vec![],
+                ))),
+            ],
         );
+        let mut field_object = sui::grpc::Object::default();
+        field_object.set_object_type(field_type.to_string());
+        let mut field = sui::grpc::DynamicField::default();
+        field.set_kind(sui::grpc::dynamic_field::DynamicFieldKind::Object);
+        field.set_field_id(field_id.to_string());
+        field.set_field_object(field_object);
+        field.set_value_type(child_type.to_string());
+
+        let metadata = parse_dynamic_field_metadata(parent_id, &field).unwrap();
+
+        assert!(metadata.is_none());
     }
 
     fn coin_object(

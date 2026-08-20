@@ -157,6 +157,12 @@ pub(crate) enum TaskCommand {
     List {
         #[arg(
             long,
+            value_name = "PACKAGE_ID",
+            help = "Scheduler package that defines TaskPointer"
+        )]
+        scheduler_package: sui::types::Address,
+        #[arg(
+            long,
             value_name = "HEX",
             help = "Opaque cursor returned by the previous page"
         )]
@@ -232,6 +238,12 @@ pub(crate) enum TaskCommand {
 
 #[derive(Args)]
 pub(crate) struct CreateTaskArgs {
+    #[arg(
+        long,
+        value_name = "PACKAGE_ID",
+        help = "Scheduler package used to create the Task"
+    )]
+    scheduler_package: sui::types::Address,
     #[command(flatten)]
     task: TaskArgs,
     #[command(flatten)]
@@ -240,6 +252,12 @@ pub(crate) struct CreateTaskArgs {
 
 #[derive(Args)]
 pub(crate) struct ScheduleTaskArgs {
+    #[arg(
+        long,
+        value_name = "PACKAGE_ID",
+        help = "Scheduler package used to create the Task"
+    )]
+    scheduler_package: sui::types::Address,
     #[command(flatten)]
     task: TaskArgs,
     #[command(flatten)]
@@ -382,16 +400,21 @@ pub(crate) enum RecurrenceCommand {
 
 pub(crate) async fn handle(command: TaskCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        TaskCommand::Create(args) => create::run(args.task, args.gas).await,
+        TaskCommand::Create(args) => create::run(args.scheduler_package, args.task, args.gas).await,
         TaskCommand::Schedule(args) => {
             let ScheduleTaskArgs {
+                scheduler_package,
                 task,
                 schedule,
                 gas,
             } = *args;
-            schedule::run(task, schedule, gas).await
+            schedule::run(scheduler_package, task, schedule, gas).await
         }
-        TaskCommand::List { cursor, limit } => list::run(cursor, limit).await,
+        TaskCommand::List {
+            scheduler_package,
+            cursor,
+            limit,
+        } => list::run(scheduler_package, cursor, limit).await,
         TaskCommand::Inspect { task_id } => state::inspect(task_id).await,
         TaskCommand::Pause { task_id, gas } => state::pause(task_id, gas).await,
         TaskCommand::Resume { task_id, gas } => state::resume(task_id, gas).await,
@@ -429,6 +452,8 @@ mod tests {
             "nexus",
             "task",
             "create",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--prepay-amount-mist",
@@ -447,16 +472,18 @@ mod tests {
     #[test]
     fn task_list_uses_the_default_page_limit() {
         let cli =
-            crate::Cli::try_parse_from(["nexus", "task", "list"]).expect("Task list should parse");
+            crate::Cli::try_parse_from(["nexus", "task", "list", "--scheduler-package", "0xa5"])
+                .expect("Task list should parse");
         assert!(matches!(
             cli.command,
             crate::Command::Task(task)
                 if matches!(
                     *task,
                     TaskCommand::List {
+                        scheduler_package,
                         cursor: None,
                         limit: 50,
-                    }
+                    } if scheduler_package == sui::types::Address::from_static("0xa5")
                 )
         ));
     }
@@ -464,7 +491,15 @@ mod tests {
     #[test]
     fn task_list_accepts_cursor_and_limit() {
         let cli = crate::Cli::try_parse_from([
-            "nexus", "task", "list", "--cursor", "0102", "--limit", "7",
+            "nexus",
+            "task",
+            "list",
+            "--scheduler-package",
+            "0xa5",
+            "--cursor",
+            "0102",
+            "--limit",
+            "7",
         ])
         .expect("Task list page should parse");
         assert!(matches!(
@@ -473,16 +508,26 @@ mod tests {
                 if matches!(
                     *task,
                     TaskCommand::List {
+                        scheduler_package,
                         cursor: Some(ref cursor),
                         limit: 7,
-                    } if cursor == "0102"
+                    } if scheduler_package == sui::types::Address::from_static("0xa5")
+                        && cursor == "0102"
                 )
         ));
     }
 
     #[test]
     fn task_list_rejects_a_zero_limit() {
-        let error = match crate::Cli::try_parse_from(["nexus", "task", "list", "--limit", "0"]) {
+        let error = match crate::Cli::try_parse_from([
+            "nexus",
+            "task",
+            "list",
+            "--scheduler-package",
+            "0xa5",
+            "--limit",
+            "0",
+        ]) {
             Ok(_) => panic!("zero page limit should fail"),
             Err(error) => error,
         };
@@ -495,6 +540,8 @@ mod tests {
             "nexus",
             "task",
             "schedule",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--prepay-amount-mist",
@@ -515,6 +562,8 @@ mod tests {
             "nexus",
             "task",
             "schedule",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--prepay-amount-mist",
@@ -551,6 +600,8 @@ mod tests {
             "nexus",
             "task",
             "schedule",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--prepay-amount-mist",
@@ -570,6 +621,8 @@ mod tests {
             "nexus",
             "task",
             "schedule",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--prepay-amount-mist",
@@ -603,6 +656,8 @@ mod tests {
                     "nexus",
                     "task",
                     "schedule",
+                    "--scheduler-package",
+                    "0xa5",
                     "--dag-id",
                     "0x42",
                     "--prepay-amount-mist",
@@ -633,6 +688,8 @@ mod tests {
             "nexus",
             "task",
             "create",
+            "--scheduler-package",
+            "0xa5",
             "--dag-id",
             "0x42",
             "--agent-funded",

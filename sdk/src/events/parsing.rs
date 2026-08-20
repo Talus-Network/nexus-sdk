@@ -14,7 +14,7 @@ use crate::{
         primitives::{data::NexusData as MoveNexusData, event as event_move},
     },
     sui,
-    types::NexusObjects,
+    types::NexusContext,
 };
 
 struct NexusEventType<'a> {
@@ -23,8 +23,8 @@ struct NexusEventType<'a> {
 }
 
 impl<'a> NexusEventType<'a> {
-    fn resolve(wrapper_type: &'a sui::types::StructTag, objects: &NexusObjects) -> Option<Self> {
-        if !is_event_wrapper(wrapper_type, objects) {
+    fn resolve(wrapper_type: &'a sui::types::StructTag, context: &NexusContext) -> Option<Self> {
+        if !is_event_wrapper(wrapper_type, context) {
             return None;
         }
 
@@ -35,7 +35,7 @@ impl<'a> NexusEventType<'a> {
                 sui::types::TypeTag::Struct(struct_tag) => Some(struct_tag),
                 _ => None,
             })?;
-        if !is_nexus_package(*tag.address(), objects) {
+        if !is_nexus_package(*tag.address(), context) {
             return None;
         }
 
@@ -52,9 +52,9 @@ pub(super) fn classify_nexus_event(
     emitting_package: sui::types::Address,
     contents: &[u8],
     wrapper_type: &sui::types::StructTag,
-    objects: &NexusObjects,
+    context: &NexusContext,
 ) -> Result<Option<NexusEventCandidate>, NexusEventDecodeError> {
-    let Some(event_type) = NexusEventType::resolve(wrapper_type, objects) else {
+    let Some(event_type) = NexusEventType::resolve(wrapper_type, context) else {
         return Ok(None);
     };
     if !supports_event(event_type.name) {
@@ -78,16 +78,16 @@ pub(super) fn classify_nexus_event(
     }))))
 }
 
-fn is_nexus_package(address: sui::types::Address, objects: &NexusObjects) -> bool {
-    objects.is_nexus_package(address)
+fn is_nexus_package(address: sui::types::Address, context: &NexusContext) -> bool {
+    context.packages().contains_package(address)
 }
 
-fn is_event_wrapper(tag: &sui::types::StructTag, objects: &NexusObjects) -> bool {
+fn is_event_wrapper(tag: &sui::types::StructTag, context: &NexusContext) -> bool {
     crate::move_bindings::struct_tag_matches::<event_move::EventWrapper<MoveNexusData>>(
-        objects, tag,
+        context, tag,
     ) || crate::move_bindings::struct_tag_matches::<
         distributed_event_move::DistributedEventWrapper<MoveNexusData>,
-    >(objects, tag)
+    >(context, tag)
 }
 
 #[cfg(all(test, feature = "test_utils"))]
@@ -148,31 +148,39 @@ mod tests {
 
     #[test]
     fn resolves_event_type_origins_after_package_upgrades() {
-        let mut objects = crate::test_utils::sui_mocks::mock_nexus_objects();
-        objects
-            .packages
+        let objects = crate::test_utils::sui_mocks::mock_nexus_objects();
+        let mut packages = crate::test_utils::sui_mocks::mock_nexus_packages();
+        packages
             .primitives
+            .as_mut()
+            .unwrap()
             .insert_type_origin(
                 crate::types::DatatypeKey::new("event", "EventWrapper"),
                 address("0xa1"),
             )
             .unwrap();
-        objects
-            .packages
+        packages
             .scheduler
+            .as_mut()
+            .unwrap()
             .insert_type_origin(
                 crate::types::DatatypeKey::new("scheduler", "TaskCreatedEvent"),
                 address("0xa2"),
             )
             .unwrap();
-        objects
-            .packages
+        let scheduler = packages.scheduler.as_mut().unwrap();
+        scheduler.storage_id = address("0xa6");
+        scheduler.version = 2;
+        packages
             .interface
+            .as_mut()
+            .unwrap()
             .insert_type_origin(
                 crate::types::DatatypeKey::new("distributed_event", "DistributedEventWrapper"),
                 address("0xa3"),
             )
             .unwrap();
+        let context = crate::types::NexusContext::new(std::sync::Arc::new(objects), packages);
 
         let event = TaskCreatedEvent::new(
             ID::new(address("0x41")),
@@ -183,9 +191,9 @@ mod tests {
             7,
         );
         let bytes = bcs::to_bytes(&Wrapper { event }).expect("event serializes");
-        let inner = crate::move_bindings::struct_tag::<TaskCreatedEvent>(&objects);
+        let inner = crate::move_bindings::struct_tag::<TaskCreatedEvent>(&context);
         let wrapper =
-            crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(&objects);
+            crate::move_bindings::struct_tag::<event_move::EventWrapper<MoveNexusData>>(&context);
         let wrapper = sui::types::StructTag::new(
             *wrapper.address(),
             wrapper.module().clone(),
@@ -193,14 +201,17 @@ mod tests {
             vec![sui::types::TypeTag::Struct(Box::new(inner))],
         );
 
-        let emitter = objects.packages.scheduler.storage_id;
+        let scheduler = context
+            .require_package(crate::types::PackageRole::Scheduler)
+            .unwrap();
+        let emitter = scheduler.storage_id;
         let candidate = classify_nexus_event(
             0,
             sui::types::Digest::ZERO,
             emitter,
             &bytes,
             &wrapper,
-            &objects,
+            &context,
         )
         .expect("event decoding succeeds")
         .expect("event is recognized");
@@ -209,14 +220,13 @@ mod tests {
             .expect("known event should be supported");
 
         assert!(matches!(decoded.data, NexusEventKind::TaskCreated(_)));
-        assert!(decoded.was_emitted_by(&objects));
+        assert!(decoded.was_emitted_by(&context));
         let mut stale = decoded.clone();
-        stale.emitting_package = objects.packages.scheduler.initial_id;
-        objects.packages.scheduler.storage_id = address("0xb2");
-        assert!(!stale.was_emitted_by(&objects));
+        stale.emitting_package = scheduler.initial_id;
+        assert!(!stale.was_emitted_by(&context));
         let distributed_wrapper = crate::move_bindings::struct_tag::<
             distributed_event_move::DistributedEventWrapper<MoveNexusData>,
-        >(&objects);
+        >(&context);
         assert_eq!(*distributed_wrapper.address(), address("0xa3"));
     }
 

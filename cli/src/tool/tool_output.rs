@@ -1,8 +1,8 @@
 use {
     nexus_sdk::{
-        move_bindings::{
-            interface::verifier::{ToolVerifierSupport, VerifierMethodId},
-            tool::external_verifier::ExternalVerifier,
+        move_bindings::tool::{
+            external_verifier::ExternalVerifier,
+            tool_registry::{ToolLifecycle, ToolVerifierContract},
         },
         sui,
         types::{ToolRef, ToolState},
@@ -13,40 +13,39 @@ use {
 /// Semantic CLI view of [`ToolState`].
 #[derive(Debug, Serialize)]
 pub(super) struct ToolOutput {
-    pub(super) minimum_protocol_version: u64,
+    pub(super) tool_id: sui::types::Address,
     pub(super) registry_id: sui::types::Address,
     pub(super) fqn: String,
     pub(super) reference: ToolReferenceOutput,
     pub(super) description: String,
     pub(super) meta_schema: serde_json::Value,
-    pub(super) verified: bool,
-    pub(super) vault_balance: u64,
+    pub(super) timeout_ms: u64,
+    pub(super) verifier_contract: ToolVerifierContractOutput,
     pub(super) workflow_authorization_cap_first: bool,
+    pub(super) invocation_cost_mist: u64,
+    pub(super) vault_balance: u64,
     pub(super) lock_duration_ms: u64,
-    pub(super) timeout_ms: Option<u64>,
     pub(super) registered_at: chrono::DateTime<chrono::Utc>,
-    pub(super) unregistered_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub(super) lifecycle: ToolLifecycleOutput,
 }
 
 impl ToolOutput {
-    pub(super) fn try_from_state(
-        tool: &ToolState,
-        timeout_ms: Option<u64>,
-    ) -> anyhow::Result<Self> {
+    pub(super) fn try_from_state(tool: &ToolState) -> anyhow::Result<Self> {
         Ok(Self {
-            minimum_protocol_version: tool.minimum_protocol_version,
+            tool_id: tool.object_id,
             registry_id: tool.registry_id(),
             fqn: tool.fqn_string()?,
             reference: ToolReferenceOutput::try_from(tool.reference())?,
             description: tool.description_string()?,
             meta_schema: tool.meta_schema.to_json_value()?,
-            verified: tool.verified,
-            vault_balance: tool.vault.value,
+            timeout_ms: tool.timeout_ms,
+            verifier_contract: ToolVerifierContractOutput::try_from(&tool.verifier_contract)?,
             workflow_authorization_cap_first: tool.workflow_authorization_cap_first,
-            lock_duration_ms: tool.lock_duration_ms,
-            timeout_ms,
+            invocation_cost_mist: tool.invocation_cost_mist,
+            vault_balance: tool.inner.vault.value,
+            lock_duration_ms: tool.inner.lock_duration_ms,
             registered_at: tool.registered_at_datetime()?,
-            unregistered_at: tool.unregistered_at_datetime()?,
+            lifecycle: ToolLifecycleOutput::from(&tool.inner.lifecycle),
         })
     }
 }
@@ -101,50 +100,29 @@ impl std::fmt::Display for ToolReferenceOutput {
     }
 }
 
-/// Semantic CLI view of [`ToolVerifierSupport`].
+/// Semantic CLI view of [`ToolVerifierContract`].
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(super) enum ToolVerifierSupportOutput {
+pub(super) enum ToolVerifierContractOutput {
+    None,
     RegisteredKey,
-    External { method: VerifierMethodOutput },
+    External { verifier: ExternalVerifierOutput },
 }
 
-impl TryFrom<&ToolVerifierSupport> for ToolVerifierSupportOutput {
+impl TryFrom<&ToolVerifierContract> for ToolVerifierContractOutput {
     type Error = anyhow::Error;
 
-    fn try_from(support: &ToolVerifierSupport) -> Result<Self, Self::Error> {
-        match support {
-            ToolVerifierSupport::RegisteredKey => Ok(Self::RegisteredKey),
-            ToolVerifierSupport::External { method_id } => Ok(Self::External {
-                method: VerifierMethodOutput::try_from(method_id)?,
+    fn try_from(contract: &ToolVerifierContract) -> Result<Self, Self::Error> {
+        match contract {
+            ToolVerifierContract::None => Ok(Self::None),
+            ToolVerifierContract::RegisteredKey => Ok(Self::RegisteredKey),
+            ToolVerifierContract::External { pos0 } => Ok(Self::External {
+                verifier: ExternalVerifierOutput::try_from(pos0)?,
             }),
         }
     }
 }
 
-/// Semantic CLI view of [`VerifierMethodId`].
-#[derive(Debug, Serialize)]
-pub(super) struct VerifierMethodOutput {
-    tool_id: sui::types::Address,
-    package_id: sui::types::Address,
-    module: String,
-    function: String,
-}
-
-impl TryFrom<&VerifierMethodId> for VerifierMethodOutput {
-    type Error = anyhow::Error;
-
-    fn try_from(method: &VerifierMethodId) -> Result<Self, Self::Error> {
-        Ok(Self {
-            tool_id: method.tool_id.address(),
-            package_id: method.package_id.address(),
-            module: std::str::from_utf8(&method.module_name.bytes)?.to_owned(),
-            function: std::str::from_utf8(&method.function_name.bytes)?.to_owned(),
-        })
-    }
-}
-
-/// Semantic CLI view of [`ExternalVerifier`].
 #[derive(Debug, Serialize)]
 pub(super) struct ExternalVerifierOutput {
     method: VerifierMethodOutput,
@@ -168,78 +146,46 @@ impl TryFrom<&ExternalVerifier> for ExternalVerifierOutput {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use {
-        super::*,
-        nexus_sdk::{
-            move_bindings::{
-                interface::meta_schema::{MetaSchema, OutputVariantSchema},
-                move_std::{ascii, option::Option as MoveOption},
-                sui_framework::{balance::Balance, object::ID},
-            },
-            types::{ToolRef, ToolState},
-        },
-    };
+#[derive(Debug, Serialize)]
+struct VerifierMethodOutput {
+    tool_id: sui::types::Address,
+    package_id: sui::types::Address,
+    module: String,
+    function: String,
+}
 
-    fn fixture_tool() -> ToolState {
-        ToolState {
-            minimum_protocol_version: 1,
-            registry: ID::new(nexus_sdk::sui::types::Address::from_static("0x42")),
-            fqn: ascii::String::from("xyz.taluslabs.example@1"),
-            r#ref: ToolRef::Http {
-                url: b"https://example.com/tool".to_vec(),
-            },
-            description: b"Example tool".to_vec(),
-            meta_schema: MetaSchema::new(
-                vec![],
-                vec![OutputVariantSchema::new(b"Ok".to_vec(), vec![])],
-            ),
-            verified: true,
-            vault: Balance {
-                value: 25,
-                phantom_t0: std::marker::PhantomData,
-            },
-            workflow_authorization_cap_first: false,
-            lock_duration_ms: 5_000,
-            registered_at_ms: 0,
-            unregistered_at_ms: MoveOption::from(None),
-        }
+impl TryFrom<&nexus_sdk::move_bindings::interface::verifier::VerifierMethodId>
+    for VerifierMethodOutput
+{
+    type Error = anyhow::Error;
+
+    fn try_from(
+        method: &nexus_sdk::move_bindings::interface::verifier::VerifierMethodId,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            tool_id: method.tool_id.address(),
+            package_id: method.package_id.address(),
+            module: std::str::from_utf8(&method.module_name.bytes)?.to_owned(),
+            function: std::str::from_utf8(&method.function_name.bytes)?.to_owned(),
+        })
     }
+}
 
-    #[test]
-    fn tool_output_replaces_move_storage_values_with_domain_values() {
-        let output = ToolOutput::try_from_state(&fixture_tool(), Some(10_000))
-            .expect("valid Tool state should project");
-        let value = serde_json::to_value(output).expect("Tool output should serialize");
+/// Stable CLI lifecycle representation.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(super) enum ToolLifecycleOutput {
+    Open,
+    Closed { at_ms: u64 },
+    Retired { at_ms: u64 },
+}
 
-        assert_eq!(
-            value,
-            serde_json::json!({
-                "minimum_protocol_version": 1,
-                "registry_id": nexus_sdk::sui::types::Address::from_static("0x42").to_string(),
-                "fqn": "xyz.taluslabs.example@1",
-                "reference": {
-                    "kind": "http",
-                    "url": "https://example.com/tool",
-                },
-                "description": "Example tool",
-                "meta_schema": {
-                    "input_ports": [],
-                    "output_variants": [{
-                        "variant_name": "Ok",
-                        "ports": [],
-                    }],
-                },
-                "verified": true,
-                "vault_balance": 25,
-                "workflow_authorization_cap_first": false,
-                "lock_duration_ms": 5_000,
-                "timeout_ms": 10_000,
-                "registered_at": "1970-01-01T00:00:00Z",
-                "unregistered_at": null,
-            })
-        );
-        assert!(!value.to_string().contains("\"bytes\""));
+impl From<&ToolLifecycle> for ToolLifecycleOutput {
+    fn from(lifecycle: &ToolLifecycle) -> Self {
+        match lifecycle {
+            ToolLifecycle::Open => Self::Open,
+            ToolLifecycle::Closed { at_ms } => Self::Closed { at_ms: *at_ms },
+            ToolLifecycle::Retired { at_ms } => Self::Retired { at_ms: *at_ms },
+        }
     }
 }

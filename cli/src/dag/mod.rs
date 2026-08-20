@@ -41,6 +41,12 @@ pub(crate) enum DagCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PACKAGE_ID",
+            help = "Workflow package used to create the DAG"
+        )]
+        workflow_package: sui::types::Address,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -59,9 +65,11 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         }
 
         // == `$ nexus dag publish` ==
-        DagCommand::Publish { path, gas } => {
-            publish_dag(path, gas.sui_gas_coin, gas.sui_gas_budget).await
-        }
+        DagCommand::Publish {
+            path,
+            workflow_package,
+            gas,
+        } => publish_dag(path, workflow_package, gas.sui_gas_coin, gas.sui_gas_budget).await,
     }
 }
 

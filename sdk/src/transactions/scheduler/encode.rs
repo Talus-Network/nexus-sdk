@@ -4,7 +4,6 @@ use {
         move_bindings::{
             interface::{
                 agent as agent_binding,
-                authorization::{self as authorization_binding, AgentVertexAuthorizationTemplate},
                 graph::{InputPort, Vertex},
             },
             move_std::option::Option as MoveOption,
@@ -16,7 +15,7 @@ use {
             },
         },
         move_boundary::NexusPtbBuilder,
-        scheduler::{AuthorizationTemplate, FailurePolicy, SchedulerError, TaskOperation},
+        scheduler::{AuthorizationBindings, FailurePolicy, SchedulerError, TaskOperation},
         sui,
     },
     sui_sdk_types::Argument,
@@ -52,7 +51,7 @@ pub(super) fn execution_config_arg(
             agent_id,
             skill_id,
             selected_dag,
-            authorization_templates,
+            authorization_bindings,
         } => {
             let agent_id = transaction
                 .object_id(*agent_id)
@@ -61,8 +60,8 @@ pub(super) fn execution_config_arg(
                 .arg(skill_id)
                 .map_err(SchedulerError::transaction)?;
             let selected_dag = optional_object_id_arg(transaction, *selected_dag)?;
-            let authorization_templates =
-                authorization_templates_arg(transaction, authorization_templates)?;
+            let authorization_bindings =
+                authorization_bindings_arg(transaction, authorization_bindings)?;
             transaction
                 .call_target(
                     agent_binding::new_agent_execution_config_target,
@@ -73,7 +72,7 @@ pub(super) fn execution_config_arg(
                         inputs,
                         skill_id,
                         selected_dag,
-                        authorization_templates,
+                        authorization_bindings,
                     ],
                 )
                 .map_err(SchedulerError::transaction)
@@ -142,38 +141,31 @@ fn optional_object_id_arg(
         .map_err(SchedulerError::transaction)
 }
 
-fn authorization_template_arg(
+fn authorization_bindings_arg(
     transaction: &mut NexusPtbBuilder,
-    template: &AuthorizationTemplate,
+    bindings: &AuthorizationBindings,
 ) -> Result<Argument, SchedulerError> {
-    let skill_id = transaction
-        .arg(&template.skill_id())
-        .map_err(SchedulerError::transaction)?;
-    let vertex = transaction
-        .ascii_string(template.vertex())
-        .map_err(SchedulerError::transaction)?;
-    let recipient_id = transaction
-        .object_id(template.recipient_id())
-        .map_err(SchedulerError::transaction)?;
-    transaction
+    let encoded = transaction
         .call_target(
-            authorization_binding::agent_vertex_authorization_template_target,
-            vec![skill_id, vertex, recipient_id],
+            vec_map_binding::empty_target::<Vertex, MoveObjectId>,
+            vec![],
         )
-        .map_err(SchedulerError::transaction)
-}
-
-fn authorization_templates_arg(
-    transaction: &mut NexusPtbBuilder,
-    templates: &[AuthorizationTemplate],
-) -> Result<Argument, SchedulerError> {
-    let templates = templates
-        .iter()
-        .map(|template| authorization_template_arg(transaction, template))
-        .collect::<Result<Vec<_>, _>>()?;
-    transaction
-        .move_vector::<AgentVertexAuthorizationTemplate>(templates)
-        .map_err(SchedulerError::transaction)
+        .map_err(SchedulerError::transaction)?;
+    for (vertex, recipient_id) in bindings {
+        let vertex = transaction
+            .graph_vertex(vertex)
+            .map_err(SchedulerError::transaction)?;
+        let recipient_id = transaction
+            .object_id(*recipient_id)
+            .map_err(SchedulerError::transaction)?;
+        transaction
+            .call_target(
+                vec_map_binding::insert_target::<Vertex, MoveObjectId>,
+                vec![encoded, vertex, recipient_id],
+            )
+            .map_err(SchedulerError::transaction)?;
+    }
+    Ok(encoded)
 }
 
 pub(super) fn failure_policy_arg(

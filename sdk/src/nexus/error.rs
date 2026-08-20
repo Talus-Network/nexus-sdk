@@ -1,6 +1,46 @@
 //! Common error types for Nexus-related functionality.
 
-use {std::time::Duration, thiserror::Error};
+use {crate::sui, std::time::Duration, thiserror::Error};
+
+/// Identity of the SDK build performing compatibility checks.
+pub const SDK_BUILD_IDENTITY: &str = env!("CARGO_PKG_VERSION");
+
+/// A live object uses a witness or inner layout unknown to this SDK build.
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[error(
+    "object '{object_id}' uses witness '{witness_type}' and inner type '{inner}', which SDK build \
+     '{sdk_build}' does not support",
+    inner = inner_type
+        .as_ref()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "<unavailable>".to_owned())
+)]
+pub struct ClientUpgradeRequired {
+    /// Stable identity of the object that cannot be interpreted.
+    pub object_id: sui::types::Address,
+    /// Exact package witness observed on the object.
+    pub witness_type: Box<sui::types::StructTag>,
+    /// Exact inner layout when its metadata was available.
+    pub inner_type: Option<Box<sui::types::StructTag>>,
+    /// SDK build that performed the compatibility check.
+    pub sdk_build: &'static str,
+}
+
+impl ClientUpgradeRequired {
+    /// Creates a compatibility error for one observed object state.
+    pub fn new(
+        object_id: sui::types::Address,
+        witness_type: sui::types::StructTag,
+        inner_type: Option<sui::types::StructTag>,
+    ) -> Self {
+        Self {
+            object_id,
+            witness_type: Box::new(witness_type),
+            inner_type: inner_type.map(Box::new),
+            sdk_build: SDK_BUILD_IDENTITY,
+        }
+    }
+}
 
 /// Durable transaction state known when execution does not complete normally.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -210,38 +250,24 @@ pub enum NexusError {
     Channel(anyhow::Error),
     #[error("Storage error: {0}")]
     Storage(anyhow::Error),
-    #[error("Protocol validation error: {0}")]
-    ProtocolValidation(anyhow::Error),
-    #[error(
-        "Protocol version {protocol_version} exceeds the newest version {maximum} supported by \
-         this SDK"
-    )]
-    UnsupportedProtocolVersion { protocol_version: u64, maximum: u64 },
-    #[error(
-        "Protocol changed from version {client_version} to version {active_version} while the \
-         operation was in progress"
-    )]
-    StaleProtocol {
-        client_version: u64,
-        active_version: u64,
+    /// The connected Sui chain does not match [`crate::types::NexusObjects`].
+    #[error("Connected chain '{actual}' does not match configured chain '{expected}'")]
+    ChainMismatch { expected: String, actual: String },
+    /// A live object violates the required anchor field structure.
+    #[error("Object state for '{object}' is invalid: {reason}")]
+    InvalidObjectState {
+        object: sui::types::Address,
+        reason: String,
     },
-    #[error("Object '{object}' requires protocol version {required}, active version is {current}")]
-    MigrationRequired {
-        object: crate::sui::types::Address,
-        current: u64,
-        required: u64,
+    /// A package is structurally valid but incompatible with an operation graph.
+    #[error("Package '{package}' is incompatible: {reason}")]
+    IncompatiblePackage {
+        package: sui::types::Address,
+        reason: String,
     },
-    /// The selected [`Versioned`] payload schema has no matching SDK binding.
-    ///
-    /// [`Versioned`]: crate::move_bindings::sui_framework::versioned::Versioned
-    #[error(
-        "Object '{object}' uses state schema {actual}, but this SDK expects state schema {expected}"
-    )]
-    UnsupportedStateSchema {
-        object: crate::sui::types::Address,
-        actual: u64,
-        expected: u64,
-    },
+    /// The SDK does not contain an adapter for the observed object state.
+    #[error(transparent)]
+    ClientUpgradeRequired(#[from] ClientUpgradeRequired),
 }
 
 impl From<TransactionError> for NexusError {

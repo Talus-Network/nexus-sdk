@@ -1,29 +1,18 @@
-//! Read-only helpers for registry-owned capability and verifier discovery.
+//! Registry capability discovery and verifier validation.
 
-#[cfg(test)]
-use crate::move_bindings::interface::meta_schema::MetaSchema;
 use {
     crate::{
         move_bindings::{
-            interface::verifier::ToolVerifierSupport,
-            move_std::ascii,
             primitives,
-            registry::{self, leader::LeaderRegistryStateV1},
-            sui_framework::object::ID,
-            tool::{
-                external_verifier::ExternalVerifier,
-                tool_registry::{ToolRegistry, ToolRegistryState},
-            },
+            registry::{self, leader::LeaderRegistryInnerV1},
         },
         nexus::crawler::Crawler,
         sui::{self, grpc::owner::OwnerKind, traits::FieldMaskUtil},
         transactions::tool::{ExternalVerifierObjectInput, ExternalVerifierRegistrationInput},
-        types::{ExternalVerifierRuntimeCall, NexusObjects},
-        ToolFqn,
+        types::{NexusContext, PackageRole},
     },
     anyhow::{anyhow, bail},
     std::collections::HashMap,
-    sui_move::MoveType as _,
 };
 
 type AnyCloneableOwnerCap =
@@ -31,7 +20,7 @@ type AnyCloneableOwnerCap =
 
 /// Decode the registry network ID from a loaded leader registry payload.
 pub fn extract_network_id_from_leader_registry(
-    state: &LeaderRegistryStateV1,
+    state: &LeaderRegistryInnerV1,
 ) -> sui::types::Address {
     state.network_id()
 }
@@ -86,170 +75,18 @@ fn object_version(object: &sui::grpc::Object) -> Option<u64> {
     }
 }
 
-/// Current live registration for one stable Tool ID.
+/// Validates one published external verifier ABI and resolves its shared objects.
 ///
-/// Outer `None` means the Tool ID is absent from the authoritative
-/// `ToolRegistry.registered_tools` table. A present registration may still have no verifier
-/// support because per vertex `None` requires no global verifier configuration.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CurrentToolRegistration {
-    pub verifier_support: Option<ToolVerifierSupport>,
-}
-
-/// Fetch the [`CurrentToolRegistration`] for one Tool object ID.
-///
-/// Registration and verifier support are read by their exact [`ID`] keys.
-/// An unregistered Tool returns [`None`].
+/// The immutable package graph in `context` defines the exact Nexus parameter
+/// and return types accepted by the Tool registration operation.
 ///
 /// # Errors
 ///
-/// Returns an error when the registry or a requested field cannot be fetched,
-/// validated, or decoded.
-pub async fn fetch_current_tool_registration(
-    crawler: &Crawler,
-    registry_ref: &sui::types::ObjectReference,
-    tool_id: sui::types::Address,
-) -> anyhow::Result<Option<CurrentToolRegistration>> {
-    let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
-        .await?;
-
-    if registry.data.registered_tools.size() == 0 {
-        return Ok(None);
-    }
-
-    let tool_id = ID::new(tool_id);
-    let is_registered = crawler
-        .get_dynamic_field_by_key::<ID, bool>(
-            registry.data.registered_tools.id(),
-            tool_id,
-            &ID::type_tag_static(),
-        )
-        .await?
-        .is_some();
-    if !is_registered {
-        return Ok(None);
-    }
-
-    let verifier_support = if registry.data.verifier_support.size() == 0 {
-        None
-    } else {
-        crawler
-            .get_dynamic_field_by_key::<ID, ToolVerifierSupport>(
-                registry.data.verifier_support.id(),
-                tool_id,
-                &ID::type_tag_static(),
-            )
-            .await?
-    };
-
-    Ok(Some(CurrentToolRegistration { verifier_support }))
-}
-
-/// Fetch the invocation price retained for one [`ToolFqn`], when present.
-///
-/// The price is read by its exact Move ASCII string key.
-///
-/// # Errors
-///
-/// Returns an error when the registry or price field cannot be fetched,
-/// validated, or decoded.
-pub async fn fetch_tool_invocation_cost(
-    crawler: &Crawler,
-    registry_ref: &sui::types::ObjectReference,
-    tool_fqn: &ToolFqn,
-) -> anyhow::Result<Option<u64>> {
-    let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
-        .await?;
-    if registry.data.invocation_costs_mist.size() == 0 {
-        return Ok(None);
-    }
-    crawler
-        .get_dynamic_field_by_key(
-            registry.data.invocation_costs_mist.id(),
-            ascii::String::from(tool_fqn.to_string()),
-            &ascii::String::type_tag_static(),
-        )
-        .await
-}
-
-/// Fetch the current external verifier record for one Tool, when present.
-///
-/// The record is read by its exact [`ID`] key and validated against `tool_id`.
-///
-/// # Errors
-///
-/// Returns an error when the registry or record cannot be fetched or decoded,
-/// or when the record does not belong to `tool_id`.
-pub async fn fetch_external_verifier_record(
-    crawler: &Crawler,
-    registry_ref: &sui::types::ObjectReference,
-    tool_id: sui::types::Address,
-) -> anyhow::Result<Option<ExternalVerifier>> {
-    let registry = crawler
-        .get_versioned_object::<ToolRegistry, ToolRegistryState>(*registry_ref.object_id(), 1)
-        .await?;
-    if registry.data.external_verifiers.size() == 0 {
-        return Ok(None);
-    }
-    let record = crawler
-        .get_dynamic_field_by_key::<ID, ExternalVerifier>(
-            registry.data.external_verifiers.id(),
-            ID::new(tool_id),
-            &ID::type_tag_static(),
-        )
-        .await?;
-    if let Some(record) = record.as_ref() {
-        validate_external_record(tool_id, record)?;
-    }
-    Ok(record)
-}
-
-/// Resolve one Tool-bound external verifier record and its ordered immutable shared objects.
-pub async fn fetch_external_verifier_runtime_call(
-    crawler: &Crawler,
-    registry_ref: &sui::types::ObjectReference,
-    tool_id: sui::types::Address,
-) -> anyhow::Result<ExternalVerifierRuntimeCall> {
-    let record = fetch_external_verifier_record(crawler, registry_ref, tool_id)
-        .await?
-        .ok_or_else(|| anyhow!("Tool '{tool_id}' has no registered external verifier"))?;
-
-    let object_ids = record
-        .immutable_shared_objects
-        .iter()
-        .map(|id| id.bytes)
-        .collect::<Vec<_>>();
-    let metadata = crawler.get_objects_metadata(&object_ids).await?;
-    let mut by_id = metadata
-        .into_iter()
-        .map(|object| (object.object_id, object))
-        .collect::<HashMap<_, _>>();
-    let immutable_shared_objects = object_ids
-        .iter()
-        .map(|object_id| {
-            let object = by_id.remove(object_id).ok_or_else(|| {
-                anyhow!("External verifier object '{object_id}' metadata was not returned")
-            })?;
-            if !object.is_shared() {
-                bail!("External verifier object '{object_id}' is not shared");
-            }
-            Ok(object.object_ref())
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-
-    Ok(ExternalVerifierRuntimeCall {
-        method_id: record.method.clone(),
-        witness_id: record.witness.bytes,
-        immutable_shared_objects,
-    })
-}
-
-/// Validate a published External verifier ABI and resolve its ordered shared objects.
+/// Returns an error when the verifier function does not match the required ABI,
+/// an object is absent or mutable, or the requested object order is invalid.
 pub async fn preflight_external_verifier_registration(
     crawler: &Crawler,
-    objects: &NexusObjects,
+    context: &NexusContext,
     package_id: sui::types::Address,
     module_name: &str,
     function_name: &str,
@@ -286,7 +123,7 @@ pub async fn preflight_external_verifier_registration(
                 "Function '{function_name}' not found in module '{module_name}' of package '{package_id}'"
             )
         })?;
-    let object_types = validate_external_verifier_function(function, objects)?;
+    let object_types = validate_external_verifier_function(function, context)?;
     if object_types.len() != verifier_object_ids.len() {
         bail!(
             "External verifier ABI requires {} immutable shared objects, but {} were supplied",
@@ -327,7 +164,7 @@ pub async fn preflight_external_verifier_registration(
 
 fn validate_external_verifier_function(
     function: &sui::grpc::FunctionDescriptor,
-    objects: &NexusObjects,
+    context: &NexusContext,
 ) -> anyhow::Result<Vec<sui::types::TypeTag>> {
     use sui::grpc::{function_descriptor::Visibility, open_signature::Reference};
 
@@ -347,11 +184,17 @@ fn validate_external_verifier_function(
         );
     }
 
+    let primitives = context.require_package(PackageRole::Primitives)?;
+    let proof_of_uid = primitives.type_origin("proof_of_uid", "ProofOfUID")?;
+    let tagged_output = primitives.type_origin("tagged_output", "TaggedOutput")?;
+    let interface = context.require_package(PackageRole::Interface)?;
+    let verification_verdict = interface.type_origin("verifier", "VerificationVerdict")?;
+
     let worksheet = &function.parameters()[0];
     require_reference(worksheet, Reference::Mutable, "worksheet")?;
     require_struct(
         worksheet,
-        objects.primitives_type_origin_pkg_id(),
+        proof_of_uid,
         "proof_of_uid",
         "ProofOfUID",
         "worksheet",
@@ -360,7 +203,7 @@ fn validate_external_verifier_function(
     require_reference(result, Reference::Unknown, "result")?;
     require_struct(
         result,
-        objects.primitives_type_origin_pkg_id(),
+        tagged_output,
         "tagged_output",
         "TaggedOutput",
         "result",
@@ -388,7 +231,7 @@ fn validate_external_verifier_function(
     require_reference(verdict, Reference::Unknown, "return value")?;
     require_struct(
         verdict,
-        objects.interface_type_origin_pkg_id(),
+        verification_verdict,
         "verifier",
         "VerificationVerdict",
         "return value",
@@ -508,49 +351,11 @@ fn signature_body_to_type_tag(
     })
 }
 
-fn validate_external_record(
-    tool_id: sui::types::Address,
-    record: &ExternalVerifier,
-) -> anyhow::Result<()> {
-    if record.method.tool_id.bytes != tool_id {
-        bail!("External verifier method is bound to a different Tool ID");
-    }
-    let first = record
-        .immutable_shared_objects
-        .first()
-        .ok_or_else(|| anyhow!("External verifier record has no witness object"))?;
-    if first.bytes != record.witness.bytes {
-        bail!("External verifier witness must be immutable object zero");
-    }
-    if record
-        .immutable_shared_objects
-        .iter()
-        .map(|id| id.bytes)
-        .collect::<std::collections::HashSet<_>>()
-        .len()
-        != record.immutable_shared_objects.len()
-    {
-        bail!("External verifier record contains duplicate objects");
-    }
-    Ok(())
-}
-
 #[cfg(all(test, feature = "test_utils"))]
 mod tests {
     use {
         super::*,
-        crate::{
-            move_bindings::{
-                move_std::ascii,
-                sui_framework::{
-                    linked_table::LinkedTable,
-                    object::UID,
-                    table::Table,
-                    versioned::Versioned,
-                },
-            },
-            test_utils::sui_mocks,
-        },
+        crate::test_utils::sui_mocks,
         std::sync::Arc,
         sui::grpc::{
             function_descriptor::Visibility,
@@ -560,16 +365,9 @@ mod tests {
         },
     };
 
-    #[derive(Clone, serde::Serialize)]
-    struct DynamicFieldFixture<K, V> {
-        id: sui::types::Address,
-        name: K,
-        value: V,
-    }
-
     fn sample_leader_registry_bytes(network: sui::types::Address) -> Vec<u8> {
         let object_id = sui::types::Address::generate(rand::thread_rng());
-        bcs::to_bytes(&LeaderRegistryStateV1::new_for_test(object_id, network)).unwrap()
+        bcs::to_bytes(&LeaderRegistryInnerV1::new_for_test(object_id, network)).unwrap()
     }
 
     fn owned_capability_object(
@@ -732,7 +530,7 @@ mod tests {
     #[test]
     fn extracts_network_id_from_leader_registry_object_contents() {
         let network = sui::types::Address::generate(rand::thread_rng());
-        let state: LeaderRegistryStateV1 =
+        let state: LeaderRegistryInnerV1 =
             bcs::from_bytes(&sample_leader_registry_bytes(network)).unwrap();
 
         let decoded = extract_network_id_from_leader_registry(&state);
@@ -740,205 +538,9 @@ mod tests {
         assert_eq!(decoded, network);
     }
 
-    fn tool_registry_fixture(
-        registry_id: sui::types::Address,
-        registered_tools_id: sui::types::Address,
-        registered_tools_size: u64,
-        external_verifiers_id: sui::types::Address,
-        external_verifiers_size: u64,
-    ) -> ToolRegistryState {
-        let id = sui::types::Address::from_static;
-        ToolRegistryState::new(
-            ID::new(registry_id),
-            1,
-            LinkedTable::<ascii::String, ID>::new(id("0x101"), 0),
-            Table::<ID, bool>::new(registered_tools_id, registered_tools_size),
-            Table::<ID, MetaSchema>::new(id("0x107"), registered_tools_size),
-            LinkedTable::<ascii::String, u64>::new(id("0x103"), 0),
-            Table::<ID, ToolVerifierSupport>::new(id("0x104"), 0),
-            Table::<ID, ExternalVerifier>::new(external_verifiers_id, external_verifiers_size),
-            Table::<ascii::String, u64>::new(id("0x108"), 0),
-            LinkedTable::<ascii::String, ID>::new(id("0x105"), 0),
-            LinkedTable::<ascii::String, bool>::new(id("0x106"), 0),
-            0,
-            0,
-        )
-    }
-
-    async fn current_registration_fixture(registered: bool) -> Option<CurrentToolRegistration> {
-        let registry_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x201"));
-        let registered_tools_id = sui::types::Address::from_static("0x202");
-        let tool_id = sui::types::Address::from_static("0x203");
-        let registry_state = tool_registry_fixture(
-            *registry_ref.object_id(),
-            registered_tools_id,
-            u64::from(registered),
-            sui::types::Address::from_static("0x206"),
-            0,
-        );
-        let state_id = sui::types::Address::from_static("0x205");
-        let registry = ToolRegistry::new(
-            UID::new(*registry_ref.object_id()),
-            Versioned::new(UID::new(state_id), 1),
-        );
-
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_get_object_bcs(
-            &mut ledger_service_mock,
-            registry_ref.clone(),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&registry).unwrap(),
-        );
-        sui_mocks::grpc::mock_versioned_payload(
-            &mut ledger_service_mock,
-            state_id,
-            1,
-            registry_state,
-        );
-
-        if registered {
-            let key = ID::new(tool_id);
-            let field_id = registered_tools_id.derive_dynamic_child_id(
-                &ID::type_tag_static(),
-                &bcs::to_bytes(&key).expect("Tool ID serializes"),
-            );
-            sui_mocks::grpc::mock_get_object_bcs(
-                &mut ledger_service_mock,
-                sui_mocks::object_ref_for_id(field_id),
-                sui::types::Owner::Shared(1),
-                bcs::to_bytes(&DynamicFieldFixture {
-                    id: field_id,
-                    name: key,
-                    value: true,
-                })
-                .unwrap(),
-            );
-        }
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        });
-        let client = sui::grpc::Client::new(rpc_url).unwrap();
-        let crawler = Crawler::new(Arc::new(client));
-        fetch_current_tool_registration(&crawler, &registry_ref, tool_id)
-            .await
-            .unwrap()
-    }
-
-    #[tokio::test]
-    async fn current_registration_distinguishes_live_none_mode_from_unregistered_retained_tool() {
-        let live_none = current_registration_fixture(true)
-            .await
-            .expect("registered Tool must be present even without verifier support");
-        assert_eq!(live_none.verifier_support, None);
-
-        assert!(
-            current_registration_fixture(false).await.is_none(),
-            "retained Tool identity is not live membership after unregister"
-        );
-    }
-
-    async fn external_runtime_fixture(
-        metadata: Vec<(sui::types::ObjectReference, sui::types::Owner, Option<u64>)>,
-    ) -> anyhow::Result<ExternalVerifierRuntimeCall> {
-        let registry_ref = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x301"));
-        let methods_table_id = sui::types::Address::from_static("0x302");
-        let tool_id = sui::types::Address::from_static("0x304");
-        let witness = sui::types::Address::from_static("0x305");
-        let config = sui::types::Address::from_static("0x306");
-        let state_id = sui::types::Address::from_static("0x308");
-        let registry = ToolRegistry::new(
-            UID::new(*registry_ref.object_id()),
-            Versioned::new(UID::new(state_id), 1),
-        );
-        let registry_state = tool_registry_fixture(
-            *registry_ref.object_id(),
-            sui::types::Address::from_static("0x307"),
-            0,
-            methods_table_id,
-            1,
-        );
-        let record = external_record(tool_id, witness, &[witness, config]);
-        let key = ID::new(tool_id);
-        let field_id = methods_table_id.derive_dynamic_child_id(
-            &ID::type_tag_static(),
-            &bcs::to_bytes(&key).expect("Tool ID serializes"),
-        );
-
-        let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
-        sui_mocks::grpc::mock_get_object_bcs(
-            &mut ledger_service,
-            registry_ref.clone(),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&registry).unwrap(),
-        );
-        sui_mocks::grpc::mock_versioned_payload(&mut ledger_service, state_id, 1, registry_state);
-        sui_mocks::grpc::mock_get_object_bcs(
-            &mut ledger_service,
-            sui_mocks::object_ref_for_id(field_id),
-            sui::types::Owner::Shared(1),
-            bcs::to_bytes(&DynamicFieldFixture {
-                id: field_id,
-                name: key,
-                value: record,
-            })
-            .unwrap(),
-        );
-        sui_mocks::grpc::mock_get_objects_metadata(&mut ledger_service, metadata);
-
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service),
-            ..Default::default()
-        });
-        let crawler = Crawler::new(Arc::new(sui::grpc::Client::new(rpc_url)?));
-        fetch_external_verifier_runtime_call(&crawler, &registry_ref, tool_id).await
-    }
-
-    #[tokio::test]
-    async fn external_runtime_call_preserves_registered_object_order() {
-        let witness = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x305"));
-        let config = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x306"));
-        let call = external_runtime_fixture(vec![
-            (config.clone(), sui::types::Owner::Shared(3), None),
-            (witness.clone(), sui::types::Owner::Shared(2), None),
-        ])
-        .await
-        .unwrap();
-
-        assert_eq!(call.witness_id, *witness.object_id());
-        assert_eq!(
-            call.immutable_shared_objects
-                .iter()
-                .map(|object| (*object.object_id(), object.version()))
-                .collect::<Vec<_>>(),
-            vec![(*witness.object_id(), 2), (*config.object_id(), 3)]
-        );
-    }
-
-    #[tokio::test]
-    async fn external_runtime_call_rejects_missing_or_nonshared_metadata() {
-        let missing = external_runtime_fixture(vec![]).await.unwrap_err();
-        assert!(missing.to_string().contains("metadata was not returned"));
-
-        let witness = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x305"));
-        let config = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x306"));
-        let not_shared = external_runtime_fixture(vec![
-            (
-                witness,
-                sui::types::Owner::Address(sui::types::Address::from_static("0x99")),
-                None,
-            ),
-            (config, sui::types::Owner::Shared(3), None),
-        ])
-        .await
-        .unwrap_err();
-        assert!(not_shared.to_string().contains("is not shared"));
-    }
-
     #[tokio::test]
     async fn external_preflight_rejects_invalid_object_lists_before_package_lookup() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let crawler = Crawler::new(Arc::new(sui::grpc::Client::new(rpc_url).unwrap()));
         let package = sui::types::Address::from_static("0x401");
@@ -946,7 +548,7 @@ mod tests {
 
         let missing_witness = preflight_external_verifier_registration(
             &crawler,
-            &objects,
+            &context,
             package,
             "verifier",
             "verify",
@@ -960,7 +562,7 @@ mod tests {
 
         let zero = preflight_external_verifier_registration(
             &crawler,
-            &objects,
+            &context,
             package,
             "verifier",
             "verify",
@@ -972,7 +574,7 @@ mod tests {
 
         let duplicate = preflight_external_verifier_registration(
             &crawler,
-            &objects,
+            &context,
             package,
             "verifier",
             "verify",
@@ -1042,11 +644,11 @@ mod tests {
 
     #[tokio::test]
     async fn external_preflight_resolves_abi_and_preserves_shared_object_order() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let package_id = sui::types::Address::from_static("0x411");
         let witness = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x412"));
         let config = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x413"));
-        let mut function = valid_external_function(&objects);
+        let mut function = valid_external_function(&context);
         function.parameters.push(
             datatype(sui::types::Address::from_static("0x42"), "state", "Config")
                 .with_reference(Reference::Immutable),
@@ -1064,7 +666,7 @@ mod tests {
 
         let registration = preflight_external_verifier_registration(
             &crawler,
-            &objects,
+            &context,
             package_id,
             "verifier",
             "verify",
@@ -1088,13 +690,13 @@ mod tests {
 
     #[tokio::test]
     async fn external_preflight_reports_missing_module_function_and_object_count() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let package_id = sui::types::Address::from_static("0x421");
         let witness = sui::types::Address::from_static("0x422");
 
         let missing_module = preflight_external_verifier_registration(
             &preflight_crawler(sui::grpc::Package::default(), None),
-            &objects,
+            &context,
             package_id,
             "verifier",
             "verify",
@@ -1107,10 +709,10 @@ mod tests {
             .contains("Module 'verifier' not found"));
 
         let package =
-            package_with_function(package_id, "verifier", valid_external_function(&objects));
+            package_with_function(package_id, "verifier", valid_external_function(&context));
         let missing_function = preflight_external_verifier_registration(
             &preflight_crawler(package.clone(), None),
-            &objects,
+            &context,
             package_id,
             "verifier",
             "other",
@@ -1124,7 +726,7 @@ mod tests {
 
         let wrong_count = preflight_external_verifier_registration(
             &preflight_crawler(package, None),
-            &objects,
+            &context,
             package_id,
             "verifier",
             "verify",
@@ -1159,25 +761,21 @@ mod tests {
         )
     }
 
-    fn valid_external_function(objects: &NexusObjects) -> sui::grpc::FunctionDescriptor {
-        let worksheet = datatype(
-            objects.primitives_type_origin_pkg_id(),
-            "proof_of_uid",
-            "ProofOfUID",
-        )
-        .with_reference(Reference::Mutable);
+    fn valid_external_function(context: &NexusContext) -> sui::grpc::FunctionDescriptor {
+        let primitives = context
+            .require_package(PackageRole::Primitives)
+            .unwrap()
+            .initial_id;
+        let interface = context
+            .require_package(PackageRole::Interface)
+            .unwrap()
+            .initial_id;
+        let worksheet =
+            datatype(primitives, "proof_of_uid", "ProofOfUID").with_reference(Reference::Mutable);
         let witness = datatype(sui::types::Address::from_static("0x42"), "state", "Witness")
             .with_reference(Reference::Immutable);
-        let verdict = datatype(
-            objects.interface_type_origin_pkg_id(),
-            "verifier",
-            "VerificationVerdict",
-        );
-        let result = datatype(
-            objects.primitives_type_origin_pkg_id(),
-            "tagged_output",
-            "TaggedOutput",
-        );
+        let verdict = datatype(interface, "verifier", "VerificationVerdict");
+        let result = datatype(primitives, "tagged_output", "TaggedOutput");
         sui::grpc::FunctionDescriptor::default()
             .with_name("verify")
             .with_visibility(Visibility::Public)
@@ -1187,9 +785,9 @@ mod tests {
 
     #[test]
     fn external_verifier_abi_derives_ordered_object_type_tags() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
         let object_types =
-            validate_external_verifier_function(&valid_external_function(&objects), &objects)
+            validate_external_verifier_function(&valid_external_function(&context), &context)
                 .unwrap();
         assert_eq!(object_types.len(), 1);
         let sui::types::TypeTag::Struct(witness) = &object_types[0] else {
@@ -1202,16 +800,16 @@ mod tests {
 
     #[test]
     fn external_verifier_abi_rejects_non_public_or_generic_functions() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let private = valid_external_function(&objects).with_visibility(Visibility::Private);
-        assert!(validate_external_verifier_function(&private, &objects)
+        let context = sui_mocks::mock_nexus_context();
+        let private = valid_external_function(&context).with_visibility(Visibility::Private);
+        assert!(validate_external_verifier_function(&private, &context)
             .unwrap_err()
             .to_string()
             .contains("must be public"));
 
-        let generic = valid_external_function(&objects)
+        let generic = valid_external_function(&context)
             .with_type_parameters(vec![sui::grpc::TypeParameter::default()]);
-        assert!(validate_external_verifier_function(&generic, &objects)
+        assert!(validate_external_verifier_function(&generic, &context)
             .unwrap_err()
             .to_string()
             .contains("must not declare type parameters"));
@@ -1219,20 +817,20 @@ mod tests {
 
     #[test]
     fn external_verifier_abi_rejects_mutable_objects_and_wrong_return() {
-        let objects = sui_mocks::mock_nexus_objects();
-        let mut mutable_object = valid_external_function(&objects);
+        let context = sui_mocks::mock_nexus_context();
+        let mut mutable_object = valid_external_function(&context);
         mutable_object.parameters[3] = mutable_object.parameters[3]
             .clone()
             .with_reference(Reference::Mutable);
         assert!(
-            validate_external_verifier_function(&mutable_object, &objects)
+            validate_external_verifier_function(&mutable_object, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("wrong reference kind")
         );
 
-        let wrong_return = valid_external_function(&objects).with_returns(vec![bytes()]);
-        assert!(validate_external_verifier_function(&wrong_return, &objects)
+        let wrong_return = valid_external_function(&context).with_returns(vec![bytes()]);
+        assert!(validate_external_verifier_function(&wrong_return, &context)
             .unwrap_err()
             .to_string()
             .contains("wrong type"));
@@ -1240,49 +838,52 @@ mod tests {
 
     #[test]
     fn external_verifier_abi_rejects_invalid_fixed_parameters() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
-        let too_short = valid_external_function(&objects).with_parameters(vec![bytes(); 3]);
-        assert!(validate_external_verifier_function(&too_short, &objects)
+        let too_short = valid_external_function(&context).with_parameters(vec![bytes(); 3]);
+        assert!(validate_external_verifier_function(&too_short, &context)
             .unwrap_err()
             .to_string()
             .contains("at least one witness object"));
 
-        let mut wrong_worksheet_reference = valid_external_function(&objects);
+        let mut wrong_worksheet_reference = valid_external_function(&context);
         wrong_worksheet_reference.parameters[0].reference = Some(Reference::Unknown as i32);
         assert!(
-            validate_external_verifier_function(&wrong_worksheet_reference, &objects)
+            validate_external_verifier_function(&wrong_worksheet_reference, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("worksheet has the wrong reference kind")
         );
 
-        let mut wrong_worksheet_type = valid_external_function(&objects);
+        let mut wrong_worksheet_type = valid_external_function(&context);
         wrong_worksheet_type.parameters[0] = datatype(
-            objects.primitives_type_origin_pkg_id(),
+            context
+                .require_package(PackageRole::Primitives)
+                .unwrap()
+                .initial_id,
             "proof_of_uid",
             "Other",
         )
         .with_reference(Reference::Mutable);
         assert!(
-            validate_external_verifier_function(&wrong_worksheet_type, &objects)
+            validate_external_verifier_function(&wrong_worksheet_type, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("worksheet has the wrong type")
         );
 
-        let mut wrong_result = valid_external_function(&objects);
+        let mut wrong_result = valid_external_function(&context);
         wrong_result.parameters[1] = sui::grpc::OpenSignature::default()
             .with_body(sui::grpc::OpenSignatureBody::default().with_type(Type::U64));
-        assert!(validate_external_verifier_function(&wrong_result, &objects)
+        assert!(validate_external_verifier_function(&wrong_result, &context)
             .unwrap_err()
             .to_string()
             .contains("result has the wrong type"));
 
-        let mut missing_auxiliary_type = valid_external_function(&objects);
+        let mut missing_auxiliary_type = valid_external_function(&context);
         missing_auxiliary_type.parameters[2] = sui::grpc::OpenSignature::default();
         assert!(
-            validate_external_verifier_function(&missing_auxiliary_type, &objects)
+            validate_external_verifier_function(&missing_auxiliary_type, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("auxiliary has no type")
@@ -1291,45 +892,45 @@ mod tests {
 
     #[test]
     fn external_verifier_abi_rejects_invalid_object_and_return_shapes() {
-        let objects = sui_mocks::mock_nexus_objects();
+        let context = sui_mocks::mock_nexus_context();
 
-        let mut missing_object_type = valid_external_function(&objects);
+        let mut missing_object_type = valid_external_function(&context);
         missing_object_type.parameters[3] =
             sui::grpc::OpenSignature::default().with_reference(Reference::Immutable);
         assert!(
-            validate_external_verifier_function(&missing_object_type, &objects)
+            validate_external_verifier_function(&missing_object_type, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("object 0 has no type")
         );
 
-        let mut primitive_object = valid_external_function(&objects);
+        let mut primitive_object = valid_external_function(&context);
         primitive_object.parameters[3] = sui::grpc::OpenSignature::default()
             .with_reference(Reference::Immutable)
             .with_body(sui::grpc::OpenSignatureBody::default().with_type(Type::U64));
         assert!(
-            validate_external_verifier_function(&primitive_object, &objects)
+            validate_external_verifier_function(&primitive_object, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("must have a concrete object type")
         );
 
-        let no_return = valid_external_function(&objects).with_returns(vec![]);
-        assert!(validate_external_verifier_function(&no_return, &objects)
+        let no_return = valid_external_function(&context).with_returns(vec![]);
+        assert!(validate_external_verifier_function(&no_return, &context)
             .unwrap_err()
             .to_string()
             .contains("return exactly one"));
 
-        let two_returns = valid_external_function(&objects).with_returns(vec![bytes(), bytes()]);
-        assert!(validate_external_verifier_function(&two_returns, &objects)
+        let two_returns = valid_external_function(&context).with_returns(vec![bytes(), bytes()]);
+        assert!(validate_external_verifier_function(&two_returns, &context)
             .unwrap_err()
             .to_string()
             .contains("return exactly one"));
 
-        let mut referenced_return = valid_external_function(&objects);
+        let mut referenced_return = valid_external_function(&context);
         referenced_return.returns[0].reference = Some(Reference::Immutable as i32);
         assert!(
-            validate_external_verifier_function(&referenced_return, &objects)
+            validate_external_verifier_function(&referenced_return, &context)
                 .unwrap_err()
                 .to_string()
                 .contains("return value has the wrong reference kind")
@@ -1399,66 +1000,5 @@ mod tests {
                 .to_string()
                 .contains("Unsupported Move signature type")
         );
-    }
-
-    fn external_record(
-        tool_id: sui::types::Address,
-        witness_id: sui::types::Address,
-        object_ids: &[sui::types::Address],
-    ) -> ExternalVerifier {
-        ExternalVerifier {
-            method: crate::move_bindings::interface::verifier::VerifierMethodId {
-                tool_id: ID::new(tool_id),
-                package_id: ID::new(sui::types::Address::from_static("0x44")),
-                module_name: ascii::String::from("verifier"),
-                function_name: ascii::String::from("verify"),
-            },
-            witness: ID::new(witness_id),
-            immutable_shared_objects: object_ids.iter().copied().map(ID::new).collect(),
-        }
-    }
-
-    #[test]
-    fn external_record_validation_enforces_tool_witness_and_unique_objects() {
-        let tool_id = sui::types::Address::from_static("0x41");
-        let witness = sui::types::Address::from_static("0x42");
-        let config = sui::types::Address::from_static("0x43");
-        validate_external_record(
-            tool_id,
-            &external_record(tool_id, witness, &[witness, config]),
-        )
-        .unwrap();
-
-        let wrong_tool = sui::types::Address::from_static("0x99");
-        assert!(validate_external_record(
-            tool_id,
-            &external_record(wrong_tool, witness, &[witness])
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("different Tool ID"));
-
-        assert!(
-            validate_external_record(tool_id, &external_record(tool_id, witness, &[]))
-                .unwrap_err()
-                .to_string()
-                .contains("no witness object")
-        );
-
-        assert!(validate_external_record(
-            tool_id,
-            &external_record(tool_id, witness, &[config, witness])
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("immutable object zero"));
-
-        assert!(validate_external_record(
-            tool_id,
-            &external_record(tool_id, witness, &[witness, witness])
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("duplicate objects"));
     }
 }

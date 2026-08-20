@@ -17,7 +17,7 @@ use {
         move_bindings::registry::leader::{
             CapabilityManger,
             LeaderRegistry,
-            LeaderRegistryStateV1,
+            LeaderRegistryInnerV1,
         },
         sui,
     },
@@ -34,7 +34,7 @@ impl LeaderRegistry {
     }
 }
 
-impl LeaderRegistryStateV1 {
+impl LeaderRegistryInnerV1 {
     /// Decode a version one leader registry payload from BCS bytes.
     pub fn from_bcs(contents: &[u8]) -> anyhow::Result<Self> {
         bcs::from_bytes(contents).context("failed to decode leader registry state")
@@ -50,13 +50,42 @@ impl LeaderRegistryStateV1 {
         self.max_transaction_budget
     }
 
+    /// Return the package that defined the Workflow witness currently bound to this registry.
+    ///
+    /// The witness is the existing on chain authority for Workflow publication. Its defining
+    /// address is therefore the authoritative call package, rather than a package inferred from
+    /// an unrelated root object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no witness is bound or when its [`TypeName`] is malformed.
+    ///
+    /// [`TypeName`]: crate::move_bindings::move_std::type_name::TypeName
+    pub fn workflow_package_id(&self) -> anyhow::Result<sui::types::Address> {
+        let witness = self
+            .workflow_witness_type
+            .as_option()
+            .context("workflow witness is not bound")?;
+        let witness_name = witness.as_str();
+        let qualified_name = if witness_name.starts_with("0x") {
+            std::borrow::Cow::Borrowed(witness_name)
+        } else {
+            std::borrow::Cow::Owned(format!("0x{witness_name}"))
+        };
+        let witness_type = qualified_name
+            .parse::<sui::types::StructTag>()
+            .with_context(|| {
+                format!(
+                    "bound workflow witness type '{}' is malformed",
+                    witness_name
+                )
+            })?;
+        Ok(*witness_type.address())
+    }
+
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, network: sui::types::Address) -> Self {
         Self {
-            protocol_id: crate::move_bindings::sui_framework::object::ID::new(
-                sui::types::Address::ZERO,
-            ),
-            minimum_protocol_version: 1,
             unbonding_duration_ms: 0,
             min_stake_us: 0,
             max_transaction_budget: 10_000_000_000,
@@ -116,15 +145,15 @@ fn leader_cap_issuer_for_test(
 mod tests {
     use super::*;
 
-    /// Round trip an empty [`LeaderRegistryStateV1`] payload through BCS.
+    /// Round trip an empty [`LeaderRegistryInnerV1`] payload through BCS.
     #[test]
     fn from_bcs_round_trips_empty_registry_payload() {
         let registry_id = sui::types::Address::from_static("0x1");
         let network_id = sui::types::Address::from_static("0x2");
-        let original = LeaderRegistryStateV1::new_for_test(registry_id, network_id);
+        let original = LeaderRegistryInnerV1::new_for_test(registry_id, network_id);
         let bytes = bcs::to_bytes(&original).expect("encode test registry");
 
-        let decoded = LeaderRegistryStateV1::from_bcs(&bytes).expect("decode round-trips");
+        let decoded = LeaderRegistryInnerV1::from_bcs(&bytes).expect("decode round-trips");
         let re_encoded = bcs::to_bytes(&decoded).expect("re-encode decoded registry");
 
         assert_eq!(
@@ -146,11 +175,7 @@ mod tests {
         let issuer_id = sui::types::Address::from_static("0x60");
         let issuer_inner = sui::types::Address::from_static("0x61");
 
-        let original = LeaderRegistryStateV1 {
-            protocol_id: crate::move_bindings::sui_framework::object::ID::new(
-                sui::types::Address::ZERO,
-            ),
-            minimum_protocol_version: 1,
+        let original = LeaderRegistryInnerV1 {
             unbonding_duration_ms: 5_000,
             min_stake_us: 1_000_000,
             max_transaction_budget: 7_500_000_000,
@@ -170,12 +195,12 @@ mod tests {
                 leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
             },
             workflow_witness_type: MoveOption::from_option(Some(TypeName::new(
-                "0x42::workflow::Witness",
+                "42::workflow::Witness",
             ))),
         };
 
         let bytes = bcs::to_bytes(&original).expect("encode populated registry");
-        let decoded = LeaderRegistryStateV1::from_bcs(&bytes).expect("decode round-trips");
+        let decoded = LeaderRegistryInnerV1::from_bcs(&bytes).expect("decode round-trips");
         let re_encoded = bcs::to_bytes(&decoded).expect("re-encode decoded registry");
 
         assert_eq!(
@@ -184,6 +209,26 @@ mod tests {
         );
         assert_eq!(decoded.network_id(), network_id);
         assert_eq!(decoded.max_transaction_budget(), 7_500_000_000);
+        assert_eq!(
+            decoded
+                .workflow_package_id()
+                .expect("bound workflow witness identifies its defining package"),
+            sui::types::Address::from_static("0x42")
+        );
+    }
+
+    #[test]
+    fn workflow_package_id_requires_a_bound_witness() {
+        let registry = LeaderRegistryInnerV1::new_for_test(
+            sui::types::Address::from_static("0x1"),
+            sui::types::Address::from_static("0x2"),
+        );
+
+        let error = registry
+            .workflow_package_id()
+            .expect_err("an unbound registry has no authoritative workflow package");
+
+        assert!(error.to_string().contains("workflow witness is not bound"));
     }
 
     #[test]
@@ -215,14 +260,14 @@ mod tests {
 
     #[test]
     fn from_bcs_reports_truncated_input_via_context() {
-        let original = LeaderRegistryStateV1::new_for_test(
+        let original = LeaderRegistryInnerV1::new_for_test(
             sui::types::Address::from_static("0x1"),
             sui::types::Address::from_static("0x2"),
         );
         let bytes = bcs::to_bytes(&original).expect("encode test registry");
         let truncated = &bytes[..bytes.len() / 2];
 
-        let error = LeaderRegistryStateV1::from_bcs(truncated)
+        let error = LeaderRegistryInnerV1::from_bcs(truncated)
             .expect_err("decoding a truncated payload must fail");
 
         assert!(
@@ -235,7 +280,7 @@ mod tests {
 
     #[test]
     fn from_bcs_rejects_garbage_input() {
-        let error = LeaderRegistryStateV1::from_bcs(b"not-bcs")
+        let error = LeaderRegistryInnerV1::from_bcs(b"not-bcs")
             .expect_err("decoding random bytes must fail");
 
         assert!(

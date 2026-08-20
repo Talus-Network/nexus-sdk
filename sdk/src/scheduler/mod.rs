@@ -31,7 +31,7 @@ mod snapshot;
 pub use {
     error::{ErrorSource, ScheduleError, SchedulerError},
     model::{
-        AuthorizationTemplate,
+        AuthorizationBindings,
         DispatchOffer,
         FailurePolicy,
         Occurrence,
