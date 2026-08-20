@@ -3,8 +3,7 @@
 use {
     super::*,
     crate::tap::tap_output::{
-        execution_abort_result_json,
-        execution_resolve_expired_walk_result_json,
+        execution_abort_result_json, execution_resolve_expired_walk_result_json,
         execution_settle_result_json,
     },
     nexus_sdk::nexus::workflow::{ResolveExpiredWalkParams, SettleCommittedToolResultParams},
@@ -17,13 +16,13 @@ pub(crate) async fn handle_execution_command(
         ExecutionCommand::ResolveExpiredWalk {
             execution_id,
             walk_index,
-            tool_cashier_id,
+            invocation_id,
             gas,
         } => {
             resolve_expired_walk(
                 execution_id,
                 walk_index,
-                tool_cashier_id,
+                invocation_id,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
@@ -51,7 +50,7 @@ pub(crate) async fn handle_execution_command(
 async fn resolve_expired_walk(
     execution_id: sui::types::Address,
     walk_index: u64,
-    tool_cashier_id: Option<sui::types::Address>,
+    invocation_id: Option<sui::types::Address>,
     sui_gas_coin: Option<sui::types::Address>,
     sui_gas_budget: u64,
 ) -> AnyResult<(), NexusCliError> {
@@ -64,7 +63,7 @@ async fn resolve_expired_walk(
         .resolve_expired_walk(ResolveExpiredWalkParams {
             dag_execution_id: execution_id,
             walk_index,
-            tool_cashier_id,
+            invocation_id,
         })
         .await
         .map_err(NexusCliError::Nexus)

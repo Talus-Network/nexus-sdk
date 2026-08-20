@@ -2,12 +2,7 @@
 
 use {
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_error,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_error, notify_success, prelude::*,
         sui::*,
     },
     nexus_sdk::{

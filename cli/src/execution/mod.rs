@@ -1,11 +1,13 @@
+mod authorize;
 mod inspect;
 mod output;
 
 use crate::prelude::*;
 
-const EXECUTION_HELP: &str = r#"An Execution is the workflow runtime created after a Task occurrence is dispatched.
-It contains walks, vertex results, failure evidence, payment locks, and the
-final runtime outcome. The occurrence remains the durable scheduler record.
+pub(crate) const EXECUTION_HELP: &str = r#"An Execution is created after a Task occurrence is dispatched.
+It is the workflow runtime containing walks, vertex results, failure evidence,
+payment locks, and the final outcome. The occurrence remains the durable
+scheduler record.
 
 This command replays ordered history, then follows new object versions until
 the Execution finishes or the timeout expires.
@@ -17,13 +19,17 @@ Identify an Execution directly, or let the CLI resolve it from its occurrence:
   nexus execution inspect --execution-id 0x42
   nexus execution inspect --task-id 0x21 --occurrence-id 7
 
+Authorize one exact active Tool Invocation through an accepted policy:
+  nexus execution authorize --execution-id 0x42 --vertex worker fixed-price
+  nexus execution authorize --execution-id 0x42 --vertex worker finite-credits --credits-id 0x99
+
 After runtime inspection, return to the occurrence to settle or verify it:
   nexus task occurrence inspect --task-id 0x21 --occurrence-id 7
 
 Walk recovery commands are listed by:
   nexus tap execution --help"#;
 
-/// Commands for inspecting workflow execution history.
+/// Commands for workflow execution history and Invocation admission.
 #[derive(Subcommand)]
 #[command(about = "Inspect workflow executions", long_about = EXECUTION_HELP)]
 pub(crate) enum ExecutionCommand {
@@ -60,6 +66,74 @@ pub(crate) enum ExecutionCommand {
             help = "Delay between object reads"
         )]
         poll_ms: u64,
+    },
+    #[command(about = "Authorize one exact active Tool Invocation")]
+    Authorize {
+        #[arg(
+            long,
+            short = 'e',
+            value_name = "OBJECT_ID",
+            help = "Execution object ID"
+        )]
+        execution_id: nexus_sdk::sui::types::Address,
+        #[arg(long, value_name = "NAME", help = "DAG vertex name")]
+        vertex: String,
+        #[arg(
+            long,
+            value_name = "U64",
+            requires = "out_of",
+            help = "Zero based iterator position"
+        )]
+        iteration: Option<u64>,
+        #[arg(
+            long = "out-of",
+            value_name = "U64",
+            requires = "iteration",
+            value_parser = clap::value_parser!(u64).range(1..),
+            help = "Total iterator item count"
+        )]
+        out_of: Option<u64>,
+        #[command(subcommand)]
+        policy: InvocationPolicyCommand,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum InvocationPolicyCommand {
+    #[command(about = "Pay the invocation price snapshotted by the Execution")]
+    FixedPrice,
+    #[command(about = "Use owner enabled sponsored free access")]
+    Free,
+    #[command(about = "Consume one unit from a finite Credits object")]
+    FiniteCredits {
+        #[arg(long, value_name = "OBJECT_ID", help = "Shared Credits object ID")]
+        credits_id: nexus_sdk::sui::types::Address,
+    },
+    #[command(about = "Use an immutable TimePass object")]
+    TimePass {
+        #[arg(long, value_name = "OBJECT_ID", help = "Immutable TimePass object ID")]
+        pass_id: nexus_sdk::sui::types::Address,
+    },
+    #[command(
+        about = "Call an arbitrary accepted policy",
+        long_about = "Call an arbitrary accepted policy. Every policy exposes get_invocation. Arguments preserve command order and use object:<ID>, mutable:<ID>, id:<ID>, or pure:<BCS_HEX>."
+    )]
+    Custom {
+        #[arg(
+            long,
+            value_name = "TYPE_NAME",
+            help = "Policy witness as <PACKAGE>::<MODULE>::Policy"
+        )]
+        policy: String,
+        #[arg(
+            long = "argument",
+            value_name = "KIND:VALUE",
+            action = clap::ArgAction::Append,
+            help = "Policy argument in exact Move parameter order"
+        )]
+        arguments: Vec<String>,
     },
 }
 
@@ -109,6 +183,14 @@ pub(crate) async fn handle(command: ExecutionCommand) -> AnyResult<(), NexusCliE
             )
             .await
         }
+        ExecutionCommand::Authorize {
+            execution_id,
+            vertex,
+            iteration,
+            out_of,
+            policy,
+            gas,
+        } => authorize::run(execution_id, vertex, iteration.zip(out_of), policy, gas).await,
     }
 }
 
@@ -125,6 +207,46 @@ mod tests {
             .unwrap();
 
         assert!(matches!(cli.command, Command::Execution(_)));
+    }
+
+    #[test]
+    fn execution_authorize_selects_a_policy_and_exact_runtime_vertex() {
+        let cli = Cli::try_parse_from([
+            "nexus",
+            "execution",
+            "authorize",
+            "--execution-id",
+            "0x42",
+            "--vertex",
+            "worker",
+            "--iteration",
+            "2",
+            "--out-of",
+            "5",
+            "finite-credits",
+            "--credits-id",
+            "0x99",
+        ])
+        .expect("Invocation authorization should parse");
+
+        assert!(matches!(cli.command, Command::Execution(_)));
+    }
+
+    #[test]
+    fn iterator_authorization_requires_complete_runtime_identity() {
+        assert!(Cli::try_parse_from([
+            "nexus",
+            "execution",
+            "authorize",
+            "--execution-id",
+            "0x42",
+            "--vertex",
+            "worker",
+            "--iteration",
+            "2",
+            "fixed-price",
+        ])
+        .is_err());
     }
 
     #[test]
@@ -186,7 +308,10 @@ mod tests {
                 "nexus task occurrence inspect",
                 "nexus tap execution --help",
             ] {
-                assert!(help.contains(expected), "missing '{expected}' from help");
+                assert!(
+                    help.contains(expected),
+                    "missing '{expected}' from help:\n{help}"
+                );
             }
         }
     }

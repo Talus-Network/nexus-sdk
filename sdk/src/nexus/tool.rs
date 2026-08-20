@@ -4,18 +4,25 @@
 
 use {
     crate::{
+        events::NexusEventKind,
         move_bindings::{
+            interface::payment::PaymentSourceKind,
             interface::verifier::ToolVerifierSupport,
-            tool::external_verifier::ExternalVerifier,
+            move_std::type_name::TypeName,
+            tool::{
+                external_verifier::ExternalVerifier,
+                finite_credits,
+                invocation::Invocation,
+                time_pass,
+                tool_cashier::{CashierDeposit, PolicyKey, ToolCashier, ToolCashierStateV1},
+            },
         },
         nexus::{
             client::NexusClient,
             error::NexusError,
             registry::{
-                fetch_current_tool_registration,
-                fetch_external_verifier_record,
-                fetch_tool_invocation_cost,
-                preflight_external_verifier_registration,
+                fetch_current_tool_registration, fetch_external_verifier_record,
+                fetch_tool_invocation_cost, preflight_external_verifier_registration,
             },
         },
         sui,
@@ -40,6 +47,93 @@ pub struct ToolCashierActionResult {
     pub tx_digest: sui::types::Digest,
 }
 
+/// Confirmed entitlement purchase with both discoverable object IDs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntitlementPurchaseResult {
+    pub tx_digest: sui::types::Digest,
+    pub entitlement_id: sui::types::Address,
+    pub deposit_id: sui::types::Address,
+}
+
+/// Confirmed owner issuance of one discoverable entitlement object.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntitlementIssueResult {
+    pub tx_digest: sui::types::Digest,
+    pub entitlement_id: sui::types::Address,
+}
+
+/// Result of creating one independently usable finite credit object.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FiniteCreditsResult {
+    pub tx_digest: sui::types::Digest,
+    pub credits_id: sui::types::Address,
+}
+
+/// One refunded finite credit Invocation waiting to be claimed.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FiniteCreditRefund {
+    pub object_ref: sui::types::ObjectReference,
+    pub sources: Vec<sui::types::Address>,
+}
+
+/// Current sale terms for canonical finite Tool invocation credits.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FiniteCreditOffer {
+    pub issuance_enabled: bool,
+    pub price_per_credit: u64,
+    pub minimum_credits: u64,
+    pub maximum_credits: u64,
+}
+
+/// Current sale terms for canonical time based Tool access.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct TimePassOffer {
+    pub issuance_enabled: bool,
+    pub price_per_ms: u64,
+    pub minimum_duration_ms: u64,
+    pub maximum_duration_ms: u64,
+}
+
+/// Discoverable economic policies accepted by one [`ToolCashier`].
+///
+/// [`ToolEconomy::policies`] preserves every owner supplied policy type.
+/// Canonical offers are decoded into stable SDK values for direct use by
+/// clients and command line tools.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ToolEconomy {
+    pub tool_id: sui::types::Address,
+    pub cashier_id: sui::types::Address,
+    pub minimum_protocol_version: u64,
+    pub policies: Vec<TypeName>,
+    pub fixed_price_mist: Option<u64>,
+    pub free_invocations: bool,
+    pub finite_credits: Option<FiniteCreditOffer>,
+    pub time_pass: Option<TimePassOffer>,
+}
+
+/// One finalized Invocation waiting in a [`ToolCashier`] inbox.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct CollectableInvocation {
+    pub object_ref: sui::types::ObjectReference,
+    pub policy: TypeName,
+    pub sources: Vec<sui::types::Address>,
+    pub amount_mist: u64,
+}
+
+/// One prepaid sale deposit waiting in a [`ToolCashier`] inbox.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct CollectableDeposit {
+    pub object_ref: sui::types::ObjectReference,
+    pub amount_mist: u64,
+}
+
+/// Indexed economic objects currently owned by one [`ToolCashier`].
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ToolCashierInbox {
+    pub invocations: Vec<CollectableInvocation>,
+    pub deposits: Vec<CollectableDeposit>,
+}
+
 /// Result of [`ToolActions::inspect_tool`].
 ///
 /// The object IDs are derived locally even when the Tool does not exist.
@@ -58,6 +152,18 @@ pub struct ToolInspection {
 
 pub struct ToolActions {
     pub(super) client: NexusClient,
+}
+
+fn canonical_policy_accepted(
+    objects: &crate::types::NexusObjects,
+    policies: &[TypeName],
+    module: &str,
+) -> bool {
+    let origin = objects.packages.tool.type_origin(module, "Policy");
+    let expected = format!("{origin}::{module}::Policy");
+    policies
+        .iter()
+        .any(|policy| policy.matches_qualified_name(&expected))
 }
 
 impl ToolActions {
@@ -239,6 +345,94 @@ impl ToolActions {
         })
     }
 
+    /// Enables fixed price Invocation admission for a [`Tool`].
+    pub async fn enable_fixed_price(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::enable_fixed_price_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disables fixed price admission without changing existing Invocations.
+    pub async fn disable_fixed_price(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::disable_fixed_price_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Enables sponsored free Invocation admission for a [`Tool`].
+    pub async fn enable_free_invocations(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::enable_free_invocation_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Disables sponsored free admission without changing existing Invocations.
+    pub async fn disable_free_invocations(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::disable_free_invocation_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
     /// Enables time pass sales and admission for a [`Tool`].
     pub async fn enable_time_passes(
         &self,
@@ -291,8 +485,8 @@ impl ToolActions {
         })
     }
 
-    /// Disables time pass sales and admission for a [`Tool`].
-    pub async fn disable_time_passes(
+    /// Closes time pass issuance for a [`Tool`] without invalidating existing passes.
+    pub async fn close_time_pass_issuance(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
@@ -301,10 +495,60 @@ impl ToolActions {
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::disable_time_pass_ptb(
+        let transaction = tool_cashier::close_time_pass_issuance_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Opens time pass issuance for a [`Tool`] using its current terms.
+    pub async fn open_time_pass_issuance(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::open_time_pass_issuance_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Updates time pass terms for a [`Tool`] without invalidating existing passes.
+    pub async fn update_time_pass_terms(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        price_per_ms: u64,
+        minimum_duration_ms: u64,
+        maximum_duration_ms: u64,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::update_time_pass_terms_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            price_per_ms,
+            minimum_duration_ms,
+            maximum_duration_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -319,14 +563,42 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         duration_ms: u64,
         pay_with: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let beneficiary = PaymentSourceKind::user_funded(client.owner()?);
+        self.buy_time_pass_with(&client, tool_fqn, duration_ms, pay_with, beneficiary)
+            .await
+    }
+
+    /// Buys and freezes a time pass for an explicit user or Agent beneficiary.
+    pub async fn buy_time_pass_for(
+        &self,
+        tool_fqn: &ToolFqn,
+        duration_ms: u64,
+        pay_with: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        self.buy_time_pass_with(&client, tool_fqn, duration_ms, pay_with, beneficiary)
+            .await
+    }
+
+    async fn buy_time_pass_with(
+        &self,
+        client: &NexusClient,
+        tool_fqn: &ToolFqn,
+        duration_ms: u64,
+        pay_with: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
         if duration_ms == 0 {
             return Err(NexusError::Configuration(
                 "Time pass duration must be greater than zero".to_owned(),
             ));
         }
-        let client = self.client.operation_client().await?;
         let address = client.owner()?;
+        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
         let pay_with = client
             .crawler()
@@ -342,13 +614,104 @@ impl ToolActions {
             &client.nexus_objects,
             &tool_cashier,
             &pay_with,
-            crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(address),
+            beneficiary,
             duration_ms,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
-        Ok(ToolCashierActionResult {
+        let entitlement_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::TimePassCreated(created)
+                    if created.tool.bytes == tool_id
+                        && created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.pass.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Time pass purchase '{}' emitted no TimePassCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        let deposit_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CashierDepositCreated(created)
+                    if created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.deposit.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Time pass purchase '{}' emitted no CashierDepositCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        Ok(EntitlementPurchaseResult {
             tx_digest: response.digest,
+            entitlement_id,
+            deposit_id,
+        })
+    }
+
+    /// Issues and freezes a time pass under Tool owner authority.
+    pub async fn issue_time_pass(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+        valid_from_ms: u64,
+        valid_until_ms: u64,
+    ) -> Result<EntitlementIssueResult, NexusError> {
+        if valid_from_ms >= valid_until_ms {
+            return Err(NexusError::Configuration(
+                "Time pass end must be after its start".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::issue_time_pass_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            beneficiary,
+            valid_from_ms,
+            valid_until_ms,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        let entitlement_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::TimePassCreated(created)
+                    if created.tool.bytes == tool_id
+                        && created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.pass.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Time pass issuance '{}' emitted no TimePassCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        Ok(EntitlementIssueResult {
+            tx_digest: response.digest,
+            entitlement_id,
         })
     }
 
@@ -390,8 +753,8 @@ impl ToolActions {
         })
     }
 
-    /// Disables finite credit sales and admission for a [`Tool`].
-    pub async fn disable_finite_credits(
+    /// Closes finite credit issuance for a [`Tool`] without invalidating existing credits.
+    pub async fn close_finite_credit_issuance(
         &self,
         tool_fqn: &ToolFqn,
         cashier_admin: sui::types::Address,
@@ -400,10 +763,70 @@ impl ToolActions {
         let address = client.owner()?;
         let (tool_cashier, cashier_admin) =
             Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
-        let transaction = tool_cashier::disable_finite_credits_ptb(
+        let transaction = tool_cashier::close_finite_credit_issuance_ptb(
             &client.nexus_objects,
             &tool_cashier,
             &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Opens finite credit issuance for a [`Tool`] using its current terms.
+    pub async fn open_finite_credit_issuance(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::open_finite_credit_issuance_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Updates finite credit terms for a [`Tool`] without invalidating issued credits.
+    pub async fn update_finite_credit_terms(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        price_per_credit: u64,
+        minimum_credits: u64,
+        maximum_credits: u64,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if minimum_credits == 0 {
+            return Err(NexusError::Configuration(
+                "Minimum credits must be at least one".to_owned(),
+            ));
+        }
+        if minimum_credits > maximum_credits {
+            return Err(NexusError::Configuration(format!(
+                "Minimum credits '{minimum_credits}' cannot exceed maximum credits '{maximum_credits}'"
+            )));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::update_finite_credit_terms_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            price_per_credit,
+            minimum_credits,
+            maximum_credits,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -418,14 +841,51 @@ impl ToolActions {
         tool_fqn: &ToolFqn,
         credits: u64,
         pay_with: sui::types::Address,
-    ) -> Result<ToolCashierActionResult, NexusError> {
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        self.buy_finite_credits_with(
+            &client,
+            tool_fqn,
+            credits,
+            pay_with,
+            PaymentSourceKind::user_funded(address),
+            address,
+        )
+        .await
+    }
+
+    /// Buys finite credits for an explicit beneficiary and refund recipient.
+    pub async fn buy_finite_credits_for(
+        &self,
+        tool_fqn: &ToolFqn,
+        credits: u64,
+        pay_with: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+        refund_to: sui::types::Address,
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        self.buy_finite_credits_with(&client, tool_fqn, credits, pay_with, beneficiary, refund_to)
+            .await
+    }
+
+    async fn buy_finite_credits_with(
+        &self,
+        client: &NexusClient,
+        tool_fqn: &ToolFqn,
+        credits: u64,
+        pay_with: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+        refund_to: sui::types::Address,
+    ) -> Result<EntitlementPurchaseResult, NexusError> {
         if credits == 0 {
             return Err(NexusError::Configuration(
                 "Credits must be at least one".to_owned(),
             ));
         }
-        let client = self.client.operation_client().await?;
         let address = client.owner()?;
+        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
         let pay_with = client
             .crawler()
@@ -441,9 +901,605 @@ impl ToolActions {
             &client.nexus_objects,
             &tool_cashier,
             &pay_with,
-            crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(address),
-            address,
+            beneficiary,
+            refund_to,
             credits,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        let entitlement_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CreditsCreated(created)
+                    if created.tool.bytes == tool_id
+                        && created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.credits.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Finite credit purchase '{}' emitted no CreditsCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        let deposit_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CashierDepositCreated(created)
+                    if created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.deposit.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Finite credit purchase '{}' emitted no CashierDepositCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        Ok(EntitlementPurchaseResult {
+            tx_digest: response.digest,
+            entitlement_id,
+            deposit_id,
+        })
+    }
+
+    /// Issues shared finite credits under Tool owner authority.
+    pub async fn issue_finite_credits(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        beneficiary: PaymentSourceKind,
+        refund_to: sui::types::Address,
+        credits: u64,
+    ) -> Result<EntitlementIssueResult, NexusError> {
+        if credits == 0 {
+            return Err(NexusError::Configuration(
+                "Credits must be at least one".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let (tool_cashier, cashier_admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let transaction = tool_cashier::issue_finite_credits_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            &cashier_admin,
+            beneficiary,
+            refund_to,
+            credits,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        let entitlement_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CreditsCreated(created)
+                    if created.tool.bytes == tool_id
+                        && created.cashier.bytes == *tool_cashier.object_id() =>
+                {
+                    Some(created.credits.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Finite credit issuance '{}' emitted no CreditsCreatedEvent",
+                    response.digest
+                ))
+            })?;
+        Ok(EntitlementIssueResult {
+            tx_digest: response.digest,
+            entitlement_id,
+        })
+    }
+
+    /// Splits shared finite credits into a second independently usable object.
+    pub async fn split_finite_credits(
+        &self,
+        tool_fqn: &ToolFqn,
+        credits_id: sui::types::Address,
+        amount: u64,
+    ) -> Result<FiniteCreditsResult, NexusError> {
+        if amount == 0 {
+            return Err(NexusError::Configuration(
+                "Split credits must be at least one".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let sender = client.owner()?;
+        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let credits = client
+            .crawler()
+            .get_object::<finite_credits::Credits>(credits_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        if credits.data.cashier.bytes != *cashier.object_id() {
+            return Err(NexusError::Configuration(format!(
+                "Finite credits '{credits_id}' belong to another Tool"
+            )));
+        }
+        if credits.data.refund_to != sender {
+            return Err(NexusError::Configuration(format!(
+                "Signer '{sender}' does not manage finite credits '{credits_id}'"
+            )));
+        }
+        if amount > credits.data.remaining {
+            return Err(NexusError::Configuration(format!(
+                "Cannot split '{amount}' from '{}' remaining credits",
+                credits.data.remaining
+            )));
+        }
+        if !credits.is_shared() {
+            return Err(NexusError::Configuration(format!(
+                "Finite credits '{credits_id}' must be shared"
+            )));
+        }
+        let transaction = tool_cashier::split_finite_credits_ptb(
+            &client.nexus_objects,
+            &credits.object_ref(),
+            amount,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, sender).await?;
+        let created = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CreditsCreated(created)
+                    if created.cashier.bytes == *cashier.object_id()
+                        && created.credits.bytes != credits_id =>
+                {
+                    Some(created.credits.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Finite credit split '{}' emitted no new Credits object",
+                    response.digest
+                ))
+            })?;
+        Ok(FiniteCreditsResult {
+            tx_digest: response.digest,
+            credits_id: created,
+        })
+    }
+
+    /// Joins one compatible shared finite credit object into another.
+    pub async fn join_finite_credits(
+        &self,
+        tool_fqn: &ToolFqn,
+        credits_id: sui::types::Address,
+        other_credits_id: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if credits_id == other_credits_id {
+            return Err(NexusError::Configuration(
+                "Finite credit objects to join must be distinct".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let sender = client.owner()?;
+        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let mut credits = client
+            .crawler()
+            .get_objects::<finite_credits::Credits>(&[credits_id, other_credits_id])
+            .await
+            .map_err(NexusError::Rpc)?;
+        let other = credits.pop().ok_or_else(|| {
+            NexusError::Configuration(format!(
+                "Finite credits '{other_credits_id}' could not be resolved"
+            ))
+        })?;
+        let credits = credits.pop().ok_or_else(|| {
+            NexusError::Configuration(format!(
+                "Finite credits '{credits_id}' could not be resolved"
+            ))
+        })?;
+        if credits.object_id != credits_id || other.object_id != other_credits_id {
+            return Err(NexusError::Configuration(
+                "Finite credit object response order did not match the request".to_owned(),
+            ));
+        }
+        let compatible = credits.data.tool == other.data.tool
+            && credits.data.cashier == other.data.cashier
+            && credits.data.beneficiary == other.data.beneficiary
+            && credits.data.refund_to == other.data.refund_to;
+        if credits.data.cashier.bytes != *cashier.object_id() || !compatible {
+            return Err(NexusError::Configuration(
+                "Finite credit objects are not compatible with this Tool".to_owned(),
+            ));
+        }
+        if credits.data.refund_to != sender {
+            return Err(NexusError::Configuration(format!(
+                "Signer '{sender}' does not manage these finite credits"
+            )));
+        }
+        if !credits.is_shared() || !other.is_shared() {
+            return Err(NexusError::Configuration(
+                "Finite credit objects to join must be shared".to_owned(),
+            ));
+        }
+        let transaction = tool_cashier::join_finite_credits_ptb(
+            &client.nexus_objects,
+            &credits.object_ref(),
+            &other.object_ref(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, sender).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Restores one refunded finite credit Invocation as a shared credit object.
+    pub async fn claim_finite_credit_refund(
+        &self,
+        tool_fqn: &ToolFqn,
+        invocation_id: sui::types::Address,
+    ) -> Result<FiniteCreditsResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let sender = client.owner()?;
+        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let refunded = client
+            .crawler()
+            .get_object::<Invocation>(invocation_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let expected_policy =
+            crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(
+                &client.nexus_objects,
+            );
+        if refunded.data.cashier_id.bytes != *cashier.object_id()
+            || refunded.data.policy != expected_policy
+        {
+            return Err(NexusError::Configuration(format!(
+                "Invocation '{invocation_id}' is not a finite credit refund for this Tool"
+            )));
+        }
+        if refunded.owner != sui::types::Owner::Address(sender) {
+            return Err(NexusError::Configuration(format!(
+                "Invocation '{invocation_id}' is not owned by signer '{sender}'"
+            )));
+        }
+        let transaction = tool_cashier::claim_finite_credit_refund_ptb(
+            &client.nexus_objects,
+            &refunded.object_ref(),
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, sender).await?;
+        let credits_id = response
+            .events
+            .iter()
+            .find_map(|event| match &event.data {
+                NexusEventKind::CreditsCreated(created)
+                    if created.cashier.bytes == *cashier.object_id() =>
+                {
+                    Some(created.credits.bytes)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| {
+                NexusError::Parsing(anyhow::anyhow!(
+                    "Finite credit refund claim '{}' emitted no Credits object",
+                    response.digest
+                ))
+            })?;
+        Ok(FiniteCreditsResult {
+            tx_digest: response.digest,
+            credits_id,
+        })
+    }
+
+    /// Lists finite credit refunds owned by `owner` for one [`Tool`].
+    pub async fn inspect_finite_credit_refunds(
+        &self,
+        tool_fqn: &ToolFqn,
+        owner: sui::types::Address,
+    ) -> Result<Vec<FiniteCreditRefund>, NexusError> {
+        let client = self.client.operation_client().await?;
+        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let expected_policy =
+            crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(
+                &client.nexus_objects,
+            );
+        let refunds = client
+            .crawler()
+            .get_owned_objects::<Invocation>(
+                owner,
+                crate::move_bindings::struct_tag::<Invocation>(&client.nexus_objects),
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .filter(|invocation| {
+                invocation.data.cashier_id.bytes == *cashier.object_id()
+                    && invocation.data.policy == expected_policy
+            })
+            .map(|invocation| FiniteCreditRefund {
+                object_ref: invocation.object_ref(),
+                sources: invocation
+                    .data
+                    .sources
+                    .into_iter()
+                    .map(|source| source.bytes)
+                    .collect(),
+            })
+            .collect();
+        Ok(refunds)
+    }
+
+    /// Reads every accepted policy and the canonical offers for one [`Tool`].
+    ///
+    /// Custom policy witness types remain visible in [`ToolEconomy::policies`]
+    /// even when this SDK does not know how to decode their private configs.
+    pub async fn inspect_economy(&self, tool_fqn: &ToolFqn) -> Result<ToolEconomy, NexusError> {
+        let client = self.client.operation_client().await?;
+        let objects = &client.nexus_objects;
+        let crawler = client.crawler();
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), tool_fqn)
+                .map_err(NexusError::Parsing)?;
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .map_err(NexusError::Parsing)?;
+        let cashier = crawler
+            .get_versioned_object::<ToolCashier, ToolCashierStateV1>(cashier_id, 1)
+            .await
+            .map_err(NexusError::Rpc)?;
+        if cashier.data.tool.bytes != tool_id
+            || cashier.data.tool_fqn.as_str() != tool_fqn.to_string()
+        {
+            return Err(NexusError::Configuration(format!(
+                "Tool cashier '{cashier_id}' does not describe Tool '{tool_fqn}'"
+            )));
+        }
+
+        let policies = cashier.data.policies.contents;
+        let fixed_price_mist = if canonical_policy_accepted(objects, &policies, "fixed_price") {
+            Some(
+                fetch_tool_invocation_cost(crawler, &objects.tool_registry, tool_fqn)
+                    .await
+                    .map_err(NexusError::Rpc)?
+                    .ok_or_else(|| {
+                        NexusError::Configuration(format!(
+                            "Fixed price policy for Tool '{tool_fqn}' has no price"
+                        ))
+                    })?,
+            )
+        } else {
+            None
+        };
+        let free_invocations = canonical_policy_accepted(objects, &policies, "free_invocation");
+        let finite_credits = if canonical_policy_accepted(objects, &policies, "finite_credits") {
+            let config = crawler
+                .get_dynamic_field_by_key::<
+                    PolicyKey<finite_credits::Policy>,
+                    finite_credits::Config,
+                >(
+                    cashier_id,
+                    PolicyKey::new(false),
+                    &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(objects),
+                )
+                .await
+                .map_err(NexusError::Rpc)?
+                .ok_or_else(|| {
+                    NexusError::Configuration(format!(
+                        "Finite credits policy for Tool '{tool_fqn}' has no config"
+                    ))
+                })?;
+            Some(FiniteCreditOffer {
+                issuance_enabled: config.issuance_enabled,
+                price_per_credit: config.price_per_credit,
+                minimum_credits: config.minimum_credits,
+                maximum_credits: config.maximum_credits,
+            })
+        } else {
+            None
+        };
+        let time_pass = if canonical_policy_accepted(objects, &policies, "time_pass") {
+            let config = crawler
+                .get_dynamic_field_by_key::<PolicyKey<time_pass::Policy>, time_pass::Config>(
+                    cashier_id,
+                    PolicyKey::new(false),
+                    &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(objects),
+                )
+                .await
+                .map_err(NexusError::Rpc)?
+                .ok_or_else(|| {
+                    NexusError::Configuration(format!(
+                        "Time pass policy for Tool '{tool_fqn}' has no config"
+                    ))
+                })?;
+            Some(TimePassOffer {
+                issuance_enabled: config.issuance_enabled,
+                price_per_ms: config.price_per_ms,
+                minimum_duration_ms: config.minimum_duration_ms,
+                maximum_duration_ms: config.maximum_duration_ms,
+            })
+        } else {
+            None
+        };
+
+        Ok(ToolEconomy {
+            tool_id,
+            cashier_id,
+            minimum_protocol_version: cashier.data.minimum_protocol_version,
+            policies,
+            fixed_price_mist,
+            free_invocations,
+            finite_credits,
+            time_pass,
+        })
+    }
+
+    /// Lists finalized Invocations and prepaid deposits waiting for collection.
+    ///
+    /// Sui indexes these objects by their [`ToolCashier`] owner, so discovery
+    /// does not require a mutable on chain registry or a global usage counter.
+    pub async fn inspect_cashier_inbox(
+        &self,
+        tool_fqn: &ToolFqn,
+    ) -> Result<ToolCashierInbox, NexusError> {
+        let client = self.client.operation_client().await?;
+        let cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let cashier_id = *cashier.object_id();
+        let invocations = client
+            .crawler()
+            .get_object_owned_objects::<Invocation>(
+                cashier_id,
+                crate::move_bindings::struct_tag::<Invocation>(&client.nexus_objects),
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .map(|response| CollectableInvocation {
+                object_ref: response.object_ref(),
+                policy: response.data.policy,
+                sources: response
+                    .data
+                    .sources
+                    .into_iter()
+                    .map(|source| source.bytes)
+                    .collect(),
+                amount_mist: response.data.amount,
+            })
+            .collect();
+        let deposits = client
+            .crawler()
+            .get_object_owned_objects::<CashierDeposit>(
+                cashier_id,
+                crate::move_bindings::struct_tag::<CashierDeposit>(&client.nexus_objects),
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .map(|response| CollectableDeposit {
+                object_ref: response.object_ref(),
+                amount_mist: response.data.funds.value,
+            })
+            .collect();
+        Ok(ToolCashierInbox {
+            invocations,
+            deposits,
+        })
+    }
+
+    /// Collects one same policy batch of finalized Invocations.
+    pub async fn collect_invocations(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        invocation_ids: &[sui::types::Address],
+        recipient: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        if invocation_ids.is_empty() {
+            return Err(NexusError::Configuration(
+                "Invocation collection requires at least one object ID".to_owned(),
+            ));
+        }
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (cashier, admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let tool_id = Tool::derive_id(*client.nexus_objects.tool_registry.object_id(), tool_fqn)
+            .map_err(NexusError::Parsing)?;
+        let invocations = client
+            .crawler()
+            .get_objects::<Invocation>(invocation_ids)
+            .await
+            .map_err(NexusError::Rpc)?;
+        let policy = invocations
+            .first()
+            .map(|invocation| invocation.data.policy.clone())
+            .ok_or_else(|| {
+                NexusError::Configuration(
+                    "Invocation collection requires at least one object".to_owned(),
+                )
+            })?;
+        let references = invocations
+            .into_iter()
+            .map(|response| {
+                if response.owner != sui::types::Owner::Object(*cashier.object_id())
+                    || response.data.cashier_id.bytes != *cashier.object_id()
+                    || response.data.tool_id.bytes != tool_id
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Invocation '{}' is not in Tool cashier '{}'",
+                        response.object_id,
+                        cashier.object_id()
+                    )));
+                }
+                if response.data.policy != policy {
+                    return Err(NexusError::Configuration(format!(
+                        "Invocation '{}' uses policy '{}', not '{}'",
+                        response.object_id, response.data.policy, policy
+                    )));
+                }
+                Ok(response.object_ref())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let transaction = tool_cashier::collect_invocations_ptb(
+            &client.nexus_objects,
+            &cashier,
+            &admin,
+            &policy,
+            &references,
+            recipient,
+        )
+        .map_err(NexusError::TransactionBuilding)?;
+        let response = client.submit_transaction(transaction, address).await?;
+        Ok(ToolCashierActionResult {
+            tx_digest: response.digest,
+        })
+    }
+
+    /// Collects one batch of prepaid sale deposits.
+    pub async fn collect_deposits(
+        &self,
+        tool_fqn: &ToolFqn,
+        cashier_admin: sui::types::Address,
+        deposit_ids: &[sui::types::Address],
+        recipient: sui::types::Address,
+    ) -> Result<ToolCashierActionResult, NexusError> {
+        let client = self.client.operation_client().await?;
+        let address = client.owner()?;
+        let (cashier, admin) =
+            Self::resolve_tool_cashier_and_cap(&client, tool_fqn, cashier_admin).await?;
+        let references = client
+            .crawler()
+            .get_objects_metadata(deposit_ids)
+            .await
+            .map_err(NexusError::Rpc)?
+            .into_iter()
+            .map(|response| {
+                if response.owner != sui::types::Owner::Object(*cashier.object_id()) {
+                    return Err(NexusError::Configuration(format!(
+                        "Deposit '{}' is not in Tool cashier '{}'",
+                        response.object_id,
+                        cashier.object_id()
+                    )));
+                }
+                Ok(response.object_ref())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let transaction = tool_cashier::collect_deposits_ptb(
+            &client.nexus_objects,
+            &cashier,
+            &admin,
+            &references,
+            recipient,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
@@ -562,6 +1618,7 @@ mod tests {
             fqn,
             move_bindings::{
                 move_std::{ascii, option::Option as MoveOption},
+                primitives::{data::NexusData, event::EventWrapper},
                 sui_framework::{
                     self,
                     linked_table::LinkedTable,
@@ -571,6 +1628,9 @@ mod tests {
                 },
                 tool::{
                     external_verifier::ExternalVerifier,
+                    finite_credits::CreditsCreatedEvent,
+                    time_pass::TimePassCreatedEvent,
+                    tool_cashier::CashierDepositCreatedEvent,
                     tool_registry::{ToolRegistry, ToolRegistryState},
                 },
             },
@@ -613,6 +1673,26 @@ mod tests {
 
     fn ascii(value: &str) -> ascii::String {
         ascii::String::from(value)
+    }
+
+    #[test]
+    fn canonical_policy_detection_uses_defining_type_identity() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let origin = objects.packages.tool.type_origin("fixed_price", "Policy");
+        let policies = vec![crate::move_bindings::move_std::type_name::TypeName::new(
+            &format!("{origin}::fixed_price::Policy"),
+        )];
+
+        assert!(canonical_policy_accepted(
+            &objects,
+            &policies,
+            "fixed_price"
+        ));
+        assert!(!canonical_policy_accepted(
+            &objects,
+            &policies,
+            "free_invocation"
+        ));
     }
 
     fn sui_tool_ref(
@@ -1050,11 +2130,35 @@ mod tests {
     enum PaymentAction {
         EnableTimePass,
         SetInvocationCost,
-        DisableTimePass,
+        CloseTimePassIssuance,
         BuyTimePass,
         EnableFiniteCredits,
-        DisableFiniteCredits,
+        CloseFiniteCreditIssuance,
         BuyFiniteCredits,
+    }
+
+    #[derive(serde::Serialize)]
+    struct EventWrapperValue<T> {
+        event: T,
+    }
+
+    fn wrapped_tool_event<T>(objects: &crate::types::NexusObjects, event: T) -> sui::types::Event
+    where
+        T: serde::Serialize + sui_move::MoveStruct,
+    {
+        let inner = crate::move_bindings::struct_tag::<T>(objects);
+        let wrapper = crate::move_bindings::struct_tag::<EventWrapper<NexusData>>(objects);
+        let wrapper = sui::types::StructTag::new(
+            *wrapper.address(),
+            wrapper.module().clone(),
+            wrapper.name().clone(),
+            vec![sui::types::TypeTag::Struct(Box::new(inner))],
+        );
+        sui_mocks::mock_sui_event(
+            objects.tool_pkg_id(),
+            wrapper,
+            bcs::to_bytes(&EventWrapperValue { event }).expect("Tool event serializes"),
+        )
     }
 
     async fn assert_payment_action_succeeds(action: PaymentAction) {
@@ -1095,6 +2199,56 @@ mod tests {
             sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
             None,
         );
+        let entitlement_id = sui::types::Address::from_static("0x501");
+        let deposit_id = sui::types::Address::from_static("0x502");
+        let beneficiary = crate::move_bindings::interface::payment::PaymentSourceKind::user_funded(
+            sui::types::Address::from_static("0x3"),
+        );
+        let events = match action {
+            PaymentAction::BuyTimePass => vec![
+                wrapped_tool_event(
+                    &nexus_objects,
+                    TimePassCreatedEvent::new(
+                        ID::new(tool_id),
+                        ID::new(tool_cashier_id),
+                        ID::new(entitlement_id),
+                        beneficiary,
+                        1,
+                        4,
+                    ),
+                ),
+                wrapped_tool_event(
+                    &nexus_objects,
+                    CashierDepositCreatedEvent::new(
+                        ID::new(tool_cashier_id),
+                        ID::new(deposit_id),
+                        21,
+                    ),
+                ),
+            ],
+            PaymentAction::BuyFiniteCredits => vec![
+                wrapped_tool_event(
+                    &nexus_objects,
+                    CreditsCreatedEvent::new(
+                        ID::new(tool_id),
+                        ID::new(tool_cashier_id),
+                        ID::new(entitlement_id),
+                        beneficiary,
+                        sui::types::Address::from_static("0x3"),
+                        4,
+                    ),
+                ),
+                wrapped_tool_event(
+                    &nexus_objects,
+                    CashierDepositCreatedEvent::new(
+                        ID::new(tool_cashier_id),
+                        ID::new(deposit_id),
+                        52,
+                    ),
+                ),
+            ],
+            _ => vec![],
+        };
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut transaction_service,
             &mut subscription_service,
@@ -1102,7 +2256,7 @@ mod tests {
             gas_coin_ref,
             vec![],
             vec![],
-            vec![],
+            events,
         );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger_service),
@@ -1113,38 +2267,39 @@ mod tests {
         let client = nexus_mocks::mock_nexus_client(&nexus_objects, &rpc_url).await;
         let actions = client.tool();
 
-        let result = match action {
-            PaymentAction::EnableTimePass => {
-                actions
-                    .enable_time_passes(&tool_fqn, auxiliary_id, 7, 1, 100)
-                    .await
-            }
-            PaymentAction::SetInvocationCost => {
-                actions
-                    .set_invocation_cost(&tool_fqn, auxiliary_id, 11)
-                    .await
-            }
-            PaymentAction::DisableTimePass => {
-                actions.disable_time_passes(&tool_fqn, auxiliary_id).await
-            }
-            PaymentAction::BuyTimePass => actions.buy_time_pass(&tool_fqn, 3, auxiliary_id).await,
-            PaymentAction::EnableFiniteCredits => {
-                actions
-                    .enable_finite_credits(&tool_fqn, auxiliary_id, 13, 2, 9)
-                    .await
-            }
-            PaymentAction::DisableFiniteCredits => {
-                actions
-                    .disable_finite_credits(&tool_fqn, auxiliary_id)
-                    .await
-            }
-            PaymentAction::BuyFiniteCredits => {
-                actions.buy_finite_credits(&tool_fqn, 4, auxiliary_id).await
-            }
+        let tx_digest = match action {
+            PaymentAction::EnableTimePass => actions
+                .enable_time_passes(&tool_fqn, auxiliary_id, 7, 1, 100)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::SetInvocationCost => actions
+                .set_invocation_cost(&tool_fqn, auxiliary_id, 11)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::CloseTimePassIssuance => actions
+                .close_time_pass_issuance(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::BuyTimePass => actions
+                .buy_time_pass(&tool_fqn, 3, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::EnableFiniteCredits => actions
+                .enable_finite_credits(&tool_fqn, auxiliary_id, 13, 2, 9)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::CloseFiniteCreditIssuance => actions
+                .close_finite_credit_issuance(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::BuyFiniteCredits => actions
+                .buy_finite_credits(&tool_fqn, 4, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
         }
         .expect("Tool payment action succeeds");
 
-        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(tx_digest, submitted.digest());
     }
 
     #[tokio::test]
@@ -1152,10 +2307,10 @@ mod tests {
         for action in [
             PaymentAction::EnableTimePass,
             PaymentAction::SetInvocationCost,
-            PaymentAction::DisableTimePass,
+            PaymentAction::CloseTimePassIssuance,
             PaymentAction::BuyTimePass,
             PaymentAction::EnableFiniteCredits,
-            PaymentAction::DisableFiniteCredits,
+            PaymentAction::CloseFiniteCreditIssuance,
             PaymentAction::BuyFiniteCredits,
         ] {
             assert_payment_action_succeeds(action).await;

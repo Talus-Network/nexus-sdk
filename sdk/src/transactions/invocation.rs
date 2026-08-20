@@ -3,13 +3,11 @@
 use {
     crate::{
         move_bindings::{
-            interface::graph::RuntimeVertex,
-            move_std::type_name::TypeName,
+            interface::graph::RuntimeVertex, move_std::type_name::TypeName,
             tool::invocation::Invocation,
             workflow::invocation_adapter as invocation_adapter_binding,
         },
-        move_boundary,
-        sui,
+        move_boundary, sui,
         transactions::dag::OnchainToolArgument,
         types::NexusObjects,
     },
@@ -43,9 +41,57 @@ impl InvocationPolicyCall {
             Vec::new(),
         )
     }
+
+    /// Selects the canonical sponsored free policy for this Nexus deployment.
+    pub fn free_invocation(objects: &NexusObjects) -> Self {
+        let origin = objects
+            .packages
+            .tool
+            .type_origin("free_invocation", "Policy");
+        Self::new(
+            TypeName::new(&format!("{origin}::free_invocation::Policy")),
+            Vec::new(),
+        )
+    }
+
+    /// Selects the canonical finite credits policy with one mutable shared
+    /// [`crate::move_bindings::tool::finite_credits::Credits`] object.
+    pub fn finite_credits(
+        objects: &NexusObjects,
+        credits: sui::types::Address,
+        initial_shared_version: sui::types::Version,
+    ) -> Self {
+        Self::new(
+            Self::finite_credits_policy(objects),
+            vec![OnchainToolArgument::SharedObject {
+                object_id: credits,
+                initial_shared_version,
+                mutable: true,
+            }],
+        )
+    }
+
+    /// Returns the canonical finite credits witness [TypeName].
+    pub fn finite_credits_policy(objects: &NexusObjects) -> TypeName {
+        let origin = objects
+            .packages
+            .tool
+            .type_origin("finite_credits", "Policy");
+        TypeName::new(&format!("{origin}::finite_credits::Policy"))
+    }
+
+    /// Selects the canonical time pass policy with one immutable
+    /// [`crate::move_bindings::tool::time_pass::TimePass`] object.
+    pub fn time_pass(objects: &NexusObjects, pass: sui::types::ObjectReference) -> Self {
+        let origin = objects.packages.tool.type_origin("time_pass", "Policy");
+        Self::new(
+            TypeName::new(&format!("{origin}::time_pass::Policy")),
+            vec![OnchainToolArgument::Object(pass)],
+        )
+    }
 }
 
-fn policy_target(
+pub(crate) fn policy_target(
     objects: &NexusObjects,
     policy: &TypeName,
 ) -> anyhow::Result<(sui::types::Address, String)> {
@@ -242,5 +288,36 @@ mod tests {
                 "custom_terms".to_owned()
             )
         );
+    }
+
+    #[test]
+    fn finite_credits_selects_one_mutable_shared_object() {
+        let objects = mock_nexus_objects();
+        let credits = sui::types::Address::from_static("0x91");
+        let initial_shared_version = 7;
+
+        let policy =
+            InvocationPolicyCall::finite_credits(&objects, credits, initial_shared_version);
+
+        assert!(policy.policy.as_str().ends_with("::finite_credits::Policy"));
+        assert_eq!(
+            policy.arguments,
+            vec![OnchainToolArgument::SharedObject {
+                object_id: credits,
+                initial_shared_version,
+                mutable: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn time_pass_selects_one_immutable_object() {
+        let objects = mock_nexus_objects();
+        let pass = object_ref_for_id(sui::types::Address::from_static("0x92"));
+
+        let policy = InvocationPolicyCall::time_pass(&objects, pass.clone());
+
+        assert!(policy.policy.as_str().ends_with("::time_pass::Policy"));
+        assert_eq!(policy.arguments, vec![OnchainToolArgument::Object(pass)]);
     }
 }

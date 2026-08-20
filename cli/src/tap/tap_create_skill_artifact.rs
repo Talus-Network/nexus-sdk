@@ -193,10 +193,7 @@ mod tests {
                 interface::{dag::DAGState, graph},
                 move_std::option::Option as MoveOption,
                 sui_framework::{
-                    linked_table::LinkedTable,
-                    object::UID,
-                    table::Table,
-                    vec_map::VecMap,
+                    linked_table::LinkedTable, object::UID, table::Table, vec_map::VecMap,
                     versioned::Versioned,
                 },
             },

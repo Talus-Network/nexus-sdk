@@ -384,7 +384,7 @@ pub(crate) enum ToolCommand {
         tool_type: RegisterCommand,
     },
 
-    #[command(subcommand, about = "Manage payment tickets through a tool cashier")]
+    #[command(subcommand, about = "Manage Tool economic policies and entitlements")]
     Cashier(CashierCommand),
 
     #[command(about = "Unregister a tool identified by its FQN.")]

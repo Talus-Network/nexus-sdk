@@ -46,7 +46,11 @@ enum Command {
     Dag(dag::DagCommand),
     #[command(subcommand, about = "Create and operate scheduled Tasks")]
     Task(Box<task::TaskCommand>),
-    #[command(subcommand, about = "Inspect workflow executions")]
+    #[command(
+        subcommand,
+        about = "Inspect and authorize workflow executions",
+        long_about = execution::EXECUTION_HELP
+    )]
     Execution(execution::ExecutionCommand),
     #[command(subcommand, about = "Manage Sui transaction gas")]
     Gas(gas::GasCommand),

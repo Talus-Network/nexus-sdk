@@ -13,23 +13,16 @@ use {
         move_bindings::interface::{
             agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
             payment::{
-                ExecutionPayment,
-                ExecutionPaymentFinalState,
-                PaymentSourceKind,
-                SkillPaymentPolicy,
-                VertexExecutionPaymentSettlementKind,
+                ExecutionPayment, ExecutionPaymentFinalState, PaymentSourceKind, SkillPaymentPolicy,
             },
         },
         nexus::{
             tap::{
-                BindAgentSkillResult,
-                DepositAgentVaultResult,
-                RefillExecutionPaymentResult,
+                BindAgentSkillResult, DepositAgentVaultResult, RefillExecutionPaymentResult,
                 WaitForPaymentResult,
             },
             workflow::{
-                AbortExecutionResult,
-                CommittedToolResultSettlementResult,
+                AbortExecutionResult, CommittedToolResultSettlementResult,
                 ExpiredWalkResolutionResult,
             },
         },
@@ -559,16 +552,10 @@ pub(crate) fn payment_show_result_json(payment: &ExecutionPayment) -> serde_json
         .locked_vertices
         .iter()
         .map(|lock| {
-            let settlement_kind = match lock.settlement_kind {
-                VertexExecutionPaymentSettlementKind::Free => "free",
-                VertexExecutionPaymentSettlementKind::Ticket => "ticket",
-                VertexExecutionPaymentSettlementKind::Paid => "paid",
-            };
             json!({
                 "vertex_key": String::from_utf8_lossy(&lock.vertex_key),
-                "tool_fqn": String::from_utf8_lossy(&lock.tool_fqn),
+                "invocation_id": lock.invocation_id.bytes,
                 "amount_mist": lock.amount,
-                "settlement_kind": settlement_kind,
             })
         })
         .collect::<Vec<_>>();
@@ -766,11 +753,8 @@ mod tests {
                 workflow::{ExpiredWalkResolutionKind, PublishResult},
             },
             types::{
-                AgentRecordContext,
-                DefaultDagExecutorTarget,
-                SkillRecordContext,
-                SkillRevisionContext,
-                SkillRevisionLookupKey,
+                AgentRecordContext, DefaultDagExecutorTarget, SkillRecordContext,
+                SkillRevisionContext, SkillRevisionLookupKey,
             },
         },
     };
