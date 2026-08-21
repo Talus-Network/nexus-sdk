@@ -131,7 +131,7 @@ impl UsTokenConfig {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NexusObjects {
-    /// Expected Sui chain identifier.
+    /// Complete genesis checkpoint digest expected from the Sui service.
     pub chain_id: String,
     /// Stable Nexus network identity.
     pub network_id: sui::types::Address,
