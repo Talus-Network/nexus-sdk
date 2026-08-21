@@ -125,7 +125,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
         interface: Some(package(
             "0xa2",
             &[
-                ("witness", "V1"),
+                ("era", "V1"),
                 ("agent", "Agent"),
                 ("agent", "AgentInnerV1"),
                 ("agent", "AgentPaymentVault"),
@@ -150,7 +150,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
         tool: Some(package(
             "0xa7",
             &[
-                ("witness", "V1"),
+                ("era", "V1"),
                 ("tool_registry", "ToolRegistry"),
                 ("tool_registry", "ToolRegistryInnerV1"),
                 ("tool_registry", "Tool"),
@@ -164,7 +164,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
         registry: Some(package(
             "0xa3",
             &[
-                ("witness", "V1"),
+                ("era", "V1"),
                 ("agent_registry", "AgentRegistry"),
                 ("agent_registry", "AgentRegistryInnerV1"),
                 ("leader", "LeaderRegistry"),
@@ -182,7 +182,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
         workflow: Some(package(
             "0xa4",
             &[
-                ("witness", "V1"),
+                ("era", "V1"),
                 ("execution", "DAGExecution"),
                 ("execution", "DAGExecutionInnerV1"),
             ],
@@ -190,7 +190,7 @@ pub fn mock_nexus_packages() -> NexusPackages {
         )),
         scheduler: Some(package(
             "0xa5",
-            &[("witness", "V1"), ("task", "Task"), ("task", "TaskInnerV1")],
+            &[("era", "V1"), ("task", "Task"), ("task", "TaskInnerV1")],
             &["0xa1", "0xa2", "0xa7", "0xa3", "0xa4"],
         )),
     }

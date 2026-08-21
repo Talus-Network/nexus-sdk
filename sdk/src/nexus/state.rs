@@ -770,12 +770,12 @@ impl StateAdapter {
         };
         let witness = state.witness_type();
         let inner = state.inner_type();
-        let version_one_witness = witness.module().as_str() == "witness"
+        let version_one_witness = witness.module().as_str() == "era"
             && witness.name().as_str() == "V1"
             && witness.type_params().is_empty();
         #[cfg(feature = "upgrade_test")]
         let supported_witness = version_one_witness
-            || (witness.module().as_str() == "witness"
+            || (witness.module().as_str() == "era"
                 && witness.name().as_str() == "V2"
                 && witness.type_params().is_empty());
         #[cfg(not(feature = "upgrade_test"))]
@@ -1234,7 +1234,7 @@ mod tests {
     #[test]
     fn observation_keeps_unknown_types_without_decoding_values() {
         let object_id = address("0x10");
-        let witness_type = struct_tag("0xa2", "witness", "V2");
+        let witness_type = struct_tag("0xa2", "era", "V2");
         let inner_type = struct_tag("0xa2", "agent_registry", "AgentRegistryInnerV2");
         let observed = observed_state_from_metadata(
             ObjectMetadata {
@@ -1262,8 +1262,8 @@ mod tests {
             object_type: struct_tag("0xa1", "agent_registry", "AgentRegistry"),
         };
         let fields = vec![
-            state_field("0x11", "Witness", struct_tag("0xa2", "witness", "V1")),
-            state_field("0x12", "Witness", struct_tag("0xa3", "witness", "V2")),
+            state_field("0x11", "Witness", struct_tag("0xa2", "era", "V1")),
+            state_field("0x12", "Witness", struct_tag("0xa3", "era", "V2")),
             state_field(
                 "0x13",
                 "Inner",
@@ -1277,6 +1277,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn version_one_era_selects_the_supported_registry_adapter() {
+        let state = ObservedState {
+            object_id: address("0x10"),
+            owner: sui::types::Owner::Shared(3),
+            anchor_type: struct_tag("0xa2", "leader", "LeaderRegistry"),
+            witness: ObservedStateField {
+                field_id: address("0x11"),
+                value_type: struct_tag("0xa2", "era", "V1"),
+            },
+            inner: ObservedStateField {
+                field_id: address("0x12"),
+                value_type: struct_tag("0xa2", "leader", "LeaderRegistryInnerV1"),
+            },
+        };
+
+        let adapter =
+            StateAdapter::for_observed(&state).expect("the published V1 era must be supported");
+
+        assert_eq!(adapter.role, PackageRole::Registry);
+    }
+
     #[cfg(feature = "upgrade_test")]
     #[test]
     fn upgrade_fixture_accepts_new_witness_with_retained_inner_origin() {
@@ -1286,7 +1308,7 @@ mod tests {
             anchor_type: struct_tag("0xa1", "tool_registry", "ToolRegistry"),
             witness: ObservedStateField {
                 field_id: address("0x11"),
-                value_type: struct_tag("0xa2", "witness", "V2"),
+                value_type: struct_tag("0xa2", "era", "V2"),
             },
             inner: ObservedStateField {
                 field_id: address("0x12"),
@@ -1307,7 +1329,7 @@ mod tests {
             anchor_type: struct_tag("0xb1", "agent_registry", "AgentRegistry"),
             witness: ObservedStateField {
                 field_id: address("0x21"),
-                value_type: struct_tag("0xb2", "witness", "V2"),
+                value_type: struct_tag("0xb2", "era", "V2"),
             },
             inner: ObservedStateField {
                 field_id: address("0x22"),

@@ -289,7 +289,7 @@ mod tests {
     fn client_errors_remain_typed() {
         let tag = crate::sui::types::StructTag::new(
             crate::sui::types::Address::from_static("0xa"),
-            crate::sui::types::Identifier::from_static("witness"),
+            crate::sui::types::Identifier::from_static("era"),
             crate::sui::types::Identifier::from_static("V2"),
             vec![],
         );

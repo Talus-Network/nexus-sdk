@@ -330,7 +330,7 @@ mod tests {
             PackageLinkage::new(),
         );
 
-        assert!(package.type_origin("witness", "V1").is_err());
+        assert!(package.type_origin("era", "V1").is_err());
     }
 
     #[cfg(feature = "test_utils")]

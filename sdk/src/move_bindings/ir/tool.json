@@ -3,6 +3,58 @@
   "original_id": "0xa7",
   "version": 1,
   "modules": {
+    "era": {
+      "name": "era",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "era",
+            "name": "V1"
+          },
+          "module": "era",
+          "name": "V1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "v1",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa7",
+                  "module": "era",
+                  "name": "V1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
     "external_verifier": {
       "name": "external_verifier",
       "datatypes": [
@@ -8985,58 +9037,6 @@
           ],
           "return_types": [
             "U64"
-          ]
-        }
-      ]
-    },
-    "era": {
-      "name": "era",
-      "datatypes": [
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "era",
-            "name": "V1"
-          },
-          "module": "era",
-          "name": "V1",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        }
-      ],
-      "functions": [
-        {
-          "name": "v1",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "era",
-                  "name": "V1"
-                },
-                "type_arguments": []
-              }
-            }
           ]
         }
       ]

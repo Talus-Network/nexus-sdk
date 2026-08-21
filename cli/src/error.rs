@@ -274,7 +274,7 @@ mod tests {
         };
         ClientUpgradeRequired::new(
             sui::types::Address::from_static("0x42"),
-            tag("0xa7", "witness", "V2"),
+            tag("0xa7", "era", "V2"),
             Some(tag("0xa7", "tool_registry", "ToolInnerV2")),
         )
         .into()
