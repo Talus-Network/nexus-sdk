@@ -22,7 +22,7 @@ pub struct ExternalVerifierObjectInput {
     pub object_type: sui::types::TypeTag,
 }
 
-/// Validated external verifier definition used during Tool registration.
+/// Validated external verifier definition used to configure a Tool.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternalVerifierRegistrationInput {
     /// Package that publishes the verifier function.
@@ -33,17 +33,6 @@ pub struct ExternalVerifierRegistrationInput {
     pub function_name: String,
     /// Ordered immutable shared objects; object zero is the verifier witness.
     pub verifier_objects: Vec<ExternalVerifierObjectInput>,
-}
-
-/// Immutable verifier contract selected when an off chain Tool is registered.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ToolVerifierContractInput {
-    /// The Tool does not support verification.
-    None,
-    /// The Tool uses the registered key verifier.
-    RegisteredKey,
-    /// The Tool uses one validated external verifier.
-    External(ExternalVerifierRegistrationInput),
 }
 
 #[derive(Clone, Copy)]
@@ -64,8 +53,6 @@ pub struct OffChainToolRegistration {
     pub pop_signature: [u8; 64],
     /// Cost charged for one invocation in MIST.
     pub invocation_cost_mist: u64,
-    /// Immutable verifier behavior for the Tool definition.
-    pub verifier_contract: ToolVerifierContractInput,
 }
 
 impl ToolCollateral<'_> {
@@ -117,29 +104,6 @@ fn configure_registration(
         owner_cap_over_tool,
         cashier_admin_cap,
     })
-}
-
-fn build_verifier_contract(
-    tx: &mut move_boundary::NexusPtbBuilder,
-    tool_id: sui::types::Address,
-    input: &ToolVerifierContractInput,
-) -> anyhow::Result<Argument> {
-    match input {
-        ToolVerifierContractInput::None => {
-            tx.call_target(tool_registry_binding::verifier_contract_none_target, vec![])
-        }
-        ToolVerifierContractInput::RegisteredKey => tx.call_target(
-            tool_registry_binding::verifier_contract_registered_key_target,
-            vec![],
-        ),
-        ToolVerifierContractInput::External(input) => {
-            let registration = build_external_verifier_registration(tx, tool_id, input)?;
-            tx.call_target(
-                tool_registry_binding::verifier_contract_external_target,
-                vec![registration],
-            )
-        }
-    }
 }
 
 fn build_external_verifier_registration(
@@ -231,7 +195,6 @@ fn register_off_chain_tool(
     tx: &mut move_boundary::NexusPtbBuilder,
     tool_registry: Argument,
     meta: &ToolMeta,
-    verifier_contract: &ToolVerifierContractInput,
     invocation_cost_mist: u64,
     pay_with: Argument,
     clock: Argument,
@@ -242,9 +205,6 @@ fn register_off_chain_tool(
     let meta_schema = tx.meta_schema(&meta.meta_schema()?)?;
     let timeout_ms = timeout_millis(meta.timeout)?;
     let timeout_ms = tx.arg(&timeout_ms)?;
-    let tool_id =
-        crate::move_bindings::derive_tool_id(tx.objects().tool_registry.object_id(), &meta.fqn)?;
-    let verifier_contract = build_verifier_contract(tx, tool_id, verifier_contract)?;
     let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
 
     tx.call_target(
@@ -256,7 +216,6 @@ fn register_off_chain_tool(
             description,
             meta_schema,
             timeout_ms,
-            verifier_contract,
             invocation_cost_mist,
             pay_with,
             clock,
@@ -274,7 +233,6 @@ fn register_off_chain_tool(
 pub fn register_off_chain_for_self_ptb(
     objects: &NexusContext,
     meta: &ToolMeta,
-    verifier_contract: &ToolVerifierContractInput,
     address: sui::types::Address,
     collateral_coin: &sui::types::ObjectReference,
     invocation_cost_mist: u64,
@@ -282,7 +240,6 @@ pub fn register_off_chain_for_self_ptb(
     register_off_chain_for_self_with_collateral_ptb(
         objects,
         meta,
-        verifier_contract,
         address,
         ToolCollateral::Coin(collateral_coin),
         invocation_cost_mist,
@@ -302,7 +259,6 @@ pub fn register_off_chain_for_self_ptb(
 pub fn register_off_chain_for_self_with_address_balance_ptb(
     objects: &NexusContext,
     meta: &ToolMeta,
-    verifier_contract: &ToolVerifierContractInput,
     address: sui::types::Address,
     collateral_us: u64,
     invocation_cost_mist: u64,
@@ -310,7 +266,6 @@ pub fn register_off_chain_for_self_with_address_balance_ptb(
     register_off_chain_for_self_with_collateral_ptb(
         objects,
         meta,
-        verifier_contract,
         address,
         ToolCollateral::AddressBalance(collateral_us),
         invocation_cost_mist,
@@ -320,7 +275,6 @@ pub fn register_off_chain_for_self_with_address_balance_ptb(
 fn register_off_chain_for_self_with_collateral_ptb(
     objects: &NexusContext,
     meta: &ToolMeta,
-    verifier_contract: &ToolVerifierContractInput,
     address: sui::types::Address,
     collateral: ToolCollateral<'_>,
     invocation_cost_mist: u64,
@@ -333,7 +287,6 @@ fn register_off_chain_for_self_with_collateral_ptb(
             tx,
             tool_registry,
             meta,
-            verifier_contract,
             invocation_cost_mist,
             pay_with,
             clock,
@@ -380,7 +333,6 @@ fn compose_off_chain_registration(
         tx,
         tool_registry,
         &registration.meta,
-        &registration.verifier_contract,
         registration.invocation_cost_mist,
         pay_with,
         clock,
@@ -590,11 +542,28 @@ fn register_on_chain_for_self_with_collateral_ptb(
     })
 }
 
-/// Builds a transaction that closes a [`Tool`](tool_registry_binding::Tool).
-///
-/// Closing removes the Tool from open membership while preserving its
-/// immutable definition and outstanding settlement state.
-pub fn close_ptb(
+/// Builds a transaction that updates a Tool invocation price.
+pub fn set_invocation_cost_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    cashier_admin: &sui::types::ObjectReference,
+    invocation_cost_mist: u64,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
+        let tool = tx.shared_object(tool, false)?;
+        let cashier_admin = tx.owned_object(cashier_admin)?;
+        let invocation_cost_mist = tx.arg(&invocation_cost_mist)?;
+        tx.call_target(
+            tool_registry_binding::set_invocation_cost_mist_target,
+            vec![registry, tool, cashier_admin, invocation_cost_mist],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that unregisters a Tool from live protocol lookup.
+pub fn unregister_ptb(
     context: &NexusContext,
     tool: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
@@ -605,8 +574,65 @@ pub fn close_ptb(
         let owner_cap = tx.owned_object(owner_cap)?;
         let clock = tx.clock()?;
         tx.call_target(
-            tool_registry_binding::close_target,
+            tool_registry_binding::unregister_target,
             vec![tool, registry, owner_cap, clock],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that points an on chain Tool at a new package.
+pub fn migrate_on_chain_tool_package_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    target_package: sui::types::Address,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let target_package = tx.arg(&target_package)?;
+        tx.call_target(
+            tool_registry_binding::migrate_on_chain_tool_package_target,
+            vec![tool, owner_cap, target_package],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that enables registered key verification for a Tool.
+pub fn configure_registered_key_verifier_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
+        let tool = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        tx.call_target(
+            tool_registry_binding::configure_registered_key_support_target,
+            vec![registry, tool, owner_cap],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that installs one external verifier for a Tool.
+pub fn register_external_verifier_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    input: &ExternalVerifierRegistrationInput,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let registry = tx.shared_root(&context.tool_registry, true)?;
+        let tool_argument = tx.shared_object(tool, false)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let registration = build_external_verifier_registration(tx, *tool.object_id(), input)?;
+        tx.call_target(
+            tool_registry_binding::register_external_verifier_target,
+            vec![registry, tool_argument, owner_cap, registration],
         )?;
         Ok(())
     })
@@ -632,23 +658,59 @@ pub fn claim_collateral_for_self_ptb(
     })
 }
 
-/// Builds a transaction that retires a closed and drained
-/// [`Tool`](tool_registry_binding::Tool).
-pub fn retire_ptb(
+/// Builds a transaction that updates the timeout of a registered Tool.
+pub fn update_tool_timeout_ptb(
     context: &NexusContext,
     tool: &sui::types::ObjectReference,
-    cashier: &sui::types::ObjectReference,
     owner_cap: &sui::types::ObjectReference,
+    timeout: Duration,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let tool = tx.shared_object(tool, false)?;
+        let registry = tx.shared_root(&context.tool_registry, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let timeout_ms = tx.arg(&timeout_millis(timeout)?)?;
+        tx.call_target(
+            tool_registry_binding::update_tool_timeout_target,
+            vec![tool, registry, owner_cap, timeout_ms],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that replaces an off chain Tool URL.
+pub fn update_off_chain_tool_url_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    new_url: &str,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(context, |tx| {
         let tool = tx.shared_object(tool, true)?;
-        let registry = tx.shared_root(&context.tool_registry, false)?;
-        let cashier = tx.shared_object(cashier, false)?;
         let owner_cap = tx.owned_object(owner_cap)?;
-        let clock = tx.clock()?;
+        let new_url = tx.arg(&new_url.as_bytes().to_vec())?;
         tx.call_target(
-            tool_registry_binding::retire_target,
-            vec![tool, registry, cashier, owner_cap, clock],
+            tool_registry_binding::update_off_chain_tool_url_target,
+            vec![tool, owner_cap, new_url],
+        )?;
+        Ok(())
+    })
+}
+
+/// Builds a transaction that replaces a registered Tool description.
+pub fn update_tool_metadata_ptb(
+    context: &NexusContext,
+    tool: &sui::types::ObjectReference,
+    owner_cap: &sui::types::ObjectReference,
+    description: &str,
+) -> anyhow::Result<ProgrammableTransaction> {
+    move_boundary::ptb(context, |tx| {
+        let tool = tx.shared_object(tool, true)?;
+        let owner_cap = tx.owned_object(owner_cap)?;
+        let description = tx.arg(&description.as_bytes().to_vec())?;
+        tx.call_target(
+            tool_registry_binding::update_tool_metadata_target,
+            vec![tool, owner_cap, description],
         )?;
         Ok(())
     })
@@ -745,7 +807,6 @@ mod tests {
             public_key: [key_byte; 32],
             pop_signature: [key_byte; 64],
             invocation_cost_mist: u64::from(key_byte),
-            verifier_contract: ToolVerifierContractInput::RegisteredKey,
         }
     }
 
@@ -782,56 +843,16 @@ mod tests {
     }
 
     #[test]
-    fn registered_key_verifier_is_fixed_during_registration() {
-        let objects = nexus_objects();
-        let registration = batch_registration("registered-key", 1);
-        let ptb = register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::RegisteredKey,
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap();
-        let calls = move_calls(&ptb);
-        assert!(calls.iter().any(|call| {
-            call.module.as_str() == "tool_registry"
-                && call.function.as_str() == "verifier_contract_registered_key"
-        }));
-    }
-
-    #[test]
-    fn no_verifier_is_fixed_during_registration() {
-        let objects = nexus_objects();
-        let registration = batch_registration("no-verifier", 1);
-        let ptb = register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::None,
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap();
-        let calls = move_calls(&ptb);
-        assert!(calls.iter().any(|call| {
-            call.module.as_str() == "tool_registry"
-                && call.function.as_str() == "verifier_contract_none"
-        }));
-    }
-
-    #[test]
-    fn close_uses_the_tool_and_current_registry() {
+    fn unregister_uses_the_tool_and_current_registry() {
         let objects = nexus_objects();
         let tool = object_ref("0x20", 2, 20);
         let owner_cap = object_ref("0x21", 3, 21);
-        let ptb = close_ptb(&objects, &tool, &owner_cap).unwrap();
+        let ptb = unregister_ptb(&objects, &tool, &owner_cap).unwrap();
 
         let calls = move_calls(&ptb);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].module.as_str(), "tool_registry");
-        assert_eq!(calls[0].function.as_str(), "close");
+        assert_eq!(calls[0].function.as_str(), "unregister");
         assert_eq!(calls[0].arguments.len(), 4);
         let tool_input = ptb
             .inputs
@@ -840,7 +861,7 @@ mod tests {
                 CallArg::Shared(shared) if shared.object_id() == *tool.object_id() => Some(shared),
                 _ => None,
             })
-            .expect("close must use the mutable Tool");
+            .expect("unregister must use the mutable Tool");
         assert!(tool_input.mutability().is_mutable());
         assert!(ptb.inputs.iter().any(|input| {
             matches!(input, CallArg::Shared(shared) if shared.object_id() == objects.tool_registry.object_id())
@@ -848,26 +869,27 @@ mod tests {
     }
 
     #[test]
-    fn retire_uses_tool_registry_cashier_and_owner_authority() {
+    fn update_url_uses_tool_and_owner_authority() {
         let objects = nexus_objects();
-        let ptb = retire_ptb(
+        let ptb = update_off_chain_tool_url_ptb(
             &objects,
             &object_ref("0x20", 2, 20),
             &object_ref("0x21", 3, 21),
-            &object_ref("0x22", 4, 22),
+            "https://example.com/new",
         )
         .unwrap();
         let calls = move_calls(&ptb);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].module.as_str(), "tool_registry");
-        assert_eq!(calls[0].function.as_str(), "retire");
-        assert_eq!(calls[0].arguments.len(), 5);
+        assert_eq!(calls[0].function.as_str(), "update_off_chain_tool_url");
+        assert_eq!(calls[0].arguments.len(), 3);
     }
 
     #[test]
     fn external_registration_keeps_witness_first_and_appends_objects_in_order() {
         let objects = nexus_objects();
-        let registration = batch_registration("external", 1);
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
         let witness_type = object_type("0x40", "state", "Witness");
         let config_type = object_type("0x40", "state", "Config");
         let input = ExternalVerifierRegistrationInput {
@@ -885,22 +907,14 @@ mod tests {
                 },
             ],
         };
-        let ptb = register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::External(input),
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap();
+        let ptb = register_external_verifier_ptb(&objects, &tool, &owner_cap, &input).unwrap();
         let calls = move_calls(&ptb)
             .into_iter()
             .filter(|call| {
                 (call.module.as_str() == "external_verifier"
                     && matches!(call.function.as_str(), "new" | "add_object"))
                     || (call.module.as_str() == "tool_registry"
-                        && call.function.as_str() == "verifier_contract_external")
+                        && call.function.as_str() == "register_external_verifier")
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -911,20 +925,21 @@ mod tests {
             vec![
                 ("external_verifier", "new"),
                 ("external_verifier", "add_object"),
-                ("tool_registry", "verifier_contract_external"),
+                ("tool_registry", "register_external_verifier"),
             ]
         );
         assert_eq!(calls[0].type_arguments, vec![witness_type]);
         assert_eq!(calls[1].type_arguments, vec![config_type]);
         assert_eq!(calls[0].arguments.len(), 5);
         assert_eq!(calls[1].arguments.len(), 2);
-        assert_eq!(calls[2].arguments.len(), 1);
+        assert_eq!(calls[2].arguments.len(), 4);
     }
 
     #[test]
     fn external_registration_requires_nonzero_unique_witness_and_objects() {
         let objects = nexus_objects();
-        let registration = batch_registration("invalid-external", 1);
+        let tool = object_ref("0x20", 2, 20);
+        let owner_cap = object_ref("0x21", 3, 21);
         let base = ExternalVerifierRegistrationInput {
             package_id: addr("0x41"),
             module_name: "verifier".to_string(),
@@ -932,17 +947,12 @@ mod tests {
             verifier_objects: vec![],
         };
 
-        assert!(register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::External(base.clone()),
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("witness at object zero"));
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &base)
+                .unwrap_err()
+                .to_string()
+                .contains("witness at object zero")
+        );
 
         let object_type = object_type("0x40", "state", "Witness");
         let zero = ExternalVerifierRegistrationInput {
@@ -952,17 +962,12 @@ mod tests {
             }],
             ..base.clone()
         };
-        assert!(register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::External(zero),
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("must not be zero"));
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &zero)
+                .unwrap_err()
+                .to_string()
+                .contains("must not be zero")
+        );
 
         let duplicate_ref = object_ref("0x42", 5, 42);
         let duplicate = ExternalVerifierRegistrationInput {
@@ -978,28 +983,22 @@ mod tests {
             ],
             ..base
         };
-        assert!(register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &registration.meta,
-            &ToolVerifierContractInput::External(duplicate),
-            addr("0x20"),
-            1,
-            registration.invocation_cost_mist,
-        )
-        .unwrap_err()
-        .to_string()
-        .contains("must be unique"));
+        assert!(
+            register_external_verifier_ptb(&objects, &tool, &owner_cap, &duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("must be unique")
+        );
     }
 
     #[test]
-    fn single_off_chain_registration_retains_its_lifecycle_commands() {
+    fn single_off_chain_registration_shares_tool_and_transfers_authority() {
         let objects = sui_mocks::mock_nexus_context();
         let owner = sui_mocks::mock_sui_address();
         let registration = batch_registration("single", 6);
         let ptb = register_off_chain_for_self_with_address_balance_ptb(
             &objects,
             &registration.meta,
-            &registration.verifier_contract,
             owner,
             7,
             registration.invocation_cost_mist,
@@ -1019,7 +1018,7 @@ mod tests {
                     && call.function.as_str() == "register_off_chain_tool"
             })
             .expect("single registration must create the Tool and both capabilities");
-        assert_eq!(register.arguments.len(), 10);
+        assert_eq!(register.arguments.len(), 9);
         let transfer = ptb
             .commands
             .iter()
@@ -1185,15 +1184,9 @@ mod tests {
             output_schema: OFFCHAIN_OUTPUT_SCHEMA.to_vec(),
         };
 
-        let ptb = register_off_chain_for_self_with_address_balance_ptb(
-            &objects,
-            &meta,
-            &ToolVerifierContractInput::None,
-            address,
-            42,
-            7,
-        )
-        .unwrap();
+        let ptb =
+            register_off_chain_for_self_with_address_balance_ptb(&objects, &meta, address, 42, 7)
+                .unwrap();
 
         assert_us_address_balance_withdrawal(&objects, &ptb, 42);
     }
@@ -1289,7 +1282,6 @@ mod tests {
         let error = register_off_chain_for_self_with_address_balance_ptb(
             &objects,
             &registration.meta,
-            &ToolVerifierContractInput::None,
             addr("0x20"),
             1,
             registration.invocation_cost_mist,

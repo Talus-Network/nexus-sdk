@@ -279,11 +279,11 @@ fn validate_on_chain_tool_signature(
     generated_meta_schema: &MetaSchema,
     generated_mode: OnchainToolMode,
 ) -> anyhow::Result<()> {
-    if &tool.meta_schema != generated_meta_schema {
+    if &tool.inner.meta_schema != generated_meta_schema {
         bail!("On-chain Tool '{fqn}' signature does not match its registered MetaSchema");
     }
 
-    let configured_mode = if tool.workflow_authorization_cap_first {
+    let configured_mode = if tool.inner.workflow_authorization_cap_first {
         OnchainToolMode::WorkflowAuthorization
     } else {
         OnchainToolMode::Standard
@@ -326,14 +326,9 @@ mod tests {
         nexus_sdk::{
             move_bindings::{
                 interface::meta_schema::{OutputVariantSchema, PortSchema, ValueKind},
-                move_std::ascii,
+                move_std::{ascii, option::Option as MoveOption},
                 sui_framework::{balance::Balance, object::ID},
-                tool::tool_registry::{
-                    ToolDefinition,
-                    ToolInnerV1,
-                    ToolLifecycle,
-                    ToolVerifierContract,
-                },
+                tool::tool_registry::ToolInnerV1,
             },
             types::ToolRef,
         },
@@ -385,7 +380,8 @@ mod tests {
     fn on_chain_tool(workflow_authorization_cap_first: bool) -> ToolState {
         ToolState::new(
             sui::types::Address::from_static("0x43"),
-            ToolDefinition::new(
+            ToolInnerV1::new(
+                ID::new(sui::types::Address::from_static("0x42")),
                 ascii::String::from("xyz.taluslabs.example@1"),
                 ToolRef::Sui {
                     package_address: sui::types::Address::from_static("0x1234"),
@@ -394,20 +390,15 @@ mod tests {
                 },
                 b"Example on-chain Tool".to_vec(),
                 on_chain_meta_schema(),
-                5_000,
-                ToolVerifierContract::RegisteredKey,
-                workflow_authorization_cap_first,
-                0,
-            ),
-            ToolInnerV1::new(
-                ID::new(sui::types::Address::from_static("0x42")),
+                false,
                 Balance {
                     value: 25,
                     phantom_t0: std::marker::PhantomData,
                 },
+                workflow_authorization_cap_first,
                 5_000,
                 0,
-                ToolLifecycle::Open,
+                MoveOption::from(None),
             ),
         )
     }
@@ -425,7 +416,7 @@ mod tests {
     fn on_chain_validation_rejects_off_chain_tool() {
         let fqn = fqn!("xyz.taluslabs.example@1");
         let mut tool = on_chain_tool(false);
-        tool.r#ref = ToolRef::Http {
+        tool.inner.r#ref = ToolRef::Http {
             url: b"https://example.com/tool".to_vec(),
         };
 
@@ -460,7 +451,7 @@ mod tests {
                 false,
                 ValueKind::Data,
             )],
-            tool.meta_schema.output_variants.clone(),
+            tool.inner.meta_schema.output_variants.clone(),
         );
 
         let error =

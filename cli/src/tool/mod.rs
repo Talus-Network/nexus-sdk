@@ -1,13 +1,17 @@
 mod cashier;
 mod tool_auth;
 mod tool_claim_collateral;
+mod tool_configure_verifier;
 mod tool_inspect;
-mod tool_lifecycle;
 mod tool_list;
 mod tool_new;
 mod tool_output;
 mod tool_register_offchain;
 mod tool_register_onchain;
+mod tool_set_invocation_cost;
+mod tool_unregister;
+mod tool_update;
+mod tool_update_timeout;
 mod tool_validate;
 
 use {
@@ -15,12 +19,16 @@ use {
     cashier::{handle_cashier, CashierCommand},
     tool_auth::handle_tool_auth,
     tool_claim_collateral::*,
+    tool_configure_verifier::{configure_verifier, VerifierCommand},
     tool_inspect::inspect_tool,
-    tool_lifecycle::{run as run_lifecycle, LifecycleAction},
     tool_list::*,
     tool_new::*,
-    tool_register_offchain::{register_off_chain_tool, ToolVerifierArgs},
+    tool_register_offchain::register_off_chain_tool,
     tool_register_onchain::register_onchain_tool,
+    tool_set_invocation_cost::set_invocation_cost,
+    tool_unregister::unregister_tool,
+    tool_update::{update_metadata, update_on_chain_package, update_url},
+    tool_update_timeout::update_timeout,
     tool_validate::{
         output_on_chain_validation,
         output_validation,
@@ -185,9 +193,6 @@ pub(crate) enum RegisterCommand {
         )]
         invocation_cost: u64,
 
-        #[command(flatten)]
-        verifier: ToolVerifierArgs,
-
         #[arg(
             long = "batch",
             help = "Should all tools on a webserver be registered at once? Incompatible with --from-meta."
@@ -345,12 +350,12 @@ pub(crate) enum ToolCommand {
     #[command(subcommand, about = "Manage payment tickets through a tool cashier")]
     Cashier(CashierCommand),
 
-    #[command(about = "Close a Tool so it accepts no new invocations")]
-    Close {
+    #[command(about = "Unregister a Tool from live protocol lookup")]
+    Unregister {
         #[arg(
             long = "tool-fqn",
             short = 't',
-            help = "The FQN of the Tool to close",
+            help = "The FQN of the Tool to unregister",
             value_name = "FQN"
         )]
         tool_fqn: ToolFqn,
@@ -361,22 +366,77 @@ pub(crate) enum ToolCommand {
             value_name = "OBJECT_ID"
         )]
         owner_cap: Option<sui::types::Address>,
+        #[arg(long = "yes", short = 'y', help = "Skip the confirmation prompt")]
+        skip_confirmation: bool,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(about = "Drain settled SUI from a Tool cashier")]
-    DrainCashier {
+    #[command(about = "Update the HTTP endpoint of an offchain Tool")]
+    UpdateUrl {
         #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
         tool_fqn: ToolFqn,
+        #[arg(long = "url", short = 'u', value_name = "URL")]
+        url: reqwest::Url,
         #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
         owner_cap: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
 
-    #[command(about = "Retire a closed and fully drained Tool")]
-    Retire {
+    #[command(about = "Update the description of a Tool")]
+    UpdateMetadata {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "description", short = 'd', value_name = "TEXT")]
+        description: String,
+        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
+        owner_cap: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Update the package of an onchain Tool")]
+    MigratePackage {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "package", short = 'p', value_name = "PACKAGE_ID")]
+        package: sui::types::Address,
+        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
+        owner_cap: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Update the execution timeout of a Tool")]
+    UpdateTimeout {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "timeout", value_name = "DURATION", value_parser = ValueParser::from(humantime::parse_duration))]
+        timeout: std::time::Duration,
+        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
+        owner_cap: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(about = "Set the invocation price of a Tool")]
+    SetInvocationCost {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "cost", value_name = "MIST")]
+        cost: u64,
+        #[arg(long = "cashier-admin", value_name = "OBJECT_ID")]
+        cashier_admin: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+
+    #[command(subcommand, about = "Configure Tool response verification")]
+    ConfigureVerifier(VerifierCommand),
+
+    #[command(about = "Drain settled SUI from a Tool cashier")]
+    DrainCashier {
         #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
         tool_fqn: ToolFqn,
         #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
@@ -460,7 +520,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                 from_meta,
                 collateral_coin,
                 invocation_cost,
-                verifier,
                 batch,
                 no_save,
                 gas,
@@ -470,7 +529,6 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
                     from_meta,
                     collateral_coin,
                     invocation_cost,
-                    verifier,
                     batch,
                     no_save,
                     gas.sui_gas_coin,
@@ -510,49 +568,111 @@ pub(crate) async fn handle(command: ToolCommand) -> AnyResult<(), NexusCliError>
         // == `$ nexus tool cashier` ==
         ToolCommand::Cashier(command) => handle_cashier(command).await,
 
-        ToolCommand::Close {
+        ToolCommand::Unregister {
             tool_fqn,
+            owner_cap,
+            skip_confirmation,
+            gas,
+        } => {
+            unregister_tool(
+                tool_fqn,
+                owner_cap,
+                skip_confirmation,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        ToolCommand::UpdateUrl {
+            tool_fqn,
+            url,
             owner_cap,
             gas,
         } => {
-            run_lifecycle(
-                LifecycleAction::Close,
+            update_url(
                 tool_fqn,
+                url,
                 owner_cap,
                 gas.sui_gas_coin,
                 gas.sui_gas_budget,
             )
             .await
         }
+
+        ToolCommand::UpdateMetadata {
+            tool_fqn,
+            description,
+            owner_cap,
+            gas,
+        } => {
+            update_metadata(
+                tool_fqn,
+                description,
+                owner_cap,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        ToolCommand::MigratePackage {
+            tool_fqn,
+            package,
+            owner_cap,
+            gas,
+        } => {
+            update_on_chain_package(
+                tool_fqn,
+                package,
+                owner_cap,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        ToolCommand::UpdateTimeout {
+            tool_fqn,
+            timeout,
+            owner_cap,
+            gas,
+        } => {
+            update_timeout(
+                tool_fqn,
+                timeout,
+                owner_cap,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        ToolCommand::SetInvocationCost {
+            tool_fqn,
+            cost,
+            cashier_admin,
+            gas,
+        } => {
+            set_invocation_cost(
+                tool_fqn,
+                cost,
+                cashier_admin,
+                gas.sui_gas_coin,
+                gas.sui_gas_budget,
+            )
+            .await
+        }
+
+        ToolCommand::ConfigureVerifier(command) => configure_verifier(command).await,
 
         ToolCommand::DrainCashier {
             tool_fqn,
             owner_cap,
             gas,
         } => {
-            run_lifecycle(
-                LifecycleAction::DrainCashier,
-                tool_fqn,
-                owner_cap,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
-        }
-
-        ToolCommand::Retire {
-            tool_fqn,
-            owner_cap,
-            gas,
-        } => {
-            run_lifecycle(
-                LifecycleAction::Retire,
-                tool_fqn,
-                owner_cap,
-                gas.sui_gas_coin,
-                gas.sui_gas_budget,
-            )
-            .await
+            tool_update::drain_cashier(tool_fqn, owner_cap, gas.sui_gas_coin, gas.sui_gas_budget)
+                .await
         }
 
         // == `$ nexus tool claim-collateral` ==

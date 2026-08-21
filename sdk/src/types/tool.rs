@@ -5,18 +5,15 @@
 //! duplicate that shape; it only adds SDK projections that are not part of the
 //! ABI itself.
 
-pub use tool_registry::{Tool as ToolAnchor, ToolDefinition, ToolInnerV1, ToolLifecycle, ToolRef};
+pub use tool_registry::{Tool as ToolAnchor, ToolInnerV1, ToolRef};
 /// Complete supported view of one [`ToolAnchor`].
 ///
-/// A [`ToolDefinition`] is stored permanently in the registry while
-/// [`ToolInnerV1`] is stored below the Tool anchor. This view combines them for
-/// inspection without claiming that they share one persisted layout.
+/// [`ToolInnerV1`] is stored below the Tool anchor. This view pairs the stable
+/// object ID with that current logical state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolState {
     /// Stable Tool object ID.
     pub object_id: sui::types::Address,
-    /// Immutable Tool definition stored by the registry.
-    pub definition: ToolDefinition,
     /// Current supported Tool inner layout.
     pub inner: ToolInnerV1,
 }
@@ -29,9 +26,8 @@ use {
         sui,
         ToolFqn,
     },
-    anyhow::{anyhow, Context as _},
+    anyhow::{anyhow, bail, Context as _},
     chrono::{DateTime, Utc},
-    std::ops::{Deref, DerefMut},
 };
 
 /// Registry mode derived from an onchain Tool `execute` signature.
@@ -51,16 +47,8 @@ impl ToolAnchor {
 
 impl ToolState {
     /// Creates a complete supported Tool view.
-    pub fn new(
-        object_id: sui::types::Address,
-        definition: ToolDefinition,
-        inner: ToolInnerV1,
-    ) -> Self {
-        Self {
-            object_id,
-            definition,
-            inner,
-        }
+    pub fn new(object_id: sui::types::Address, inner: ToolInnerV1) -> Self {
+        Self { object_id, inner }
     }
 
     /// Derive a [`ToolAnchor`] object ID from the ToolRegistry ID and tool FQN.
@@ -76,7 +64,7 @@ impl ToolState {
     }
 
     pub fn fqn_string(&self) -> anyhow::Result<String> {
-        ascii_string(&self.definition.fqn).context("Tool FQN is not UTF-8")
+        ascii_string(&self.inner.fqn).context("Tool FQN is not UTF-8")
     }
 
     pub fn parsed_fqn(&self) -> anyhow::Result<ToolFqn> {
@@ -87,11 +75,11 @@ impl ToolState {
     }
 
     pub fn reference(&self) -> &ToolRef {
-        &self.definition.r#ref
+        &self.inner.r#ref
     }
 
     pub fn description_string(&self) -> anyhow::Result<String> {
-        std::str::from_utf8(&self.definition.description)
+        std::str::from_utf8(&self.inner.description)
             .map(str::to_owned)
             .context("Tool description is not UTF-8")
     }
@@ -107,24 +95,14 @@ impl ToolState {
     }
 
     pub fn unregistered_at_millis(&self) -> anyhow::Result<Option<u64>> {
-        match self.inner.lifecycle {
-            ToolLifecycle::Open => Ok(None),
-            ToolLifecycle::Closed { at_ms } | ToolLifecycle::Retired { at_ms } => Ok(Some(at_ms)),
+        match self.inner.unregistered_at_ms.vec.as_slice() {
+            [] => Ok(None),
+            [millis] => Ok(Some(*millis)),
+            values => bail!(
+                "Tool unregistered_at_ms is not a valid Move option: {} values",
+                values.len()
+            ),
         }
-    }
-}
-
-impl Deref for ToolState {
-    type Target = ToolDefinition;
-
-    fn deref(&self) -> &Self::Target {
-        &self.definition
-    }
-}
-
-impl DerefMut for ToolState {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.definition
     }
 }
 
@@ -205,7 +183,7 @@ mod tests {
         super::*,
         crate::{
             fqn,
-            move_bindings::{sui_framework, tool::tool_registry::ToolVerifierContract},
+            move_bindings::{move_std::option::Option as MoveOption, sui_framework},
             test_utils::sui_mocks,
         },
     };
@@ -218,25 +196,21 @@ mod tests {
         let object_id = sui_mocks::mock_sui_address();
         ToolState::new(
             object_id,
-            ToolDefinition::new(
+            ToolInnerV1::new(
+                crate::move_bindings::sui_framework::object::ID::new(sui_mocks::mock_sui_address()),
                 ascii("xyz.taluslabs.math.i64.add@1"),
                 reference,
                 b"A test tool".to_vec(),
                 crate::move_bindings::interface::meta_schema::MetaSchema::new(vec![], vec![]),
-                30_000,
-                ToolVerifierContract::None,
-                true,
-                0,
-            ),
-            ToolInnerV1::new(
-                crate::move_bindings::sui_framework::object::ID::new(sui_mocks::mock_sui_address()),
+                false,
                 sui_framework::balance::Balance {
                     value: 0,
                     phantom_t0: std::marker::PhantomData,
                 },
+                true,
                 0,
                 0,
-                ToolLifecycle::Open,
+                MoveOption::from(None),
             ),
         )
     }
@@ -266,12 +240,9 @@ mod tests {
             url: b"https://example.com/tool".to_vec(),
         });
 
-        let definition_bytes =
-            bcs::to_bytes(&tool.definition).expect("generated definition serializes as BCS");
         let inner_bytes = bcs::to_bytes(&tool.inner).expect("generated inner serializes as BCS");
         let decoded = ToolState::new(
             tool.object_id,
-            bcs::from_bytes(&definition_bytes).expect("generated definition decodes"),
             bcs::from_bytes(&inner_bytes).expect("generated inner decodes"),
         );
 
@@ -284,7 +255,7 @@ mod tests {
             decoded.registered_at_datetime().unwrap(),
             DateTime::<Utc>::from_timestamp(0, 0).unwrap()
         );
-        assert_eq!(decoded.meta_schema, tool.meta_schema);
+        assert_eq!(decoded.inner.meta_schema, tool.inner.meta_schema);
     }
 
     #[test]

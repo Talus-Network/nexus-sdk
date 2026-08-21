@@ -3803,153 +3803,6 @@
           "type_name": {
             "address": "0xa7",
             "module": "tool_registry",
-            "name": "ToolClosedEvent"
-          },
-          "module": "tool_registry",
-          "name": "ToolClosedEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "tool",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "fqn",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_registry",
-            "name": "ToolDefinition"
-          },
-          "module": "tool_registry",
-          "name": "ToolDefinition",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "fqn",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "ref",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRef"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "description",
-                  "position": 2,
-                  "ty": {
-                    "Vector": "U8"
-                  }
-                },
-                {
-                  "name": "meta_schema",
-                  "position": 3,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "meta_schema",
-                        "name": "MetaSchema"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "timeout_ms",
-                  "position": 4,
-                  "ty": "U64"
-                },
-                {
-                  "name": "verifier_contract",
-                  "position": 5,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolVerifierContract"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "workflow_authorization_cap_first",
-                  "position": 6,
-                  "ty": "Bool"
-                },
-                {
-                  "name": "invocation_cost_mist",
-                  "position": 7,
-                  "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_registry",
             "name": "ToolInnerV1"
           },
           "module": "tool_registry",
@@ -3976,8 +3829,62 @@
                   }
                 },
                 {
-                  "name": "vault",
+                  "name": "fqn",
                   "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "ref",
+                  "position": 2,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRef"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "description",
+                  "position": 3,
+                  "ty": {
+                    "Vector": "U8"
+                  }
+                },
+                {
+                  "name": "meta_schema",
+                  "position": 4,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "meta_schema",
+                        "name": "MetaSchema"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "verified",
+                  "position": 5,
+                  "ty": "Bool"
+                },
+                {
+                  "name": "vault",
+                  "position": 6,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -4001,76 +3908,35 @@
                   }
                 },
                 {
+                  "name": "workflow_authorization_cap_first",
+                  "position": 7,
+                  "ty": "Bool"
+                },
+                {
                   "name": "lock_duration_ms",
-                  "position": 2,
+                  "position": 8,
                   "ty": "U64"
                 },
                 {
                   "name": "registered_at_ms",
-                  "position": 3,
+                  "position": 9,
                   "ty": "U64"
                 },
                 {
-                  "name": "lifecycle",
-                  "position": 4,
+                  "name": "unregistered_at_ms",
+                  "position": 10,
                   "ty": {
                     "Datatype": {
                       "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolLifecycle"
+                        "address": "0x1",
+                        "module": "option",
+                        "name": "Option"
                       },
-                      "type_arguments": []
+                      "type_arguments": [
+                        "U64"
+                      ]
                     }
                   }
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_registry",
-            "name": "ToolLifecycle"
-          },
-          "module": "tool_registry",
-          "name": "ToolLifecycle",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "Open",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "Closed",
-                  "position": 1,
-                  "fields": [
-                    {
-                      "name": "at_ms",
-                      "position": 0,
-                      "ty": "U64"
-                    }
-                  ]
-                },
-                {
-                  "name": "Retired",
-                  "position": 2,
-                  "fields": [
-                    {
-                      "name": "at_ms",
-                      "position": 0,
-                      "ty": "U64"
-                    }
-                  ]
                 }
               ]
             }
@@ -4389,7 +4255,7 @@
                   }
                 },
                 {
-                  "name": "definitions",
+                  "name": "meta_schemas",
                   "position": 2,
                   "ty": {
                     "Datatype": {
@@ -4412,9 +4278,9 @@
                         {
                           "Datatype": {
                             "type_name": {
-                              "address": "0xa7",
-                              "module": "tool_registry",
-                              "name": "ToolDefinition"
+                              "address": "0xa2",
+                              "module": "meta_schema",
+                              "name": "MetaSchema"
                             },
                             "type_arguments": []
                           }
@@ -4424,8 +4290,34 @@
                   }
                 },
                 {
-                  "name": "endorsements",
+                  "name": "timeouts",
                   "position": 3,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "linked_table",
+                        "name": "LinkedTable"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "ascii",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "verifier_support",
+                  "position": 4,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -4444,6 +4336,137 @@
                             "type_arguments": []
                           }
                         },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "verifier",
+                              "name": "ToolVerifierSupport"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "external_verifiers",
+                  "position": 5,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "external_verifier",
+                              "name": "ExternalVerifier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "invocation_costs_mist",
+                  "position": 6,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "table",
+                        "name": "Table"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "ascii",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        "U64"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "on_chain_tool_witnesses",
+                  "position": 7,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "linked_table",
+                        "name": "LinkedTable"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "ascii",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "name": "workflow_authorization_cap_first",
+                  "position": 8,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "linked_table",
+                        "name": "LinkedTable"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x1",
+                              "module": "ascii",
+                              "name": "String"
+                            },
+                            "type_arguments": []
+                          }
+                        },
                         "Bool"
                       ]
                     }
@@ -4451,61 +4474,13 @@
                 },
                 {
                   "name": "us_collateral_to_lock",
-                  "position": 4,
+                  "position": 9,
                   "ty": "U64"
                 },
                 {
                   "name": "lock_duration_ms",
-                  "position": 5,
+                  "position": 10,
                   "ty": "U64"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_registry",
-            "name": "ToolRetiredEvent"
-          },
-          "module": "tool_registry",
-          "name": "ToolRetiredEvent",
-          "abilities": [
-            "Copy",
-            "Drop"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "tool",
-                  "position": 0,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "object",
-                        "name": "ID"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                },
-                {
-                  "name": "fqn",
-                  "position": 1,
-                  "ty": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x1",
-                        "module": "ascii",
-                        "name": "String"
-                      },
-                      "type_arguments": []
-                    }
-                  }
                 }
               ]
             }
@@ -4568,6 +4543,102 @@
           "type_name": {
             "address": "0xa7",
             "module": "tool_registry",
+            "name": "ToolUnregisteredEvent"
+          },
+          "module": "tool_registry",
+          "name": "ToolUnregisteredEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "tool",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "fqn",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "tool_registry",
+            "name": "ToolUpdatedEvent"
+          },
+          "module": "tool_registry",
+          "name": "ToolUpdatedEvent",
+          "abilities": [
+            "Copy",
+            "Drop"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "tool",
+                  "position": 0,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "ID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                },
+                {
+                  "name": "fqn",
+                  "position": 1,
+                  "ty": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x1",
+                        "module": "ascii",
+                        "name": "String"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa7",
+            "module": "tool_registry",
             "name": "ToolVerificationStatusChangedEvent"
           },
           "module": "tool_registry",
@@ -4612,57 +4683,6 @@
                   "name": "verified",
                   "position": 2,
                   "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa7",
-            "module": "tool_registry",
-            "name": "ToolVerifierContract"
-          },
-          "module": "tool_registry",
-          "name": "ToolVerifierContract",
-          "abilities": [
-            "Copy",
-            "Drop",
-            "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Enum": {
-              "variants": [
-                {
-                  "name": "None",
-                  "position": 0,
-                  "fields": []
-                },
-                {
-                  "name": "RegisteredKey",
-                  "position": 1,
-                  "fields": []
-                },
-                {
-                  "name": "External",
-                  "position": 2,
-                  "fields": [
-                    {
-                      "name": "pos0",
-                      "position": 0,
-                      "ty": {
-                        "Datatype": {
-                          "type_name": {
-                            "address": "0xa7",
-                            "module": "external_verifier",
-                            "name": "ExternalVerifier"
-                          },
-                          "type_arguments": []
-                        }
-                      }
-                    }
-                  ]
                 }
               ]
             }
@@ -5241,29 +5261,11 @@
           "return_types": []
         },
         {
-          "name": "close",
+          "name": "configure_registered_key_support",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
             {
               "name": "registry",
               "ty": {
@@ -5275,6 +5277,24 @@
                         "address": "0xa7",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
                       },
                       "type_arguments": []
                     }
@@ -5306,87 +5326,6 @@
                           }
                         }
                       ]
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "close_internal",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "clock",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0x2",
-                        "module": "clock",
-                        "name": "Clock"
-                      },
-                      "type_arguments": []
                     }
                   }
                 }
@@ -5582,62 +5521,6 @@
           ]
         },
         {
-          "name": "definition_by_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "state",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistryInnerV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "tool_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa7",
-                      "module": "tool_registry",
-                      "name": "ToolDefinition"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
           "name": "delegate_cashier_admin",
           "visibility": "Public",
           "is_entry": false,
@@ -5734,7 +5617,7 @@
           ]
         },
         {
-          "name": "did_close_period_pass",
+          "name": "did_unregister_period_pass",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -5778,57 +5661,6 @@
           ],
           "return_types": [
             "Bool"
-          ]
-        },
-        {
-          "name": "directory_tool_id",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "state",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistryInnerV1"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "fqn",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x1",
-                    "module": "ascii",
-                    "name": "String"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x2",
-                  "module": "object",
-                  "name": "ID"
-                },
-                "type_arguments": []
-              }
-            }
           ]
         },
         {
@@ -6038,6 +5870,44 @@
           ]
         },
         {
+          "name": "fqn",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0x1",
+                  "module": "ascii",
+                  "name": "String"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
           "name": "has_external_verifier",
           "visibility": "Public",
           "is_entry": false,
@@ -6077,49 +5947,6 @@
           ],
           "return_types": [
             "Bool"
-          ]
-        },
-        {
-          "name": "id_mut_for_transition",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x2",
-                      "module": "object",
-                      "name": "UID"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
           ]
         },
         {
@@ -6249,94 +6076,7 @@
           ]
         },
         {
-          "name": "is_closed",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "is_open",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
           "name": "is_registered",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "is_retired",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -6380,7 +6120,251 @@
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            "Bool"
+          ]
+        },
+        {
+          "name": "load_registry",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
                         "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa7",
+                      "module": "tool_registry",
+                      "name": "ToolRegistryInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_registry_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa7",
+                      "module": "tool_registry",
+                      "name": "ToolRegistryInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_tool",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa7",
+                      "module": "tool_registry",
+                      "name": "ToolInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_tool_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa7",
+                      "module": "tool_registry",
+                      "name": "ToolInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "meta_schema",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa2",
+                      "module": "meta_schema",
+                      "name": "MetaSchema"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "migrate_on_chain_tool_package",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
                       },
                       "type_arguments": []
                     }
@@ -6389,70 +6373,40 @@
               }
             },
             {
-              "name": "tool_id",
+              "name": "owner_cap",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
                 }
               }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "lifecycle_is_closed",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
+            },
             {
-              "name": "lifecycle",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_registry",
-                    "name": "ToolLifecycle"
-                  },
-                  "type_arguments": []
-                }
-              }
+              "name": "target_package",
+              "ty": "Address"
             }
           ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "lifecycle_is_open",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "lifecycle",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_registry",
-                    "name": "ToolLifecycle"
-                  },
-                  "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
+          "return_types": []
         },
         {
           "name": "new",
@@ -6596,6 +6550,93 @@
           ]
         },
         {
+          "name": "register_external_verifier",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registration",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa7",
+                    "module": "external_verifier",
+                    "name": "ExternalVerifierRegistration"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "register_off_chain_tool",
           "visibility": "Public",
           "is_entry": false,
@@ -6660,19 +6701,6 @@
             {
               "name": "timeout_ms",
               "ty": "U64"
-            },
-            {
-              "name": "verifier_contract",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_registry",
-                    "name": "ToolVerifierContract"
-                  },
-                  "type_arguments": []
-                }
-              }
             },
             {
               "name": "invocation_cost_mist",
@@ -7522,19 +7550,6 @@
               "ty": "U64"
             },
             {
-              "name": "verifier_contract",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "tool_registry",
-                    "name": "ToolVerifierContract"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
               "name": "invocation_cost_mist",
               "ty": "U64"
             },
@@ -7715,93 +7730,7 @@
           ]
         },
         {
-          "name": "registry_inner",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa7",
-                      "module": "tool_registry",
-                      "name": "ToolRegistryInnerV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "registry_inner_mut",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa7",
-                      "module": "tool_registry",
-                      "name": "ToolRegistryInnerV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "retire",
+          "name": "reregister_tool",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
@@ -7828,31 +7757,13 @@
               "name": "registry",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
                         "name": "ToolRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "cashier",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_cashier",
-                        "name": "ToolCashier"
                       },
                       "type_arguments": []
                     }
@@ -7890,6 +7801,84 @@
               }
             },
             {
+              "name": "pay_with",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "coin",
+                        "name": "Coin"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa6",
+                              "module": "us",
+                              "name": "US"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "U64"
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "retire",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
               "name": "clock",
               "ty": {
                 "Ref": {
@@ -7906,6 +7895,84 @@
                   }
                 }
               }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "set_invocation_cost_mist",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "cashier_admin",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_cashier",
+                              "name": "OverToolCashier"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "cost",
+              "ty": "U64"
             }
           ],
           "return_types": []
@@ -8124,7 +8191,7 @@
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
-                        "name": "ToolRegistry"
+                        "name": "Tool"
                       },
                       "type_arguments": []
                     }
@@ -8133,7 +8200,7 @@
               }
             },
             {
-              "name": "tool",
+              "name": "registry",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8142,7 +8209,7 @@
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
-                        "name": "Tool"
+                        "name": "ToolRegistry"
                       },
                       "type_arguments": []
                     }
@@ -8469,135 +8536,6 @@
           ]
         },
         {
-          "name": "tool_id_mut_for_transition",
-          "visibility": "Friend",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0x2",
-                      "module": "object",
-                      "name": "UID"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "tool_inner",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": false,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa7",
-                      "module": "tool_registry",
-                      "name": "ToolInnerV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "tool_inner_mut",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "Tool"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Ref": {
-                "mutable": true,
-                "inner": {
-                  "Datatype": {
-                    "type_name": {
-                      "address": "0xa7",
-                      "module": "tool_registry",
-                      "name": "ToolInnerV1"
-                    },
-                    "type_arguments": []
-                  }
-                }
-              }
-            }
-          ]
-        },
-        {
           "name": "tool_timeout_ms",
           "visibility": "Public",
           "is_entry": false,
@@ -8640,22 +8578,22 @@
           ]
         },
         {
-          "name": "validate_verifier_contract",
-          "visibility": "Private",
+          "name": "unregister",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "contract",
+              "name": "self",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
-                        "name": "ToolVerifierContract"
+                        "name": "Tool"
                       },
                       "type_arguments": []
                     }
@@ -8664,15 +8602,67 @@
               }
             },
             {
-              "name": "tool_id",
+              "name": "registry",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
               }
             }
@@ -8680,46 +8670,137 @@
           "return_types": []
         },
         {
-          "name": "verifier_contract_external",
+          "name": "update_off_chain_tool_url",
           "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "registration",
+              "name": "self",
               "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0xa7",
-                    "module": "external_verifier",
-                    "name": "ExternalVerifierRegistration"
-                  },
-                  "type_arguments": []
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
                 }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "new_url",
+              "ty": {
+                "Vector": "U8"
               }
             }
           ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_registry",
-                  "name": "ToolVerifierContract"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
+          "return_types": []
         },
         {
-          "name": "verifier_contract_is_external",
-          "visibility": "Private",
+          "name": "update_tool_metadata",
+          "visibility": "Public",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
-              "name": "contract",
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "Tool"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "description",
+              "ty": {
+                "Vector": "U8"
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "update_tool_timeout",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
               "ty": {
                 "Ref": {
                   "mutable": false,
@@ -8728,85 +8809,67 @@
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
-                        "name": "ToolVerifierContract"
+                        "name": "Tool"
                       },
                       "type_arguments": []
                     }
                   }
                 }
               }
-            }
-          ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "verifier_contract_is_none",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
+            },
             {
-              "name": "contract",
+              "name": "registry",
               "ty": {
                 "Ref": {
-                  "mutable": false,
+                  "mutable": true,
                   "inner": {
                     "Datatype": {
                       "type_name": {
                         "address": "0xa7",
                         "module": "tool_registry",
-                        "name": "ToolVerifierContract"
+                        "name": "ToolRegistry"
                       },
                       "type_arguments": []
                     }
                   }
                 }
               }
+            },
+            {
+              "name": "owner_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa7",
+                              "module": "tool_authority",
+                              "name": "OverTool"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "U64"
             }
           ],
-          "return_types": [
-            "Bool"
-          ]
-        },
-        {
-          "name": "verifier_contract_none",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_registry",
-                  "name": "ToolVerifierContract"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
-        },
-        {
-          "name": "verifier_contract_registered_key",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0xa7",
-                  "module": "tool_registry",
-                  "name": "ToolVerifierContract"
-                },
-                "type_arguments": []
-              }
-            }
-          ]
+          "return_types": []
         },
         {
           "name": "verifier_support",
@@ -8842,55 +8905,6 @@
                     "name": "ID"
                   },
                   "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": [
-            {
-              "Datatype": {
-                "type_name": {
-                  "address": "0x1",
-                  "module": "option",
-                  "name": "Option"
-                },
-                "type_arguments": [
-                  {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "verifier",
-                        "name": "ToolVerifierSupport"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "verifier_support_for_contract",
-          "visibility": "Private",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "contract",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa7",
-                        "module": "tool_registry",
-                        "name": "ToolVerifierContract"
-                      },
-                      "type_arguments": []
-                    }
-                  }
                 }
               }
             }

@@ -39,7 +39,7 @@ pub(crate) fn inspect_tool_result_json(
     let tool = inspection
         .tool
         .as_ref()
-        .map(ToolOutput::try_from_state)
+        .map(|_| ToolOutput::try_from_inspection(inspection))
         .transpose()
         .map_err(NexusCliError::Any)?;
 
@@ -47,12 +47,11 @@ pub(crate) fn inspect_tool_result_json(
         "fqn": inspection.fqn,
         "tool_id": inspection.tool_id,
         "tool_cashier_id": inspection.tool_cashier_id,
-        "exists": inspection.definition.is_some(),
+        "exists": inspection.exists,
         "owner": inspection.owner,
         "witness_type": inspection.witness_type,
         "inner_type": inspection.inner_type,
         "compatibility": compatibility_name(inspection.compatibility),
-        "lifecycle": inspection.lifecycle,
         "tool_ref": tool_ref,
         "tool": tool,
         "detail": inspection.detail,
@@ -76,7 +75,7 @@ pub(crate) async fn inspect_registration_result(
 pub(crate) fn registration_result_json(
     inspection: &ToolInspection,
 ) -> AnyResult<Option<serde_json::Value>, NexusCliError> {
-    if inspection.definition.is_none() {
+    if !inspection.exists {
         return Ok(None);
     }
 
@@ -162,11 +161,14 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
     notify_success!(
         "Tool '{fqn}' is {lifecycle}.",
         fqn = tool.fqn_string().map_err(NexusCliError::Any)?,
-        lifecycle = match tool.inner.lifecycle {
-            nexus_sdk::move_bindings::tool::tool_registry::ToolLifecycle::Open => "open",
-            nexus_sdk::move_bindings::tool::tool_registry::ToolLifecycle::Closed { .. } => "closed",
-            nexus_sdk::move_bindings::tool::tool_registry::ToolLifecycle::Retired { .. } =>
-                "retired",
+        lifecycle = if tool
+            .unregistered_at_millis()
+            .map_err(NexusCliError::Any)?
+            .is_none()
+        {
+            "registered"
+        } else {
+            "unregistered"
         }
     );
     item!("Tool ID: {id}", id = inspection.tool_id);
@@ -180,10 +182,14 @@ fn print_inspection(inspection: &ToolInspection) -> AnyResult<(), NexusCliError>
         "Description: {description}",
         description = tool.description_string().map_err(NexusCliError::Any)?
     );
-    item!("Timeout: {timeout} ms", timeout = tool.timeout_ms);
+    if let Some(timeout) = inspection.timeout_ms {
+        item!("Timeout: {timeout} ms");
+    }
     item!(
         "Invocation cost: {cost} MIST",
-        cost = tool.invocation_cost_mist
+        cost = inspection
+            .invocation_cost_mist
+            .map_or_else(|| "unavailable".to_owned(), |value| value.to_string())
     );
     Ok(())
 }
@@ -211,51 +217,31 @@ fn compatibility_name(compatibility: ToolCompatibility) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        nexus_sdk::move_bindings::{
-            interface::meta_schema::MetaSchema,
-            move_std::ascii,
-            tool::tool_registry::{ToolDefinition, ToolRef as MoveToolRef, ToolVerifierContract},
-        },
-    };
+    use super::*;
 
-    fn inspection(definition: Option<ToolDefinition>) -> ToolInspection {
+    fn inspection(exists: bool) -> ToolInspection {
         ToolInspection {
             fqn: "demo.taluslabs.tool@1".parse().unwrap(),
             tool_id: sui::types::Address::ZERO,
             tool_cashier_id: sui::types::Address::ZERO,
+            exists,
             owner: None,
             witness_type: None,
             inner_type: None,
             compatibility: ToolCompatibility::Unavailable,
-            lifecycle: None,
-            endorsed: None,
-            definition,
             tool: None,
+            verifier_support: None,
+            external_verifier: None,
+            timeout_ms: None,
+            invocation_cost_mist: None,
             detail: None,
         }
     }
 
-    fn definition() -> ToolDefinition {
-        ToolDefinition::new(
-            ascii::String::from("demo.taluslabs.tool@1"),
-            MoveToolRef::Http {
-                url: b"https://example.com/tool".to_vec(),
-            },
-            b"Compatibility fixture".to_vec(),
-            MetaSchema::new(vec![], vec![]),
-            30_000,
-            ToolVerifierContract::None,
-            true,
-            0,
-        )
-    }
-
     #[test]
     fn inspection_json_preserves_the_exists_contract() {
-        let missing = inspect_tool_result_json(&inspection(None)).unwrap();
-        let registered = inspect_tool_result_json(&inspection(Some(definition()))).unwrap();
+        let missing = inspect_tool_result_json(&inspection(false)).unwrap();
+        let registered = inspect_tool_result_json(&inspection(true)).unwrap();
 
         assert_eq!(missing["exists"], false);
         assert_eq!(registered["exists"], true);

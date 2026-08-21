@@ -51,10 +51,7 @@ use {
             state::StateResolver,
         },
         sui,
-        transactions::{
-            self,
-            tool::{OffChainToolRegistration, ToolVerifierContractInput},
-        },
+        transactions::{self, tool::OffChainToolRegistration},
         types::{NexusContext, PackageRole, Tool, ToolMeta},
         ToolFqn,
     },
@@ -868,7 +865,6 @@ pub fn initial_tool_registration(
         public_key,
         pop_signature,
         invocation_cost_mist,
-        verifier_contract: ToolVerifierContractInput::RegisteredKey,
     })
 }
 

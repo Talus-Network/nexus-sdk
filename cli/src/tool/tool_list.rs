@@ -1,5 +1,5 @@
 use {
-    super::tool_output::{ToolLifecycleOutput, ToolOutput},
+    super::tool_output::ToolOutput,
     crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
     nexus_sdk::nexus::tool::{ToolCompatibility, ToolInspection},
     prettytable::{row, Table},
@@ -15,7 +15,7 @@ struct ToolInventoryOutput {
     witness_type: Option<sui::types::StructTag>,
     inner_type: Option<sui::types::StructTag>,
     compatibility: &'static str,
-    lifecycle: Option<ToolLifecycleOutput>,
+    registered: Option<bool>,
     tool: Option<ToolOutput>,
     detail: Option<String>,
 }
@@ -24,6 +24,16 @@ impl TryFrom<ToolInspection> for ToolInventoryOutput {
     type Error = anyhow::Error;
 
     fn try_from(inspection: ToolInspection) -> Result<Self, Self::Error> {
+        let registered = inspection
+            .tool
+            .as_ref()
+            .map(|tool| tool.unregistered_at_millis().map(|value| value.is_none()))
+            .transpose()?;
+        let tool = inspection
+            .tool
+            .as_ref()
+            .map(|_| ToolOutput::try_from_inspection(&inspection))
+            .transpose()?;
         Ok(Self {
             fqn: inspection.fqn,
             tool_id: inspection.tool_id,
@@ -32,12 +42,8 @@ impl TryFrom<ToolInspection> for ToolInventoryOutput {
             witness_type: inspection.witness_type,
             inner_type: inspection.inner_type,
             compatibility: compatibility_name(inspection.compatibility),
-            lifecycle: inspection.lifecycle.as_ref().map(ToolLifecycleOutput::from),
-            tool: inspection
-                .tool
-                .as_ref()
-                .map(ToolOutput::try_from_state)
-                .transpose()?,
+            registered,
+            tool,
             detail: inspection.detail,
         })
     }
@@ -66,21 +72,20 @@ pub(crate) async fn list_tools() -> AnyResult<(), NexusCliError> {
         table.add_row(row![
             "FQN",
             "Compatibility",
-            "Lifecycle",
+            "Registration",
             "Tool ID",
             "Detail"
         ]);
         for tool in &tools {
-            let lifecycle = match &tool.lifecycle {
-                Some(ToolLifecycleOutput::Open) => "open",
-                Some(ToolLifecycleOutput::Closed { .. }) => "closed",
-                Some(ToolLifecycleOutput::Retired { .. }) => "retired",
+            let registration = match tool.registered {
+                Some(true) => "registered",
+                Some(false) => "unregistered",
                 None => "unknown",
             };
             table.add_row(row![
                 tool.fqn,
                 tool.compatibility,
-                lifecycle,
+                registration,
                 tool.tool_id,
                 tool.detail.as_deref().unwrap_or("")
             ]);

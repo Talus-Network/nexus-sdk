@@ -440,15 +440,6 @@ mod tests {
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
         CoinFreeClientCallSite {
-            command: "nexus tool validate onchain",
-            source: include_str!("tool/tool_validate.rs"),
-            function_signature: "pub(crate) async fn validate_on_chain_tool(",
-            boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
-            boundary_test_signature:
-                "async fn inspect_tool_reports_missing_when_neither_object_exists(",
-            boundary_test_marker: "mock_nexus_client_without_coins",
-        },
-        CoinFreeClientCallSite {
             command: "nexus tool list",
             source: include_str!("tool/tool_list.rs"),
             function_signature: "pub(crate) async fn list_tools(",
