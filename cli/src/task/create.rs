@@ -3,8 +3,7 @@ use {
     crate::{
         command_title,
         display::{human_output, json_output},
-        loading,
-        notify_success,
+        loading, notify_success,
         prelude::*,
         sui::get_nexus_client,
     },

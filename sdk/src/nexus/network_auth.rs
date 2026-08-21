@@ -19,19 +19,12 @@
 
 #[cfg(feature = "signed_http")]
 use crate::signed_http::v3::wire::{
-    AllowedLeaderFileV1,
-    AllowedLeaderKeyFileV1,
-    AllowedLeadersFileV1,
+    AllowedLeaderFileV1, AllowedLeaderKeyFileV1, AllowedLeadersFileV1,
 };
 use {
     crate::{
         move_bindings::registry::network_auth::{
-            IdentityKey,
-            KeyBinding,
-            KeyBindingStateV1,
-            KeyRecord,
-            NetworkAuth,
-            NetworkAuthStateV1,
+            IdentityKey, KeyBinding, KeyBindingStateV1, KeyRecord, NetworkAuth, NetworkAuthStateV1,
         },
         nexus::{
             client::NexusClient,

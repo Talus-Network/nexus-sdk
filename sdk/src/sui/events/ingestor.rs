@@ -1,10 +1,6 @@
 use {
-    super::query::EventQuery,
-    crate::sui,
-    sui_rpc::field::FieldMaskUtil as _,
-    thiserror::Error,
-    tokio::sync::mpsc,
-    tokio_util::sync::CancellationToken,
+    super::query::EventQuery, crate::sui, sui_rpc::field::FieldMaskUtil as _, thiserror::Error,
+    tokio::sync::mpsc, tokio_util::sync::CancellationToken,
 };
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 100;

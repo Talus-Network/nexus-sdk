@@ -4,13 +4,8 @@ use {
     crate::{
         move_bindings::{
             primitives::protocol::{
-                PackageInfo,
-                Protocol,
-                ProtocolConfigHashInputV1,
-                ProtocolConfigV1,
-                ProtocolStateV1,
-                ProtocolVersionActivatedV1Event,
-                SharedObjectInfo,
+                PackageInfo, Protocol, ProtocolConfigHashInputV1, ProtocolConfigV1,
+                ProtocolStateV1, ProtocolVersionActivatedV1Event, SharedObjectInfo,
             },
             registry::{
                 agent_registry::DefaultDagExecutorFieldKey,
@@ -26,14 +21,9 @@ use {
         sui,
         types::{
             nexus_objects::{
-                default_object_reference,
-                resolve_package_version_metadata,
-                ResolvedPackageVersion,
+                default_object_reference, resolve_package_version_metadata, ResolvedPackageVersion,
             },
-            NexusObjects,
-            NexusPackages,
-            PackageVersion,
-            UsTokenConfig,
+            NexusObjects, NexusPackages, PackageVersion, UsTokenConfig,
         },
     },
     anyhow::{anyhow, Context as _},

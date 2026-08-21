@@ -1,11 +1,7 @@
 use {
     super::tool_output::ToolOutput,
     crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
+        command_title, display::json_output, loading, notify_success, prelude::*,
         sui::get_read_only_nexus_client,
     },
     nexus_sdk::{

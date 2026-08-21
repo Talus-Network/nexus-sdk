@@ -15,9 +15,7 @@ use crate::move_bindings::{primitives, registry};
 use {
     crate::{
         move_bindings::registry::leader::{
-            CapabilityManger,
-            LeaderRegistry,
-            LeaderRegistryStateV1,
+            CapabilityManger, LeaderRegistry, LeaderRegistryStateV1,
         },
         sui,
     },

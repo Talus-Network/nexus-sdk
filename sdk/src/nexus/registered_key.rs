@@ -21,10 +21,7 @@ pub const SHA256_LEN: usize = 32;
 pub const ED25519_SIGNATURE_LEN: usize = 64;
 pub const INVOCATION_NONCE_DOMAIN: &[u8] = b"nexus.direct.v3.invocation-nonce";
 pub use crate::commitments::{
-    output_sha256,
-    tool_signature_message,
-    RAW_OUTPUT_DOMAIN,
-    TOOL_RESPONSE_DOMAIN,
+    output_sha256, tool_signature_message, RAW_OUTPUT_DOMAIN, TOOL_RESPONSE_DOMAIN,
 };
 
 /// Returns the exact schema-ordered content commitment computed by Move.
@@ -102,9 +99,7 @@ mod tests {
     use {
         super::*,
         crate::move_bindings::interface::meta_schema::{
-            OutputVariantSchema,
-            PortSchema,
-            ValueKind,
+            OutputVariantSchema, PortSchema, ValueKind,
         },
     };
 

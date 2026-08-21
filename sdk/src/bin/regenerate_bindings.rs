@@ -11,9 +11,7 @@ use {
         str::FromStr,
     },
     sui_move_codegen::{
-        apply_function_parameter_names_from_sources,
-        fetch_package,
-        ir::NormalizedPackage,
+        apply_function_parameter_names_from_sources, fetch_package, ir::NormalizedPackage,
         GrpcClient,
     },
     sui_sdk_types::Address,
@@ -396,13 +394,7 @@ mod tests {
         super::*,
         std::collections::BTreeMap,
         sui_move_codegen::ir::{
-            Datatype,
-            DatatypeKind,
-            Function,
-            FunctionParam,
-            NormalizedModule,
-            TypeName,
-            TypeRef,
+            Datatype, DatatypeKind, Function, FunctionParam, NormalizedModule, TypeName, TypeRef,
             Visibility,
         },
     };

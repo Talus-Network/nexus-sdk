@@ -5,8 +5,7 @@ use crate::{
         tool::payment_extension as payment_extension_binding,
         workflow::tool_cashier_adapter as tool_cashier_adapter_binding,
     },
-    move_boundary,
-    sui,
+    move_boundary, sui,
     types::NexusObjects,
 };
 

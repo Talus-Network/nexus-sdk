@@ -2,11 +2,8 @@
 
 use {
     super::types::{
-        convert_move_signature_to_schema,
-        is_agent_vertex_authorization_proof_param,
-        is_hidden_internal_tool_param,
-        is_onchain_tool_result_param,
-        is_proof_of_uid_param,
+        convert_move_signature_to_schema, is_agent_vertex_authorization_proof_param,
+        is_hidden_internal_tool_param, is_onchain_tool_result_param, is_proof_of_uid_param,
         is_uid_requirements_param,
     },
     crate::{sui, types::OnchainToolMode},

@@ -11,9 +11,7 @@ use {
     testcontainers::{
         core::{client, ports::ContainerPort, wait::HttpWaitStrategy, ContainerRequest, WaitFor},
         runners::AsyncRunner,
-        ContainerAsync,
-        GenericImage,
-        ImageExt,
+        ContainerAsync, GenericImage, ImageExt,
     },
     testcontainers_modules::{postgres::Postgres, redis::Redis},
 };

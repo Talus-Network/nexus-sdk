@@ -115,8 +115,7 @@ pub mod grpc {
             state_service_server::{StateService, StateServiceServer},
             subscription_service_server::{SubscriptionService, SubscriptionServiceServer},
             transaction_execution_service_server::{
-                TransactionExecutionService,
-                TransactionExecutionServiceServer,
+                TransactionExecutionService, TransactionExecutionServiceServer,
             },
             *,
         },

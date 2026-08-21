@@ -5,8 +5,7 @@ use crate::{
         registry::priority_fee_vault::{self as priority_fee_vault_binding, PriorityFeeDeposit},
         sui_framework::transfer::Receiving,
     },
-    move_boundary,
-    sui,
+    move_boundary, sui,
     types::NexusObjects,
 };
 

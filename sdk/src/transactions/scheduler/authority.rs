@@ -1,7 +1,6 @@
 use {
     crate::{
-        move_boundary::NexusPtbBuilder,
-        scheduler::SchedulerError,
+        move_boundary::NexusPtbBuilder, scheduler::SchedulerError,
         transactions::agent_input::AgentInput,
     },
     sui_move_call::{CallSpecError, CallTarget},

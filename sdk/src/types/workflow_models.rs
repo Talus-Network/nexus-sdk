@@ -2,9 +2,7 @@ use {
     crate::{
         move_bindings::{
             interface::{
-                graph::RuntimeVertex,
-                verifier::VerifierMethodId,
-                version::InterfaceVersion,
+                graph::RuntimeVertex, verifier::VerifierMethodId, version::InterfaceVersion,
             },
             workflow::execution_failure::WorkflowFailureClass,
         },

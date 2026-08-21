@@ -6,9 +6,7 @@ use {
             interface::meta_schema::{PortCommitment, ValueKind},
             primitives::data::{NexusData, NexusValue},
             protocol_limits::primitives::data::{
-                MAX_INLINE_DATA_BYTES,
-                MAX_MANY_VALUES,
-                MAX_NEXUS_DATA_BYTES,
+                MAX_INLINE_DATA_BYTES, MAX_MANY_VALUES, MAX_NEXUS_DATA_BYTES,
             },
             sui_framework::object::ID,
         },

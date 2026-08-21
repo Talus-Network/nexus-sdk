@@ -1,12 +1,6 @@
 use {
     crate::{
-        command_title,
-        confirm,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        sui::*,
+        command_title, confirm, display::json_output, loading, notify_success, prelude::*, sui::*,
     },
     nexus_sdk::{transactions::tool, types::Tool},
 };
