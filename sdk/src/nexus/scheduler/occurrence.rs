@@ -167,13 +167,15 @@ impl OccurrenceHandle {
     /// Returns [`SchedulerError`] when the Task cannot be read or the
     /// transaction cannot be built, submitted, or confirmed.
     pub async fn expire(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
         let task =
-            resolve::fetch_task_with_roots(&self.client, self.reference.task_id(), &required_roots)
-                .await?;
+            resolve::fetch_task_with_roots(&self.client, self.reference.task_id(), &[]).await?;
+        let runtime = self
+            .client
+            .runtime_context(&[])
+            .await
+            .map_err(SchedulerError::from)?;
         let transaction = compile_expire_occurrence_ptb(
-            &task.context,
+            &runtime,
             &task.object.object_ref(),
             self.reference.occurrence_id(),
         )?;
@@ -193,11 +195,8 @@ impl OccurrenceHandle {
     /// Returns [`SchedulerError::OccurrenceNotDispatched`] before dispatch,
     /// or another [`SchedulerError`] when object reads or submission fail.
     pub async fn settle(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
         let task =
-            resolve::fetch_task_with_roots(&self.client, self.reference.task_id(), &required_roots)
-                .await?;
+            resolve::fetch_task_with_roots(&self.client, self.reference.task_id(), &[]).await?;
         let snapshot = self.snapshot_from_task(&self.client, &task).await?;
         let execution_id = dispatched_execution_id(&snapshot)?;
         let execution = resolve::fetch_execution(&self.client, &task.context, execution_id)
@@ -210,8 +209,13 @@ impl OccurrenceHandle {
                     execution_id
                 ),
             })?;
+        let runtime = self
+            .client
+            .runtime_context(&[])
+            .await
+            .map_err(SchedulerError::from)?;
         let transaction = compile_settle_occurrence_ptb(
-            &task.context,
+            &runtime,
             &task.object.object_ref(),
             &execution.object_ref(),
         )?;

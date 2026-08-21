@@ -64,11 +64,13 @@ pub fn mock_nexus_objects() -> NexusObjects {
         agent_registry: shared_root(),
         leader_registry: shared_root(),
         priority_fee_vault: shared_root(),
+        runtime_authority: shared_root(),
         leader_admin_cap: identity(),
         tool_registry_admin_cap: identity(),
         slashing_cap: identity(),
         priority_fee_vault_owner_cap: identity(),
         initial_leader_cap: identity(),
+        runtime_authority_cap: identity(),
         us_token: UsTokenConfig::new(
             sui::types::Address::generate(&mut rng),
             sui::types::Address::generate(&mut rng),
@@ -244,7 +246,12 @@ pub mod grpc {
         super::*,
         crate::{
             events::NexusEventKind,
-            move_bindings::primitives::{data::NexusData, event as event_move},
+            move_bindings::{
+                move_std::{option::Option as MoveOption, type_name::TypeName},
+                primitives::{data::NexusData, event as event_move},
+                sui_framework::object::{ID, UID},
+            },
+            types::PackageRole,
         },
         mockall::mock,
         serde::Serialize,
@@ -535,6 +542,64 @@ pub mod grpc {
         packages: &NexusPackages,
     ) {
         mock_package_versions(ledger_service, package_service, packages.all().cloned());
+    }
+
+    #[derive(Serialize)]
+    struct RuntimeAuthorityFixture {
+        id: UID,
+        scheduler_upgrade_cap: MoveOption<ID>,
+        current_runtime: MoveOption<TypeName>,
+        current_runtime_package: MoveOption<ID>,
+        paused: bool,
+    }
+
+    /// Serve the fixed runtime root bound to the Scheduler package in `context`.
+    pub fn mock_runtime_authority(
+        ledger_service: &mut MockLedgerService,
+        context: &NexusContext,
+        paused: bool,
+    ) {
+        let root = context.runtime_authority;
+        let runtime_package = context
+            .require_package(PackageRole::Scheduler)
+            .expect("mock context contains Scheduler")
+            .storage_id;
+        let state = RuntimeAuthorityFixture {
+            id: UID::new(root.object_id()),
+            scheduler_upgrade_cap: MoveOption::from_option(Some(ID::new(runtime_package))),
+            current_runtime: MoveOption::from_option(Some(TypeName::new(&format!(
+                "{runtime_package}::witness::RuntimeV1"
+            )))),
+            current_runtime_package: MoveOption::from_option(Some(ID::new(runtime_package))),
+            paused,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref_for_id(root.object_id()),
+            sui::types::Owner::Shared(root.initial_shared_version),
+            bcs::to_bytes(&state).expect("RuntimeAuthority fixture serializes as BCS"),
+        );
+    }
+
+    /// Serve the fixed runtime root before its one time Scheduler binding.
+    pub fn mock_unbound_runtime_authority(
+        ledger_service: &mut MockLedgerService,
+        context: &NexusContext,
+    ) {
+        let root = context.runtime_authority;
+        let state = RuntimeAuthorityFixture {
+            id: UID::new(root.object_id()),
+            scheduler_upgrade_cap: MoveOption::from_option(None),
+            current_runtime: MoveOption::from_option(None),
+            current_runtime_package: MoveOption::from_option(None),
+            paused: false,
+        };
+        mock_get_object_bcs(
+            ledger_service,
+            object_ref_for_id(root.object_id()),
+            sui::types::Owner::Shared(root.initial_shared_version),
+            bcs::to_bytes(&state).expect("RuntimeAuthority fixture serializes as BCS"),
+        );
     }
 
     /// Serve immutable metadata for the supplied [`crate::types::PackageVersion`] values.

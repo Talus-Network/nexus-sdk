@@ -146,6 +146,8 @@ pub struct NexusObjects {
     pub leader_registry: SharedRoot,
     /// Canonical priority fee vault root.
     pub priority_fee_vault: SharedRoot,
+    /// Fixed authority selecting the Scheduler package allowed to produce protocol effects.
+    pub runtime_authority: SharedRoot,
     /// Authority that manages leader capabilities.
     pub leader_admin_cap: ObjectIdentity,
     /// Authority that manages the canonical [`ToolRegistry`](crate::move_bindings::tool::tool_registry::ToolRegistry).
@@ -156,6 +158,8 @@ pub struct NexusObjects {
     pub priority_fee_vault_owner_cap: ObjectIdentity,
     /// Leader capability created during initial publication.
     pub initial_leader_cap: ObjectIdentity,
+    /// Authority for emergency pause and WorkAdmission policy changes.
+    pub runtime_authority_cap: ObjectIdentity,
     /// External [`US`] token identities.
     pub us_token: UsTokenConfig,
 }
@@ -188,6 +192,10 @@ initial_shared_version = 3
 object_id = "0x06"
 initial_shared_version = 3
 
+[runtime_authority]
+object_id = "0x0f"
+initial_shared_version = 3
+
 [leader_admin_cap]
 object_id = "0x07"
 
@@ -203,6 +211,9 @@ object_id = "0x0a"
 [initial_leader_cap]
 object_id = "0x0b"
 
+[runtime_authority_cap]
+object_id = "0x10"
+
 [us_token]
 package_id = "0x0c"
 protected_treasury = "0x0d"
@@ -217,6 +228,7 @@ metadata = "0x0e"
 
         assert_eq!(decoded, objects);
         assert_eq!(objects.tool_registry.initial_shared_version, 2);
+        assert_eq!(objects.runtime_authority.object_id, address("0x0f"));
         assert_eq!(objects.us_token.metadata, address("0x0e"));
     }
 

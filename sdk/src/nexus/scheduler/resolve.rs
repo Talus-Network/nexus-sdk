@@ -766,6 +766,7 @@ mod tests {
         let dag_ref = sui_mocks::object_ref_for_id(dag_id);
         let dag = DAG::new(UID::new(dag_id));
         let state = DAGInnerV1::new(
+            true,
             LinkedTable::new(dag_id, 0),
             VecMap {
                 contents: vec![VecMapEntry {
@@ -783,7 +784,7 @@ mod tests {
             state_service,
             context,
             dag_ref,
-            crate::sui::types::Owner::Shared(1),
+            crate::sui::types::Owner::Immutable,
             dag,
             state,
         );

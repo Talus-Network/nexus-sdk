@@ -61,6 +61,7 @@ pub use {
         TaskController,
         TaskPointer,
         TaskPointerPage,
+        TaskRejectionReason,
         TaskSnapshot,
         TaskStatus,
         WatchOptions,

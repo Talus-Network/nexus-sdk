@@ -2,6 +2,10 @@
 
 use {
     crate::{
+        move_bindings::{
+            move_std::{option::Option as MoveOption, type_name::TypeName},
+            sui_framework::object::{ID, UID},
+        },
         nexus::{
             crawler::{Crawler, DynamicFieldMetadata, ObjectMetadata},
             error::{ClientUpgradeRequired, NexusError},
@@ -19,7 +23,7 @@ use {
             TypeOrigins,
         },
     },
-    serde::de::DeserializeOwned,
+    serde::{de::DeserializeOwned, Deserialize},
     std::{collections::HashMap, sync::Arc, time::Duration},
     sui_move::MoveStruct,
     tokio::{sync::RwLock, time::sleep},
@@ -27,6 +31,15 @@ use {
 
 const STATE_OBSERVATION_ATTEMPTS: usize = 20;
 const STATE_OBSERVATION_RETRY_DELAY: Duration = Duration::from_millis(50);
+
+#[derive(Deserialize)]
+struct RuntimeAuthorityState {
+    id: UID,
+    scheduler_upgrade_cap: MoveOption<ID>,
+    current_runtime: MoveOption<TypeName>,
+    current_runtime_package: MoveOption<ID>,
+    paused: bool,
+}
 
 /// One typed dynamic field selected from an object anchor.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -296,6 +309,77 @@ impl StateResolver {
         self.validate_required_roots(&packages, creator_package, required_roots)
             .await?;
 
+        Ok(NexusContext::new(objects, packages))
+    }
+
+    /// Resolves the package graph selected by the fixed runtime authority.
+    ///
+    /// Effect builders must use this context instead of deriving authority
+    /// from the Task, execution, or leader that happens to be an input. The
+    /// root is the sole mutable selector for code allowed to produce protocol
+    /// effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::InvalidObjectState`] when the configured root is
+    /// malformed, unbound, paused, or does not have its configured stable
+    /// identity. Package and root compatibility errors are returned by the
+    /// normal package resolver.
+    pub async fn resolve_runtime_context(
+        &self,
+        objects: Arc<NexusObjects>,
+        required_roots: &[SharedRoot],
+    ) -> Result<NexusContext, NexusError> {
+        let root = objects.runtime_authority;
+        let observed = self
+            .crawler
+            .get_object::<RuntimeAuthorityState>(root.object_id())
+            .await
+            .map_err(NexusError::Rpc)?;
+        let invalid = |reason: String| NexusError::InvalidObjectState {
+            object: root.object_id(),
+            reason,
+        };
+
+        if observed.data.id.address() != root.object_id() {
+            return Err(invalid(
+                "RuntimeAuthority UID does not match its object ID".to_owned(),
+            ));
+        }
+        if observed.get_initial_version() != root.initial_shared_version {
+            return Err(invalid(format!(
+                "RuntimeAuthority was first shared at version {}, expected {}",
+                observed.get_initial_version(),
+                root.initial_shared_version
+            )));
+        }
+        if observed.data.scheduler_upgrade_cap.as_option().is_none() {
+            return Err(invalid(
+                "RuntimeAuthority is not bound to a Scheduler lineage".to_owned(),
+            ));
+        }
+        if observed.data.current_runtime.as_option().is_none() {
+            return Err(invalid(
+                "RuntimeAuthority has no current runtime type".to_owned(),
+            ));
+        }
+        let runtime_package = observed
+            .data
+            .current_runtime_package
+            .as_option()
+            .map(ID::address)
+            .ok_or_else(|| invalid("RuntimeAuthority has no current runtime package".to_owned()))?;
+        if observed.data.paused {
+            return Err(invalid(format!(
+                "runtime package '{runtime_package}' is paused"
+            )));
+        }
+
+        let packages = self
+            .resolve_explicit_package_graph(runtime_package, PackageRole::Scheduler)
+            .await?;
+        self.validate_required_roots(&packages, runtime_package, required_roots)
+            .await?;
         Ok(NexusContext::new(objects, packages))
     }
 

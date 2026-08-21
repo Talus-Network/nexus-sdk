@@ -1352,18 +1352,15 @@ impl WorkflowActions {
         workflow_package: sui::types::Address,
         dag_spec: DagSpec,
     ) -> Result<PublishResult, NexusError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.tool_registry];
         let context = self
             .client
-            .context_for_creator(workflow_package, PackageRole::Workflow, &required_roots)
+            .context_for_creator(workflow_package, PackageRole::Workflow, &[])
             .await?;
         let address = self.client.owner()?;
 
         // == Craft and submit the publish DAG transaction ==
 
-        let tx = dag::publish_ptb(&context, dag_spec, address)
-            .map_err(NexusError::TransactionBuilding)?;
+        let tx = dag::publish_ptb(&context, dag_spec).map_err(NexusError::TransactionBuilding)?;
         let response = self.client.submit_transaction(tx, address).await?;
 
         // == Find the published DAG object ID ==
@@ -1629,9 +1626,7 @@ impl WorkflowActions {
         .map_err(NexusError::TransactionBuilding)?;
 
         if !cleaned_broken_onchain_results.is_empty() {
-            let objects = client.get_nexus_objects();
-            let required_roots = [objects.tool_registry, objects.leader_registry];
-            execution = fetch_execution(client, dag_execution_id, &required_roots).await?;
+            execution = fetch_execution(client, dag_execution_id, &[]).await?;
             cleaned_broken_onchain_results = broken_onchain_result_cleanups_for_abort(
                 client,
                 &execution.context,
@@ -1646,10 +1641,17 @@ impl WorkflowActions {
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
         let execution_ref = execution.object.object_ref();
+        let objects = client.get_nexus_objects();
+        let required_roots = if cleaned_broken_onchain_results.is_empty() {
+            Vec::new()
+        } else {
+            vec![objects.tool_registry, objects.leader_registry]
+        };
+        let runtime = client.runtime_context(&required_roots).await?;
 
         let address = client.owner()?;
         let tx = dag::abort_expired_execution_for_self_ptb(
-            &execution.context,
+            &runtime,
             &dag.object_ref(),
             &execution_ref,
             &cleaned_broken_onchain_results
@@ -1693,13 +1695,14 @@ impl WorkflowActions {
             objects.leader_registry,
             objects.priority_fee_vault,
         ];
-        let execution = fetch_execution(client, params.dag_execution_id, &required_roots).await?;
+        let execution = fetch_execution(client, params.dag_execution_id, &[]).await?;
+        let runtime = client.runtime_context(&required_roots).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
 
         let address = client.owner()?;
         let tx = dag::settle_committed_tool_result_for_walk_for_self_ptb(
-            &execution.context,
+            &runtime,
             &dag.object_ref(),
             &execution.object.object_ref(),
             params.walk_index,
@@ -1729,7 +1732,8 @@ impl WorkflowActions {
             objects.leader_registry,
             objects.priority_fee_vault,
         ];
-        let execution = fetch_execution(client, params.dag_execution_id, &required_roots).await?;
+        let execution = fetch_execution(client, params.dag_execution_id, &[]).await?;
+        let runtime = client.runtime_context(&required_roots).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
         let leader_cap_ref = crawler
@@ -1748,7 +1752,7 @@ impl WorkflowActions {
             };
         let address = client.owner()?;
         let tx = dag::settle_committed_tool_result_for_walk_by_leader_for_self_ptb(
-            &execution.context,
+            &runtime,
             &dag.object_ref(),
             &execution.object.object_ref(),
             &execution.object.owner,
@@ -1782,7 +1786,8 @@ impl WorkflowActions {
         let crawler = client.crawler();
         let objects = client.get_nexus_objects();
         let required_roots = [objects.leader_registry];
-        let execution = fetch_execution(client, params.dag_execution_id, &required_roots).await?;
+        let execution = fetch_execution(client, params.dag_execution_id, &[]).await?;
+        let runtime = client.runtime_context(&required_roots).await?;
         let dag_id = execution.object.data.dag_id();
         let dag = fetch_dag_in_context(client, &execution.context, dag_id).await?;
         let leader_cap_ref = crawler
@@ -1802,7 +1807,7 @@ impl WorkflowActions {
 
         let address = client.owner()?;
         let tx = dag::record_committed_tool_result_gas_charge_by_leader_for_self_ptb(
-            &execution.context,
+            &runtime,
             &dag.object_ref(),
             &execution.object.object_ref(),
             &execution.object.owner,
@@ -1893,8 +1898,8 @@ impl WorkflowActions {
                     objects.leader_registry,
                     objects.priority_fee_vault,
                 ];
-                let execution =
-                    fetch_execution(client, plan.dag_execution_id, &required_roots).await?;
+                let execution = fetch_execution(client, plan.dag_execution_id, &[]).await?;
+                let runtime = client.runtime_context(&required_roots).await?;
                 if execution.object.data.dag_id() != plan.dag_id {
                     return Err(NexusError::Parsing(anyhow!(
                         "DAG execution '{}' now references DAG '{}', expected '{}'",
@@ -1912,9 +1917,9 @@ impl WorkflowActions {
                     )
                     .await?;
                 let address = client.owner()?;
-                let context = &execution.context;
+                let context = &runtime;
                 let tx = move_boundary::ptb(context, |tx| {
-                    let dag_arg = tx.shared_object(&dag.object_ref(), false)?;
+                    let dag_arg = tx.immutable_object(&dag.object_ref())?;
                     let execution_arg = tx.shared_object(&execution.object.object_ref(), true)?;
                     let tool_registry = tx.shared_root(&context.tool_registry, false)?;
                     let result_arg = tx.shared_object(&result.object_ref(), true)?;
@@ -2080,10 +2085,11 @@ impl WorkflowActions {
             )
             .await?;
         selected_candidate.tool_cashier_ref = tool_cashier.object_ref();
+        let runtime = client.runtime_context(&[]).await?;
 
         let address = client.owner()?;
         let tx = tool_cashier::abort_expired_execution_with_tool_cashier_ptb(
-            &execution.context,
+            &runtime,
             &selected_candidate.tool_cashier_ref,
             &dag.object_ref(),
             &execution.object.object_ref(),
@@ -2370,6 +2376,7 @@ mod tests {
 
     fn dag_bcs(vertices_size: u64) -> dag_move::DAGInnerV1 {
         dag_move::DAGInnerV1 {
+            finalized: true,
             vertices: linked_table::LinkedTable::new(sui_mocks::mock_sui_address(), vertices_size),
             entry_groups: crate::move_bindings::sui_framework::vec_map::VecMap { contents: vec![] },
             edges: MoveTable::new(sui_mocks::mock_sui_address(), 0),
@@ -4551,6 +4558,7 @@ mod tests {
             tool_id,
             &tool_fqn,
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
@@ -4667,6 +4675,7 @@ mod tests {
             sui::types::Owner::Shared(1),
             clock_bcs(61_000),
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
@@ -4743,6 +4752,7 @@ mod tests {
             &mut state_service_mock,
             &nexus_objects,
         );
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger_service_mock, &nexus_objects, false);
         let package_service_mock = mock_package_graph(&mut ledger_service_mock, &nexus_objects);
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut tx_service_mock,
@@ -4812,6 +4822,7 @@ mod tests {
         mock_tool_registry_observation(&mut settle_ledger, &mut settle_state, &nexus_objects);
         mock_leader_registry_observation(&mut settle_ledger, &mut settle_state, &nexus_objects);
         mock_priority_fee_vault_observation(&mut settle_ledger, &mut settle_state, &nexus_objects);
+        sui_mocks::grpc::mock_runtime_authority(&mut settle_ledger, &nexus_objects, false);
         let settle_packages = mock_package_graph(&mut settle_ledger, &nexus_objects);
         sui_mocks::grpc::mock_get_object_metadata(
             &mut settle_ledger,
@@ -4881,6 +4892,7 @@ mod tests {
             dag_bcs(0),
         );
         mock_leader_registry_observation(&mut record_ledger, &mut record_state, &nexus_objects);
+        sui_mocks::grpc::mock_runtime_authority(&mut record_ledger, &nexus_objects, false);
         let record_packages = mock_package_graph(&mut record_ledger, &nexus_objects);
         sui_mocks::grpc::mock_get_object_metadata(
             &mut record_ledger,

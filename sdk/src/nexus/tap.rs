@@ -580,8 +580,9 @@ impl TapActions {
             .map_err(NexusError::Rpc)?
             .object_ref();
 
+        let runtime = self.client.runtime_context(&[]).await?;
         let tx = dag_tx::refill_tap_execution_payment_for_self_ptb(
-            &context,
+            &runtime,
             &execution_ref,
             params.amount,
         )
@@ -631,8 +632,9 @@ impl TapActions {
 
         let agent =
             agent_input_from_metadata(&agent_ref).map_err(NexusError::TransactionBuilding)?;
+        let runtime = self.client.runtime_context(&[]).await?;
         let tx = dag_tx::refill_tap_execution_payment_from_agent_vault_for_self_ptb(
-            &context,
+            &runtime,
             agent,
             &execution_ref,
             params.amount,
@@ -1493,7 +1495,6 @@ mod tests {
                     dag_binding: SkillDagBinding::pinned(sui::types::Address::from_static("0x3")),
                     requirements: requirements.clone(),
                     current_interface_revision: InterfaceVersion::new(2),
-                    scheduled_task_count: 0,
                 },
             }],
             default_executor: Some(DefaultDagExecutor {

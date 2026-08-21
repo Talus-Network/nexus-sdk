@@ -343,24 +343,23 @@ impl NexusClient {
         }
     }
 
-    /// Starts a programmable transaction whose package graph is selected by
-    /// an existing object witness.
+    /// Starts a programmable transaction for effects on an existing object.
     ///
-    /// `required_roots` must contain every canonical root the composed
-    /// transaction will touch.
+    /// The object witness is validated for SDK compatibility, while the fixed
+    /// runtime authority selects the package graph. This prevents a historical
+    /// Task or execution from routing effects back through historical code.
     ///
     /// # Errors
     ///
     /// Returns compatibility, object state, or RPC errors reported by
-    /// [`Self::context_for_object_with_roots`].
+    /// [`Self::context_for_object`] and [`Self::runtime_context`].
     pub async fn transaction_for_object(
         &self,
         object_id: sui::types::Address,
         required_roots: &[SharedRoot],
     ) -> Result<NexusTransaction, NexusError> {
-        let context = self
-            .context_for_object_with_roots(object_id, required_roots)
-            .await?;
+        self.context_for_object(object_id).await?;
+        let context = self.runtime_context(required_roots).await?;
         Ok(NexusTransaction::for_object(
             self.clone(),
             context,
@@ -501,6 +500,23 @@ impl NexusClient {
                 creator_role,
                 required_roots,
             )
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves the only package graph currently allowed to produce protocol effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns runtime authority, package compatibility, object state, or RPC
+    /// errors reported by [`StateResolver::resolve_runtime_context`].
+    pub async fn runtime_context(
+        &self,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let context = self
+            .state_resolver
+            .resolve_runtime_context(Arc::clone(&self.nexus_objects), required_roots)
             .await?;
         Ok(Arc::new(context))
     }
@@ -2134,5 +2150,84 @@ mod tests {
         ptb: sui::types::ProgrammableTransaction,
     ) {
         let _ = client.submit_transaction(ptb, sender).await;
+    }
+
+    #[tokio::test]
+    async fn runtime_context_resolves_only_the_bound_scheduler_graph() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, false);
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let runtime = client.runtime_context(&[]).await.expect("runtime resolves");
+
+        assert_eq!(
+            runtime
+                .require_package(PackageRole::Scheduler)
+                .expect("runtime graph contains Scheduler")
+                .storage_id,
+            context
+                .require_package(PackageRole::Scheduler)
+                .expect("fixture contains Scheduler")
+                .storage_id,
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_context_rejects_a_paused_runtime_before_package_resolution() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, true);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let error = client
+            .runtime_context(&[])
+            .await
+            .expect_err("a paused runtime has no effect authority");
+
+        assert!(matches!(
+            error,
+            NexusError::InvalidObjectState { object, ref reason }
+                if object == context.runtime_authority.object_id()
+                    && reason.contains("paused")
+        ));
+    }
+
+    #[tokio::test]
+    async fn runtime_context_rejects_an_unbound_authority() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_unbound_runtime_authority(&mut ledger, &context);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let error = client
+            .runtime_context(&[])
+            .await
+            .expect_err("an unbound root has no effect authority");
+
+        assert!(matches!(
+            error,
+            NexusError::InvalidObjectState { object, ref reason }
+                if object == context.runtime_authority.object_id()
+                    && reason.contains("not bound")
+        ));
     }
 }

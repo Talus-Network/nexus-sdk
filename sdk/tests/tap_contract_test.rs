@@ -21,11 +21,9 @@ use {
                 DefaultDagExecutor,
                 SkillRecord,
             },
+            scheduler::execution_submission as execution_submission_binding,
             sui_framework::table::Table as MoveTable,
-            workflow::{
-                execution_events::RequestWalkExecutionEvent,
-                execution_submission as execution_submission_binding,
-            },
+            workflow::execution_events::RequestWalkExecutionEvent,
         },
         sui,
         test_utils::{ptb as move_boundary, sui_mocks},
@@ -82,8 +80,13 @@ fn append_standard_runtime_worksheet(
     walk_index: u64,
 ) -> anyhow::Result<sui::types::Argument> {
     let agent_registry_ref = tx.objects().agent_registry;
+    let tool_registry_ref = tx.objects().tool_registry;
+    let network_auth_ref = tx.objects().network_auth;
     let leader_registry_ref = tx.objects().leader_registry;
+    let runtime_authority = tx.runtime_authority(false)?;
     let agent_registry = tx.shared_root(&agent_registry_ref, false)?;
+    let tool_registry = tx.shared_root(&tool_registry_ref, false)?;
+    let network_auth = tx.shared_root(&network_auth_ref, false)?;
     let leader_registry = tx.shared_root(&leader_registry_ref, false)?;
     let walk_index = tx.arg(&walk_index)?;
     let clock = tx.clock()?;
@@ -91,8 +94,11 @@ fn append_standard_runtime_worksheet(
     tx.call_target(
         execution_submission_binding::prepare_tool_result_submission_worksheet_target,
         vec![
+            runtime_authority,
             dag,
             agent_registry,
+            tool_registry,
+            network_auth,
             leader_registry,
             execution,
             leader_cap,
@@ -258,7 +264,6 @@ fn skill(agent_id: sui::types::Address, skill_id: u64, active_revision: u64) -> 
             dag_binding: SkillDagBinding::pinned(addr("0x94")),
             requirements: requirements(),
             current_interface_revision: InterfaceVersion::new(active_revision),
-            scheduled_task_count: 0,
         },
     }
 }
@@ -805,7 +810,6 @@ fn demo_tap_publish_artifact_resolves_registered_execution_target() {
                 dag_binding: SkillDagBinding::pinned(dag_id),
                 requirements: artifact.requirements.clone(),
                 current_interface_revision: artifact.interface_revision,
-                scheduled_task_count: 0,
             },
         }],
         default_executor: None,

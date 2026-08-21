@@ -153,9 +153,7 @@ impl TaskHandle {
         &self,
         occurrence: Occurrence,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let occurrence = resolve::prepare_occurrence(&self.client, &occurrence).await?;
         let transaction = compile_add_occurrence_ptb(
             &task.context,
@@ -176,9 +174,7 @@ impl TaskHandle {
         &self,
         recurrence: Recurrence,
     ) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let recurrence = resolve::prepare_recurrence(&self.client, &recurrence).await?;
         let transaction = compile_set_recurrence_ptb(
             &task.context,
@@ -196,9 +192,7 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn clear_recurrence(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let transaction = compile_clear_recurrence_ptb(
             &task.context,
             &task.object.object_ref(),
@@ -227,9 +221,7 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn resume(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let transaction =
             compile_resume_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
         self.submit(&self.client, transaction).await
@@ -255,9 +247,7 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn refill(&self, amount_mist: u64) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.leader_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let transaction = compile_refill_task_ptb(
             &task.context,
             &task.object.object_ref(),
@@ -274,9 +264,7 @@ impl TaskHandle {
     /// Returns [`SchedulerError`] when authority resolution, transaction
     /// construction, or submission fails.
     pub async fn close(&self) -> Result<TaskMutationReceipt, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [objects.agent_registry];
-        let task = resolve::resolve_task(&self.client, self.task_id, &required_roots).await?;
+        let task = resolve::resolve_task(&self.client, self.task_id, &[]).await?;
         let transaction =
             compile_close_task_ptb(&task.context, &task.object.object_ref(), &task.authority)?;
         self.submit(&self.client, transaction).await
@@ -310,6 +298,22 @@ fn task_snapshot(
         MoveTaskStatus::Active => TaskStatus::Active,
         MoveTaskStatus::Paused => TaskStatus::Paused,
         MoveTaskStatus::Canceled => TaskStatus::Canceled,
+        MoveTaskStatus::Rejected { reason } => TaskStatus::Rejected {
+            reason: match reason {
+                crate::move_bindings::scheduler::task::TaskRejectionReason::UnsupportedWorkAdmission => {
+                    crate::scheduler::TaskRejectionReason::UnsupportedWorkAdmission
+                }
+                crate::move_bindings::scheduler::task::TaskRejectionReason::DisabledWorkAdmission => {
+                    crate::scheduler::TaskRejectionReason::DisabledWorkAdmission
+                }
+                crate::move_bindings::scheduler::task::TaskRejectionReason::StaleSkillContract => {
+                    crate::scheduler::TaskRejectionReason::StaleSkillContract
+                }
+                crate::move_bindings::scheduler::task::TaskRejectionReason::MutableDAG => {
+                    crate::scheduler::TaskRejectionReason::MutableDAG
+                }
+            },
+        },
         MoveTaskStatus::Finalized => TaskStatus::Finalized,
     };
     let failure_policy = match task.data.failure_mode {

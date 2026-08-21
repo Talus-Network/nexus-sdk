@@ -692,7 +692,6 @@ mod tests {
                 dag_binding: SkillDagBinding::pinned(addr("0x44")),
                 requirements: requirements(),
                 current_interface_revision: InterfaceVersion::new(current_interface_revision),
-                scheduled_task_count: 0,
             },
         }
     }

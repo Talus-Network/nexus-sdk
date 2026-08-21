@@ -2,12 +2,12 @@
 
 use crate::{
     move_bindings::{
+        scheduler::tool_cashier_adapter as tool_cashier_adapter_binding,
         sui_framework::{coin as coin_binding, sui::SUI},
         tool::{
             payment_extension as payment_extension_binding,
             tool_cashier as tool_cashier_binding,
         },
-        workflow::tool_cashier_adapter as tool_cashier_adapter_binding,
     },
     move_boundary,
     sui,
@@ -170,9 +170,16 @@ pub(crate) fn settle_payment_state_for_vertex(
     execution: sui::types::Argument,
     expected_vertex: sui::types::Argument,
 ) -> anyhow::Result<sui::types::Argument> {
+    let runtime_authority = transaction.runtime_authority(false)?;
     transaction.call_target(
         tool_cashier_adapter_binding::settle_payment_state_for_vertex_target,
-        vec![tool_cashier, dag, execution, expected_vertex],
+        vec![
+            runtime_authority,
+            tool_cashier,
+            dag,
+            execution,
+            expected_vertex,
+        ],
     )
 }
 
@@ -184,13 +191,14 @@ pub fn abort_expired_execution_with_tool_cashier_ptb(
     execution: &sui::types::ObjectReference,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
+        let runtime_authority = transaction.runtime_authority(false)?;
         let tool_cashier = transaction.shared_object(tool_cashier, true)?;
-        let dag = transaction.shared_object(dag, false)?;
+        let dag = transaction.immutable_object(dag)?;
         let execution = transaction.shared_object(execution, true)?;
         let clock = transaction.clock()?;
         transaction.call_target(
             tool_cashier_adapter_binding::abort_expired_execution_with_tool_cashier_target,
-            vec![tool_cashier, dag, execution, clock],
+            vec![runtime_authority, tool_cashier, dag, execution, clock],
         )?;
         Ok(())
     })

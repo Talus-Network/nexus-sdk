@@ -49,14 +49,8 @@ impl Scheduler {
         &self,
         scheduler_package: sui::types::Address,
     ) -> Result<std::sync::Arc<NexusContext>, SchedulerError> {
-        let objects = self.client.get_nexus_objects();
-        let required_roots = [
-            objects.agent_registry,
-            objects.leader_registry,
-            objects.tool_registry,
-        ];
         self.client
-            .context_for_creator(scheduler_package, PackageRole::Scheduler, &required_roots)
+            .context_for_creator(scheduler_package, PackageRole::Scheduler, &[])
             .await
             .map_err(SchedulerError::from)
     }
@@ -204,7 +198,7 @@ pub(super) fn mutation_receipt(
 ) -> Result<TaskMutationReceipt, SchedulerError> {
     let mut scheduled = Vec::new();
     let mut withdrawn = Vec::new();
-    let mut advertised = None;
+    let advertised = None;
 
     for event in &executed.events {
         if let Some(observed_task_id) = scheduler_event_task_id(&event.data) {
@@ -233,9 +227,6 @@ pub(super) fn mutation_receipt(
                     OccurrenceRef::new(task_id, event.occurrence_id),
                     withdrawal_reason(event.reason),
                 ));
-            }
-            NexusEventKind::OccurrenceAdvertised(event) => {
-                advertised = Some(OccurrenceRef::new(task_id, event.occurrence_id));
             }
             _ => {}
         }
@@ -271,7 +262,6 @@ fn created_task_id(executed: &ExecutedTransaction) -> Result<sui::types::Address
 
 fn scheduler_event_task_id(event: &NexusEventKind) -> Option<sui::types::Address> {
     match event {
-        NexusEventKind::OccurrenceAdvertised(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceDispatched(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceMissed(event) => Some(event.task_id.bytes),
         NexusEventKind::OccurrenceScheduled(event) => Some(event.task_id.bytes),
@@ -311,6 +301,9 @@ pub(super) const fn withdrawal_reason(
         }
         crate::move_bindings::scheduler::schedule::OccurrenceWithdrawalReason::TaskCanceled => {
             WithdrawalReason::TaskCanceled
+        }
+        crate::move_bindings::scheduler::schedule::OccurrenceWithdrawalReason::TaskRejected => {
+            WithdrawalReason::TaskRejected
         }
     }
 }
@@ -420,16 +413,6 @@ mod tests {
                 1,
                 OccurrenceWithdrawalReason::RecurrenceCleared,
             )),
-            NexusEventKind::OccurrenceAdvertised(
-                scheduler_binding::OccurrenceAdvertisedEvent::new(
-                    ID::new(task_id),
-                    2,
-                    200,
-                    MoveOption::from_option(None),
-                    30,
-                    MoveOccurrenceSource::Recurring { iteration: 3 },
-                ),
-            ),
         ]);
 
         assert_eq!(
@@ -453,10 +436,7 @@ mod tests {
             receipt.delta().withdrawn()[0].reason(),
             WithdrawalReason::RecurrenceCleared
         );
-        assert_eq!(
-            receipt.delta().advertised(),
-            Some(OccurrenceRef::new(task_id, 2))
-        );
+        assert_eq!(receipt.delta().advertised(), None);
     }
 
     #[test]
@@ -492,16 +472,6 @@ mod tests {
         let task_id = address("0x56");
         let execution_id = ID::new(address("0x57"));
         let events = [
-            NexusEventKind::OccurrenceAdvertised(
-                scheduler_binding::OccurrenceAdvertisedEvent::new(
-                    ID::new(task_id),
-                    1,
-                    10,
-                    MoveOption::from_option(None),
-                    20,
-                    MoveOccurrenceSource::Standalone,
-                ),
-            ),
             NexusEventKind::OccurrenceDispatched(
                 scheduler_binding::OccurrenceDispatchedEvent::new(
                     ID::new(task_id),
@@ -570,6 +540,10 @@ mod tests {
             (
                 OccurrenceWithdrawalReason::TaskCanceled,
                 WithdrawalReason::TaskCanceled,
+            ),
+            (
+                OccurrenceWithdrawalReason::TaskRejected,
+                WithdrawalReason::TaskRejected,
             ),
         ] {
             assert_eq!(withdrawal_reason(stored), projected);

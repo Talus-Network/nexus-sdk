@@ -778,7 +778,6 @@ mod tests {
             Metadata::new(VecMap::new(vec![])),
             StakeManager::<US>::new(Balance::<US>::new(0), 0, Table::new(records_id, 0)),
             vec![],
-            crate::move_bindings::move_std::type_name::TypeName::new("a3::witness::V1"),
         )
     }
 

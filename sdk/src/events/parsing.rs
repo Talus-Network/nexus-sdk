@@ -97,12 +97,7 @@ mod tests {
         crate::{
             events::NexusEventKind,
             move_bindings::{
-                move_std::option::Option as MoveOption,
-                scheduler::{
-                    schedule::OccurrenceSource,
-                    scheduler::{OccurrenceAdvertisedEvent, TaskCreatedEvent},
-                    task::TaskController,
-                },
+                scheduler::{scheduler::TaskCreatedEvent, task::TaskController},
                 sui_framework::object::ID,
             },
         },
@@ -112,15 +107,6 @@ mod tests {
     #[derive(Serialize)]
     struct Wrapper<T> {
         event: T,
-    }
-
-    #[derive(Serialize)]
-    struct DistributedWrapper<T> {
-        event: T,
-        deadline_ms: u64,
-        requested_at_ms: u64,
-        task_id: sui::types::Address,
-        leaders: Vec<sui::types::Address>,
     }
 
     fn address(value: &'static str) -> sui::types::Address {
@@ -228,35 +214,5 @@ mod tests {
             distributed_event_move::DistributedEventWrapper<MoveNexusData>,
         >(&context);
         assert_eq!(*distributed_wrapper.address(), address("0xa3"));
-    }
-
-    #[test]
-    fn parses_distributed_event_wrapper() {
-        let event = OccurrenceAdvertisedEvent::new(
-            ID::new(address("0x51")),
-            3,
-            100,
-            MoveOption::from_option(Some(200)),
-            20,
-            OccurrenceSource::Standalone,
-        );
-        let pickup_task_id = crate::move_bindings::derive_task_execution_id(address("0x51"), 3)
-            .expect("execution identity derives");
-        let bytes = bcs::to_bytes(&DistributedWrapper {
-            event,
-            deadline_ms: 30_000,
-            requested_at_ms: 90,
-            task_id: pickup_task_id,
-            leaders: vec![address("0x52")],
-        })
-        .expect("event serializes");
-
-        let (event, distribution) =
-            parse_bcs("OccurrenceAdvertisedEvent", &bytes).expect("event parses");
-
-        assert!(matches!(event, NexusEventKind::OccurrenceAdvertised(_)));
-        let distribution = distribution.expect("distribution metadata");
-        assert_eq!(distribution.task_id, pickup_task_id);
-        assert_eq!(distribution.leaders, [address("0x52")]);
     }
 }

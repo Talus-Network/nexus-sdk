@@ -125,6 +125,31 @@ impl NexusPtbBuilder {
             .shared_object_by_id(root.object_id, root.initial_shared_version, mutability)
     }
 
+    /// Add the fixed runtime authority root.
+    ///
+    /// Protocol effect calls borrow this root before entering the Scheduler
+    /// facade. Keeping the input construction here makes the authority edge
+    /// explicit and identical across every transaction builder.
+    pub fn runtime_authority<M: Into<sui::types::Mutability>>(
+        &mut self,
+        mutability: M,
+    ) -> Result<Argument, BuildError> {
+        let authority = self.objects().runtime_authority;
+        self.shared_root(&authority, mutability)
+    }
+
+    /// Add an immutable object reference.
+    ///
+    /// Sui encodes immutable and address owned objects through the same PTB
+    /// input form. This name records the stronger protocol invariant at call
+    /// sites such as finalized DAG reads.
+    pub fn immutable_object(
+        &mut self,
+        object: &sui::types::ObjectReference,
+    ) -> Result<Argument, BuildError> {
+        self.tx.owned_object(object)
+    }
+
     /// Add an already built Move call target to this PTB.
     fn call_raw_target(
         &mut self,

@@ -112,7 +112,7 @@ pub(crate) fn register_skill_ptb(
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = agent.mutable_ptb_argument(tx)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         register_skill(
             tx,
@@ -176,7 +176,7 @@ pub(crate) fn update_skill_from_artifact_ptb(
         let registry_for_policies = agent_registry_arg(tx, true)?;
         let agent_for_dag = agent.clone().mutable_ptb_argument(tx)?;
         let agent_for_policies = agent.mutable_ptb_argument(tx)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         update_dag(tx, registry_for_dag, agent_for_dag, dag, skill_id)?;
 
@@ -219,7 +219,7 @@ pub(crate) fn bind_agent_skill_ptb(
     move_boundary::ptb(objects, |tx| {
         let registry = agent_registry_arg(tx, true)?;
         let agent = create_agent(tx, registry)?;
-        let dag = tx.shared_object(dag, false)?;
+        let dag = tx.immutable_object(dag)?;
 
         register_skill(
             tx,

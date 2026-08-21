@@ -31,6 +31,7 @@ const NEXUS_PACKAGES: &[(&str, &str)] = &[
     ("workflow", "0xa4"),
     ("scheduler", "0xa5"),
 ];
+const KERNEL_PACKAGE: (&str, &str) = ("kernel", "0xa0");
 const TALUS_PACKAGE: (&str, &str) = ("talus", "0xa6");
 const SUI_FRAMEWORK_PACKAGE: (&str, &str) = ("sui_framework", "0x2");
 const SUI_FRAMEWORK_MODULES: &[&str] = &[
@@ -144,6 +145,9 @@ async fn regenerate(inputs: Inputs) -> Result<()> {
     let limits_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(PROTOCOL_LIMITS_FILE);
     write_protocol_limits(&limits_path, &protocol_limits)?;
     for (name, package) in packages {
+        if name == KERNEL_PACKAGE.0 {
+            continue;
+        }
         let module_count = package.modules.len();
         let path = write_package_ir(&out_dir, &name, &package)?;
         println!("wrote {} ({} modules)", path.display(), module_count);
@@ -292,6 +296,7 @@ fn canonicalize_sdk_ir(packages: &mut [(String, NormalizedPackage)]) {
             .iter()
             .find(|(package_name, _)| package_name == name)
             .map(|(_, canonical_id)| *canonical_id)
+            .or_else(|| (name == KERNEL_PACKAGE.0).then_some(KERNEL_PACKAGE.1))
             .or_else(|| (name == TALUS_PACKAGE.0).then_some(TALUS_PACKAGE.1));
         let Some(canonical_id) = canonical_id else {
             continue;
@@ -411,6 +416,12 @@ fn packages_from_metadata(
             .ok_or_else(|| anyhow!("{source} is missing packages.{package}.storage_id"))?;
         packages.push(((*package).to_string(), parse_address(id)?));
     }
+    let kernel_id = deployment
+        .get("kernel")
+        .and_then(|value| value.get("package_id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| anyhow!("{source} is missing kernel.package_id"))?;
+    packages.push((KERNEL_PACKAGE.0.to_string(), parse_address(kernel_id)?));
     let talus_id = deployment
         .get("external_us")
         .and_then(|value| value.get("package_id"))
@@ -560,6 +571,7 @@ mod tests {
                 "scheduler": {"storage_id": "0x15"},
                 "tool": {"storage_id": "0x17"}
             },
+            "kernel": {"package_id": "0x18"},
             "external_us": {"package_id": "0x16"}
         });
         let packages = packages_from_metadata(&deployment, Path::new("deployment.json"))
@@ -574,6 +586,7 @@ mod tests {
                 ("registry".to_string(), Address::from_str("0x13").unwrap()),
                 ("workflow".to_string(), Address::from_str("0x14").unwrap()),
                 ("scheduler".to_string(), Address::from_str("0x15").unwrap()),
+                ("kernel".to_string(), Address::from_str("0x18").unwrap()),
                 ("talus".to_string(), Address::from_str("0x16").unwrap()),
                 (
                     "sui_framework".to_string(),
@@ -646,7 +659,8 @@ mod tests {
                 "workflow": {"storage_id": "0x14"},
                 "scheduler": {"storage_id": "0x15"},
                 "tool": {"storage_id": "0x17"}
-            }
+            },
+            "kernel": {"package_id": "0x18"}
         });
 
         let error = packages_from_metadata(&deployment, Path::new("deployment.json"))
@@ -801,29 +815,34 @@ mod tests {
         }
 
         let mut first = vec![
+            ("kernel".to_string(), package("0x01", "0x01", "0x20")),
             ("primitives".to_string(), package("0x11", "0x10", "0x20")),
             ("interface".to_string(), package("0x21", "0x20", "0x10")),
             ("talus".to_string(), package("0x31", "0x30", "0x10")),
         ];
         let mut second = vec![
+            ("kernel".to_string(), package("0x001", "0x001", "0x220")),
             ("primitives".to_string(), package("0x111", "0x110", "0x220")),
             ("interface".to_string(), package("0x221", "0x220", "0x110")),
             ("talus".to_string(), package("0x331", "0x330", "0x110")),
         ];
-        second[0].1.version = 7;
-        second[1].1.version = 9;
-        second[2].1.version = 11;
+        second[0].1.version = 5;
+        second[1].1.version = 7;
+        second[2].1.version = 9;
+        second[3].1.version = 11;
 
         canonicalize_sdk_ir(&mut first);
         canonicalize_sdk_ir(&mut second);
 
         assert_eq!(first, second);
-        assert_eq!(first[0].1.storage_id, "0xa1");
-        assert_eq!(first[0].1.original_id.as_deref(), Some("0xa1"));
-        assert_eq!(first[2].1.storage_id, "0xa6");
-        assert_eq!(first[2].1.original_id.as_deref(), Some("0xa6"));
+        assert_eq!(first[0].1.storage_id, "0xa0");
+        assert_eq!(first[0].1.original_id.as_deref(), Some("0xa0"));
+        assert_eq!(first[1].1.storage_id, "0xa1");
+        assert_eq!(first[1].1.original_id.as_deref(), Some("0xa1"));
+        assert_eq!(first[3].1.storage_id, "0xa6");
+        assert_eq!(first[3].1.original_id.as_deref(), Some("0xa6"));
         assert_eq!(
-            first[0].1.modules["m"].functions[0].parameters[0].ty,
+            first[1].1.modules["m"].functions[0].parameters[0].ty,
             TypeRef::Datatype {
                 type_name: TypeName::parse("0xa2::m::Obj").unwrap(),
                 type_arguments: vec![],

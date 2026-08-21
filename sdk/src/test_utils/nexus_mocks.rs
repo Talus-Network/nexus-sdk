@@ -109,7 +109,6 @@ pub async fn mock_agent_skill_client_without_coins(
             fixed_tools: vec![],
         },
         current_interface_revision: InterfaceVersion::new(1),
-        scheduled_task_count: 0,
     };
     let mut ledger_service = sui_mocks::grpc::MockLedgerService::new();
     let mut package_service = sui_mocks::grpc::MockMovePackageService::new();

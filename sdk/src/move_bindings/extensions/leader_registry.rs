@@ -6,9 +6,9 @@
 //! truth.
 
 #[cfg(test)]
-use crate::move_bindings::{
-    move_std::{option::Option as MoveOption, type_name::TypeName},
-    sui_framework::{table::Table as MoveTable, vec_set::VecSet as MoveVecSet},
+use crate::move_bindings::sui_framework::{
+    table::Table as MoveTable,
+    vec_set::VecSet as MoveVecSet,
 };
 #[cfg(test)]
 use crate::move_bindings::{primitives, registry};
@@ -50,39 +50,6 @@ impl LeaderRegistryInnerV1 {
         self.max_transaction_budget
     }
 
-    /// Return the package that defined the Workflow witness currently bound to this registry.
-    ///
-    /// The witness is the existing on chain authority for Workflow publication. Its defining
-    /// address is therefore the authoritative call package, rather than a package inferred from
-    /// an unrelated root object.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when no witness is bound or when its [`TypeName`] is malformed.
-    ///
-    /// [`TypeName`]: crate::move_bindings::move_std::type_name::TypeName
-    pub fn workflow_package_id(&self) -> anyhow::Result<sui::types::Address> {
-        let witness = self
-            .workflow_witness_type
-            .as_option()
-            .context("workflow witness is not bound")?;
-        let witness_name = witness.as_str();
-        let qualified_name = if witness_name.starts_with("0x") {
-            std::borrow::Cow::Borrowed(witness_name)
-        } else {
-            std::borrow::Cow::Owned(format!("0x{witness_name}"))
-        };
-        let witness_type = qualified_name
-            .parse::<sui::types::StructTag>()
-            .with_context(|| {
-                format!(
-                    "bound workflow witness type '{}' is malformed",
-                    witness_name
-                )
-            })?;
-        Ok(*witness_type.address())
-    }
-
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, network: sui::types::Address) -> Self {
         Self {
@@ -103,7 +70,6 @@ impl LeaderRegistryInnerV1 {
                     sui::types::Address::ZERO,
                 ),
             },
-            workflow_witness_type: MoveOption::from_option(None),
         }
     }
 }
@@ -194,9 +160,6 @@ mod tests {
                 admin_cap_id: crate::move_bindings::sui_framework::object::ID::new(admin_cap_id),
                 leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
             },
-            workflow_witness_type: MoveOption::from_option(Some(TypeName::new(
-                "42::workflow::Witness",
-            ))),
         };
 
         let bytes = bcs::to_bytes(&original).expect("encode populated registry");
@@ -209,26 +172,6 @@ mod tests {
         );
         assert_eq!(decoded.network_id(), network_id);
         assert_eq!(decoded.max_transaction_budget(), 7_500_000_000);
-        assert_eq!(
-            decoded
-                .workflow_package_id()
-                .expect("bound workflow witness identifies its defining package"),
-            sui::types::Address::from_static("0x42")
-        );
-    }
-
-    #[test]
-    fn workflow_package_id_requires_a_bound_witness() {
-        let registry = LeaderRegistryInnerV1::new_for_test(
-            sui::types::Address::from_static("0x1"),
-            sui::types::Address::from_static("0x2"),
-        );
-
-        let error = registry
-            .workflow_package_id()
-            .expect_err("an unbound registry has no authoritative workflow package");
-
-        assert!(error.to_string().contains("workflow witness is not bound"));
     }
 
     #[test]
