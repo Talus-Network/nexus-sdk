@@ -47,6 +47,7 @@ pub(crate) fn inspect_tool_result_json(
         "fqn": inspection.fqn,
         "tool_id": inspection.tool_id,
         "tool_cashier_id": inspection.tool_cashier_id,
+        "exists": inspection.definition.is_some(),
         "owner": inspection.owner,
         "witness_type": inspection.witness_type,
         "inner_type": inspection.inner_type,
@@ -205,5 +206,62 @@ fn compatibility_name(compatibility: ToolCompatibility) -> &'static str {
         ToolCompatibility::MigrationRequired => "migration required",
         ToolCompatibility::Unsupported => "unsupported",
         ToolCompatibility::Unavailable => "unavailable",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        nexus_sdk::move_bindings::{
+            interface::meta_schema::MetaSchema,
+            move_std::ascii,
+            tool::tool_registry::{
+                ToolDefinition,
+                ToolRef as MoveToolRef,
+                ToolVerifierContract,
+            },
+        },
+    };
+
+    fn inspection(definition: Option<ToolDefinition>) -> ToolInspection {
+        ToolInspection {
+            fqn: "demo.taluslabs.tool@1".parse().unwrap(),
+            tool_id: sui::types::Address::ZERO,
+            tool_cashier_id: sui::types::Address::ZERO,
+            owner: None,
+            witness_type: None,
+            inner_type: None,
+            compatibility: ToolCompatibility::Unavailable,
+            lifecycle: None,
+            endorsed: None,
+            definition,
+            tool: None,
+            detail: None,
+        }
+    }
+
+    fn definition() -> ToolDefinition {
+        ToolDefinition::new(
+            ascii::String::from("demo.taluslabs.tool@1"),
+            MoveToolRef::Http {
+                url: b"https://example.com/tool".to_vec(),
+            },
+            b"Compatibility fixture".to_vec(),
+            MetaSchema::new(vec![], vec![]),
+            30_000,
+            ToolVerifierContract::None,
+            true,
+            0,
+        )
+    }
+
+    #[test]
+    fn inspection_json_preserves_the_exists_contract() {
+        let missing = inspect_tool_result_json(&inspection(None)).unwrap();
+        let registered = inspect_tool_result_json(&inspection(Some(definition()))).unwrap();
+
+        assert_eq!(missing["exists"], false);
+        assert_eq!(registered["exists"], true);
     }
 }
