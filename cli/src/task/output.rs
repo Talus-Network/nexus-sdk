@@ -340,6 +340,7 @@ const fn task_status(status: TaskStatus) -> &'static str {
         TaskStatus::Active => "active",
         TaskStatus::Paused => "paused",
         TaskStatus::Canceled => "canceled",
+        TaskStatus::Rejected { .. } => "rejected",
         TaskStatus::Finalized => "finalized",
     }
 }
@@ -383,6 +384,7 @@ const fn withdrawal_reason(reason: WithdrawalReason) -> &'static str {
         WithdrawalReason::RecurrenceReplaced => "recurrence replaced",
         WithdrawalReason::RecurrenceCleared => "recurrence cleared",
         WithdrawalReason::TaskCanceled => "Task canceled",
+        WithdrawalReason::TaskRejected => "Task rejected",
     }
 }
 
@@ -434,7 +436,7 @@ fn task_next_command(snapshot: &TaskSnapshot) -> Option<String> {
         TaskStatus::Canceled if snapshot.in_flight_occurrences() == 0 => {
             Some(format!("nexus task close --task-id {task_id}"))
         }
-        TaskStatus::Finalized => None,
+        TaskStatus::Rejected { .. } | TaskStatus::Finalized => None,
         _ => snapshot.advertised().map_or_else(
             || match (snapshot.allocated_occurrences() > 0, snapshot.status()) {
                 (true, _) => Some(format!("nexus task occurrence list --task-id {task_id}")),
@@ -444,7 +446,10 @@ fn task_next_command(snapshot: &TaskSnapshot) -> Option<String> {
                 (false, TaskStatus::Paused) => {
                     Some(format!("nexus task resume --task-id {task_id}"))
                 }
-                (false, TaskStatus::Canceled | TaskStatus::Finalized) => None,
+                (
+                    false,
+                    TaskStatus::Canceled | TaskStatus::Rejected { .. } | TaskStatus::Finalized,
+                ) => None,
             },
             |reference| {
                 Some(format!(

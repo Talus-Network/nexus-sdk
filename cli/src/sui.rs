@@ -619,6 +619,10 @@ mod tests {
                 object_id = "0x14"
                 initial_shared_version = 5
 
+                [runtime_authority]
+                object_id = "0x15"
+                initial_shared_version = 1
+
                 [leader_admin_cap]
                 object_id = "0x20"
 
@@ -633,6 +637,9 @@ mod tests {
 
                 [initial_leader_cap]
                 object_id = "0x24"
+
+                [runtime_authority_cap]
+                object_id = "0x28"
 
                 [us_token]
                 package_id = "0x25"

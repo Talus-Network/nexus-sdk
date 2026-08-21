@@ -693,6 +693,7 @@ mod tests {
             })
             .collect();
         let state = DAGInnerV1::new(
+            true,
             LinkedTable::new(vertices_id, ports_by_vertex.len() as u64),
             VecMap {
                 contents: vec![VecMapEntry {

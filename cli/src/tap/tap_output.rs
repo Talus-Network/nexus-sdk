@@ -658,7 +658,6 @@ pub(crate) fn registry_show_result_json(registry: &AgentRegistrySnapshot) -> ser
                 "active": skill.active(),
                 "dag_binding": skill_dag_binding_json(skill.dag_binding()),
                 "interface_revision": skill.current_interface_revision().inner,
-                "scheduled_task_count": skill.record.scheduled_task_count,
                 "requirements": skill_requirements_json(skill.requirements()),
             })
         })
@@ -1204,7 +1203,6 @@ mod tests {
                         fixed_tools: Vec::new(),
                     },
                     current_interface_revision: InterfaceVersion::new(3),
-                    scheduled_task_count: 2,
                 },
             }],
             default_executor: Some(DefaultDagExecutor {
@@ -1255,7 +1253,6 @@ mod tests {
                     dag_binding: SkillDagBinding::pinned(dag_id),
                     requirements: requirements.clone(),
                     current_interface_revision: InterfaceVersion::new(3),
-                    scheduled_task_count: 0,
                 },
             },
             skill_revision: SkillRevisionContext {
