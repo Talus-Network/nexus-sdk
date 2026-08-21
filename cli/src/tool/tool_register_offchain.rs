@@ -4,11 +4,15 @@ use {
     crate::{
         command_title,
         display::json_output,
-        loading, notify_error, notify_success,
+        loading,
+        notify_error,
+        notify_success,
         prelude::*,
         sui::*,
         tool::tool_validate::{
-            build_tool_http_client, output_schema_has_top_level_one_of, parse_tool_meta_json,
+            build_tool_http_client,
+            output_schema_has_top_level_one_of,
+            parse_tool_meta_json,
             validate_off_chain_tool_with_client,
         },
     },

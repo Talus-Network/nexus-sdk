@@ -9,15 +9,23 @@ use {
         move_bindings::{
             interface::{
                 agent::{
-                    Agent, AgentPaymentVault, AgentPaymentVaultStateV1, AgentStateV1,
-                    AgentVaultFieldKey, FixedTool, SkillDagBinding, SkillRequirement,
+                    Agent,
+                    AgentPaymentVault,
+                    AgentPaymentVaultStateV1,
+                    AgentStateV1,
+                    AgentVaultFieldKey,
+                    FixedTool,
+                    SkillDagBinding,
+                    SkillRequirement,
                     SkillSchedulePolicy,
                 },
                 payment::{PaymentSourceKind, SkillPaymentPolicy},
                 version::InterfaceVersion,
             },
             registry::agent_registry::{
-                DefaultDagExecutor, DefaultDagExecutorFieldKey, SkillRecord,
+                DefaultDagExecutor,
+                DefaultDagExecutorFieldKey,
+                SkillRecord,
             },
             sui_framework::{
                 object::{ID, UID},

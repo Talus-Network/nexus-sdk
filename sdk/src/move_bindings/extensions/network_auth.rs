@@ -15,7 +15,12 @@ use crate::move_bindings::{
 use crate::{
     move_bindings::{
         registry::network_auth::{
-            IdentityKey, KeyBinding, KeyBindingStateV1, KeyRecord, NetworkAuth, NetworkAuthStateV1,
+            IdentityKey,
+            KeyBinding,
+            KeyBindingStateV1,
+            KeyRecord,
+            NetworkAuth,
+            NetworkAuthStateV1,
         },
         sui_framework::object::ID,
     },

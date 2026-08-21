@@ -145,6 +145,10 @@ async fn ingestor_adds_engine_fields_and_returns_raw_events() {
         .unwrap();
     assert_eq!(page.checkpoint, 12);
     assert_eq!(page.events, [expected_event]);
+    assert!(
+        page.is_live,
+        "a stream started without replay is live immediately"
+    );
 }
 
 #[tokio::test]
@@ -163,7 +167,7 @@ async fn replay_uses_the_live_query_and_stops_at_its_cursor() {
         .expect_subscribe_events()
         .once()
         .returning(move |_request| {
-            let first = subscription_frame(None, watermark(b"live", None));
+            let first = subscription_frame(None, watermark(b"live", Some(8)));
             let stream = futures::stream::iter([Ok(first)]).chain(futures::stream::pending());
             Ok(tonic::Response::new(
                 Box::pin(stream) as sui_mocks::grpc::BoxEventStream
@@ -213,7 +217,7 @@ async fn replay_uses_the_live_query_and_stops_at_its_cursor() {
         .start(Some(7))
         .expect("ingestor should start");
 
-    let page = timeout(Duration::from_secs(2), async {
+    let replay_page = timeout(Duration::from_secs(2), async {
         loop {
             let page = pages.recv().await.unwrap().unwrap();
             if !page.events.is_empty() {
@@ -224,8 +228,23 @@ async fn replay_uses_the_live_query_and_stops_at_its_cursor() {
     .await
     .unwrap();
 
-    assert_eq!(page.checkpoint, 8);
-    assert_eq!(page.events, [expected_event]);
+    assert_eq!(replay_page.checkpoint, 8);
+    assert_eq!(replay_page.events, [expected_event]);
+    assert!(
+        !replay_page.is_live,
+        "ListEvents replay pages must not activate a leader"
+    );
+    let live_page = timeout(Duration::from_secs(2), pages.recv())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(live_page.checkpoint, 8);
+    assert!(live_page.events.is_empty());
+    assert!(
+        live_page.is_live,
+        "the live boundary must be observable even without a new event"
+    );
 }
 
 #[tokio::test]
@@ -433,6 +452,10 @@ async fn replay_gap_recovery_reports_the_gap_and_resumes_live() {
         .expect("live ingestion failed after unavailable replay");
     assert_eq!(page.checkpoint, 20);
     assert!(page.events.is_empty());
+    assert!(
+        page.is_live,
+        "replay-gap recovery resumes at the live stream"
+    );
 }
 
 #[tokio::test]
@@ -510,13 +533,13 @@ async fn reconnect_replays_from_the_last_inclusive_checkpoint() {
     let mut pages = EventIngestor::new(&rpc_url, query)
         .start(None)
         .expect("ingestor should start");
-    let mut checkpoints = Vec::new();
+    let mut pages_seen = Vec::new();
 
     timeout(Duration::from_secs(2), async {
-        while checkpoints.len() != 2 {
+        while pages_seen.len() != 2 {
             match pages.recv().await.unwrap() {
                 Ok(page) if !page.events.is_empty() => {
-                    checkpoints.push(page.checkpoint);
+                    pages_seen.push((page.checkpoint, page.is_live));
                 }
                 Ok(_) | Err(_) => {}
             }
@@ -525,7 +548,7 @@ async fn reconnect_replays_from_the_last_inclusive_checkpoint() {
     .await
     .expect("ingestor did not replay after reconnecting");
 
-    assert_eq!(checkpoints, [10, 11]);
+    assert_eq!(pages_seen, [(10, true), (11, false)]);
     assert_eq!(subscription_calls.load(Ordering::SeqCst), 2);
 }
 

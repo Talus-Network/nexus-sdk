@@ -2,7 +2,8 @@
 
 use crate::{
     move_bindings::{
-        registry::priority_fee_vault::PriorityFeeVaultStateV1, sui_framework::object::ID,
+        registry::priority_fee_vault::PriorityFeeVaultStateV1,
+        sui_framework::object::ID,
     },
     sui,
     types::{PriorityFeeSuiDrainQuote, PriorityFeeWithdrawalQuote},

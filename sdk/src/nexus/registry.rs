@@ -543,7 +543,10 @@ mod tests {
             move_bindings::{
                 move_std::ascii,
                 sui_framework::{
-                    linked_table::LinkedTable, object::UID, table::Table, versioned::Versioned,
+                    linked_table::LinkedTable,
+                    object::UID,
+                    table::Table,
+                    versioned::Versioned,
                 },
             },
             test_utils::sui_mocks,

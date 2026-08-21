@@ -32,7 +32,9 @@ use {
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
                 execution_events::{
-                    EndStateReachedEvent, ExecutionFinishedEvent, TerminalErrEvalRecordedEvent,
+                    EndStateReachedEvent,
+                    ExecutionFinishedEvent,
+                    TerminalErrEvalRecordedEvent,
                 },
                 execution_failure::WorkflowFailureClass,
             },
@@ -49,7 +51,6 @@ use {
         types::{DagSpec, NexusData, NexusObjects, ToolAnchor, ToolRef, ToolState},
     },
     anyhow::{anyhow, bail},
-    sha2::{Digest as _, Sha256},
     std::{
         collections::{BTreeMap, HashMap},
         sync::Arc,
@@ -253,6 +254,8 @@ pub struct RecordCommittedToolResultGasChargeResult {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct CommittedToolResultView {
     pub expected_vertex: RuntimeVertex,
+    pub is_err_eval: bool,
+    pub failure_evidence_kind: Option<FailureEvidenceKind>,
     pub primary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub secondary_failure_evidence_kind: Option<FailureEvidenceKind>,
     pub current_leader_cap_id: sui::types::Address,
@@ -344,6 +347,8 @@ impl From<execution_move::CommittedToolResult> for CommittedToolResultView {
     fn from(value: execution_move::CommittedToolResult) -> Self {
         Self {
             expected_vertex: value.expected_vertex,
+            is_err_eval: value.variant.as_str() == "_err_eval",
+            failure_evidence_kind: value.failure_evidence_kind.into_option(),
             primary_failure_evidence_kind: value.primary_failure_evidence_kind.into_option(),
             secondary_failure_evidence_kind: value.secondary_failure_evidence_kind.into_option(),
             current_leader_cap_id: value.current_leader_cap_id.bytes,
@@ -924,12 +929,9 @@ pub async fn inspect_expired_walk_resolution_at(
             )
         })?;
     let tool_fqn = vertex_info.kind.tool_fqn()?;
-    let vertex_key = payment_vertex_key(params.dag_execution_id, abort_vertex, &tool_fqn)?;
-    let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
-    let locked = payment
-        .locked_vertices
-        .iter()
-        .any(|lock| lock.vertex_key == vertex_key && lock.tool_fqn == tool_fqn_bytes);
+    let vertex_key =
+        ExecutionPayment::vertex_lock_key(params.dag_execution_id, abort_vertex, &tool_fqn)?;
+    let locked = payment.has_vertex_lock(params.dag_execution_id, abort_vertex, &tool_fqn)?;
 
     if !locked {
         return Ok(ExpiredWalkResolutionPlan {
@@ -2128,19 +2130,6 @@ impl ExecutionCostResult {
     }
 }
 
-fn payment_vertex_key(
-    execution_id: sui::types::Address,
-    vertex: &RuntimeVertex,
-    tool_fqn: &crate::ToolFqn,
-) -> anyhow::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"nexus.payment.vertex.v1");
-    bytes.extend(bcs::to_bytes(&execution_id)?);
-    bytes.extend(bcs::to_bytes(vertex)?);
-    bytes.extend(tool_fqn.to_string().as_bytes());
-    Ok(Sha256::digest(bytes).to_vec())
-}
-
 fn filter_tool_cashier_abort_candidate_walks(
     execution_id: sui::types::Address,
     vertices: &HashMap<graph_move::Vertex, graph_move::VertexInfo>,
@@ -2160,7 +2149,7 @@ fn filter_tool_cashier_abort_candidate_walks(
             )
         })?;
         let tool_fqn = vertex_info.kind.tool_fqn()?;
-        let vertex_key = payment_vertex_key(execution_id, vertex, &tool_fqn)?;
+        let vertex_key = ExecutionPayment::vertex_lock_key(execution_id, vertex, &tool_fqn)?;
         let tool_fqn_bytes = tool_fqn.to_string().into_bytes();
         if locks
             .iter()
@@ -2219,10 +2208,13 @@ mod tests {
                     dag as dag_move,
                     graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
-                        ExecutionPaymentFeesRecordedEvent, ExecutionPaymentFinalState,
+                        ExecutionPaymentFeesRecordedEvent,
+                        ExecutionPaymentFinalState,
                         ExecutionPaymentToolCostSnapshottedEvent,
-                        ExecutionPaymentVertexLockedEvent, ExecutionPaymentVertexSettledEvent,
-                        SkillPaymentPolicy, VertexExecutionPaymentSettlementKind,
+                        ExecutionPaymentVertexLockedEvent,
+                        ExecutionPaymentVertexSettledEvent,
+                        SkillPaymentPolicy,
+                        VertexExecutionPaymentSettlementKind,
                     },
                     verifier::{ToolVerifierMode, VerifierDecision},
                     version::InterfaceVersion,
@@ -2233,10 +2225,14 @@ mod tests {
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
-                        EndStateReachedEvent, ExecutionFinishedEvent,
-                        ExecutionPaymentRefilledEvent, SubmissionFailureEvidenceRecordedEvent,
-                        TerminalErrEvalRecordedEvent, ToolVerificationResolvedEvent,
-                        WalkAdvancedEvent, WalkPendingAbortEvent,
+                        EndStateReachedEvent,
+                        ExecutionFinishedEvent,
+                        ExecutionPaymentRefilledEvent,
+                        SubmissionFailureEvidenceRecordedEvent,
+                        TerminalErrEvalRecordedEvent,
+                        ToolVerificationResolvedEvent,
+                        WalkAdvancedEvent,
+                        WalkPendingAbortEvent,
                     },
                     execution_failure::WorkflowFailureClass,
                 },
@@ -2303,9 +2299,14 @@ mod tests {
         primary_failure: Option<FailureEvidenceKind>,
         secondary_failure: Option<FailureEvidenceKind>,
     ) -> execution_move::CommittedToolResult {
+        let is_tool_failure = primary_failure == Some(FailureEvidenceKind::ToolEvidence);
         execution_move::CommittedToolResult {
             expected_vertex,
-            variant: graph_move::OutputVariant::new("ok"),
+            variant: graph_move::OutputVariant::new(if is_tool_failure {
+                "_err_eval"
+            } else {
+                "ok"
+            }),
             variant_ports_to_data: crate::move_bindings::sui_framework::vec_map::VecMap {
                 contents: vec![],
             },
@@ -2684,6 +2685,11 @@ mod tests {
                 .expect("committed result should exist");
 
         assert_eq!(result.expected_vertex, RuntimeVertex::plain("retryable"));
+        assert!(result.is_err_eval);
+        assert_eq!(
+            result.failure_evidence_kind,
+            Some(FailureEvidenceKind::ToolEvidence)
+        );
         assert_eq!(
             result.primary_failure_evidence_kind,
             Some(FailureEvidenceKind::ToolEvidence)
@@ -4149,7 +4155,8 @@ mod tests {
             created_at: 1_000,
         }];
         let payment_vertex_key =
-            payment_vertex_key(*execution_ref.object_id(), &vertex, &tool_fqn).unwrap();
+            ExecutionPayment::vertex_lock_key(*execution_ref.object_id(), &vertex, &tool_fqn)
+                .unwrap();
         let current_locked_vertices = vec![ExecutionPaymentVertexLock {
             vertex_key: payment_vertex_key.clone(),
             tool_fqn: tool_fqn.to_string().into_bytes(),
@@ -4693,7 +4700,8 @@ mod tests {
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
         let payable_vertex = RuntimeVertex::plain("payable");
         let idle_vertex = RuntimeVertex::plain("idle");
-        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
+        let matching_key =
+            ExecutionPayment::vertex_lock_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
         let mut vertices = HashMap::new();
         vertices.insert(
             graph_move::Vertex::new("payable"),
@@ -4752,7 +4760,8 @@ mod tests {
         let tool_fqn = fqn!("xyz.taluslabs.payable@1");
         let other_tool_fqn = fqn!("xyz.taluslabs.other@1");
         let payable_vertex = RuntimeVertex::plain("payable");
-        let matching_key = payment_vertex_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
+        let matching_key =
+            ExecutionPayment::vertex_lock_key(execution_id, &payable_vertex, &tool_fqn).unwrap();
         let mut vertices = HashMap::new();
         vertices.insert(
             graph_move::Vertex::new("payable"),

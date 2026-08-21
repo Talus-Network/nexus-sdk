@@ -2,7 +2,11 @@ use {
     super::{
         authority::ResolvedAuthority,
         command::{
-            append_schedule, create_unshared_task, finish_task, PreparedSchedule, PreparedTask,
+            append_schedule,
+            create_unshared_task,
+            finish_task,
+            PreparedSchedule,
+            PreparedTask,
         },
     },
     crate::{move_boundary::NexusPtbBuilder, scheduler::SchedulerError},

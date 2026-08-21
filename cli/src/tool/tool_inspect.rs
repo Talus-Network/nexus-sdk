@@ -1,7 +1,12 @@
 use {
     super::tool_output::{ExternalVerifierOutput, ToolOutput, ToolVerifierSupportOutput},
     crate::{
-        command_title, display::json_output, item, notify_error, notify_success, prelude::*,
+        command_title,
+        display::json_output,
+        item,
+        notify_error,
+        notify_success,
+        prelude::*,
         sui::get_read_only_nexus_client,
     },
     nexus_sdk::{

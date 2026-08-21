@@ -2,16 +2,22 @@
 
 #[cfg(test)]
 use crate::move_bindings::{
-    interface::dag as dag_move, primitives::event as event_move,
-    registry::agent_registry as agent_registry_move, scheduler::task as scheduler_task_move,
-    tool::tool_cashier as tool_cashier_move, workflow::execution as execution_move,
+    interface::dag as dag_move,
+    primitives::event as event_move,
+    registry::agent_registry as agent_registry_move,
+    scheduler::task as scheduler_task_move,
+    tool::tool_cashier as tool_cashier_move,
+    workflow::execution as execution_move,
 };
 use {
     crate::{
         move_bindings::{
             interface::{
-                agent as agent_move, authorization as authorization_move, dag as dag_move_common,
-                payment as payment_move, version as version_move,
+                agent as agent_move,
+                authorization as authorization_move,
+                dag as dag_move_common,
+                payment as payment_move,
+                version as version_move,
             },
             sui_framework::coin::Coin as MoveCoin,
             talus::us::US,

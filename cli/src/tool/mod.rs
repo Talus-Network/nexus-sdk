@@ -27,7 +27,9 @@ use {
     tool_set_invocation_cost::*,
     tool_unregister::*,
     tool_validate::{
-        output_on_chain_validation, output_validation, validate_off_chain_tool,
+        output_on_chain_validation,
+        output_validation,
+        validate_off_chain_tool,
         validate_on_chain_tool,
     },
 };

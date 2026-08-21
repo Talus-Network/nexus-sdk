@@ -88,6 +88,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         })?;
 
         let live_start_cursor = Self::response_cursor(first.watermark.as_ref())?.to_vec();
+        let mut live_boundary_sent = false;
         if let Some(start_checkpoint) = *resume_checkpoint {
             let replay_result = self
                 .replay_events(
@@ -96,6 +97,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     live_start_cursor,
                     resume_checkpoint,
                     highest_output_checkpoint,
+                    &mut live_boundary_sent,
                     send_page,
                 )
                 .await;
@@ -119,8 +121,10 @@ impl<Q: EventQuery> EventIngestor<Q> {
             .process_frame(
                 first.event,
                 first.watermark.as_ref(),
+                true,
                 resume_checkpoint,
                 highest_output_checkpoint,
+                &mut live_boundary_sent,
                 send_page,
             )
             .await?
@@ -146,8 +150,10 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 .process_frame(
                     response.event,
                     response.watermark.as_ref(),
+                    true,
                     resume_checkpoint,
                     highest_output_checkpoint,
+                    &mut live_boundary_sent,
                     send_page,
                 )
                 .await?
@@ -164,6 +170,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         live_start_cursor: Vec<u8>,
         resume_checkpoint: &mut Option<u64>,
         highest_output_checkpoint: &mut Option<u64>,
+        live_boundary_sent: &mut bool,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
     ) -> Result<bool, EventIngestionError> {
         let mut after_cursor: Option<Vec<u8>> = None;
@@ -221,8 +228,10 @@ impl<Q: EventQuery> EventIngestor<Q> {
                     .process_frame(
                         response.event,
                         response.watermark.as_ref(),
+                        false,
                         resume_checkpoint,
                         highest_output_checkpoint,
+                        live_boundary_sent,
                         send_page,
                     )
                     .await?
@@ -259,8 +268,10 @@ impl<Q: EventQuery> EventIngestor<Q> {
         &self,
         event: Option<sui::grpc::Event>,
         watermark: Option<&sui::grpc::Watermark>,
+        is_live: bool,
         resume_checkpoint: &mut Option<u64>,
         highest_output_checkpoint: &mut Option<u64>,
+        live_boundary_sent: &mut bool,
         send_page: &mpsc::Sender<Result<EventPage<Q::Output>, EventIngestionError>>,
     ) -> Result<bool, EventIngestionError> {
         let watermark = watermark.ok_or_else(|| {
@@ -275,18 +286,24 @@ impl<Q: EventQuery> EventIngestor<Q> {
         let Some(event) = event else {
             if let Some(checkpoint) = watermark.checkpoint_opt() {
                 Self::advance_checkpoint(resume_checkpoint, checkpoint);
-                if highest_output_checkpoint.is_none_or(|current| checkpoint > current) {
+                if (is_live && !*live_boundary_sent)
+                    || highest_output_checkpoint.is_none_or(|current| checkpoint > current)
+                {
                     if !self
                         .send_page(
                             EventPage {
                                 events: Vec::new(),
                                 checkpoint,
+                                is_live,
                             },
                             send_page,
                         )
                         .await
                     {
                         return Ok(false);
+                    }
+                    if is_live {
+                        *live_boundary_sent = true;
                     }
                     Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
                 }
@@ -328,14 +345,25 @@ impl<Q: EventQuery> EventIngestor<Q> {
                 checkpoint.max(event_checkpoint)
             });
         Self::advance_checkpoint(resume_checkpoint, checkpoint);
-        let should_send = !events.is_empty()
+        let should_send = is_live && !*live_boundary_sent
+            || !events.is_empty()
             || highest_output_checkpoint.is_none_or(|current| checkpoint > current);
         if should_send {
             if !self
-                .send_page(EventPage { events, checkpoint }, send_page)
+                .send_page(
+                    EventPage {
+                        events,
+                        checkpoint,
+                        is_live,
+                    },
+                    send_page,
+                )
                 .await
             {
                 return Ok(false);
+            }
+            if is_live {
+                *live_boundary_sent = true;
             }
             Self::advance_checkpoint(highest_output_checkpoint, checkpoint);
         }

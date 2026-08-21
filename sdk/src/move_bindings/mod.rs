@@ -371,8 +371,11 @@ pub mod workflow {
 mod tests {
     use {
         super::{
-            derive_task_execution_id, derive_tool_cashier_id, derive_walk_execution_event_task_id,
-            interface::graph::RuntimeVertex, registry,
+            derive_task_execution_id,
+            derive_tool_cashier_id,
+            derive_walk_execution_event_task_id,
+            interface::graph::RuntimeVertex,
+            registry,
         },
         crate::sui,
         sui_move::MoveType,

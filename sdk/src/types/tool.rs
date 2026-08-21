@@ -14,7 +14,8 @@ pub type Tool = ToolState;
 use {
     crate::{
         move_bindings::{move_std::ascii, tool::tool_registry},
-        sui, ToolFqn,
+        sui,
+        ToolFqn,
     },
     anyhow::{anyhow, bail, Context as _},
     chrono::{DateTime, Utc},

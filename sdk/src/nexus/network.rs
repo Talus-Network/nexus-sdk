@@ -7,7 +7,9 @@ use {
             registry::{
                 leader::{Leader, LeaderRegistry, LeaderRegistryStateV1},
                 priority_fee_vault::{
-                    PriorityFeeDeposit, PriorityFeeVault, PriorityFeeVaultStateV1,
+                    PriorityFeeDeposit,
+                    PriorityFeeVault,
+                    PriorityFeeVaultStateV1,
                 },
             },
             sui_framework::object::ID,

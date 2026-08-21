@@ -3,7 +3,13 @@ use {
     nexus_sdk::{
         nexus::client::NexusClient,
         scheduler::{
-            FailurePolicy, Occurrence, Recurrence, Schedule, TaskFunding, TaskOperation, TaskSpec,
+            FailurePolicy,
+            Occurrence,
+            Recurrence,
+            Schedule,
+            TaskFunding,
+            TaskOperation,
+            TaskSpec,
         },
         types::{DEFAULT_ENTRY_GROUP, DEFAULT_PRIORITY_FEE_PERCENTAGE},
         walrus::StorageConf,

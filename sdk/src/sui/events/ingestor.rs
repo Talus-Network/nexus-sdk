@@ -1,6 +1,10 @@
 use {
-    super::query::EventQuery, crate::sui, sui_rpc::field::FieldMaskUtil as _, thiserror::Error,
-    tokio::sync::mpsc, tokio_util::sync::CancellationToken,
+    super::query::EventQuery,
+    crate::sui,
+    sui_rpc::field::FieldMaskUtil as _,
+    thiserror::Error,
+    tokio::sync::mpsc,
+    tokio_util::sync::CancellationToken,
 };
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 100;
@@ -105,6 +109,8 @@ pub struct EventPage<T> {
     pub events: Vec<T>,
     /// Checkpoint observed for this page.
     pub checkpoint: u64,
+    /// Whether this page was read from the live subscription after replay reached its cursor.
+    pub is_live: bool,
 }
 
 /// Receives pages and failures from an [`EventIngestor`].

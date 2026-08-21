@@ -4,7 +4,8 @@ use {
     crate::{
         move_bindings::{
             interface::{
-                authorization::AgentVertexAuthorization, onchain_tool_result::OnchainToolResult,
+                authorization::AgentVertexAuthorization,
+                onchain_tool_result::OnchainToolResult,
             },
             primitives::authorization::ProvenValue,
             struct_shape_matches,

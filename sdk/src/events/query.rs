@@ -7,7 +7,8 @@ use {
         move_bindings::{
             interface::distributed_event as distributed_event_move,
             primitives::{
-                data::NexusData as MoveNexusData, event as event_move,
+                data::NexusData as MoveNexusData,
+                event as event_move,
                 protocol::ProtocolVersionActivatedV1Event,
             },
         },

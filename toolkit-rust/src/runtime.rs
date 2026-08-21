@@ -7,7 +7,8 @@ use {
     crate::{
         config::Config,
         signed_http_warp::{handle_invoke, InvokeAuth},
-        NexusTool, ToolkitRuntimeConfig,
+        NexusTool,
+        ToolkitRuntimeConfig,
     },
     nexus_sdk::{
         move_bindings::interface::meta_schema::MetaSchema,
@@ -19,7 +20,9 @@ use {
     warp::{
         filters::{host::Authority, path::FullPath},
         http::{HeaderMap, StatusCode},
-        Filter, Rejection, Reply,
+        Filter,
+        Rejection,
+        Reply,
     },
 };
 

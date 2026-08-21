@@ -6,7 +6,10 @@
 
 #[cfg(feature = "transactions")]
 use crate::move_bindings::interface::meta_schema::{
-    MetaSchema, OutputVariantSchema, PortSchema, ValueKind,
+    MetaSchema,
+    OutputVariantSchema,
+    PortSchema,
+    ValueKind,
 };
 #[cfg(feature = "transactions")]
 use crate::move_bindings::primitives::data::NexusValue;

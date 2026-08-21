@@ -10,11 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Execution payment projections now expose the canonical exact vertex-lock key and predicate used by workflow and leader retry reconciliation.
+- Event-ingestor replay-gap recovery remains an explicit opt-in so catch-up consumers can fail closed when retained history is required.
+- Committed Tool result projections now retain the canonical `_err_eval` and overall failure-evidence fields needed by leader retry admission.
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
 - Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
 
 #### Changed
 
+- Event-ingestor pages now identify whether they came from retained replay or the live subscription boundary so consumers can gate readiness without a second cursor or checkpoint query.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.

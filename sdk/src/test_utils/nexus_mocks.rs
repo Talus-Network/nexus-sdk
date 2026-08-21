@@ -9,7 +9,11 @@ use crate::{
         registry::{
             agent_registry::{AgentRecord, AgentRegistry, AgentRegistryStateV1, SkillRecord},
             network_auth::{
-                IdentityKey, KeyBinding, KeyBindingStateV1, KeyRecord, NetworkAuth,
+                IdentityKey,
+                KeyBinding,
+                KeyBindingStateV1,
+                KeyRecord,
+                NetworkAuth,
                 NetworkAuthStateV1,
             },
         },

@@ -2,7 +2,9 @@
 
 use {
     super::nexus_data::{
-        resolved_values_from_json, resolved_values_port_commitment, resolved_values_to_json,
+        resolved_values_from_json,
+        resolved_values_port_commitment,
+        resolved_values_to_json,
         validate_resolved_values,
     },
     crate::{
@@ -10,8 +12,12 @@ use {
             interface::meta_schema::{MetaSchema, OutputVariantSchema, PortSchema, ValueKind},
             protocol_limits::{
                 interface::meta_schema::{
-                    MAX_IDENTIFIER_BYTES, MAX_INPUT_PORTS, MAX_META_SCHEMA_BYTES,
-                    MAX_OUTPUT_VARIANTS, MAX_PORTS_PER_OUTPUT_VARIANT, MAX_RAW_OUTPUT_BYTES,
+                    MAX_IDENTIFIER_BYTES,
+                    MAX_INPUT_PORTS,
+                    MAX_META_SCHEMA_BYTES,
+                    MAX_OUTPUT_VARIANTS,
+                    MAX_PORTS_PER_OUTPUT_VARIANT,
+                    MAX_RAW_OUTPUT_BYTES,
                 },
                 primitives::data::MAX_NEXUS_DATA_BYTES,
             },

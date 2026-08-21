@@ -2,7 +2,11 @@
 
 use crate::{
     events::{
-        parse_bcs, supports_event, NexusEvent, NexusEventCandidate, NexusEventDecodeError,
+        parse_bcs,
+        supports_event,
+        NexusEvent,
+        NexusEventCandidate,
+        NexusEventDecodeError,
         UnsupportedNexusEvent,
     },
     move_bindings::{

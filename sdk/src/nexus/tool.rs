@@ -5,14 +5,17 @@
 use {
     crate::{
         move_bindings::{
-            interface::verifier::ToolVerifierSupport, tool::external_verifier::ExternalVerifier,
+            interface::verifier::ToolVerifierSupport,
+            tool::external_verifier::ExternalVerifier,
         },
         nexus::{
             client::NexusClient,
             error::NexusError,
             registry::{
-                fetch_current_tool_registration, fetch_external_verifier_record,
-                fetch_tool_invocation_cost, preflight_external_verifier_registration,
+                fetch_current_tool_registration,
+                fetch_external_verifier_record,
+                fetch_tool_invocation_cost,
+                preflight_external_verifier_registration,
             },
         },
         sui,
