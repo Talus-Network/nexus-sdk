@@ -216,11 +216,7 @@ mod tests {
         nexus_sdk::move_bindings::{
             interface::meta_schema::MetaSchema,
             move_std::ascii,
-            tool::tool_registry::{
-                ToolDefinition,
-                ToolRef as MoveToolRef,
-                ToolVerifierContract,
-            },
+            tool::tool_registry::{ToolDefinition, ToolRef as MoveToolRef, ToolVerifierContract},
         },
     };
 
