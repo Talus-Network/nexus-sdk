@@ -3,17 +3,17 @@ use {
         move_bindings::{
             interface::{
                 agent::{Agent, AgentInnerV1, SkillDagBinding},
+                era::V1 as InterfaceWitnessV1,
                 meta_schema::{MetaSchema, PortSchema, ValueKind},
-                witness::V1 as InterfaceWitnessV1,
             },
             scheduler::{
+                era::V1 as SchedulerWitnessV1,
                 task::{Task, TaskController, TaskInnerV1},
-                witness::V1 as SchedulerWitnessV1,
             },
             sui_framework::clock::Clock,
             workflow::{
+                era::V1 as WorkflowWitnessV1,
                 execution::{DAGExecution, DAGExecutionInnerV1},
-                witness::V1 as WorkflowWitnessV1,
             },
         },
         move_boundary,

@@ -8,6 +8,7 @@ use crate::{
         move_std::option::Option as MoveOption,
         registry::{
             agent_registry::{AgentRecord, AgentRegistry, AgentRegistryInnerV1, SkillRecord},
+            era::V1 as RegistryWitnessV1,
             leader::{LeaderRegistry, LeaderRegistryInnerV1},
             network_auth::{
                 IdentityKey,
@@ -17,7 +18,6 @@ use crate::{
                 NetworkAuth,
                 NetworkAuthInnerV1,
             },
-            witness::V1 as RegistryWitnessV1,
         },
         sui_framework::{
             object::{ID, UID},
@@ -25,8 +25,8 @@ use crate::{
             vec_set::VecSet,
         },
         tool::{
+            era::V1 as ToolWitnessV1,
             tool_registry::{ToolRegistry, ToolRegistryInnerV1},
-            witness::V1 as ToolWitnessV1,
         },
     },
     nexus::client::NexusClient,

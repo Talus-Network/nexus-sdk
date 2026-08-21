@@ -8989,16 +8989,16 @@
         }
       ]
     },
-    "witness": {
-      "name": "witness",
+    "era": {
+      "name": "era",
       "datatypes": [
         {
           "type_name": {
             "address": "0xa7",
-            "module": "witness",
+            "module": "era",
             "name": "V1"
           },
-          "module": "witness",
+          "module": "era",
           "name": "V1",
           "abilities": [
             "Copy",
@@ -9031,7 +9031,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa7",
-                  "module": "witness",
+                  "module": "era",
                   "name": "V1"
                 },
                 "type_arguments": []

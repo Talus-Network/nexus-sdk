@@ -19,9 +19,9 @@ use {
                     SkillRequirement,
                 },
                 dag::{DAGInnerV1, DAG},
+                era::V1 as InterfaceWitnessV1,
                 payment::{ExecutionPayment, ExecutionPaymentFinalState, ExecutionPaymentInnerV1},
                 version::InterfaceVersion,
-                witness::V1 as InterfaceWitnessV1,
             },
             registry::{
                 agent_registry::{
@@ -32,12 +32,12 @@ use {
                     DefaultDagExecutorFieldKey,
                     SkillRecord,
                 },
-                witness::V1 as RegistryWitnessV1,
+                era::V1 as RegistryWitnessV1,
             },
             sui_framework::object::ID,
             workflow::{
+                era::V1 as WorkflowWitnessV1,
                 execution::{DAGExecution, DAGExecutionInnerV1, DagExecutionPaymentFieldKey},
-                witness::V1 as WorkflowWitnessV1,
             },
         },
         nexus::{
@@ -1264,8 +1264,8 @@ mod tests {
                 },
                 sui_framework::{table::Table as MoveTable, transfer as transfer_binding},
                 tool::{
+                    era::V1 as ToolWitnessV1,
                     tool_registry::{ToolRegistry, ToolRegistryInnerV1},
-                    witness::V1 as ToolWitnessV1,
                 },
             },
             test_utils::{nexus_mocks, sui_mocks},

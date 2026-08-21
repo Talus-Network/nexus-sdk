@@ -568,7 +568,7 @@ pub mod grpc {
             id: UID::new(root.object_id()),
             scheduler_upgrade_cap: MoveOption::from_option(Some(ID::new(runtime_package))),
             current_runtime: MoveOption::from_option(Some(TypeName::new(&format!(
-                "{runtime_package}::witness::RuntimeV1"
+                "{runtime_package}::era::RuntimeV1"
             )))),
             current_runtime_package: MoveOption::from_option(Some(ID::new(runtime_package))),
             paused,

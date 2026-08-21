@@ -630,16 +630,16 @@ mod tests {
             move_bindings::{
                 interface::{
                     dag::{DAGInnerV1, DAG},
+                    era::V1 as InterfaceWitnessV1,
                     graph::{self, VertexInfo, VertexKind},
                     meta_schema::{MetaSchema, PortSchema, ValueKind},
                     verifier::ToolVerifierMode,
-                    witness::V1 as InterfaceWitnessV1,
                 },
                 move_std::option::Option as MoveOption,
                 registry::{
                     agent_registry::{AgentRegistry, AgentRegistryInnerV1},
+                    era::V1 as RegistryWitnessV1,
                     leader::{LeaderRegistry, LeaderRegistryInnerV1},
-                    witness::V1 as RegistryWitnessV1,
                 },
                 sui_framework::{
                     linked_table::{LinkedTable, Node},
@@ -649,8 +649,8 @@ mod tests {
                     vec_set::VecSet,
                 },
                 tool::{
+                    era::V1 as ToolWitnessV1,
                     tool_registry::{ToolRegistry, ToolRegistryInnerV1},
-                    witness::V1 as ToolWitnessV1,
                 },
             },
             scheduler::{ScheduleError, SchedulerError},

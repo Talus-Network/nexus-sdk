@@ -29,6 +29,7 @@ use {
     crate::{
         move_bindings::{
             registry::{
+                era::V1 as RegistryWitnessV1,
                 network_auth::{
                     IdentityKey,
                     KeyBinding,
@@ -37,11 +38,10 @@ use {
                     NetworkAuth,
                     NetworkAuthInnerV1,
                 },
-                witness::V1 as RegistryWitnessV1,
             },
             tool::{
+                era::V1 as ToolWitnessV1,
                 tool_registry::{Tool as ToolAnchor, ToolInnerV1},
-                witness::V1 as ToolWitnessV1,
             },
         },
         nexus::{

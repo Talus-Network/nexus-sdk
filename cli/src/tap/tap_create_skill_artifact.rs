@@ -4,9 +4,9 @@ use {
         move_bindings::interface::{
             agent::{FixedTool, SkillRequirement},
             dag::{DAGInnerV1, DAG},
+            era::V1 as InterfaceWitnessV1,
             payment::SkillPaymentPolicy,
             version::InterfaceVersion,
-            witness::V1 as InterfaceWitnessV1,
         },
         nexus::workflow::fetch_dag_vertices_bcs,
         types::{tap_input_commitment_from_dag_inputs, validate_requirements},

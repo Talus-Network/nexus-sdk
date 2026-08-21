@@ -21,20 +21,21 @@ use {
         move_bindings::{
             interface::{
                 dag as dag_move,
+                era::V1 as InterfaceWitnessV1,
                 graph::{self as graph_move, RuntimeVertex},
                 meta_schema::MetaSchema,
                 onchain_tool_result::{OnchainToolResult, OnchainToolResultInnerV1},
                 payment::{ExecutionPaymentInnerV1, ExecutionPaymentVertexLock},
                 verifier::{FailureEvidenceKind, ToolVerifierMode},
-                witness::V1 as InterfaceWitnessV1,
             },
             move_std::type_name::TypeName,
             sui_framework::{clock::Clock as SuiClock, linked_table, object::ID, vec_map::VecMap},
             tool::{
+                era::V1 as ToolWitnessV1,
                 tool_cashier::{ToolCashier, ToolCashierInnerV1},
-                witness::V1 as ToolWitnessV1,
             },
             workflow::{
+                era::V1 as WorkflowWitnessV1,
                 execution::{self as execution_move, DAGExecution, DAGExecutionInnerV1, DAGWalk},
                 execution_events::{
                     EndStateReachedEvent,
@@ -42,7 +43,6 @@ use {
                     TerminalErrEvalRecordedEvent,
                 },
                 execution_failure::WorkflowFailureClass,
-                witness::V1 as WorkflowWitnessV1,
             },
         },
         move_boundary,
@@ -2248,9 +2248,9 @@ mod tests {
                 },
                 move_std::{ascii::String as MoveString, option::Option as MoveOption},
                 registry::{
+                    era::V1 as RegistryWitnessV1,
                     leader::{LeaderRegistry, LeaderRegistryInnerV1},
                     priority_fee_vault::{PriorityFeeVault, PriorityFeeVaultInnerV1},
-                    witness::V1 as RegistryWitnessV1,
                 },
                 scheduler::scheduler::OccurrenceDispatchedEvent,
                 sui_framework::{table::Table as MoveTable, vec_set::VecSet},

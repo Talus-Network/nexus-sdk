@@ -1,7 +1,7 @@
 //! Tool inspection, lifecycle, and cashier operations.
 
 #[cfg(test)]
-use crate::move_bindings::tool::witness::V1 as ToolWitnessV1;
+use crate::move_bindings::tool::era::V1 as ToolWitnessV1;
 use {
     crate::{
         move_bindings::{

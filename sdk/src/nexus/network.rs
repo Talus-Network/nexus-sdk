@@ -5,13 +5,13 @@ use {
         events::NexusEventKind,
         move_bindings::{
             registry::{
+                era::V1 as RegistryWitnessV1,
                 leader::{Leader, LeaderRegistry, LeaderRegistryInnerV1},
                 priority_fee_vault::{
                     PriorityFeeDeposit,
                     PriorityFeeVault,
                     PriorityFeeVaultInnerV1,
                 },
-                witness::V1 as RegistryWitnessV1,
             },
             sui_framework::object::ID,
         },

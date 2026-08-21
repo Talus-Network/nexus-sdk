@@ -8669,7 +8669,7 @@
                     "Datatype": {
                       "type_name": {
                         "address": "0xa5",
-                        "module": "witness",
+                        "module": "era",
                         "name": "RuntimeV1"
                       },
                       "type_arguments": []
@@ -13473,16 +13473,16 @@
         }
       ]
     },
-    "witness": {
-      "name": "witness",
+    "era": {
+      "name": "era",
       "datatypes": [
         {
           "type_name": {
             "address": "0xa5",
-            "module": "witness",
+            "module": "era",
             "name": "RuntimeV1"
           },
-          "module": "witness",
+          "module": "era",
           "name": "RuntimeV1",
           "abilities": [
             "Drop"
@@ -13503,10 +13503,10 @@
         {
           "type_name": {
             "address": "0xa5",
-            "module": "witness",
+            "module": "era",
             "name": "V1"
           },
-          "module": "witness",
+          "module": "era",
           "name": "V1",
           "abilities": [
             "Copy",
@@ -13529,10 +13529,10 @@
         {
           "type_name": {
             "address": "0xa5",
-            "module": "witness",
+            "module": "era",
             "name": "WorkAdmissionV1"
           },
-          "module": "witness",
+          "module": "era",
           "name": "WorkAdmissionV1",
           "abilities": [
             "Copy",
@@ -13565,7 +13565,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa5",
-                  "module": "witness",
+                  "module": "era",
                   "name": "RuntimeV1"
                 },
                 "type_arguments": []
@@ -13584,7 +13584,7 @@
               "Datatype": {
                 "type_name": {
                   "address": "0xa5",
-                  "module": "witness",
+                  "module": "era",
                   "name": "V1"
                 },
                 "type_arguments": []
