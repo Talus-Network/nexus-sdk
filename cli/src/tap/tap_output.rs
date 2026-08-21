@@ -13,16 +13,22 @@ use {
         move_bindings::interface::{
             agent::{SkillDagBinding, SkillRequirement, SkillSchedulePolicy},
             payment::{
-                ExecutionPayment, ExecutionPaymentFinalState, PaymentSourceKind, SkillPaymentPolicy,
+                ExecutionPayment,
+                ExecutionPaymentFinalState,
+                PaymentSourceKind,
+                SkillPaymentPolicy,
             },
         },
         nexus::{
             tap::{
-                BindAgentSkillResult, DepositAgentVaultResult, RefillExecutionPaymentResult,
+                BindAgentSkillResult,
+                DepositAgentVaultResult,
+                RefillExecutionPaymentResult,
                 WaitForPaymentResult,
             },
             workflow::{
-                AbortExecutionResult, CommittedToolResultSettlementResult,
+                AbortExecutionResult,
+                CommittedToolResultSettlementResult,
                 ExpiredWalkResolutionResult,
             },
         },
@@ -753,8 +759,11 @@ mod tests {
                 workflow::{ExpiredWalkResolutionKind, PublishResult},
             },
             types::{
-                AgentRecordContext, DefaultDagExecutorTarget, SkillRecordContext,
-                SkillRevisionContext, SkillRevisionLookupKey,
+                AgentRecordContext,
+                DefaultDagExecutorTarget,
+                SkillRecordContext,
+                SkillRevisionContext,
+                SkillRevisionLookupKey,
             },
         },
     };

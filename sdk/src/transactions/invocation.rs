@@ -3,11 +3,13 @@
 use {
     crate::{
         move_bindings::{
-            interface::graph::RuntimeVertex, move_std::type_name::TypeName,
+            interface::graph::RuntimeVertex,
+            move_std::type_name::TypeName,
             tool::invocation::Invocation,
             workflow::invocation_adapter as invocation_adapter_binding,
         },
-        move_boundary, sui,
+        move_boundary,
+        sui,
         transactions::dag::OnchainToolArgument,
         types::NexusObjects,
     },

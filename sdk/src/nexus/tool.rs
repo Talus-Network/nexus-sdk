@@ -6,8 +6,7 @@ use {
     crate::{
         events::NexusEventKind,
         move_bindings::{
-            interface::payment::PaymentSourceKind,
-            interface::verifier::ToolVerifierSupport,
+            interface::{payment::PaymentSourceKind, verifier::ToolVerifierSupport},
             move_std::type_name::TypeName,
             tool::{
                 external_verifier::ExternalVerifier,
@@ -21,8 +20,10 @@ use {
             client::NexusClient,
             error::NexusError,
             registry::{
-                fetch_current_tool_registration, fetch_external_verifier_record,
-                fetch_tool_invocation_cost, preflight_external_verifier_registration,
+                fetch_current_tool_registration,
+                fetch_external_verifier_record,
+                fetch_tool_invocation_cost,
+                preflight_external_verifier_registration,
             },
         },
         sui,

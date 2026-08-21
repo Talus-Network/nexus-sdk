@@ -10,14 +10,16 @@ use crate::{
             transfer::{self as transfer_binding, Receiving},
         },
         tool::{
-            finite_credits as finite_credits_binding, fixed_price as fixed_price_binding,
+            finite_credits as finite_credits_binding,
+            fixed_price as fixed_price_binding,
             free_invocation as free_invocation_binding,
             invocation::Invocation,
             time_pass::{self as time_pass_binding, TimePass},
             tool_cashier::{self as tool_cashier_binding, CashierDeposit},
         },
     },
-    move_boundary, sui,
+    move_boundary,
+    sui,
     types::NexusObjects,
 };
 

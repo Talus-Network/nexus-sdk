@@ -38,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
 - Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
 
+#### Added
+
+- Implement onchain tool validation.
+
 ### `nexus-toolkit`
 
 #### Changed

@@ -1,8 +1,17 @@
 use {
     nexus_sdk::scheduler::{
-        AbortReceipt, FailurePolicy, OccurrenceCost, OccurrenceSnapshot, OccurrenceSource,
-        OccurrenceStatus, TaskController, TaskMutationReceipt, TaskPointer, TaskSnapshot,
-        TaskStatus, WithdrawalReason,
+        AbortReceipt,
+        FailurePolicy,
+        OccurrenceCost,
+        OccurrenceSnapshot,
+        OccurrenceSource,
+        OccurrenceStatus,
+        TaskController,
+        TaskMutationReceipt,
+        TaskPointer,
+        TaskSnapshot,
+        TaskStatus,
+        WithdrawalReason,
     },
     std::fmt::Write as _,
 };
@@ -451,12 +460,21 @@ fn task_next_command(snapshot: &TaskSnapshot) -> Option<String> {
 mod tests {
     use {
         super::{
-            render_abort_receipt, render_occurrence, render_occurrence_cost,
-            render_occurrence_list, render_task, render_task_list, render_task_receipt,
+            render_abort_receipt,
+            render_occurrence,
+            render_occurrence_cost,
+            render_occurrence_list,
+            render_task,
+            render_task_list,
+            render_task_receipt,
         },
         nexus_sdk::{
             scheduler::{
-                AbortReceipt, OccurrenceCost, OccurrenceSnapshot, TaskMutationReceipt, TaskPointer,
+                AbortReceipt,
+                OccurrenceCost,
+                OccurrenceSnapshot,
+                TaskMutationReceipt,
+                TaskPointer,
                 TaskSnapshot,
             },
             sui,

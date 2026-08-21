@@ -33,7 +33,9 @@ use {
             workflow::{
                 execution::{self as execution_move, DAGExecution, DAGWalk},
                 execution_events::{
-                    EndStateReachedEvent, ExecutionFinishedEvent, TerminalErrEvalRecordedEvent,
+                    EndStateReachedEvent,
+                    ExecutionFinishedEvent,
+                    TerminalErrEvalRecordedEvent,
                 },
                 execution_failure::WorkflowFailureClass,
                 invocation_adapter::InvocationLockedEvent,
@@ -2513,8 +2515,10 @@ mod tests {
                     dag as dag_move,
                     graph::{self as graph_move, PostFailureAction, RuntimeVertex},
                     payment::{
-                        ExecutionPaymentFeesRecordedEvent, ExecutionPaymentFinalState,
-                        ExecutionPaymentToolCostSnapshottedEvent, PaymentSourceKind,
+                        ExecutionPaymentFeesRecordedEvent,
+                        ExecutionPaymentFinalState,
+                        ExecutionPaymentToolCostSnapshottedEvent,
+                        PaymentSourceKind,
                         SkillPaymentPolicy,
                     },
                     verifier::{ToolVerifierMode, VerifierDecision},
@@ -2526,10 +2530,14 @@ mod tests {
                 workflow::{
                     execution::DagExecutionPaymentFieldKey,
                     execution_events::{
-                        EndStateReachedEvent, ExecutionFinishedEvent,
-                        ExecutionPaymentRefilledEvent, SubmissionFailureEvidenceRecordedEvent,
-                        TerminalErrEvalRecordedEvent, ToolVerificationResolvedEvent,
-                        WalkAdvancedEvent, WalkPendingAbortEvent,
+                        EndStateReachedEvent,
+                        ExecutionFinishedEvent,
+                        ExecutionPaymentRefilledEvent,
+                        SubmissionFailureEvidenceRecordedEvent,
+                        TerminalErrEvalRecordedEvent,
+                        ToolVerificationResolvedEvent,
+                        WalkAdvancedEvent,
+                        WalkPendingAbortEvent,
                     },
                     execution_failure::WorkflowFailureClass,
                     invocation_adapter::{InvocationLockedEvent, InvocationSettledEvent},
