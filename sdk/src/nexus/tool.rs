@@ -1676,6 +1676,21 @@ mod tests {
         ascii::String::from(value)
     }
 
+    async fn client_with_private_key(
+        objects: &crate::types::NexusObjects,
+        rpc_url: &str,
+        private_key: sui::crypto::Ed25519PrivateKey,
+    ) -> NexusClient {
+        NexusClient::builder()
+            .with_private_key(private_key)
+            .with_rpc_url(rpc_url)
+            .with_nexus_objects(objects.clone())
+            .with_gas(vec![sui_mocks::mock_sui_object_ref()], 1_000)
+            .build()
+            .await
+            .expect("mock client builds")
+    }
+
     #[test]
     fn canonical_policy_detection_uses_defining_type_identity() {
         let objects = sui_mocks::mock_nexus_objects();
@@ -2129,13 +2144,25 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum PaymentAction {
+        EnableFixedPrice,
+        DisableFixedPrice,
+        EnableFreeInvocations,
+        DisableFreeInvocations,
         EnableTimePass,
         SetInvocationCost,
         CloseTimePassIssuance,
+        OpenTimePassIssuance,
+        UpdateTimePassTerms,
         BuyTimePass,
+        BuyTimePassFor,
+        IssueTimePass,
         EnableFiniteCredits,
         CloseFiniteCreditIssuance,
+        OpenFiniteCreditIssuance,
+        UpdateFiniteCreditTerms,
         BuyFiniteCredits,
+        BuyFiniteCreditsFor,
+        IssueFiniteCredits,
     }
 
     #[derive(serde::Serialize)]
@@ -2206,14 +2233,14 @@ mod tests {
             sui::types::Address::from_static("0x3"),
         );
         let events = match action {
-            PaymentAction::BuyTimePass => vec![
+            PaymentAction::BuyTimePass | PaymentAction::BuyTimePassFor => vec![
                 wrapped_tool_event(
                     &nexus_objects,
                     TimePassCreatedEvent::new(
                         ID::new(tool_id),
                         ID::new(tool_cashier_id),
                         ID::new(entitlement_id),
-                        beneficiary,
+                        beneficiary.clone(),
                         1,
                         4,
                     ),
@@ -2227,14 +2254,25 @@ mod tests {
                     ),
                 ),
             ],
-            PaymentAction::BuyFiniteCredits => vec![
+            PaymentAction::IssueTimePass => vec![wrapped_tool_event(
+                &nexus_objects,
+                TimePassCreatedEvent::new(
+                    ID::new(tool_id),
+                    ID::new(tool_cashier_id),
+                    ID::new(entitlement_id),
+                    beneficiary.clone(),
+                    1,
+                    4,
+                ),
+            )],
+            PaymentAction::BuyFiniteCredits | PaymentAction::BuyFiniteCreditsFor => vec![
                 wrapped_tool_event(
                     &nexus_objects,
                     CreditsCreatedEvent::new(
                         ID::new(tool_id),
                         ID::new(tool_cashier_id),
                         ID::new(entitlement_id),
-                        beneficiary,
+                        beneficiary.clone(),
                         sui::types::Address::from_static("0x3"),
                         4,
                     ),
@@ -2248,6 +2286,17 @@ mod tests {
                     ),
                 ),
             ],
+            PaymentAction::IssueFiniteCredits => vec![wrapped_tool_event(
+                &nexus_objects,
+                CreditsCreatedEvent::new(
+                    ID::new(tool_id),
+                    ID::new(tool_cashier_id),
+                    ID::new(entitlement_id),
+                    beneficiary.clone(),
+                    sui::types::Address::from_static("0x3"),
+                    4,
+                ),
+            )],
             _ => vec![],
         };
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
@@ -2269,6 +2318,22 @@ mod tests {
         let actions = client.tool();
 
         let tx_digest = match action {
+            PaymentAction::EnableFixedPrice => actions
+                .enable_fixed_price(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::DisableFixedPrice => actions
+                .disable_fixed_price(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::EnableFreeInvocations => actions
+                .enable_free_invocations(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::DisableFreeInvocations => actions
+                .disable_free_invocations(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
             PaymentAction::EnableTimePass => actions
                 .enable_time_passes(&tool_fqn, auxiliary_id, 7, 1, 100)
                 .await
@@ -2281,8 +2346,24 @@ mod tests {
                 .close_time_pass_issuance(&tool_fqn, auxiliary_id)
                 .await
                 .map(|result| result.tx_digest),
+            PaymentAction::OpenTimePassIssuance => actions
+                .open_time_pass_issuance(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::UpdateTimePassTerms => actions
+                .update_time_pass_terms(&tool_fqn, auxiliary_id, 7, 1, 100)
+                .await
+                .map(|result| result.tx_digest),
             PaymentAction::BuyTimePass => actions
                 .buy_time_pass(&tool_fqn, 3, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::BuyTimePassFor => actions
+                .buy_time_pass_for(&tool_fqn, 3, auxiliary_id, beneficiary)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::IssueTimePass => actions
+                .issue_time_pass(&tool_fqn, auxiliary_id, beneficiary, 1, 4)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::EnableFiniteCredits => actions
@@ -2293,8 +2374,36 @@ mod tests {
                 .close_finite_credit_issuance(&tool_fqn, auxiliary_id)
                 .await
                 .map(|result| result.tx_digest),
+            PaymentAction::OpenFiniteCreditIssuance => actions
+                .open_finite_credit_issuance(&tool_fqn, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::UpdateFiniteCreditTerms => actions
+                .update_finite_credit_terms(&tool_fqn, auxiliary_id, 13, 2, 9)
+                .await
+                .map(|result| result.tx_digest),
             PaymentAction::BuyFiniteCredits => actions
                 .buy_finite_credits(&tool_fqn, 4, auxiliary_id)
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::BuyFiniteCreditsFor => actions
+                .buy_finite_credits_for(
+                    &tool_fqn,
+                    4,
+                    auxiliary_id,
+                    beneficiary,
+                    sui::types::Address::from_static("0x3"),
+                )
+                .await
+                .map(|result| result.tx_digest),
+            PaymentAction::IssueFiniteCredits => actions
+                .issue_finite_credits(
+                    &tool_fqn,
+                    auxiliary_id,
+                    beneficiary,
+                    sui::types::Address::from_static("0x3"),
+                    4,
+                )
                 .await
                 .map(|result| result.tx_digest),
         }
@@ -2306,16 +2415,279 @@ mod tests {
     #[tokio::test]
     async fn tool_cashier_actions_resolve_objects_and_submit() {
         for action in [
+            PaymentAction::EnableFixedPrice,
+            PaymentAction::DisableFixedPrice,
+            PaymentAction::EnableFreeInvocations,
+            PaymentAction::DisableFreeInvocations,
             PaymentAction::EnableTimePass,
             PaymentAction::SetInvocationCost,
             PaymentAction::CloseTimePassIssuance,
+            PaymentAction::OpenTimePassIssuance,
+            PaymentAction::UpdateTimePassTerms,
             PaymentAction::BuyTimePass,
+            PaymentAction::BuyTimePassFor,
+            PaymentAction::IssueTimePass,
             PaymentAction::EnableFiniteCredits,
             PaymentAction::CloseFiniteCreditIssuance,
+            PaymentAction::OpenFiniteCreditIssuance,
+            PaymentAction::UpdateFiniteCreditTerms,
             PaymentAction::BuyFiniteCredits,
+            PaymentAction::BuyFiniteCreditsFor,
+            PaymentAction::IssueFiniteCredits,
         ] {
             assert_payment_action_succeeds(action).await;
         }
+    }
+
+    #[tokio::test]
+    async fn finite_credit_split_validates_and_submits_exact_credit() {
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let sender = private_key.public_key().derive_address();
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.split@1");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
+                .expect("tool id derives");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("cashier id derives");
+        let credits_id = sui::types::Address::from_static("0x601");
+        let created_id = sui::types::Address::from_static("0x602");
+        let beneficiary = PaymentSourceKind::user_funded(sender);
+        let credits = finite_credits::Credits::new(
+            UID::new(credits_id),
+            ID::new(tool_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            sender,
+            5,
+        );
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut transactions = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscriptions = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger, 1_000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(credits_id),
+            sui::types::Owner::Shared(7),
+            bcs::to_bytes(&credits).expect("credits serialize"),
+        );
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transactions,
+            &mut subscriptions,
+            &mut ledger,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            vec![wrapped_tool_event(
+                &objects,
+                CreditsCreatedEvent::new(
+                    ID::new(tool_id),
+                    ID::new(cashier_id),
+                    ID::new(created_id),
+                    beneficiary,
+                    sender,
+                    2,
+                ),
+            )],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            execution_service_mock: Some(transactions),
+            subscription_service_mock: Some(subscriptions),
+            ..Default::default()
+        });
+        let client = client_with_private_key(&objects, &rpc_url, private_key).await;
+
+        let result = client
+            .tool()
+            .split_finite_credits(&tool_fqn, credits_id, 2)
+            .await
+            .expect("finite credit split succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.credits_id, created_id);
+    }
+
+    #[tokio::test]
+    async fn finite_credit_join_validates_both_exact_credits() {
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let sender = private_key.public_key().derive_address();
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.join@1");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
+                .expect("tool id derives");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("cashier id derives");
+        let first_id = sui::types::Address::from_static("0x611");
+        let second_id = sui::types::Address::from_static("0x612");
+        let beneficiary = PaymentSourceKind::user_funded(sender);
+        let credit = |id, remaining| {
+            finite_credits::Credits::new(
+                UID::new(id),
+                ID::new(tool_id),
+                ID::new(cashier_id),
+                beneficiary.clone(),
+                sender,
+                remaining,
+            )
+        };
+        let credit_type = crate::move_bindings::struct_tag::<finite_credits::Credits>(&objects);
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut transactions = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscriptions = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger, 1_000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_objects_bcs(
+            &mut ledger,
+            vec![
+                (
+                    sui_mocks::object_ref_for_id(first_id),
+                    sui::types::Owner::Shared(7),
+                    bcs::to_bytes(&credit(first_id, 2)).expect("first credits serialize"),
+                    credit_type.clone(),
+                ),
+                (
+                    sui_mocks::object_ref_for_id(second_id),
+                    sui::types::Owner::Shared(8),
+                    bcs::to_bytes(&credit(second_id, 3)).expect("second credits serialize"),
+                    credit_type,
+                ),
+            ],
+        );
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transactions,
+            &mut subscriptions,
+            &mut ledger,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            vec![],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            execution_service_mock: Some(transactions),
+            subscription_service_mock: Some(subscriptions),
+            ..Default::default()
+        });
+        let client = client_with_private_key(&objects, &rpc_url, private_key).await;
+
+        let result = client
+            .tool()
+            .join_finite_credits(&tool_fqn, first_id, second_id)
+            .await
+            .expect("finite credit join succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+    }
+
+    #[tokio::test]
+    async fn finite_credit_refund_claim_validates_exact_invocation() {
+        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
+        let sender = private_key.public_key().derive_address();
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.refund@1");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
+                .expect("tool id derives");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("cashier id derives");
+        let invocation_id = sui::types::Address::from_static("0x621");
+        let credits_id = sui::types::Address::from_static("0x622");
+        let source_id = sui::types::Address::from_static("0x623");
+        let beneficiary = PaymentSourceKind::user_funded(sender);
+        let policy =
+            crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(&objects);
+        let invocation = Invocation::new(
+            UID::new(invocation_id),
+            sui::types::Address::from_static("0x624"),
+            b"vertex".to_vec(),
+            ID::new(tool_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            policy,
+            vec![ID::new(source_id)],
+            0,
+            MoveOption::from(Some(sender)),
+            sui_framework::balance::Balance::<sui_framework::sui::SUI> {
+                value: 0,
+                phantom_t0: std::marker::PhantomData,
+            },
+        );
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut transactions = sui_mocks::grpc::MockTransactionExecutionService::new();
+        let mut subscriptions = sui_mocks::grpc::MockSubscriptionService::new();
+        sui_mocks::grpc::mock_reference_gas_price(&mut ledger, 1_000);
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(invocation_id),
+            sui::types::Owner::Address(sender),
+            bcs::to_bytes(&invocation).expect("invocation serializes"),
+        );
+        let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
+            &mut transactions,
+            &mut subscriptions,
+            &mut ledger,
+            sui_mocks::mock_sui_object_ref(),
+            vec![],
+            vec![],
+            vec![wrapped_tool_event(
+                &objects,
+                CreditsCreatedEvent::new(
+                    ID::new(tool_id),
+                    ID::new(cashier_id),
+                    ID::new(credits_id),
+                    beneficiary,
+                    sender,
+                    1,
+                ),
+            )],
+        );
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            execution_service_mock: Some(transactions),
+            subscription_service_mock: Some(subscriptions),
+            ..Default::default()
+        });
+        let client = client_with_private_key(&objects, &rpc_url, private_key).await;
+
+        let result = client
+            .tool()
+            .claim_finite_credit_refund(&tool_fqn, invocation_id)
+            .await
+            .expect("finite credit refund claim succeeds");
+
+        assert_eq!(result.tx_digest, submitted.digest());
+        assert_eq!(result.credits_id, credits_id);
     }
 
     #[tokio::test]

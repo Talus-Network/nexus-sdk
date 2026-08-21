@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Added
 
-- Added dynamic Invocation policy composition, finite credits, time passes, and exact Invocation timeout refunds.
+- Added dynamic Invocation policy composition, policy discovery, finite credits, time passes, owner grants, receipt collection, and exact Invocation timeout refunds.
 
 #### Fixed
 
@@ -33,14 +33,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### `nexus-cli`
 
+#### Added
+
+- Added Tool economy inspection, finite credit and time pass purchase and issuance, credit split and join, refund recovery, and explicit Invocation authorization commands.
+- Added onchain Tool validation.
+
 #### Fixed
 
 - Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
 - Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
-
-#### Added
-
-- Implement onchain tool validation.
 
 ### `nexus-toolkit`
 
