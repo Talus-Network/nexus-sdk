@@ -1291,21 +1291,25 @@ pub fn settle_committed_tool_result_for_walk_by_leader_ptb(
     })
 }
 
-/// Build a PTB that aborts an expired DAG execution.
+/// Builds a PTB that aborts an expired DAG execution.
+///
+/// When `task_settlement` is supplied, the owning Task is settled after the
+/// execution transition has removed every accounting lock.
 pub fn abort_expired_execution_for_self_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     broken_onchain_result_cleanups: &[BrokenOnchainToolResultCleanupInput],
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.shared_object(dag, false)?;
         let execution = tx.shared_object(execution, true)?;
+        let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
         let clock = tx.clock()?;
 
         if !broken_onchain_result_cleanups.is_empty() {
             let tool_registry = tx.shared_object(&objects.tool_registry, false)?;
-            let leader_registry = tx.shared_object(&objects.leader_registry, false)?;
 
             for cleanup in broken_onchain_result_cleanups {
                 let result = tx.shared_object(&cleanup.result_ref, true)?;
@@ -1327,11 +1331,16 @@ pub fn abort_expired_execution_for_self_ptb(
             execution_settlement_binding::abort_expired_execution_target,
             vec![dag, execution, clock],
         )?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
+        }
         Ok(())
     })
 }
 
-/// Build a PTB that settles a committed tool result for one walk.
+/// Builds a PTB that settles a committed Tool result for one [RuntimeVertex].
+///
+/// The exact Invocation is settled before the optional owning Task settlement.
 pub fn settle_committed_tool_result_for_walk_for_self_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
@@ -1339,6 +1348,7 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
     invocation: &sui::types::ObjectReference,
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.shared_object(dag, false)?;
@@ -1362,6 +1372,9 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
             ],
         )?;
         super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
+        }
         Ok(())
     })
 }
@@ -1403,7 +1416,9 @@ pub fn settle_onchain_tool_result_for_walk(
     Ok(())
 }
 
-/// Build a PTB that settles a finalized on chain tool result for one walk.
+/// Builds a PTB that settles a finalized on chain Tool result for one [RuntimeVertex].
+///
+/// The exact Invocation is settled before the optional owning Task settlement.
 #[allow(clippy::too_many_arguments)]
 pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
     objects: &NexusObjects,
@@ -1414,6 +1429,7 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
     walk_index: u64,
     expected_vertex: &RuntimeVertex,
     tool_witness_id: sui::types::Address,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<ProgrammableTransaction> {
     move_boundary::ptb(objects, |tx| {
         let dag = tx.shared_object(dag, false)?;
@@ -1439,6 +1455,9 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
         )?;
 
         super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
+        if let Some(task) = task_settlement {
+            scheduler::append_settle_occurrence(tx, task, execution, leader_registry, clock)?;
+        }
 
         Ok(())
     })
@@ -2397,6 +2416,7 @@ mod tests {
     #[test]
     fn permissionless_settle_committed_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_committed_tool_result_for_walk_for_self_ptb(
             &objects,
@@ -2405,6 +2425,7 @@ mod tests {
             &object_ref("0x30", 9, 30),
             13,
             &RuntimeVertex::plain("counter_increment"),
+            Some(&task),
         )
         .expect("ptb should build");
 
@@ -2422,13 +2443,16 @@ mod tests {
         expect_shared_object_arg(&ptb, &call.arguments[3], &objects.leader_registry, false);
         expect_shared_object_arg(&ptb, &call.arguments[4], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[5], 13);
-        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < task);
     }
 
     #[test]
     fn settle_onchain_tool_result_uses_priority_fee_vault_argument() {
         let objects = nexus_objects();
         let next_vertex = RuntimeVertex::plain("counter_increment");
+        let task = object_ref("0x80", 10, 80);
 
         let ptb = settle_onchain_tool_result_for_walk_for_self_ptb(
             &objects,
@@ -2439,6 +2463,7 @@ mod tests {
             15,
             &next_vertex,
             addr("0x71"),
+            Some(&task),
         )
         .expect("ptb should build");
 
@@ -2451,12 +2476,37 @@ mod tests {
         let Command::MoveCall(call) = &ptb.commands[call_index] else {
             panic!("expected on-chain settlement call");
         };
-        assert!(move_call_index(&ptb, None, "invocation_adapter", "settle") > call_index);
+        let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(call_index < invocation && invocation < task);
 
         assert_eq!(call.arguments.len(), 10);
         expect_shared_object_arg(&ptb, &call.arguments[4], &objects.leader_registry, false);
         expect_shared_object_arg(&ptb, &call.arguments[5], &objects.priority_fee_vault, false);
         expect_u64_arg(&ptb, &call.arguments[6], 15);
+    }
+
+    #[test]
+    fn permissionless_abort_settles_the_task_after_the_execution() {
+        let objects = nexus_objects();
+        let task = object_ref("0x80", 10, 80);
+        let ptb = abort_expired_execution_for_self_ptb(
+            &objects,
+            &object_ref("0x50", 7, 50),
+            &object_ref("0x60", 8, 60),
+            &[],
+            Some(&task),
+        )
+        .expect("ptb should build");
+
+        let abort = move_call_index(
+            &ptb,
+            None,
+            "execution_settlement",
+            "abort_expired_execution",
+        );
+        let task = move_call_index(&ptb, None, "scheduler", "settle");
+        assert!(abort < task);
     }
 
     #[test]

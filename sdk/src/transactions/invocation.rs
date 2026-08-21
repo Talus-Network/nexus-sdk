@@ -196,17 +196,22 @@ pub(crate) fn settle(
     )
 }
 
-/// Builds a permissionless timeout refund for one exact Invocation.
+/// Builds a permissionless timeout refund for one exact [Invocation].
+///
+/// When `task_settlement` is supplied, the owning Task is settled only after
+/// the Invocation refund has removed its accounting lock.
 pub fn abort_expired_ptb(
     objects: &NexusObjects,
     dag: &sui::types::ObjectReference,
     execution: &sui::types::ObjectReference,
     vertex: &RuntimeVertex,
     invocation: &sui::types::ObjectReference,
+    task_settlement: Option<&sui::types::ObjectReference>,
 ) -> anyhow::Result<sui::types::ProgrammableTransaction> {
     move_boundary::ptb(objects, |transaction| {
         let dag = transaction.shared_object(dag, false)?;
         let execution = transaction.shared_object(execution, true)?;
+        let leader_registry = transaction.shared_object(&objects.leader_registry, false)?;
         let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
         let receiving = transaction.receiving_object::<Invocation>(invocation)?;
         let clock = transaction.clock()?;
@@ -214,6 +219,15 @@ pub fn abort_expired_ptb(
             invocation_adapter_binding::abort_expired_target,
             vec![dag, execution, vertex, receiving, clock],
         )?;
+        if let Some(task) = task_settlement {
+            super::scheduler::append_settle_occurrence(
+                transaction,
+                task,
+                execution,
+                leader_registry,
+                clock,
+            )?;
+        }
         Ok(())
     })
 }
@@ -321,5 +335,41 @@ mod tests {
 
         assert!(policy.policy.as_str().ends_with("::time_pass::Policy"));
         assert_eq!(policy.arguments, vec![OnchainToolArgument::Object(pass)]);
+    }
+
+    #[test]
+    fn timeout_refund_settles_the_task_after_the_invocation() {
+        let objects = mock_nexus_objects();
+        let dag = object_ref_for_id(sui::types::Address::from_static("0x82"));
+        let execution = object_ref_for_id(sui::types::Address::from_static("0x83"));
+        let invocation = object_ref_for_id(sui::types::Address::from_static("0x84"));
+        let task = object_ref_for_id(sui::types::Address::from_static("0x85"));
+        let ptb = abort_expired_ptb(
+            &objects,
+            &dag,
+            &execution,
+            &vertex(),
+            &invocation,
+            Some(&task),
+        )
+        .expect("ptb should build");
+        let calls = ptb
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::MoveCall(call) => Some((call.module.as_str(), call.function.as_str())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let refund = calls
+            .iter()
+            .position(|call| *call == ("invocation_adapter", "abort_expired"))
+            .expect("Invocation timeout refund should be present");
+        let task = calls
+            .iter()
+            .position(|call| *call == ("scheduler", "settle"))
+            .expect("Task settlement should be present");
+
+        assert!(refund < task);
     }
 }

@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- Permissionless timeout builders now append owning Task settlement after Invocation resolution when the Task is supplied.
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
 - Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
 

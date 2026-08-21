@@ -1839,6 +1839,7 @@ impl WorkflowActions {
                     tool_witness_id: cleanup.tool_witness_id,
                 })
                 .collect::<Vec<_>>(),
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
@@ -1902,6 +1903,7 @@ impl WorkflowActions {
             &invocation_ref,
             params.walk_index,
             &expected_vertex,
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
@@ -2323,6 +2325,7 @@ impl WorkflowActions {
             &execution_ref,
             &selected_candidate.vertex,
             &selected_candidate.invocation_ref,
+            None,
         )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(tx, address).await?;
