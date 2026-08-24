@@ -1166,7 +1166,7 @@ impl ToolActions {
             )));
         };
         let credits_id = credits_source.bytes;
-        if refunded.owner != sui::types::Owner::Object(credits_id)
+        if refunded.owner != sui::types::Owner::Address(credits_id)
             || refunded.data.refund_to.copied_option() != Some(credits_id)
         {
             return Err(NexusError::Configuration(format!(
@@ -1257,7 +1257,7 @@ impl ToolActions {
                         objects,
                     );
                 let mut refunded_invocations = crawler
-                    .get_object_owned_objects::<Invocation>(
+                    .get_owned_objects::<Invocation>(
                         credits_id,
                         crate::move_bindings::struct_tag::<Invocation>(objects),
                     )
@@ -1397,8 +1397,9 @@ impl ToolActions {
 
     /// Lists finalized Invocations and prepaid deposits waiting for collection.
     ///
-    /// Sui indexes these objects by their [`ToolCashier`] owner, so discovery
-    /// does not require a mutable on chain registry or a global usage counter.
+    /// Transfer to Object indexes these objects under the [`ToolCashier`] ID as
+    /// an address owner. Discovery therefore needs neither a mutable on chain
+    /// registry nor a global usage counter.
     pub async fn inspect_cashier_inbox(
         &self,
         tool_fqn: &ToolFqn,
@@ -1408,7 +1409,7 @@ impl ToolActions {
         let cashier_id = *cashier.object_id();
         let invocations = client
             .crawler()
-            .get_object_owned_objects::<Invocation>(
+            .get_owned_objects::<Invocation>(
                 cashier_id,
                 crate::move_bindings::struct_tag::<Invocation>(&client.nexus_objects),
             )
@@ -1429,7 +1430,7 @@ impl ToolActions {
             .collect();
         let deposits = client
             .crawler()
-            .get_object_owned_objects::<CashierDeposit>(
+            .get_owned_objects::<CashierDeposit>(
                 cashier_id,
                 crate::move_bindings::struct_tag::<CashierDeposit>(&client.nexus_objects),
             )
@@ -1482,7 +1483,7 @@ impl ToolActions {
         let references = invocations
             .into_iter()
             .map(|response| {
-                if response.owner != sui::types::Owner::Object(*cashier.object_id())
+                if response.owner != sui::types::Owner::Address(*cashier.object_id())
                     || response.data.cashier_id.bytes != *cashier.object_id()
                     || response.data.tool_id.bytes != tool_id
                 {
@@ -1535,7 +1536,7 @@ impl ToolActions {
             .map_err(NexusError::Rpc)?
             .into_iter()
             .map(|response| {
-                if response.owner != sui::types::Owner::Object(*cashier.object_id()) {
+                if response.owner != sui::types::Owner::Address(*cashier.object_id()) {
                     return Err(NexusError::Configuration(format!(
                         "Deposit '{}' is not in Tool cashier '{}'",
                         response.object_id,
@@ -2715,11 +2716,18 @@ mod tests {
             bcs::to_bytes(&pass).expect("pass serializes"),
         );
         let mut state = sui_mocks::grpc::MockStateService::new();
-        state.expect_list_owned_objects().times(1).return_once(|_| {
-            Ok(tonic::Response::new(
-                sui::grpc::ListOwnedObjectsResponse::default(),
-            ))
-        });
+        state
+            .expect_list_owned_objects()
+            .times(1)
+            .return_once(move |request| {
+                assert_eq!(
+                    request.get_ref().owner.as_deref(),
+                    Some(credits_id.to_string().as_str())
+                );
+                Ok(tonic::Response::new(
+                    sui::grpc::ListOwnedObjectsResponse::default(),
+                ))
+            });
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
             ledger_service_mock: Some(ledger),
             state_service_mock: Some(state),
@@ -2816,7 +2824,7 @@ mod tests {
         sui_mocks::grpc::mock_get_object_bcs(
             &mut ledger,
             sui_mocks::object_ref_for_id(invocation_id),
-            sui::types::Owner::Object(credits_id),
+            sui::types::Owner::Address(credits_id),
             bcs::to_bytes(&invocation).expect("invocation serializes"),
         );
         sui_mocks::grpc::mock_get_object_bcs(
