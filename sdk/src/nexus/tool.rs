@@ -1858,6 +1858,7 @@ mod tests {
                     linked_table::LinkedTable,
                     object::UID,
                     table::Table,
+                    vec_set::VecSet,
                 },
                 tool::{era::V1 as ToolWitnessV1, tool_registry::ToolRef},
             },
@@ -1909,6 +1910,111 @@ mod tests {
         )
     }
 
+    struct EconomyActionFixture {
+        client: NexusClient,
+        fqn: ToolFqn,
+        cashier_admin: sui::types::Address,
+    }
+
+    async fn economy_action_fixture_with<F>(configure: F) -> EconomyActionFixture
+    where
+        F: FnOnce(
+            &NexusContext,
+            sui::types::Address,
+            &mut sui_mocks::grpc::MockLedgerService,
+            &mut sui_mocks::grpc::MockStateService,
+        ),
+    {
+        let context = sui_mocks::mock_nexus_context();
+        let registry_id = context.tool_registry.object_id();
+        let fqn = "xyz.taluslabs.economy.action@1"
+            .parse::<ToolFqn>()
+            .expect("Tool FQN parses");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(registry_id, &fqn).expect("Tool ID derives");
+        let cashier_origin = context
+            .type_origin(PackageRole::Tool, "tool_cashier", "ToolCashierKey")
+            .expect("cashier origin resolves");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(cashier_origin, tool_id)
+            .expect("cashier ID derives");
+        let cashier_admin = sui::types::Address::from_static("0xca");
+        let policies = vec![
+            crate::transactions::invocation::InvocationPolicyCall::fixed_price(&context)
+                .expect("fixed price policy resolves")
+                .policy,
+            crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(&context)
+                .expect("finite credit policy resolves"),
+            crate::transactions::invocation::InvocationPolicyCall::time_pass(
+                &context,
+                sui::types::Address::ZERO,
+                1,
+            )
+            .expect("time pass policy resolves")
+            .policy,
+        ];
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        let mut state = sui_mocks::grpc::MockStateService::new();
+        mock_registry(
+            &mut ledger,
+            &mut state,
+            &context,
+            registry_inner(sui::types::Address::from_static("0xd1"), &[]),
+        );
+        sui_mocks::grpc::mock_object_state::<ToolAnchor, ToolWitnessV1, ToolInnerV1>(
+            &mut ledger,
+            &mut state,
+            &context,
+            sui_mocks::object_ref_for_id(tool_id),
+            sui::types::Owner::Shared(1),
+            ToolAnchor::new(UID::new(tool_id)),
+            tool_inner(registry_id, &fqn),
+        );
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        sui_mocks::grpc::mock_object_state::<ToolCashier, ToolWitnessV1, ToolCashierInnerV1>(
+            &mut ledger,
+            &mut state,
+            &context,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(2),
+            ToolCashier::new(UID::new(cashier_id)),
+            ToolCashierInnerV1::new(
+                ID::new(tool_id),
+                ascii::String::from(fqn.to_string()),
+                VecSet { contents: policies },
+            ),
+        );
+        sui_mocks::grpc::mock_get_object_metadata_exact(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_admin),
+            sui::types::Owner::Address(sui::types::Address::from_static("0xa")),
+            None,
+        );
+        configure(&context, cashier_id, &mut ledger, &mut state);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            state_service_mock: Some(state),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&context, &rpc_url).await;
+
+        EconomyActionFixture {
+            client,
+            fqn,
+            cashier_admin,
+        }
+    }
+
+    async fn economy_action_fixture() -> EconomyActionFixture {
+        economy_action_fixture_with(|_, _, _, _| {}).await
+    }
+
+    fn assert_missing_gas<T>(result: Result<T, NexusError>) {
+        assert!(matches!(result, Err(NexusError::Configuration(message)) if
+            message.contains("a gas source is required")));
+    }
+
     fn mock_registry(
         ledger_service: &mut sui_mocks::grpc::MockLedgerService,
         state_service: &mut sui_mocks::grpc::MockStateService,
@@ -1937,6 +2043,622 @@ mod tests {
             ToolCompatibility::Unavailable,
         ];
         assert_eq!(states.into_iter().collect::<HashSet<_>>().len(), 5);
+    }
+
+    #[test]
+    fn canonical_offer_prices_enforce_sale_terms_and_overflow() {
+        let finite = FiniteCreditOffer {
+            issuance_enabled: true,
+            price_per_credit: 3,
+            minimum_credits: 2,
+            maximum_credits: 4,
+        };
+        assert_eq!(finite.purchase_price(3).unwrap(), 9);
+        assert!(finite.purchase_price(1).is_err());
+        assert!(finite.purchase_price(5).is_err());
+        assert!(FiniteCreditOffer {
+            issuance_enabled: false,
+            ..finite.clone()
+        }
+        .purchase_price(3)
+        .is_err());
+        assert!(FiniteCreditOffer {
+            price_per_credit: u64::MAX,
+            ..finite
+        }
+        .purchase_price(2)
+        .is_err());
+
+        let pass = TimePassOffer {
+            issuance_enabled: true,
+            price_per_ms: 3,
+            minimum_duration_ms: 2,
+            maximum_duration_ms: 4,
+        };
+        assert_eq!(pass.purchase_price(3).unwrap(), 9);
+        assert!(pass.purchase_price(1).is_err());
+        assert!(pass.purchase_price(5).is_err());
+        assert!(TimePassOffer {
+            issuance_enabled: false,
+            ..pass.clone()
+        }
+        .purchase_price(3)
+        .is_err());
+        assert!(TimePassOffer {
+            price_per_ms: u64::MAX,
+            ..pass
+        }
+        .purchase_price(2)
+        .is_err());
+    }
+
+    #[tokio::test]
+    async fn policy_administration_reaches_submission_after_resolving_live_inputs() {
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .enable_time_passes(&fixture.fqn, fixture.cashier_admin, 2, 1, 10)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .close_time_pass_issuance(&fixture.fqn, fixture.cashier_admin)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .open_time_pass_issuance(&fixture.fqn, fixture.cashier_admin)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .update_time_pass_terms(&fixture.fqn, fixture.cashier_admin, 3, 2, 20)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .enable_finite_credits(&fixture.fqn, fixture.cashier_admin, 2, 1, 10)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .close_finite_credit_issuance(&fixture.fqn, fixture.cashier_admin)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .open_finite_credit_issuance(&fixture.fqn, fixture.cashier_admin)
+                .await,
+        );
+
+        let fixture = economy_action_fixture().await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .update_finite_credit_terms(&fixture.fqn, fixture.cashier_admin, 3, 2, 20)
+                .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn economy_actions_reject_invalid_values_before_chain_reads() {
+        let context = sui_mocks::mock_nexus_context();
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = nexus_mocks::mock_nexus_client_without_coins(&context, &rpc_url).await;
+        let fqn = "xyz.taluslabs.validation@1"
+            .parse::<ToolFqn>()
+            .expect("Tool FQN parses");
+        let admin = sui::types::Address::from_static("0xca");
+        let beneficiary = PaymentSourceKind::user_funded(client.owner().unwrap());
+
+        assert!(client.tool().buy_time_pass(&fqn, 0).await.is_err());
+        assert!(client.tool().buy_finite_credits(&fqn, 0).await.is_err());
+        assert!(client
+            .tool()
+            .issue_time_pass(&fqn, admin, beneficiary.clone(), 10, 10)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .issue_finite_credits(&fqn, admin, beneficiary, 0)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .enable_finite_credits(&fqn, admin, 1, 0, 10)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .enable_finite_credits(&fqn, admin, 1, 10, 1)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .update_finite_credit_terms(&fqn, admin, 1, 0, 10)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .update_finite_credit_terms(&fqn, admin, 1, 10, 1)
+            .await
+            .is_err());
+        assert!(client
+            .tool()
+            .collect_invocations(&fqn, admin, &[], sui::types::Address::from_static("0xcb"),)
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn entitlement_purchase_and_issuance_reach_submission_with_canonical_accounts() {
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb1"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(context),
+                PolicyKey::<time_pass::Policy>::new(false),
+                time_pass::Config::new(true, 2, 1, 100),
+            );
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(context, cashier_id, expected.clone())
+                    .expect("pass ID derives");
+            sui_mocks::grpc::mock_get_object_not_found(ledger, pass_id);
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .buy_time_pass_for(&fixture.fqn, 10, beneficiary)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb2"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(context),
+                PolicyKey::<finite_credits::Policy>::new(false),
+                finite_credits::Config::new(true, 2, 1, 100),
+            );
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                context,
+                cashier_id,
+                expected.clone(),
+            )
+            .expect("credit ID derives");
+            sui_mocks::grpc::mock_get_object_not_found(ledger, credits_id);
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .buy_finite_credits_for(&fixture.fqn, 10, beneficiary)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb3"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(context, cashier_id, expected.clone())
+                    .expect("pass ID derives");
+            sui_mocks::grpc::mock_get_object_not_found(ledger, pass_id);
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .issue_time_pass(&fixture.fqn, fixture.cashier_admin, beneficiary, 10, 20)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb4"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                context,
+                cashier_id,
+                expected.clone(),
+            )
+            .expect("credit ID derives");
+            sui_mocks::grpc::mock_get_object_not_found(ledger, credits_id);
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .issue_finite_credits(&fixture.fqn, fixture.cashier_admin, beneficiary, 10)
+                .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_entitlements_are_extended_without_replacing_their_accounts() {
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb5"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(context),
+                PolicyKey::<time_pass::Policy>::new(false),
+                time_pass::Config::new(true, 2, 1, 100),
+            );
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(context, cashier_id, expected.clone())
+                    .expect("pass ID derives");
+            let pass = TimePass::new(
+                UID::new(pass_id),
+                ID::new(cashier_id),
+                expected,
+                time_pass::State::new(10, 20),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(pass_id),
+                sui::types::Owner::Shared(3),
+                bcs::to_bytes(&pass).expect("pass serializes"),
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .buy_time_pass_for(&fixture.fqn, 10, beneficiary)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb6"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(context),
+                PolicyKey::<finite_credits::Policy>::new(false),
+                finite_credits::Config::new(true, 2, 1, 100),
+            );
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                context,
+                cashier_id,
+                expected.clone(),
+            )
+            .expect("credit ID derives");
+            let credits = FiniteCredits::new(
+                UID::new(credits_id),
+                ID::new(cashier_id),
+                expected,
+                finite_credits::State::new(7),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(credits_id),
+                sui::types::Owner::Shared(4),
+                bcs::to_bytes(&credits).expect("credits serialize"),
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .buy_finite_credits_for(&fixture.fqn, 10, beneficiary)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb7"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let pass_id =
+                crate::move_bindings::derive_time_pass_id(context, cashier_id, expected.clone())
+                    .expect("pass ID derives");
+            let pass = TimePass::new(
+                UID::new(pass_id),
+                ID::new(cashier_id),
+                expected,
+                time_pass::State::new(10, 20),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(pass_id),
+                sui::types::Owner::Shared(5),
+                bcs::to_bytes(&pass).expect("pass serializes"),
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .issue_time_pass(&fixture.fqn, fixture.cashier_admin, beneficiary, 20, 30)
+                .await,
+        );
+
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb8"));
+        let expected = beneficiary.clone();
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let credits_id = crate::move_bindings::derive_finite_credits_id(
+                context,
+                cashier_id,
+                expected.clone(),
+            )
+            .expect("credit ID derives");
+            let credits = FiniteCredits::new(
+                UID::new(credits_id),
+                ID::new(cashier_id),
+                expected,
+                finite_credits::State::new(7),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(credits_id),
+                sui::types::Owner::Shared(6),
+                bcs::to_bytes(&credits).expect("credits serialize"),
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .issue_finite_credits(&fixture.fqn, fixture.cashier_admin, beneficiary, 10)
+                .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn finite_credit_refund_restoration_uses_the_exact_recorded_account() {
+        let invocation_id = sui::types::Address::from_static("0x91");
+        let credits_id = sui::types::Address::from_static("0x92");
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xb9"));
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let policy =
+                crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(
+                    context,
+                )
+                .expect("finite credit policy resolves");
+            let invocation = Invocation::new(
+                UID::new(invocation_id),
+                sui::types::Address::from_static("0xe1"),
+                b"vertex".to_vec(),
+                ID::new(sui::types::Address::from_static("0xe2")),
+                ID::new(cashier_id),
+                beneficiary.clone(),
+                policy,
+                vec![ID::new(credits_id)],
+                0,
+                MoveOption::from_option(Some(credits_id)),
+                Balance {
+                    value: 0,
+                    phantom_t0: std::marker::PhantomData,
+                },
+            );
+            let credits = FiniteCredits::new(
+                UID::new(credits_id),
+                ID::new(cashier_id),
+                beneficiary,
+                finite_credits::State::new(0),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(invocation_id),
+                sui::types::Owner::Address(credits_id),
+                bcs::to_bytes(&invocation).expect("Invocation serializes"),
+            );
+            sui_mocks::grpc::mock_get_object_bcs(
+                ledger,
+                sui_mocks::object_ref_for_id(credits_id),
+                sui::types::Owner::Shared(7),
+                bcs::to_bytes(&credits).expect("credits serialize"),
+            );
+        })
+        .await;
+
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .restore_finite_credit_refund(&fixture.fqn, invocation_id)
+                .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn economy_inspection_decodes_every_canonical_offer() {
+        let fixture = economy_action_fixture_with(|context, cashier_id, ledger, _state| {
+            let fqn = "xyz.taluslabs.economy.action@1"
+                .parse::<ToolFqn>()
+                .expect("Tool FQN parses");
+            let fqn_key = ascii::String::from(fqn.to_string());
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                sui::types::Address::from_static("0xd7"),
+                &crate::move_bindings::type_tag::<ascii::String>(context),
+                fqn_key,
+                17_u64,
+            );
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(context),
+                PolicyKey::<finite_credits::Policy>::new(false),
+                finite_credits::Config::new(true, 2, 1, 100),
+            );
+            sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                ledger,
+                cashier_id,
+                &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(context),
+                PolicyKey::<time_pass::Policy>::new(false),
+                time_pass::Config::new(true, 3, 4, 200),
+            );
+        })
+        .await;
+
+        let economy = fixture
+            .client
+            .tool()
+            .inspect_economy(&fixture.fqn)
+            .await
+            .expect("economy inspection succeeds");
+
+        assert_eq!(economy.fixed_price_mist, 17);
+        assert_eq!(
+            economy.finite_credits,
+            Some(FiniteCreditOffer {
+                issuance_enabled: true,
+                price_per_credit: 2,
+                minimum_credits: 1,
+                maximum_credits: 100,
+            })
+        );
+        assert_eq!(
+            economy.time_pass,
+            Some(TimePassOffer {
+                issuance_enabled: true,
+                price_per_ms: 3,
+                minimum_duration_ms: 4,
+                maximum_duration_ms: 200,
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_cashier_inbox_is_discovered_without_a_mutable_index() {
+        let fixture = economy_action_fixture_with(|_, _, _ledger, state| {
+            state.expect_list_owned_objects().times(2).returning(|_| {
+                Ok(tonic::Response::new(
+                    sui::grpc::ListOwnedObjectsResponse::default(),
+                ))
+            });
+        })
+        .await;
+
+        let inbox = fixture
+            .client
+            .tool()
+            .inspect_cashier_inbox(&fixture.fqn)
+            .await
+            .expect("cashier inbox inspection succeeds");
+
+        assert!(inbox.invocations.is_empty());
+        assert!(inbox.deposits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn owner_collection_validates_exact_cashier_objects_before_submission() {
+        let invocation_id = sui::types::Address::from_static("0x93");
+        let fixture = economy_action_fixture_with(move |context, cashier_id, ledger, _state| {
+            let fqn = "xyz.taluslabs.economy.action@1"
+                .parse::<ToolFqn>()
+                .expect("Tool FQN parses");
+            let tool_id =
+                crate::move_bindings::derive_tool_id(context.tool_registry.object_id(), &fqn)
+                    .expect("Tool ID derives");
+            let policy =
+                crate::transactions::invocation::InvocationPolicyCall::fixed_price(context)
+                    .expect("fixed price policy resolves")
+                    .policy;
+            let invocation = Invocation::new(
+                UID::new(invocation_id),
+                sui::types::Address::from_static("0xe1"),
+                b"vertex".to_vec(),
+                ID::new(tool_id),
+                ID::new(cashier_id),
+                PaymentSourceKind::user_funded(sui::types::Address::from_static("0xba")),
+                policy,
+                vec![ID::new(sui::types::Address::from_static("0xe3"))],
+                9,
+                MoveOption::from_option(None),
+                Balance {
+                    value: 9,
+                    phantom_t0: std::marker::PhantomData,
+                },
+            );
+            sui_mocks::grpc::mock_get_objects_bcs(
+                ledger,
+                vec![(
+                    sui_mocks::object_ref_for_id(invocation_id),
+                    sui::types::Owner::Address(cashier_id),
+                    bcs::to_bytes(&invocation).expect("Invocation serializes"),
+                    crate::move_bindings::struct_tag::<Invocation>(context),
+                )],
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .collect_invocations(
+                    &fixture.fqn,
+                    fixture.cashier_admin,
+                    &[invocation_id],
+                    sui::types::Address::from_static("0xbb"),
+                )
+                .await,
+        );
+
+        let deposit_id = sui::types::Address::from_static("0x94");
+        let fixture = economy_action_fixture_with(move |_, cashier_id, ledger, _state| {
+            sui_mocks::grpc::mock_get_objects_metadata(
+                ledger,
+                vec![(
+                    sui_mocks::object_ref_for_id(deposit_id),
+                    sui::types::Owner::Address(cashier_id),
+                    None,
+                )],
+            );
+        })
+        .await;
+        assert_missing_gas(
+            fixture
+                .client
+                .tool()
+                .collect_deposits(
+                    &fixture.fqn,
+                    fixture.cashier_admin,
+                    &[deposit_id],
+                    sui::types::Address::from_static("0xbb"),
+                )
+                .await,
+        );
     }
 
     #[tokio::test]

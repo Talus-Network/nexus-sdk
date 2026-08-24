@@ -569,6 +569,18 @@ mod tests {
         sui_sdk_types::Command,
     };
 
+    fn assert_move_call(
+        transaction: &sui::types::ProgrammableTransaction,
+        module: &str,
+        function: &str,
+    ) {
+        assert!(transaction.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == module && call.function.as_str() == function
+        )));
+    }
+
     #[test]
     fn collection_rejects_an_empty_invocation_batch() {
         let objects = mock_nexus_context();
@@ -761,5 +773,129 @@ mod tests {
                 if call.module.as_str() == "finite_credits"
                     && call.function.as_str() == "restore_refund"
         )));
+    }
+
+    #[test]
+    fn policy_administration_builders_call_the_exact_policy_functions() {
+        let objects = mock_nexus_context();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
+
+        let cases = [
+            (
+                enable_finite_credits_ptb(&objects, &cashier, &admin, 2, 1, 10).unwrap(),
+                "finite_credits",
+                "enable",
+            ),
+            (
+                close_finite_credit_issuance_ptb(&objects, &cashier, &admin).unwrap(),
+                "finite_credits",
+                "close_issuance",
+            ),
+            (
+                open_finite_credit_issuance_ptb(&objects, &cashier, &admin).unwrap(),
+                "finite_credits",
+                "open_issuance",
+            ),
+            (
+                update_finite_credit_terms_ptb(&objects, &cashier, &admin, 3, 2, 20).unwrap(),
+                "finite_credits",
+                "update_terms",
+            ),
+            (
+                enable_time_pass_ptb(&objects, &cashier, &admin, 2, 1, 10).unwrap(),
+                "time_pass",
+                "enable",
+            ),
+            (
+                close_time_pass_issuance_ptb(&objects, &cashier, &admin).unwrap(),
+                "time_pass",
+                "close_issuance",
+            ),
+            (
+                open_time_pass_issuance_ptb(&objects, &cashier, &admin).unwrap(),
+                "time_pass",
+                "open_issuance",
+            ),
+            (
+                update_time_pass_terms_ptb(&objects, &cashier, &admin, 3, 2, 20).unwrap(),
+                "time_pass",
+                "update_terms",
+            ),
+        ];
+
+        for (transaction, module, function) in cases {
+            assert_move_call(&transaction, module, function);
+        }
+    }
+
+    #[test]
+    fn direct_coin_purchase_builders_cover_new_and_existing_accounts() {
+        let objects = mock_nexus_context();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let credits = object_ref_for_id(sui::types::Address::from_static("0xc2"));
+        let pass = object_ref_for_id(sui::types::Address::from_static("0xc3"));
+        let coin = object_ref_for_id(sui::types::Address::from_static("0xc4"));
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xc5"));
+
+        let new_credits =
+            buy_finite_credits_ptb(&objects, &cashier, &coin, beneficiary.clone(), 4).unwrap();
+        let more_credits =
+            buy_more_finite_credits_ptb(&objects, &cashier, &credits, &coin, 4).unwrap();
+        let new_pass =
+            buy_time_pass_ptb(&objects, &cashier, &coin, beneficiary.clone(), 40).unwrap();
+        let more_pass = buy_more_time_pass_ptb(&objects, &cashier, &pass, &coin, 40).unwrap();
+        let balance_credits = buy_finite_credits_from_balance_ptb(
+            &objects,
+            &cashier,
+            Some(&credits),
+            beneficiary.clone(),
+            4,
+            8,
+        )
+        .unwrap();
+        let balance_pass =
+            buy_time_pass_from_balance_ptb(&objects, &cashier, Some(&pass), beneficiary, 40, 80)
+                .unwrap();
+
+        assert_move_call(&new_credits, "finite_credits", "buy");
+        assert_move_call(&more_credits, "finite_credits", "buy_more");
+        assert_move_call(&new_pass, "time_pass", "buy");
+        assert_move_call(&more_pass, "time_pass", "buy_more");
+        assert_move_call(&balance_credits, "finite_credits", "buy_more");
+        assert_move_call(&balance_pass, "time_pass", "buy_more");
+    }
+
+    #[test]
+    fn existing_pass_and_deposit_collection_builders_preserve_their_sources() {
+        let objects = mock_nexus_context();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let admin = object_ref_for_id(sui::types::Address::from_static("0xc2"));
+        let pass = object_ref_for_id(sui::types::Address::from_static("0xc3"));
+        let deposit = object_ref_for_id(sui::types::Address::from_static("0xc4"));
+
+        let update =
+            update_time_pass_window_ptb(&objects, &cashier, &pass, &admin, 10, 20).unwrap();
+        assert_move_call(&update, "time_pass", "update_window");
+
+        let collection = collect_deposits_ptb(
+            &objects,
+            &cashier,
+            &admin,
+            &[deposit],
+            sui::types::Address::from_static("0xc5"),
+        )
+        .unwrap();
+        assert_move_call(&collection, "tool_cashier", "collect_deposits");
+
+        let error = collect_deposits_ptb(
+            &objects,
+            &cashier,
+            &admin,
+            &[],
+            sui::types::Address::from_static("0xc5"),
+        )
+        .expect_err("empty deposit collection must fail locally");
+        assert!(error.to_string().contains("at least one deposit"));
     }
 }
