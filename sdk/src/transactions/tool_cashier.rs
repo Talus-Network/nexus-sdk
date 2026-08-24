@@ -2,7 +2,7 @@
 
 use crate::{
     move_bindings::{
-        interface::payment::PaymentSourceKind,
+        interface::payment::{self as payment_binding, PaymentSourceKind},
         move_std::type_name::TypeName,
         sui_framework::{coin as coin_binding, sui::SUI, transfer::Receiving},
         tool::{
@@ -49,6 +49,32 @@ fn destroy_spent_sui_coin(
 ) -> anyhow::Result<()> {
     transaction.call_target(coin_binding::destroy_zero_target::<SUI>, vec![coin])?;
     Ok(())
+}
+
+/// Constructs a package defined [`PaymentSourceKind`] through its Move API.
+///
+/// A package defined enum cannot be forged as a pure PTB input. Calling its
+/// constructors preserves the type boundary enforced by Move.
+fn payment_source_kind_arg(
+    transaction: &mut move_boundary::NexusPtbBuilder,
+    source: &PaymentSourceKind,
+) -> anyhow::Result<sui::types::Argument> {
+    match source {
+        PaymentSourceKind::UserFunded { user } => {
+            let user = transaction.arg(user)?;
+            transaction.call_target(
+                payment_binding::payment_source_kind_user_funded_target,
+                vec![user],
+            )
+        }
+        PaymentSourceKind::AgentFunded { agent_id } => {
+            let agent_id = transaction.object_id(agent_id.bytes)?;
+            transaction.call_target(
+                payment_binding::payment_source_kind_agent_funded_target,
+                vec![agent_id],
+            )
+        }
+    }
 }
 
 /// Enables the canonical fixed price policy.
@@ -184,7 +210,7 @@ pub fn buy_finite_credits_ptb(
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(tool_cashier, true)?;
         let coin = transaction.owned_object(pay_with)?;
-        let beneficiary = transaction.arg(&beneficiary)?;
+        let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let credits_count = transaction.arg(&credits)?;
         let result = transaction.call_target(
             finite_credits_binding::buy_target,
@@ -243,7 +269,7 @@ pub fn buy_finite_credits_from_balance_ptb(
             }
             None => {
                 let cashier = transaction.shared_object(tool_cashier, true)?;
-                let beneficiary = transaction.arg(&beneficiary)?;
+                let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
                 let credits = transaction.arg(&credits)?;
                 let result = transaction.call_target(
                     finite_credits_binding::buy_target,
@@ -268,7 +294,7 @@ pub fn issue_finite_credits_ptb(
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(tool_cashier, true)?;
         let admin = transaction.owned_object(cashier_admin)?;
-        let beneficiary = transaction.arg(&beneficiary)?;
+        let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let credits = transaction.arg(&credits)?;
         let issued = transaction.call_target(
             finite_credits_binding::issue_target,
@@ -377,7 +403,7 @@ pub fn buy_time_pass_ptb(
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(tool_cashier, true)?;
         let coin = transaction.owned_object(pay_with)?;
-        let beneficiary = transaction.arg(&beneficiary)?;
+        let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let duration = transaction.arg(&duration_ms)?;
         let clock = transaction.clock()?;
         let result = transaction.call_target(
@@ -439,7 +465,7 @@ pub fn buy_time_pass_from_balance_ptb(
             }
             None => {
                 let cashier = transaction.shared_object(tool_cashier, true)?;
-                let beneficiary = transaction.arg(&beneficiary)?;
+                let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
                 let duration = transaction.arg(&duration_ms)?;
                 let result = transaction.call_target(
                     time_pass_binding::buy_target,
@@ -465,7 +491,7 @@ pub fn issue_time_pass_ptb(
     move_boundary::ptb(objects, |transaction| {
         let cashier = transaction.shared_object(tool_cashier, true)?;
         let admin = transaction.owned_object(cashier_admin)?;
-        let beneficiary = transaction.arg(&beneficiary)?;
+        let beneficiary = payment_source_kind_arg(transaction, &beneficiary)?;
         let valid_from_ms = transaction.arg(&valid_from_ms)?;
         let valid_until_ms = transaction.arg(&valid_until_ms)?;
         let pass = transaction.call_target(
@@ -713,6 +739,12 @@ mod tests {
             assert!(transaction.commands.iter().any(|command| matches!(
                 command,
                 Command::MoveCall(call)
+                    if call.module.as_str() == "payment"
+                        && call.function.as_str() == "payment_source_kind_user_funded"
+            )));
+            assert!(transaction.commands.iter().any(|command| matches!(
+                command,
+                Command::MoveCall(call)
                     if call.module.as_str() == policy && call.function.as_str() == "buy"
             )));
             assert!(transaction.commands.iter().any(|command| matches!(
@@ -721,6 +753,30 @@ mod tests {
                     if call.module.as_str() == "coin" && call.function.as_str() == "destroy_zero"
             )));
         }
+    }
+
+    #[test]
+    fn agent_beneficiary_is_constructed_through_the_payment_module() {
+        let objects = mock_nexus_objects();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let beneficiary = PaymentSourceKind::agent_funded(sui::types::Address::from_static("0xa1"));
+
+        let transaction =
+            buy_finite_credits_from_balance_ptb(&objects, &cashier, None, beneficiary, 5, 35)
+                .unwrap();
+
+        assert!(transaction.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == "object"
+                    && call.function.as_str() == "id_from_address"
+        )));
+        assert!(transaction.commands.iter().any(|command| matches!(
+            command,
+            Command::MoveCall(call)
+                if call.module.as_str() == "payment"
+                    && call.function.as_str() == "payment_source_kind_agent_funded"
+        )));
     }
 
     #[test]
