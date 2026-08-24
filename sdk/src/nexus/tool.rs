@@ -8,6 +8,7 @@ use {
         move_bindings::{
             interface::{payment::PaymentSourceKind, verifier::ToolVerifierSupport},
             move_std::type_name::TypeName,
+            sui_framework::clock::Clock as SuiClock,
             tool::{
                 external_verifier::ExternalVerifier,
                 finite_credits,
@@ -18,6 +19,7 @@ use {
             FiniteCredits,
             TimePass,
         },
+        move_boundary,
         nexus::{
             client::NexusClient,
             error::NexusError,
@@ -74,6 +76,27 @@ pub struct FiniteCreditOffer {
     pub maximum_credits: u64,
 }
 
+impl FiniteCreditOffer {
+    fn purchase_price(&self, credits: u64) -> Result<u64, NexusError> {
+        if !self.issuance_enabled {
+            return Err(NexusError::Configuration(
+                "Finite credit purchases are closed".to_owned(),
+            ));
+        }
+        if credits < self.minimum_credits || credits > self.maximum_credits {
+            return Err(NexusError::Configuration(format!(
+                "Credit count '{credits}' must be between '{}' and '{}'",
+                self.minimum_credits, self.maximum_credits,
+            )));
+        }
+        self.price_per_credit.checked_mul(credits).ok_or_else(|| {
+            NexusError::Configuration(
+                "Finite credit purchase price exceeds the maximum MIST value".to_owned(),
+            )
+        })
+    }
+}
+
 /// Current sale terms for canonical time based Tool access.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub struct TimePassOffer {
@@ -81,6 +104,27 @@ pub struct TimePassOffer {
     pub price_per_ms: u64,
     pub minimum_duration_ms: u64,
     pub maximum_duration_ms: u64,
+}
+
+impl TimePassOffer {
+    fn purchase_price(&self, duration_ms: u64) -> Result<u64, NexusError> {
+        if !self.issuance_enabled {
+            return Err(NexusError::Configuration(
+                "Time pass purchases are closed".to_owned(),
+            ));
+        }
+        if duration_ms < self.minimum_duration_ms || duration_ms > self.maximum_duration_ms {
+            return Err(NexusError::Configuration(format!(
+                "Duration '{duration_ms}' must be between '{}' and '{}' milliseconds",
+                self.minimum_duration_ms, self.maximum_duration_ms,
+            )));
+        }
+        self.price_per_ms.checked_mul(duration_ms).ok_or_else(|| {
+            NexusError::Configuration(
+                "Time pass purchase price exceeds the maximum MIST value".to_owned(),
+            )
+        })
+    }
 }
 
 /// Discoverable economic policies accepted by one [`ToolCashier`].
@@ -98,6 +142,43 @@ pub struct ToolEconomy {
     pub free_invocations: bool,
     pub finite_credits: Option<FiniteCreditOffer>,
     pub time_pass: Option<TimePassOffer>,
+}
+
+/// User facing finite credit state for one Tool and beneficiary.
+///
+/// This combines the shared account with refunded child [Invocation] objects,
+/// which no single Move value exposes as one serializable view.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct FiniteCreditAccess {
+    pub account_id: sui::types::Address,
+    pub remaining: u64,
+    pub refunded_invocations: Vec<sui::types::Address>,
+}
+
+/// User facing time pass state for one Tool and beneficiary.
+///
+/// The active flag is evaluated against the onchain clock used by admission,
+/// so clients do not need to compare local time with Move state.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct TimePassAccess {
+    pub account_id: sui::types::Address,
+    pub valid_from_ms: u64,
+    pub valid_until_ms: u64,
+    pub active: bool,
+}
+
+/// Complete user facing access for one Tool and payment beneficiary.
+///
+/// The account IDs are derived from canonical Move keys. This stable view
+/// combines those identities with typed state for RPC, CLI, and index users.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct ToolAccess {
+    pub tool_id: sui::types::Address,
+    pub cashier_id: sui::types::Address,
+    pub beneficiary: PaymentSourceKind,
+    pub observed_at_ms: u64,
+    pub finite_credits: Option<FiniteCreditAccess>,
+    pub time_pass: Option<TimePassAccess>,
 }
 
 /// One finalized Invocation waiting in a [`ToolCashier`] inbox.
@@ -156,6 +237,62 @@ fn canonical_policy_accepted(
 }
 
 impl ToolActions {
+    async fn fetch_finite_credit_offer(
+        client: &NexusClient,
+        cashier_id: sui::types::Address,
+        tool_fqn: &ToolFqn,
+    ) -> Result<FiniteCreditOffer, NexusError> {
+        let objects = &client.nexus_objects;
+        let config = client
+            .crawler()
+            .get_dynamic_field_by_key::<PolicyKey<finite_credits::Policy>, finite_credits::Config>(
+                cashier_id,
+                PolicyKey::new(false),
+                &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(objects),
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .ok_or_else(|| {
+                NexusError::Configuration(format!(
+                    "Finite credits policy for Tool '{tool_fqn}' has no config"
+                ))
+            })?;
+        Ok(FiniteCreditOffer {
+            issuance_enabled: config.issuance_enabled,
+            price_per_credit: config.price_per_credit,
+            minimum_credits: config.minimum_credits,
+            maximum_credits: config.maximum_credits,
+        })
+    }
+
+    async fn fetch_time_pass_offer(
+        client: &NexusClient,
+        cashier_id: sui::types::Address,
+        tool_fqn: &ToolFqn,
+    ) -> Result<TimePassOffer, NexusError> {
+        let objects = &client.nexus_objects;
+        let config = client
+            .crawler()
+            .get_dynamic_field_by_key::<PolicyKey<time_pass::Policy>, time_pass::Config>(
+                cashier_id,
+                PolicyKey::new(false),
+                &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(objects),
+            )
+            .await
+            .map_err(NexusError::Rpc)?
+            .ok_or_else(|| {
+                NexusError::Configuration(format!(
+                    "Time pass policy for Tool '{tool_fqn}' has no config"
+                ))
+            })?;
+        Ok(TimePassOffer {
+            issuance_enabled: config.issuance_enabled,
+            price_per_ms: config.price_per_ms,
+            minimum_duration_ms: config.minimum_duration_ms,
+            maximum_duration_ms: config.maximum_duration_ms,
+        })
+    }
+
     async fn resolve_tool_cashier_and_cap(
         client: &NexusClient,
         tool_fqn: &ToolFqn,
@@ -546,29 +683,27 @@ impl ToolActions {
         })
     }
 
-    /// Buys time access for the signer beneficiary.
+    /// Buys time access for the signer beneficiary from its SUI address balance.
     pub async fn buy_time_pass(
         &self,
         tool_fqn: &ToolFqn,
         duration_ms: u64,
-        pay_with: sui::types::Address,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = self.client.operation_client().await?;
         let beneficiary = PaymentSourceKind::user_funded(client.owner()?);
-        self.buy_time_pass_with(&client, tool_fqn, duration_ms, pay_with, beneficiary)
+        self.buy_time_pass_with(&client, tool_fqn, duration_ms, beneficiary)
             .await
     }
 
-    /// Buys time access for an explicit user or Agent beneficiary.
+    /// Buys time access for an explicit beneficiary from the signer address balance.
     pub async fn buy_time_pass_for(
         &self,
         tool_fqn: &ToolFqn,
         duration_ms: u64,
-        pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = self.client.operation_client().await?;
-        self.buy_time_pass_with(&client, tool_fqn, duration_ms, pay_with, beneficiary)
+        self.buy_time_pass_with(&client, tool_fqn, duration_ms, beneficiary)
             .await
     }
 
@@ -577,7 +712,6 @@ impl ToolActions {
         client: &NexusClient,
         tool_fqn: &ToolFqn,
         duration_ms: u64,
-        pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         if duration_ms == 0 {
@@ -587,6 +721,9 @@ impl ToolActions {
         }
         let address = client.owner()?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let price = Self::fetch_time_pass_offer(client, *tool_cashier.object_id(), tool_fqn)
+            .await?
+            .purchase_price(duration_ms)?;
         let entitlement_id = crate::move_bindings::derive_time_pass_id(
             &client.nexus_objects,
             *tool_cashier.object_id(),
@@ -598,17 +735,7 @@ impl ToolActions {
             .get_optional_object::<TimePass>(entitlement_id)
             .await
             .map_err(NexusError::Rpc)?;
-        let pay_with = client
-            .crawler()
-            .get_object_metadata(pay_with)
-            .await
-            .map_err(|error| {
-                NexusError::Configuration(format!(
-                    "Payment coin '{pay_with}' could not be resolved: {error}"
-                ))
-            })?
-            .object_ref();
-        let transaction = match pass {
+        let account = match pass {
             Some(pass) => {
                 if pass.data.cashier.bytes != *tool_cashier.object_id()
                     || pass.data.beneficiary != beneficiary
@@ -618,22 +745,18 @@ impl ToolActions {
                         "Time pass '{entitlement_id}' does not match its canonical account"
                     )));
                 }
-                tool_cashier::buy_more_time_pass_ptb(
-                    &client.nexus_objects,
-                    &tool_cashier,
-                    &pass.object_ref(),
-                    &pay_with,
-                    duration_ms,
-                )
+                Some(pass.object_ref())
             }
-            None => tool_cashier::buy_time_pass_ptb(
-                &client.nexus_objects,
-                &tool_cashier,
-                &pay_with,
-                beneficiary,
-                duration_ms,
-            ),
-        }
+            None => None,
+        };
+        let transaction = tool_cashier::buy_time_pass_from_balance_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            account.as_ref(),
+            beneficiary,
+            duration_ms,
+            price,
+        )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
         let deposit_id = response
@@ -845,12 +968,11 @@ impl ToolActions {
         })
     }
 
-    /// Buys shared finite credits for a [`Tool`].
+    /// Buys finite credits for the signer from its SUI address balance.
     pub async fn buy_finite_credits(
         &self,
         tool_fqn: &ToolFqn,
         credits: u64,
-        pay_with: sui::types::Address,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = self.client.operation_client().await?;
         let address = client.owner()?;
@@ -858,22 +980,20 @@ impl ToolActions {
             &client,
             tool_fqn,
             credits,
-            pay_with,
             PaymentSourceKind::user_funded(address),
         )
         .await
     }
 
-    /// Buys finite credits for an explicit user or Agent beneficiary.
+    /// Buys finite credits for an explicit beneficiary from the signer address balance.
     pub async fn buy_finite_credits_for(
         &self,
         tool_fqn: &ToolFqn,
         credits: u64,
-        pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         let client = self.client.operation_client().await?;
-        self.buy_finite_credits_with(&client, tool_fqn, credits, pay_with, beneficiary)
+        self.buy_finite_credits_with(&client, tool_fqn, credits, beneficiary)
             .await
     }
 
@@ -882,7 +1002,6 @@ impl ToolActions {
         client: &NexusClient,
         tool_fqn: &ToolFqn,
         credits: u64,
-        pay_with: sui::types::Address,
         beneficiary: PaymentSourceKind,
     ) -> Result<EntitlementPurchaseResult, NexusError> {
         if credits == 0 {
@@ -892,6 +1011,9 @@ impl ToolActions {
         }
         let address = client.owner()?;
         let tool_cashier = client.fetch_tool_cashier(tool_fqn).await?;
+        let price = Self::fetch_finite_credit_offer(client, *tool_cashier.object_id(), tool_fqn)
+            .await?
+            .purchase_price(credits)?;
         let entitlement_id = crate::move_bindings::derive_finite_credits_id(
             &client.nexus_objects,
             *tool_cashier.object_id(),
@@ -903,17 +1025,7 @@ impl ToolActions {
             .get_optional_object::<FiniteCredits>(entitlement_id)
             .await
             .map_err(NexusError::Rpc)?;
-        let pay_with = client
-            .crawler()
-            .get_object_metadata(pay_with)
-            .await
-            .map_err(|error| {
-                NexusError::Configuration(format!(
-                    "Payment coin '{pay_with}' could not be resolved: {error}"
-                ))
-            })?
-            .object_ref();
-        let transaction = match credit_account {
+        let account = match credit_account {
             Some(account) => {
                 if account.data.cashier.bytes != *tool_cashier.object_id()
                     || account.data.beneficiary != beneficiary
@@ -923,22 +1035,18 @@ impl ToolActions {
                         "Finite credit account '{entitlement_id}' does not match its canonical account"
                     )));
                 }
-                tool_cashier::buy_more_finite_credits_ptb(
-                    &client.nexus_objects,
-                    &tool_cashier,
-                    &account.object_ref(),
-                    &pay_with,
-                    credits,
-                )
+                Some(account.object_ref())
             }
-            None => tool_cashier::buy_finite_credits_ptb(
-                &client.nexus_objects,
-                &tool_cashier,
-                &pay_with,
-                beneficiary,
-                credits,
-            ),
-        }
+            None => None,
+        };
+        let transaction = tool_cashier::buy_finite_credits_from_balance_ptb(
+            &client.nexus_objects,
+            &tool_cashier,
+            account.as_ref(),
+            beneficiary,
+            credits,
+            price,
+        )
         .map_err(NexusError::TransactionBuilding)?;
         let response = client.submit_transaction(transaction, address).await?;
         let deposit_id = response
@@ -1088,12 +1196,144 @@ impl ToolActions {
         })
     }
 
+    /// Reads the canonical access accounts for one Tool and beneficiary.
+    ///
+    /// Account IDs are derived from the Tool cashier, beneficiary, and policy.
+    /// The returned finite credit refunds are exact [Invocation] objects that
+    /// can be passed to [`ToolActions::restore_finite_credit_refund`].
+    pub async fn inspect_access(
+        &self,
+        tool_fqn: &ToolFqn,
+        beneficiary: PaymentSourceKind,
+    ) -> Result<ToolAccess, NexusError> {
+        let client = self.client.operation_client().await?;
+        let objects = &client.nexus_objects;
+        let crawler = client.crawler();
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), tool_fqn)
+                .map_err(NexusError::Parsing)?;
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .map_err(NexusError::Parsing)?;
+        crawler
+            .get_object_metadata(cashier_id)
+            .await
+            .map_err(NexusError::Rpc)?;
+
+        let observed_at_ms = crawler
+            .get_object::<SuiClock>(move_boundary::CLOCK_OBJECT_ID)
+            .await
+            .map_err(NexusError::Rpc)?
+            .data
+            .timestamp_ms;
+        let credits_id = crate::move_bindings::derive_finite_credits_id(
+            objects,
+            cashier_id,
+            beneficiary.clone(),
+        )
+        .map_err(NexusError::Parsing)?;
+        let pass_id =
+            crate::move_bindings::derive_time_pass_id(objects, cashier_id, beneficiary.clone())
+                .map_err(NexusError::Parsing)?;
+
+        let finite_credits = match crawler
+            .get_optional_object::<FiniteCredits>(credits_id)
+            .await
+            .map_err(NexusError::Rpc)?
+        {
+            Some(credits) => {
+                if !credits.is_shared()
+                    || credits.data.cashier.bytes != cashier_id
+                    || credits.data.beneficiary != beneficiary
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Finite credit account '{credits_id}' does not match Tool '{tool_fqn}' and its beneficiary"
+                    )));
+                }
+                let policy =
+                    crate::transactions::invocation::InvocationPolicyCall::finite_credits_policy(
+                        objects,
+                    );
+                let mut refunded_invocations = crawler
+                    .get_object_owned_objects::<Invocation>(
+                        credits_id,
+                        crate::move_bindings::struct_tag::<Invocation>(objects),
+                    )
+                    .await
+                    .map_err(NexusError::Rpc)?
+                    .into_iter()
+                    .filter(|invocation| {
+                        invocation.data.cashier_id.bytes == cashier_id
+                            && invocation.data.policy == policy
+                            && invocation.data.sources.as_slice()
+                                == [crate::move_bindings::sui_framework::object::ID::new(
+                                    credits_id,
+                                )]
+                            && invocation.data.refund_to.copied_option() == Some(credits_id)
+                    })
+                    .map(|invocation| invocation.object_id)
+                    .collect::<Vec<_>>();
+                refunded_invocations.sort_unstable();
+                Some(FiniteCreditAccess {
+                    account_id: credits_id,
+                    remaining: credits.data.state.remaining,
+                    refunded_invocations,
+                })
+            }
+            None => None,
+        };
+
+        let time_pass = match crawler
+            .get_optional_object::<TimePass>(pass_id)
+            .await
+            .map_err(NexusError::Rpc)?
+        {
+            Some(pass) => {
+                if !pass.is_shared()
+                    || pass.data.cashier.bytes != cashier_id
+                    || pass.data.beneficiary != beneficiary
+                {
+                    return Err(NexusError::Configuration(format!(
+                        "Time pass account '{pass_id}' does not match Tool '{tool_fqn}' and its beneficiary"
+                    )));
+                }
+                let valid_from_ms = pass.data.state.valid_from_ms;
+                let valid_until_ms = pass.data.state.valid_until_ms;
+                Some(TimePassAccess {
+                    account_id: pass_id,
+                    valid_from_ms,
+                    valid_until_ms,
+                    active: observed_at_ms >= valid_from_ms && observed_at_ms < valid_until_ms,
+                })
+            }
+            None => None,
+        };
+
+        Ok(ToolAccess {
+            tool_id,
+            cashier_id,
+            beneficiary,
+            observed_at_ms,
+            finite_credits,
+            time_pass,
+        })
+    }
+
     /// Reads every accepted policy and the canonical offers for one [`Tool`].
     ///
     /// Custom policy witness types remain visible in [`ToolEconomy::policies`]
     /// even when this SDK does not know how to decode their private configs.
     pub async fn inspect_economy(&self, tool_fqn: &ToolFqn) -> Result<ToolEconomy, NexusError> {
         let client = self.client.operation_client().await?;
+        Self::inspect_economy_with(&client, tool_fqn).await
+    }
+
+    async fn inspect_economy_with(
+        client: &NexusClient,
+        tool_fqn: &ToolFqn,
+    ) -> Result<ToolEconomy, NexusError> {
         let objects = &client.nexus_objects;
         let crawler = client.crawler();
         let tool_id =
@@ -1133,51 +1373,12 @@ impl ToolActions {
         };
         let free_invocations = canonical_policy_accepted(objects, &policies, "free_invocation");
         let finite_credits = if canonical_policy_accepted(objects, &policies, "finite_credits") {
-            let config = crawler
-                .get_dynamic_field_by_key::<
-                    PolicyKey<finite_credits::Policy>,
-                    finite_credits::Config,
-                >(
-                    cashier_id,
-                    PolicyKey::new(false),
-                    &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(objects),
-                )
-                .await
-                .map_err(NexusError::Rpc)?
-                .ok_or_else(|| {
-                    NexusError::Configuration(format!(
-                        "Finite credits policy for Tool '{tool_fqn}' has no config"
-                    ))
-                })?;
-            Some(FiniteCreditOffer {
-                issuance_enabled: config.issuance_enabled,
-                price_per_credit: config.price_per_credit,
-                minimum_credits: config.minimum_credits,
-                maximum_credits: config.maximum_credits,
-            })
+            Some(Self::fetch_finite_credit_offer(client, cashier_id, tool_fqn).await?)
         } else {
             None
         };
         let time_pass = if canonical_policy_accepted(objects, &policies, "time_pass") {
-            let config = crawler
-                .get_dynamic_field_by_key::<PolicyKey<time_pass::Policy>, time_pass::Config>(
-                    cashier_id,
-                    PolicyKey::new(false),
-                    &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(objects),
-                )
-                .await
-                .map_err(NexusError::Rpc)?
-                .ok_or_else(|| {
-                    NexusError::Configuration(format!(
-                        "Time pass policy for Tool '{tool_fqn}' has no config"
-                    ))
-                })?;
-            Some(TimePassOffer {
-                issuance_enabled: config.issuance_enabled,
-                price_per_ms: config.price_per_ms,
-                minimum_duration_ms: config.minimum_duration_ms,
-                maximum_duration_ms: config.maximum_duration_ms,
-            })
+            Some(Self::fetch_time_pass_offer(client, cashier_id, tool_fqn).await?)
         } else {
             None
         };
@@ -2073,12 +2274,43 @@ mod tests {
             sui::types::Owner::Shared(1),
             None,
         );
-        sui_mocks::grpc::mock_get_object_metadata(
-            &mut ledger_service,
-            auxiliary_ref,
-            sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
-            None,
-        );
+        if !matches!(
+            action,
+            PaymentAction::BuyTimePass
+                | PaymentAction::BuyTimePassFor
+                | PaymentAction::BuyFiniteCredits
+                | PaymentAction::BuyFiniteCreditsFor
+        ) {
+            sui_mocks::grpc::mock_get_object_metadata(
+                &mut ledger_service,
+                auxiliary_ref,
+                sui::types::Owner::Address(sui::types::Address::from_static("0x403")),
+                None,
+            );
+        }
+        match action {
+            PaymentAction::BuyTimePass | PaymentAction::BuyTimePassFor => {
+                sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                    &mut ledger_service,
+                    tool_cashier_id,
+                    &crate::move_bindings::type_tag::<PolicyKey<time_pass::Policy>>(&nexus_objects),
+                    PolicyKey::<time_pass::Policy>::new(false),
+                    time_pass::Config::new(true, 7, 1, 100),
+                );
+            }
+            PaymentAction::BuyFiniteCredits | PaymentAction::BuyFiniteCreditsFor => {
+                sui_mocks::grpc::mock_get_dynamic_field_by_key(
+                    &mut ledger_service,
+                    tool_cashier_id,
+                    &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(
+                        &nexus_objects,
+                    ),
+                    PolicyKey::<finite_credits::Policy>::new(false),
+                    finite_credits::Config::new(true, 13, 2, 9),
+                );
+            }
+            _ => {}
+        }
         let entitlement_id = match action {
             PaymentAction::BuyTimePass => Some(
                 crate::move_bindings::derive_time_pass_id(
@@ -2191,11 +2423,11 @@ mod tests {
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::BuyTimePass => actions
-                .buy_time_pass(&tool_fqn, 3, auxiliary_id)
+                .buy_time_pass(&tool_fqn, 3)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::BuyTimePassFor => actions
-                .buy_time_pass_for(&tool_fqn, 3, auxiliary_id, beneficiary)
+                .buy_time_pass_for(&tool_fqn, 3, beneficiary)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::IssueTimePass => actions
@@ -2219,11 +2451,11 @@ mod tests {
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::BuyFiniteCredits => actions
-                .buy_finite_credits(&tool_fqn, 4, auxiliary_id)
+                .buy_finite_credits(&tool_fqn, 4)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::BuyFiniteCreditsFor => actions
-                .buy_finite_credits_for(&tool_fqn, 4, auxiliary_id, beneficiary)
+                .buy_finite_credits_for(&tool_fqn, 4, beneficiary)
                 .await
                 .map(|result| result.tx_digest),
             PaymentAction::IssueFiniteCredits => actions
@@ -2290,7 +2522,6 @@ mod tests {
             beneficiary.clone(),
             finite_credits::State::new(5),
         );
-        let payment_coin = sui::types::Address::from_static("0x602");
         let deposit_id = sui::types::Address::from_static("0x603");
 
         let mut ledger = sui_mocks::grpc::MockLedgerService::new();
@@ -2309,11 +2540,12 @@ mod tests {
             sui::types::Owner::Shared(7),
             bcs::to_bytes(&credits).expect("credits serialize"),
         );
-        sui_mocks::grpc::mock_get_object_metadata(
+        sui_mocks::grpc::mock_get_dynamic_field_by_key(
             &mut ledger,
-            sui_mocks::object_ref_for_id(payment_coin),
-            sui::types::Owner::Address(sender),
-            None,
+            cashier_id,
+            &crate::move_bindings::type_tag::<PolicyKey<finite_credits::Policy>>(&objects),
+            PolicyKey::<finite_credits::Policy>::new(false),
+            finite_credits::Config::new(true, 3, 1, 100),
         );
         let submitted = sui_mocks::grpc::mock_execute_transaction_and_wait_for_checkpoint(
             &mut transactions,
@@ -2337,7 +2569,7 @@ mod tests {
 
         let result = client
             .tool()
-            .buy_finite_credits_for(&tool_fqn, 2, payment_coin, beneficiary)
+            .buy_finite_credits_for(&tool_fqn, 2, beneficiary)
             .await
             .expect("finite credit purchase succeeds");
 
@@ -2419,6 +2651,109 @@ mod tests {
 
         assert_eq!(result.tx_digest, submitted.digest());
         assert_eq!(result.entitlement_id, pass_id);
+    }
+
+    #[tokio::test]
+    async fn access_inspection_derives_and_reads_canonical_accounts() {
+        let objects = sui_mocks::mock_nexus_objects();
+        let tool_fqn = fqn!("xyz.taluslabs.access@1");
+        let tool_id =
+            crate::move_bindings::derive_tool_id(*objects.tool_registry.object_id(), &tool_fqn)
+                .expect("tool id derives");
+        let cashier_id = crate::move_bindings::derive_tool_cashier_id(
+            objects.tool_cashier_type_origin_pkg_id(),
+            tool_id,
+        )
+        .expect("cashier id derives");
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0x31"));
+        let credits_id = crate::move_bindings::derive_finite_credits_id(
+            &objects,
+            cashier_id,
+            beneficiary.clone(),
+        )
+        .expect("credit account id derives");
+        let pass_id =
+            crate::move_bindings::derive_time_pass_id(&objects, cashier_id, beneficiary.clone())
+                .expect("time pass id derives");
+        let credits = FiniteCredits::new(
+            UID::new(credits_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            finite_credits::State::new(7),
+        );
+        let pass = TimePass::new(
+            UID::new(pass_id),
+            ID::new(cashier_id),
+            beneficiary.clone(),
+            time_pass::State::new(10, 90),
+        );
+
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_get_object_metadata(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(cashier_id),
+            sui::types::Owner::Shared(1),
+            None,
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(move_boundary::CLOCK_OBJECT_ID),
+            sui::types::Owner::Shared(1),
+            bcs::to_bytes(&SuiClock::new(move_boundary::CLOCK_OBJECT_ID, 50))
+                .expect("clock serializes"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(credits_id),
+            sui::types::Owner::Shared(4),
+            bcs::to_bytes(&credits).expect("credits serialize"),
+        );
+        sui_mocks::grpc::mock_get_object_bcs(
+            &mut ledger,
+            sui_mocks::object_ref_for_id(pass_id),
+            sui::types::Owner::Shared(5),
+            bcs::to_bytes(&pass).expect("pass serializes"),
+        );
+        let mut state = sui_mocks::grpc::MockStateService::new();
+        state.expect_list_owned_objects().times(1).return_once(|_| {
+            Ok(tonic::Response::new(
+                sui::grpc::ListOwnedObjectsResponse::default(),
+            ))
+        });
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            state_service_mock: Some(state),
+            ..Default::default()
+        });
+        let client = nexus_mocks::mock_nexus_client_without_coins(&objects, &rpc_url).await;
+
+        let access = client
+            .tool()
+            .inspect_access(&tool_fqn, beneficiary.clone())
+            .await
+            .expect("access inspection succeeds");
+
+        assert_eq!(access.tool_id, tool_id);
+        assert_eq!(access.cashier_id, cashier_id);
+        assert_eq!(access.beneficiary, beneficiary);
+        assert_eq!(access.observed_at_ms, 50);
+        assert_eq!(
+            access.finite_credits,
+            Some(FiniteCreditAccess {
+                account_id: credits_id,
+                remaining: 7,
+                refunded_invocations: vec![],
+            })
+        );
+        assert_eq!(
+            access.time_pass,
+            Some(TimePassAccess {
+                account_id: pass_id,
+                valid_from_ms: 10,
+                valid_until_ms: 90,
+                active: true,
+            })
+        );
     }
 
     #[tokio::test]

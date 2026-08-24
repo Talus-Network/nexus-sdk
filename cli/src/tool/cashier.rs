@@ -13,6 +13,14 @@ pub(crate) enum CashierCommand {
         tool: ToolArgs,
     },
 
+    #[command(about = "Show the beneficiary access accounts and refundable Invocations")]
+    Access {
+        #[command(flatten)]
+        tool: ToolArgs,
+        #[command(flatten)]
+        beneficiary: BeneficiaryArgs,
+    },
+
     #[command(about = "List finalized Invocations and prepaid deposits")]
     Inbox {
         #[command(flatten)]
@@ -182,13 +190,6 @@ pub(crate) enum FiniteCreditCommand {
         tool: ToolArgs,
         #[arg(long, value_name = "COUNT", help = "Number of credits to buy")]
         credits: NonZeroU64,
-        #[arg(
-            long = "payment-coin",
-            short = 'c',
-            value_name = "OBJECT_ID",
-            help = "Owned Coin<SUI> used for payment"
-        )]
-        payment_coin: sui::types::Address,
         #[command(flatten)]
         beneficiary: BeneficiaryArgs,
         #[command(flatten)]
@@ -270,13 +271,6 @@ pub(crate) enum TimePassCommand {
             help = "Duration of the access window"
         )]
         duration_ms: NonZeroU64,
-        #[arg(
-            long = "payment-coin",
-            short = 'c',
-            value_name = "OBJECT_ID",
-            help = "Owned Coin<SUI> used for payment"
-        )]
-        payment_coin: sui::types::Address,
         #[command(flatten)]
         beneficiary: BeneficiaryArgs,
         #[command(flatten)]
@@ -333,18 +327,6 @@ fn validate_range(
     if minimum > maximum {
         return Err(NexusCliError::Any(anyhow!(
             "Minimum {unit} '{minimum}' cannot exceed maximum {unit} '{maximum}'"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_payment_coin(
-    payment_coin: sui::types::Address,
-    gas_coin: Option<sui::types::Address>,
-) -> AnyResult<(), NexusCliError> {
-    if Some(payment_coin) == gas_coin {
-        return Err(NexusCliError::Any(anyhow!(
-            "Payment coin '{payment_coin}' cannot also be the Sui gas coin"
         )));
     }
     Ok(())
@@ -413,6 +395,47 @@ async fn inspect(tool_fqn: ToolFqn) -> AnyResult<(), NexusCliError> {
     json_output(&json!({
         "tool_fqn": tool_fqn,
         "economy": economy,
+    }))
+}
+
+async fn inspect_access(
+    tool_fqn: ToolFqn,
+    beneficiary: BeneficiaryArgs,
+) -> AnyResult<(), NexusCliError> {
+    command_title!("Inspecting Tool access '{tool_fqn}'");
+    let client = get_owner_nexus_client().await?;
+    let owner = client.owner().map_err(NexusCliError::Nexus)?;
+    let access = client
+        .tool()
+        .inspect_access(&tool_fqn, beneficiary.resolve(owner))
+        .await
+        .map_err(NexusCliError::Nexus)?;
+
+    match &access.finite_credits {
+        Some(credits) => {
+            notify_success!(
+                "Finite credits: {} remaining in {}",
+                credits.remaining,
+                credits.account_id,
+            );
+            for invocation in &credits.refunded_invocations {
+                notify_success!("Refund ready to restore: {invocation}");
+            }
+        }
+        None => notify_success!("Finite credits: none"),
+    }
+    match &access.time_pass {
+        Some(pass) => notify_success!(
+            "Time pass: {} from {} through {}",
+            if pass.active { "active" } else { "inactive" },
+            pass.valid_from_ms,
+            pass.valid_until_ms,
+        ),
+        None => notify_success!("Time pass: none"),
+    }
+    json_output(&json!({
+        "tool_fqn": tool_fqn,
+        "access": access,
     }))
 }
 
@@ -645,21 +668,14 @@ async fn set_time_pass_terms(terms: TimePassTerms, enable: bool) -> AnyResult<()
 async fn buy_finite_credits(
     tool_fqn: ToolFqn,
     credits: NonZeroU64,
-    payment_coin: sui::types::Address,
     beneficiary: BeneficiaryArgs,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
-    validate_payment_coin(payment_coin, gas.sui_gas_coin)?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let owner = client.owner().map_err(NexusCliError::Nexus)?;
     let result = client
         .tool()
-        .buy_finite_credits_for(
-            &tool_fqn,
-            credits.get(),
-            payment_coin,
-            beneficiary.resolve(owner),
-        )
+        .buy_finite_credits_for(&tool_fqn, credits.get(), beneficiary.resolve(owner))
         .await
         .map_err(NexusCliError::Nexus)?;
     emit_purchase("buy_finite_credits", &tool_fqn, &result)
@@ -668,21 +684,14 @@ async fn buy_finite_credits(
 async fn buy_time_pass(
     tool_fqn: ToolFqn,
     duration_ms: NonZeroU64,
-    payment_coin: sui::types::Address,
     beneficiary: BeneficiaryArgs,
     gas: GasArgs,
 ) -> AnyResult<(), NexusCliError> {
-    validate_payment_coin(payment_coin, gas.sui_gas_coin)?;
     let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
     let owner = client.owner().map_err(NexusCliError::Nexus)?;
     let result = client
         .tool()
-        .buy_time_pass_for(
-            &tool_fqn,
-            duration_ms.get(),
-            payment_coin,
-            beneficiary.resolve(owner),
-        )
+        .buy_time_pass_for(&tool_fqn, duration_ms.get(), beneficiary.resolve(owner))
         .await
         .map_err(NexusCliError::Nexus)?;
     emit_purchase("buy_time_pass", &tool_fqn, &result)
@@ -790,6 +799,9 @@ async fn collect_deposits(
 pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), NexusCliError> {
     match command {
         CashierCommand::Inspect { tool } => inspect(tool.tool_fqn).await,
+        CashierCommand::Access { tool, beneficiary } => {
+            inspect_access(tool.tool_fqn, beneficiary).await
+        }
         CashierCommand::Inbox { tool } => inspect_inbox(tool.tool_fqn).await,
         CashierCommand::CollectInvocations {
             admin,
@@ -831,10 +843,9 @@ pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), Nex
             FiniteCreditCommand::Buy {
                 tool,
                 credits,
-                payment_coin,
                 beneficiary,
                 gas,
-            } => buy_finite_credits(tool.tool_fqn, credits, payment_coin, beneficiary, gas).await,
+            } => buy_finite_credits(tool.tool_fqn, credits, beneficiary, gas).await,
             FiniteCreditCommand::Issue {
                 admin,
                 beneficiary,
@@ -858,10 +869,9 @@ pub(crate) async fn handle_cashier(command: CashierCommand) -> AnyResult<(), Nex
             TimePassCommand::Buy {
                 tool,
                 duration_ms,
-                payment_coin,
                 beneficiary,
                 gas,
-            } => buy_time_pass(tool.tool_fqn, duration_ms, payment_coin, beneficiary, gas).await,
+            } => buy_time_pass(tool.tool_fqn, duration_ms, beneficiary, gas).await,
             TimePassCommand::Issue {
                 admin,
                 beneficiary,
@@ -877,8 +887,31 @@ mod tests {
     use {super::*, clap::Parser};
 
     #[test]
-    fn finite_credit_commands_use_object_vocabulary() {
+    fn finite_credit_purchase_uses_product_vocabulary() {
         let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "finite-credits",
+            "buy",
+            "--tool-fqn",
+            "com.example.tool@1",
+            "--credits",
+            "5",
+        ])
+        .expect("finite credit purchase should parse");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Tool(super::super::ToolCommand::Cashier(
+                CashierCommand::FiniteCredits(FiniteCreditCommand::Buy { .. })
+            ))
+        ));
+    }
+
+    #[test]
+    fn purchase_does_not_expose_coin_object_selection() {
+        assert!(crate::Cli::try_parse_from([
             "nexus",
             "tool",
             "cashier",
@@ -891,12 +924,25 @@ mod tests {
             "--payment-coin",
             "0x1",
         ])
-        .expect("finite credit purchase should parse");
+        .is_err());
+    }
+
+    #[test]
+    fn access_inspection_defaults_to_the_active_user() {
+        let cli = crate::Cli::try_parse_from([
+            "nexus",
+            "tool",
+            "cashier",
+            "access",
+            "--tool-fqn",
+            "com.example.tool@1",
+        ])
+        .expect("Tool access should be discoverable without object IDs");
 
         assert!(matches!(
             cli.command,
             crate::Command::Tool(super::super::ToolCommand::Cashier(
-                CashierCommand::FiniteCredits(FiniteCreditCommand::Buy { .. })
+                CashierCommand::Access { .. }
             ))
         ));
     }
@@ -913,8 +959,6 @@ mod tests {
             "com.example.tool@1",
             "--duration-ms",
             "0",
-            "--payment-coin",
-            "0x1",
         ])
         .is_err());
     }
@@ -958,8 +1002,6 @@ mod tests {
             "com.example.tool@1",
             "--duration-ms",
             "10",
-            "--payment-coin",
-            "0x1",
             "--beneficiary-user",
             "0x2",
             "--beneficiary-agent",

@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added dynamic Invocation policy composition, policy discovery, canonical finite credit and time pass accounts, owner grants, receipt collection, and exact Invocation timeout refunds.
 - Added deterministic entitlement ID derivation from the Tool cashier, payment beneficiary, and policy type.
+- Added beneficiary access inspection with canonical account state, pass activity from the onchain clock, and exact finite credit refunds ready for restoration.
 
 #### Fixed
 
@@ -23,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Invocation authorization and settlement now bind the exact policy, source objects, and Invocation while independent calls avoid mutable ToolCashier access.
 - Finite credit and time pass purchases now create or update one canonical shared account for each Tool and payment beneficiary.
+- Finite credit and time pass purchases now withdraw their exact SUI price from the signer address balance inside the purchase PTB.
 - Invocation authorization now emits the executable walk request with its exact Invocation in the same transaction.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
@@ -42,12 +44,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added Tool economy inspection, canonical finite credit and time pass purchase and issuance, exact refund recovery, and explicit Invocation authorization commands.
 - Invocation authorization now derives canonical entitlement objects without requiring users to supply their IDs.
+- Added beneficiary access inspection for remaining credits, pass validity, and refundable Invocations.
 - Added onchain Tool validation.
 
 #### Fixed
 
 - Off-chain batch registration now saves each committed Tool's owner capabilities immediately and recovers still-owned capabilities for already-registered Tools, allowing retained or partially completed environments to resume key configuration.
 - Task `--input-json` now preserves explicitly tagged canonical One/Many object values instead of converting every JSON value to inline data.
+
+#### Changed
+
+- Finite credit and time pass purchases now use the active signer address balance without requiring a payment coin object ID.
 
 ### `nexus-toolkit`
 

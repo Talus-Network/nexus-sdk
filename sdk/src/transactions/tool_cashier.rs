@@ -43,6 +43,14 @@ fn policy_toggle_ptb(
     })
 }
 
+fn destroy_spent_sui_coin(
+    transaction: &mut move_boundary::NexusPtbBuilder,
+    coin: sui::types::Argument,
+) -> anyhow::Result<()> {
+    transaction.call_target(coin_binding::destroy_zero_target::<SUI>, vec![coin])?;
+    Ok(())
+}
+
 /// Enables the canonical fixed price policy.
 pub fn enable_fixed_price_ptb(
     objects: &NexusObjects,
@@ -209,6 +217,46 @@ pub fn buy_more_finite_credits_ptb(
     })
 }
 
+/// Purchases finite credits with SUI withdrawn from the sender address balance.
+///
+/// The optional account selects whether the transaction creates the canonical
+/// account or adds units to the account that already occupies that slot.
+pub fn buy_finite_credits_from_balance_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    account: Option<&sui::types::ObjectReference>,
+    beneficiary: PaymentSourceKind,
+    credits: u64,
+    price: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let coin = transaction.withdraw_sui_coin(price)?;
+        match account {
+            Some(account) => {
+                let cashier = transaction.shared_object(tool_cashier, false)?;
+                let account = transaction.shared_object(account, true)?;
+                let credits = transaction.arg(&credits)?;
+                transaction.call_target(
+                    finite_credits_binding::buy_more_target,
+                    vec![cashier, account, coin, credits],
+                )?;
+            }
+            None => {
+                let cashier = transaction.shared_object(tool_cashier, true)?;
+                let beneficiary = transaction.arg(&beneficiary)?;
+                let credits = transaction.arg(&credits)?;
+                let result = transaction.call_target(
+                    finite_credits_binding::buy_target,
+                    vec![cashier, coin, beneficiary, credits],
+                )?;
+                let account = transaction.nested_result(result, 0)?;
+                transaction.call_target(finite_credits_binding::share_target, vec![account])?;
+            }
+        }
+        destroy_spent_sui_coin(transaction, coin)
+    })
+}
+
 /// Issues and shares the first canonical finite credit account.
 pub fn issue_finite_credits_ptb(
     objects: &NexusObjects,
@@ -361,6 +409,47 @@ pub fn buy_more_time_pass_ptb(
             vec![cashier, pass, coin, duration, clock],
         )?;
         Ok(())
+    })
+}
+
+/// Purchases time pass duration with SUI withdrawn from the sender address balance.
+///
+/// The optional account selects whether the transaction creates the canonical
+/// account or extends the account that already occupies that slot.
+pub fn buy_time_pass_from_balance_ptb(
+    objects: &NexusObjects,
+    tool_cashier: &sui::types::ObjectReference,
+    account: Option<&sui::types::ObjectReference>,
+    beneficiary: PaymentSourceKind,
+    duration_ms: u64,
+    price: u64,
+) -> anyhow::Result<sui::types::ProgrammableTransaction> {
+    move_boundary::ptb(objects, |transaction| {
+        let coin = transaction.withdraw_sui_coin(price)?;
+        let clock = transaction.clock()?;
+        match account {
+            Some(account) => {
+                let cashier = transaction.shared_object(tool_cashier, false)?;
+                let account = transaction.shared_object(account, true)?;
+                let duration = transaction.arg(&duration_ms)?;
+                transaction.call_target(
+                    time_pass_binding::buy_more_target,
+                    vec![cashier, account, coin, duration, clock],
+                )?;
+            }
+            None => {
+                let cashier = transaction.shared_object(tool_cashier, true)?;
+                let beneficiary = transaction.arg(&beneficiary)?;
+                let duration = transaction.arg(&duration_ms)?;
+                let result = transaction.call_target(
+                    time_pass_binding::buy_target,
+                    vec![cashier, coin, beneficiary, duration, clock],
+                )?;
+                let account = transaction.nested_result(result, 0)?;
+                transaction.call_target(time_pass_binding::share_target, vec![account])?;
+            }
+        }
+        destroy_spent_sui_coin(transaction, coin)
     })
 }
 
@@ -592,6 +681,46 @@ mod tests {
             Command::MoveCall(call)
                 if call.module.as_str() == "time_pass" && call.function.as_str() == "share"
         )));
+    }
+
+    #[test]
+    fn purchases_withdraw_exact_sui_from_the_sender_balance() {
+        let objects = mock_nexus_objects();
+        let cashier = object_ref_for_id(sui::types::Address::from_static("0xc1"));
+        let beneficiary = PaymentSourceKind::user_funded(sui::types::Address::from_static("0xc3"));
+
+        let credits = buy_finite_credits_from_balance_ptb(
+            &objects,
+            &cashier,
+            None,
+            beneficiary.clone(),
+            5,
+            35,
+        )
+        .unwrap();
+        let pass =
+            buy_time_pass_from_balance_ptb(&objects, &cashier, None, beneficiary, 10, 20).unwrap();
+
+        for (transaction, policy) in [(credits, "finite_credits"), (pass, "time_pass")] {
+            assert_eq!(
+                transaction
+                    .inputs
+                    .iter()
+                    .filter(|input| matches!(input, sui::types::Input::FundsWithdrawal(_)))
+                    .count(),
+                1,
+            );
+            assert!(transaction.commands.iter().any(|command| matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == policy && call.function.as_str() == "buy"
+            )));
+            assert!(transaction.commands.iter().any(|command| matches!(
+                command,
+                Command::MoveCall(call)
+                    if call.module.as_str() == "coin" && call.function.as_str() == "destroy_zero"
+            )));
+        }
     }
 
     #[test]
