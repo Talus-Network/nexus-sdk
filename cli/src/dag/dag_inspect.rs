@@ -21,7 +21,34 @@ pub(crate) async fn inspect_dag(dag_id: sui::types::Address) -> AnyResult<(), Ne
         .map_err(NexusCliError::Nexus)?;
     progress.success();
     human_output(&render_dag(&snapshot));
-    json_output(&snapshot)
+    json_output(&dag_json(&snapshot).map_err(NexusCliError::Any)?)
+}
+
+/// Projects a DAG snapshot into its public readable JSON representation.
+///
+/// [`DagSnapshot`] retains byte vectors because it mirrors Move storage. CLI
+/// output is an operator interface, so MetaSchema names must use their validated
+/// UTF8 representation rather than JSON arrays of byte values.
+fn dag_json(snapshot: &DagSnapshot) -> AnyResult<serde_json::Value> {
+    let vertex_meta_schemas = snapshot
+        .vertex_meta_schemas
+        .iter()
+        .map(|(vertex, schema)| {
+            schema
+                .to_json_value()
+                .map(|schema| (vertex, schema))
+                .map_err(|error| {
+                    anyhow!("Could not render MetaSchema for vertex '{vertex}': {error}")
+                })
+        })
+        .collect::<AnyResult<BTreeMap<_, _>>>()?;
+
+    Ok(json!({
+        "dag_id": snapshot.dag_id,
+        "vertex_count": snapshot.vertex_count,
+        "entry_groups": snapshot.entry_groups,
+        "vertex_meta_schemas": vertex_meta_schemas,
+    }))
 }
 
 fn render_dag(snapshot: &DagSnapshot) -> String {
@@ -64,7 +91,16 @@ fn input_template(vertices: &BTreeMap<String, Vec<String>>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, std::collections::BTreeMap};
+    use {
+        super::*,
+        nexus_sdk::move_bindings::interface::meta_schema::{
+            MetaSchema,
+            OutputVariantSchema,
+            PortSchema,
+            ValueKind,
+        },
+        std::collections::BTreeMap,
+    };
 
     #[test]
     fn human_output_explains_every_required_input() {
@@ -88,5 +124,42 @@ mod tests {
         assert!(
             output.contains(r#"Input JSON  {"sum":{"0":"<value>","1":"<value>","2":"<value>"}}"#)
         );
+    }
+
+    #[test]
+    fn json_output_uses_readable_meta_schema_names() {
+        let snapshot = DagSnapshot {
+            dag_id: sui::types::Address::from_static("0xd"),
+            vertex_count: 1,
+            entry_groups: BTreeMap::new(),
+            vertex_meta_schemas: BTreeMap::from([(
+                "sum".to_owned(),
+                MetaSchema::new(
+                    vec![PortSchema::new(b"numbers".to_vec(), true, ValueKind::Data)],
+                    vec![OutputVariantSchema::new(
+                        b"ok".to_vec(),
+                        vec![PortSchema::new(b"total".to_vec(), false, ValueKind::Data)],
+                    )],
+                ),
+            )]),
+        };
+
+        let value = dag_json(&snapshot).expect("valid DAG schema should project");
+
+        assert_eq!(
+            value["vertex_meta_schemas"]["sum"]["input_ports"][0]["port_name"],
+            "numbers"
+        );
+        assert_eq!(
+            value["vertex_meta_schemas"]["sum"]["output_variants"][0]["variant_name"],
+            "ok"
+        );
+        assert_eq!(
+            value["vertex_meta_schemas"]["sum"]["output_variants"][0]["ports"][0]["port_name"],
+            "total"
+        );
+        assert!(!value["vertex_meta_schemas"]
+            .to_string()
+            .contains("[110,117,109"));
     }
 }
