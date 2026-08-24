@@ -10,9 +10,9 @@ use {
             interface::{
                 agent::{
                     Agent,
+                    AgentInnerV1,
                     AgentPaymentVault,
-                    AgentPaymentVaultStateV1,
-                    AgentStateV1,
+                    AgentPaymentVaultInnerV1,
                     AgentVaultFieldKey,
                     FixedTool,
                     SkillDagBinding,
@@ -27,10 +27,7 @@ use {
                 DefaultDagExecutorFieldKey,
                 SkillRecord,
             },
-            sui_framework::{
-                object::{ID, UID},
-                versioned::Versioned,
-            },
+            sui_framework::object::{ID, UID},
             workflow::execution::DagExecutionPaymentFieldKey,
         },
         sui,
@@ -157,20 +154,15 @@ impl Agent {
         self.id.clone().into()
     }
 
-    /// Construct an anchor projection from its stable object and state IDs.
-    pub fn from_anchor(
-        agent_id: AgentId,
-        state_id: sui::types::Address,
-        state_schema: u64,
-    ) -> Self {
+    /// Constructs an anchor projection from its stable object ID.
+    pub fn from_anchor(agent_id: AgentId) -> Self {
         Self {
             id: UID::new(agent_id),
-            state: Versioned::new(UID::new(state_id), state_schema),
         }
     }
 }
 
-impl AgentStateV1 {
+impl AgentInnerV1 {
     pub fn registry_id(&self) -> Option<sui::types::Address> {
         self.registry_id.as_option().map(|id| id.bytes)
     }
@@ -198,7 +190,7 @@ impl AgentPaymentVault {
     }
 }
 
-impl AgentPaymentVaultStateV1 {
+impl AgentPaymentVaultInnerV1 {
     pub fn agent_id_address(&self) -> AgentId {
         self.agent_id.bytes
     }

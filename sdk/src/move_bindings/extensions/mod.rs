@@ -17,8 +17,7 @@ mod shared_object_ref;
 mod support;
 mod tagged_output;
 mod tap;
-mod versioned;
 mod workflow;
 
+#[cfg(feature = "walrus")]
 pub(crate) use nexus_data::canonical_walrus_blob_id;
-pub use versioned::VersionedAnchor;

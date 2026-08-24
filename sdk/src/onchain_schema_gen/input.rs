@@ -126,10 +126,14 @@ fn validate_execute_signature(
     module_name: &str,
     execute_function: &str,
 ) -> AnyResult<OnchainToolMode> {
-    if !execute_func.is_entry() {
-        bail!(
-            "Onchain tool function '{module_name}::{execute_function}' must be an entry function"
-        );
+    let visibility = execute_func
+        .visibility
+        .and_then(|visibility| {
+            sui::grpc::function_descriptor::Visibility::try_from(visibility).ok()
+        })
+        .unwrap_or(sui::grpc::function_descriptor::Visibility::Unknown);
+    if visibility != sui::grpc::function_descriptor::Visibility::Public {
+        bail!("Onchain tool function '{module_name}::{execute_function}' must be public");
     }
     if !execute_func.returns().is_empty() {
         bail!(
@@ -195,7 +199,10 @@ fn is_owned_param(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, sui::grpc::open_signature_body::Type};
+    use {
+        super::*,
+        sui::grpc::{function_descriptor::Visibility, open_signature_body::Type},
+    };
 
     fn owned_onchain_tool_result_signature() -> sui::grpc::OpenSignature {
         sui::grpc::OpenSignature::default().with_body(
@@ -239,6 +246,7 @@ mod tests {
 
     fn valid_execute_descriptor() -> sui::grpc::FunctionDescriptor {
         sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_uid_requirements_signature(),
@@ -248,6 +256,7 @@ mod tests {
 
     fn authorized_execute_descriptor() -> sui::grpc::FunctionDescriptor {
         sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_authorization_signature(),
@@ -257,10 +266,16 @@ mod tests {
     }
 
     #[test]
-    fn validate_execute_signature_rejects_non_entry_function() {
-        let descriptor = valid_execute_descriptor().with_is_entry(false);
+    fn validate_execute_signature_rejects_private_function() {
+        let descriptor = valid_execute_descriptor().with_visibility(Visibility::Private);
         let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
-        assert!(err.to_string().contains("must be an entry function"));
+        assert!(err.to_string().contains("must be public"));
+    }
+
+    #[test]
+    fn validate_execute_signature_accepts_public_nonentry_function() {
+        let descriptor = valid_execute_descriptor().with_is_entry(false);
+        validate_execute_signature(&descriptor, "tool", "execute").unwrap();
     }
 
     #[test]
@@ -275,6 +290,7 @@ mod tests {
     #[test]
     fn validate_execute_signature_rejects_referenced_onchain_tool_result() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_uid_requirements_signature(),
@@ -291,6 +307,7 @@ mod tests {
     #[test]
     fn validate_execute_signature_rejects_missing_requirements() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![owned_onchain_tool_result_signature()]);
         let err = validate_execute_signature(&descriptor, "tool", "execute").unwrap_err();
@@ -300,6 +317,7 @@ mod tests {
     #[test]
     fn validate_execute_signature_rejects_proof_in_place_of_requirements() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_proof_of_uid_signature(),
@@ -312,6 +330,7 @@ mod tests {
     #[test]
     fn validate_execute_signature_rejects_misplaced_authorization() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_uid_requirements_signature(),
@@ -325,6 +344,7 @@ mod tests {
     #[test]
     fn validate_execute_signature_rejects_duplicate_internal_parameter() {
         let descriptor = sui::grpc::FunctionDescriptor::default()
+            .with_visibility(Visibility::Public)
             .with_is_entry(true)
             .with_parameters(vec![
                 owned_uid_requirements_signature(),

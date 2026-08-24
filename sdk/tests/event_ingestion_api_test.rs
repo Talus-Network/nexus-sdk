@@ -6,8 +6,8 @@ use nexus_sdk::sui::{
     traits::FieldMaskUtil as _,
 };
 
-#[test]
-fn raw_event_query_preserves_the_request_and_event() {
+#[tokio::test]
+async fn raw_event_query_preserves_the_request_and_event() {
     let filter = sui::grpc::EventFilter::default();
     let read_mask = sui::grpc::FieldMask::from_paths(["contents"]);
     let query = RawEventQuery::new(filter.clone(), read_mask.clone());
@@ -18,5 +18,5 @@ fn raw_event_query_preserves_the_request_and_event() {
 
     assert_eq!(query.filter(), filter);
     assert_eq!(query.read_mask(), read_mask);
-    assert_eq!(query.decode(event.clone()).unwrap(), Some(event));
+    assert_eq!(query.decode(event.clone()).await.unwrap(), Some(event));
 }

@@ -2,6 +2,7 @@
 
 use {
     nexus_sdk::{
+        events::NexusEventDecoder,
         move_bindings::{
             move_std::ascii::String as MoveString,
             sui_framework::{
@@ -14,7 +15,10 @@ use {
                 vec_set::VecSet,
             },
         },
-        nexus::crawler::{Crawler, Map},
+        nexus::{
+            crawler::{Crawler, Map},
+            state::StateResolver,
+        },
         sui,
         test_utils,
     },
@@ -485,7 +489,10 @@ async fn test_object_crawler_get_object_update_reference() {
         Arc::clone(&grpc),
         pk.clone(),
         std::time::Duration::from_secs(30),
-        Arc::new(sui_mocks::mock_nexus_objects()),
+        NexusEventDecoder::new(
+            StateResolver::new(Arc::new(Crawler::new(Arc::clone(&grpc)))),
+            Arc::new(sui_mocks::mock_nexus_objects()),
+        ),
     );
 
     let mut bump_digests = Vec::new();

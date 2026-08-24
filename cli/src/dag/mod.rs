@@ -41,6 +41,12 @@ pub(crate) enum DagCommand {
             value_parser = ValueParser::from(expand_tilde)
         )]
         path: PathBuf,
+        #[arg(
+            long,
+            value_name = "PACKAGE_ID",
+            help = "Workflow package used to create the DAG"
+        )]
+        workflow_package: Option<sui::types::Address>,
         #[command(flatten)]
         gas: GasArgs,
     },
@@ -59,9 +65,11 @@ pub(crate) async fn handle(command: DagCommand) -> AnyResult<(), NexusCliError> 
         }
 
         // == `$ nexus dag publish` ==
-        DagCommand::Publish { path, gas } => {
-            publish_dag(path, gas.sui_gas_coin, gas.sui_gas_budget).await
-        }
+        DagCommand::Publish {
+            path,
+            workflow_package,
+            gas,
+        } => publish_dag(path, workflow_package, gas.sui_gas_coin, gas.sui_gas_budget).await,
     }
 }
 
@@ -77,6 +85,20 @@ mod tests {
         assert!(matches!(
             cli.command,
             crate::Command::Dag(DagCommand::Inspect { .. })
+        ));
+    }
+
+    #[test]
+    fn publish_uses_live_routing_when_package_override_is_absent() {
+        let cli = crate::Cli::try_parse_from(["nexus", "dag", "publish", "--path", "dag.json"])
+            .expect("DAG publication should route through live package state");
+
+        assert!(matches!(
+            cli.command,
+            crate::Command::Dag(DagCommand::Publish {
+                workflow_package: None,
+                ..
+            })
         ));
     }
 }

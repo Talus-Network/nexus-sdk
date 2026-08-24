@@ -23,10 +23,6 @@ pub enum ScheduleError {
     #[error("entry group must not be empty")]
     EmptyEntryGroup,
 
-    /// An authorization template vertex cannot be empty.
-    #[error("authorization template vertex must not be empty")]
-    EmptyAuthorizationVertex,
-
     /// An absolute deadline precedes the known absolute start.
     #[error("occurrence deadline {deadline_ms}ms precedes its start {start_time_ms}ms")]
     DeadlineBeforeStart {
@@ -291,10 +287,19 @@ mod tests {
     #[cfg(feature = "nexus")]
     #[test]
     fn client_errors_remain_typed() {
-        let source = crate::nexus::error::NexusError::UnsupportedProtocolVersion {
-            protocol_version: 3,
-            maximum: 2,
-        };
+        let tag = crate::sui::types::StructTag::new(
+            crate::sui::types::Address::from_static("0xa"),
+            crate::sui::types::Identifier::from_static("era"),
+            crate::sui::types::Identifier::from_static("V2"),
+            vec![],
+        );
+        let source: crate::nexus::error::NexusError =
+            crate::nexus::error::ClientUpgradeRequired::new(
+                crate::sui::types::Address::from_static("0xb"),
+                tag,
+                None,
+            )
+            .into();
         let error = SchedulerError::from(source);
 
         assert!(matches!(
@@ -302,7 +307,7 @@ mod tests {
             SchedulerError::Client(source)
                 if matches!(
                     *source,
-                    crate::nexus::error::NexusError::UnsupportedProtocolVersion { .. }
+                    crate::nexus::error::NexusError::ClientUpgradeRequired(_)
                 )
         ));
     }

@@ -20,6 +20,13 @@ enum AgentBorrow {
     Mutable,
 }
 
+/// Ordered arguments surrounding the Task and optional Agent authority.
+struct AuthorityCallArguments {
+    prefix: Vec<Argument>,
+    task: Argument,
+    tail: Vec<Argument>,
+}
+
 impl ResolvedAuthority {
     pub(crate) fn lower<T>(
         &self,
@@ -45,8 +52,29 @@ impl ResolvedAuthority {
             tx,
             address_target,
             agent_target,
-            task,
-            tail,
+            AuthorityCallArguments {
+                prefix: Vec::new(),
+                task,
+                tail,
+            },
+            AgentBorrow::Immutable,
+        )
+    }
+
+    pub(crate) fn call_with_prefix(
+        &self,
+        tx: &mut NexusPtbBuilder,
+        address_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
+        agent_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
+        prefix: Vec<Argument>,
+        task: Argument,
+        tail: Vec<Argument>,
+    ) -> Result<Argument, SchedulerError> {
+        self.call_with_agent_borrow(
+            tx,
+            address_target,
+            agent_target,
+            AuthorityCallArguments { prefix, task, tail },
             AgentBorrow::Immutable,
         )
     }
@@ -63,8 +91,11 @@ impl ResolvedAuthority {
             tx,
             address_target,
             agent_target,
-            task,
-            tail,
+            AuthorityCallArguments {
+                prefix: Vec::new(),
+                task,
+                tail,
+            },
             AgentBorrow::Mutable,
         )
     }
@@ -74,17 +105,22 @@ impl ResolvedAuthority {
         tx: &mut NexusPtbBuilder,
         address_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
         agent_target: impl FnOnce() -> Result<CallTarget, CallSpecError>,
-        task: Argument,
-        tail: Vec<Argument>,
+        arguments: AuthorityCallArguments,
         borrow: AgentBorrow,
     ) -> Result<Argument, SchedulerError> {
+        let AuthorityCallArguments { prefix, task, tail } = arguments;
+        let address_prefix = prefix.clone();
         let address_tail = tail.clone();
         self.lower(
             tx,
             |tx| {
                 tx.call_target(
                     address_target,
-                    std::iter::once(task).chain(address_tail).collect(),
+                    address_prefix
+                        .into_iter()
+                        .chain(std::iter::once(task))
+                        .chain(address_tail)
+                        .collect(),
                 )
                 .map_err(SchedulerError::transaction)
             },
@@ -94,7 +130,11 @@ impl ResolvedAuthority {
                     AgentBorrow::Mutable => agent.clone().mutable_ptb_argument(tx),
                 }
                 .map_err(SchedulerError::transaction)?;
-                let arguments = [task, agent].into_iter().chain(tail).collect();
+                let arguments = prefix
+                    .into_iter()
+                    .chain([task, agent])
+                    .chain(tail)
+                    .collect();
                 tx.call_target(agent_target, arguments)
                     .map_err(SchedulerError::transaction)
             },

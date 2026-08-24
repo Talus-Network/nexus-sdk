@@ -10,11 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 #### Fixed
 
+- State observation now retries incomplete dynamic field metadata so concurrent object mutations cannot turn a recoverable RPC snapshot race into a read failure.
+- Tool inventory and inspection now isolate unsupported state to the affected Tool, and unregistration builds from stable object metadata plus current Registry authority without decoding the Tool inner value.
 - Priority-fee collection now discovers Sui receiving deposits through their vault-address ownership representation instead of rejecting them as non-object-owned.
 - Priority-fee withdrawal now encodes consensus-address-owned leader capabilities with their start version instead of submitting them as ordinary owned inputs.
 
 #### Changed
 
+- Scheduler builders now pass the fixed runtime authority to standalone and recurring scheduling, decode allocation and advertisement as distinct events, and resolve proposal routing while runtime effects are paused.
+- Onchain Tool validation now requires the public composable `execute` ABI, and registration builders can configure the initial key and verifier support before sharing the binding.
+- Default address balance clients now share one process nonce authority, preventing independently constructed clients from rebuilding the same transaction digest.
 - Updated Sui Move build dependencies and local Sui test containers to 1.77.2.
 - Remove usage of V2 for clean LTS version.
 - Schema-one scheduler readers now decode the version-explicit `TaskStateV1` binding from the fresh package graph.
@@ -35,6 +40,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 #### Added
 
 - Implement onchain tool validation.
+
+#### Changed
+
+- Task and TAP commands now use the routing package graph for creation and pass `RuntimeAuthority` at the WorkAdmission scheduling boundary.
 
 ### `nexus-toolkit`
 

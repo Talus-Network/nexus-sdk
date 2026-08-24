@@ -4,14 +4,29 @@ use {
     crate::{loading, prelude::*},
     base64::{prelude::BASE64_STANDARD, Engine},
     nexus_sdk::{
-        nexus::{
-            client::{AddressBalanceGas, GasSource, NexusClient},
-            error::NexusError,
-            protocol::ProtocolExtras,
-        },
+        nexus::client::{AddressBalanceGas, GasSource, NexusClient},
         sui,
+        types::PackageRole,
     },
 };
+
+/// Resolve an explicit creator override or the package preferred by live routing state.
+pub(crate) async fn resolve_creator_package(
+    client: &NexusClient,
+    package_override: Option<sui::types::Address>,
+    role: PackageRole,
+) -> Result<sui::types::Address, NexusCliError> {
+    if let Some(package) = package_override {
+        return Ok(package);
+    }
+
+    client
+        .routing_context(&[])
+        .await
+        .map_err(NexusCliError::Nexus)?
+        .package_id(role)
+        .map_err(NexusCliError::Any)
+}
 
 /// Build Sui client for the provided Sui net.
 pub(crate) async fn build_sui_grpc_client(
@@ -216,20 +231,12 @@ async fn build_nexus_client_context(access: ClientAccess) -> Result<NexusClient,
     let nexus_objects = get_nexus_objects(&mut conf).await?;
     let rpc_url = client.uri().to_string();
 
-    if *nexus_objects.protocol.object_id() == sui::types::Address::ZERO {
-        return Err(NexusCliError::Nexus(NexusError::Configuration(
-            "a protocol root is required".into(),
-        )));
-    }
-
     let builder = NexusClient::builder().with_rpc_url(&rpc_url);
     let builder = match access {
         ClientAccess::ReadOnly => builder,
         ClientAccess::Signing => builder.with_private_key(get_signing_key(&conf).await?),
     };
-    let builder = builder
-        .with_protocol(nexus_objects.protocol.clone())
-        .with_protocol_extras(ProtocolExtras::from(&nexus_objects));
+    let builder = builder.with_nexus_objects(nexus_objects);
     builder.build().await.map_err(NexusCliError::Nexus)
 }
 
@@ -439,7 +446,7 @@ mod tests {
             function_signature: "pub(crate) async fn inspect_tool(",
             boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
             boundary_test_signature:
-                "async fn inspect_tool_reports_missing_when_neither_object_exists(",
+                "async fn mixed_tool_versions_are_classified_without_aborting_the_inventory(",
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
         CoinFreeClientCallSite {
@@ -448,15 +455,16 @@ mod tests {
             function_signature: "pub(crate) async fn validate_on_chain_tool(",
             boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
             boundary_test_signature:
-                "async fn inspect_tool_reports_missing_when_neither_object_exists(",
+                "async fn mixed_tool_versions_are_classified_without_aborting_the_inventory(",
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
         CoinFreeClientCallSite {
             command: "nexus tool list",
             source: include_str!("tool/tool_list.rs"),
             function_signature: "pub(crate) async fn list_tools(",
-            boundary_test_source: include_str!("tool/tool_list.rs"),
-            boundary_test_signature: "async fn fetch_tools_succeeds_without_owned_coins(",
+            boundary_test_source: include_str!("../../sdk/src/nexus/tool.rs"),
+            boundary_test_signature:
+                "async fn mixed_tool_versions_are_classified_without_aborting_the_inventory(",
             boundary_test_marker: "mock_nexus_client_without_coins",
         },
     ];
@@ -607,74 +615,55 @@ mod tests {
         let mut server = Server::new_async().await;
 
         let response_body = r#"
-                protocol_version = 1
-                config_hash = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+                chain_id = "test-chain"
                 network_id = "0x4"
-
-                [protocol]
-                object_id = "0x16"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-
-                [packages.primitives]
-                initial_id = "0x1"
-                storage_id = "0x1"
-                version = 1
-
-                [packages.tool]
-                initial_id = "0x15"
-                storage_id = "0x15"
-                version = 1
-
-                [packages.workflow]
-                initial_id = "0x2"
-                storage_id = "0x2"
-                version = 1
-
-                [packages.interface]
-                initial_id = "0x3"
-                storage_id = "0x3"
-                version = 1
-
-                [packages.scheduler]
-                initial_id = "0x13"
-                storage_id = "0x13"
-                version = 1
-
-                [packages.registry]
-                initial_id = "0x11"
-                storage_id = "0x11"
-                version = 1
 
                 [tool_registry]
                 object_id = "0x5"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                initial_shared_version = 1
 
                 [network_auth]
                 object_id = "0x6"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                initial_shared_version = 2
 
                 [agent_registry]
                 object_id = "0x70"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
-
-                [default_dag_executor]
-                agent_id = "0xa1"
-                skill_id = 177
+                initial_shared_version = 3
 
                 [leader_registry]
                 object_id = "0x10"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                initial_shared_version = 4
 
                 [priority_fee_vault]
                 object_id = "0x14"
-                version = 1
-                digest = "3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv"
+                initial_shared_version = 5
 
+                [runtime_authority]
+                object_id = "0x15"
+                initial_shared_version = 1
+
+                [leader_admin_cap]
+                object_id = "0x20"
+
+                [tool_registry_admin_cap]
+                object_id = "0x21"
+
+                [slashing_cap]
+                object_id = "0x22"
+
+                [priority_fee_vault_owner_cap]
+                object_id = "0x23"
+
+                [initial_leader_cap]
+                object_id = "0x24"
+
+                [runtime_authority_cap]
+                object_id = "0x28"
+
+                [us_token]
+                package_id = "0x25"
+                protected_treasury = "0x26"
+                metadata = "0x27"
             "#
         .to_string();
 
@@ -697,78 +686,41 @@ mod tests {
 
         let objects = res.expect("mock object document should match NexusObjects");
 
-        assert_eq!(objects.primitives_pkg_id(), "0x1".parse().unwrap());
-        assert_eq!(objects.tool_pkg_id(), "0x15".parse().unwrap());
-        assert_eq!(objects.workflow_pkg_id(), "0x2".parse().unwrap());
-        assert_eq!(objects.interface_pkg_id(), "0x3".parse().unwrap());
-        assert_eq!(objects.scheduler_pkg_id(), "0x13".parse().unwrap());
-        assert_eq!(objects.registry_pkg_id(), "0x11".parse().unwrap());
-        assert_eq!(
-            objects.primitives_type_origin_pkg_id(),
-            objects.primitives_pkg_id()
-        );
-        assert_eq!(
-            objects.interface_type_origin_pkg_id(),
-            objects.interface_pkg_id()
-        );
-        assert_eq!(
-            objects.registry_type_origin_pkg_id(),
-            objects.registry_pkg_id()
-        );
-        assert_eq!(
-            objects.tool_cashier_type_origin_pkg_id(),
-            objects.tool_pkg_id()
-        );
-        assert_eq!(
-            objects.workflow_type_origin_pkg_id(),
-            objects.workflow_pkg_id()
-        );
-        assert_eq!(
-            objects.scheduler_type_origin_pkg_id(),
-            objects.scheduler_pkg_id()
-        );
+        assert_eq!(objects.chain_id, "test-chain");
         assert_eq!(objects.network_id, "0x4".parse().unwrap());
         assert_eq!(
-            *objects.tool_registry.object_id(),
+            objects.tool_registry.object_id(),
             sui::types::Address::from_static("0x5")
         );
-        assert_eq!(objects.tool_registry.version(), 1);
+        assert_eq!(objects.tool_registry.initial_shared_version, 1);
         assert_eq!(
-            *objects.tool_registry.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-        );
-        assert_eq!(
-            *objects.network_auth.object_id(),
+            objects.network_auth.object_id(),
             sui::types::Address::from_static("0x6")
         );
-        assert_eq!(objects.network_auth.version(), 1);
+        assert_eq!(objects.network_auth.initial_shared_version, 2);
         assert_eq!(
-            *objects.network_auth.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-        );
-        assert_eq!(
-            *objects.agent_registry.object_id(),
+            objects.agent_registry.object_id(),
             sui::types::Address::from_static("0x70")
         );
+        assert_eq!(objects.agent_registry.initial_shared_version, 3);
         assert_eq!(
-            objects.default_dag_executor.agent_id,
-            sui::types::Address::from_static("0xa1")
-        );
-        assert_eq!(objects.default_dag_executor.skill_id, 177);
-        assert_eq!(
-            *objects.leader_registry.object_id(),
+            objects.leader_registry.object_id(),
             sui::types::Address::from_static("0x10")
         );
-        assert_eq!(objects.leader_registry.version(), 1);
+        assert_eq!(objects.leader_registry.initial_shared_version, 4);
         assert_eq!(
-            *objects.leader_registry.digest(),
-            sui::types::Digest::from_static("3LFAfxPb6Q81U8wXg6qc6UyV9Hoj1VdfFfMwvGTEq5Bv")
-        );
-        assert_eq!(
-            *objects.priority_fee_vault.object_id(),
+            objects.priority_fee_vault.object_id(),
             sui::types::Address::from_static("0x14")
         );
-        assert_eq!(objects.priority_fee_vault.version(), 1);
+        assert_eq!(objects.priority_fee_vault.initial_shared_version, 5);
+        assert_eq!(
+            objects.leader_admin_cap.object_id(),
+            sui::types::Address::from_static("0x20")
+        );
+        assert_eq!(
+            objects.us_token.package_id,
+            sui::types::Address::from_static("0x25")
+        );
         mock.assert_async().await;
     }
 

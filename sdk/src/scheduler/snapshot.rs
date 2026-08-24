@@ -38,8 +38,25 @@ pub enum TaskStatus {
     Paused,
     /// Future work was canceled while in flight work may still settle.
     Canceled,
+    /// Current admission rejected the proposal and released its reserve.
+    Rejected {
+        /// On chain reason proving why admission could not honor the proposal.
+        reason: TaskRejectionReason,
+    },
     /// Live resources were released while history was retained.
     Finalized,
+}
+
+/// On chain reason that made a Task proposal permanently inadmissible.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskRejectionReason {
+    /// Current code does not implement the proposal's WorkAdmission contract.
+    UnsupportedWorkAdmission,
+    /// The referenced Agent skill no longer matches the proposal snapshot.
+    StaleSkillContract,
+    /// The proposal references a mutable DAG rather than a finalized contract.
+    MutableDAG,
 }
 
 /// Origin of an allocated occurrence.
@@ -65,6 +82,8 @@ pub enum WithdrawalReason {
     RecurrenceCleared,
     /// The controller canceled the Task.
     TaskCanceled,
+    /// Current admission permanently rejected the enclosing Task.
+    TaskRejected,
 }
 
 /// Public lifecycle projection of one occurrence.

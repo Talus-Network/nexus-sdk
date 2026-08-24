@@ -67,7 +67,7 @@ fun init(_otw: ONCHAIN_TOOL, ctx: &mut TxContext) {
 ///
 /// The production Nexus ABI finalizes output through an owned OnchainToolResult
 /// argument and does not return values from execute.
-entry fun execute(
+public fun execute(
     requirements: UIDRequirements,
     result: OnchainToolResult,
     current_execution: &mut DAGExecution,

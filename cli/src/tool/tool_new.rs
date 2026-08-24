@@ -231,7 +231,8 @@ mod tests {
         assert!(move_contents.contains("witness: Bag"));
         assert!(move_contents.contains("public enum Output"));
         assert!(move_contents.contains("fun init(_otw: TEST_TOOL, ctx: &mut TxContext)"));
-        assert!(move_contents.contains("entry fun execute("));
+        assert!(move_contents.contains("public fun execute("));
+        assert!(!move_contents.contains("entry fun execute("));
         assert!(
             move_contents.contains("use nexus_interface::authorization::AgentVertexAuthorization;")
         );

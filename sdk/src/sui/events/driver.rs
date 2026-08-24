@@ -312,7 +312,7 @@ impl<Q: EventQuery> EventIngestor<Q> {
         })?;
 
         let decode_started = Instant::now();
-        let decoded = self.query.decode(event);
+        let decoded = self.query.decode(event).await;
         EVENT_PARSE_DURATION.observe(decode_started.elapsed().as_secs_f64());
         let event = decoded.map_err(|source| EventIngestionError::Decode {
             checkpoint: event_checkpoint,

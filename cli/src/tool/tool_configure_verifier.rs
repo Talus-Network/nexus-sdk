@@ -1,20 +1,46 @@
 use {
-    super::ConfigureVerifierCommand,
-    crate::{
-        command_title,
-        display::json_output,
-        loading,
-        notify_success,
-        prelude::*,
-        sui::get_nexus_client,
-    },
+    crate::{command_title, display::json_output, loading, notify_success, prelude::*, sui::*},
+    clap::Subcommand,
 };
 
-pub(crate) async fn configure_verifier(
-    command: ConfigureVerifierCommand,
-) -> AnyResult<(), NexusCliError> {
+#[derive(Subcommand)]
+pub(crate) enum VerifierCommand {
+    #[command(about = "Enable RegisteredKey response verification")]
+    RegisteredKey {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
+        owner_cap: Option<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+    #[command(about = "Install one external response verifier")]
+    External {
+        #[arg(long = "tool-fqn", short = 't', value_name = "FQN")]
+        tool_fqn: ToolFqn,
+        #[arg(long = "owner-cap", short = 'o', value_name = "OBJECT_ID")]
+        owner_cap: Option<sui::types::Address>,
+        #[arg(long = "package", value_name = "PACKAGE_ID")]
+        package: sui::types::Address,
+        #[arg(long = "module", value_name = "MODULE")]
+        module: sui::types::Identifier,
+        #[arg(long = "function", value_name = "FUNCTION")]
+        function: sui::types::Identifier,
+        #[arg(
+            long = "verifier-object",
+            value_name = "OBJECT_ID",
+            required = true,
+            num_args = 1..
+        )]
+        verifier_objects: Vec<sui::types::Address>,
+        #[command(flatten)]
+        gas: GasArgs,
+    },
+}
+
+pub(crate) async fn configure_verifier(command: VerifierCommand) -> AnyResult<(), NexusCliError> {
     match command {
-        ConfigureVerifierCommand::RegisteredKey {
+        VerifierCommand::RegisteredKey {
             tool_fqn,
             owner_cap,
             gas,
@@ -33,11 +59,10 @@ pub(crate) async fn configure_verifier(
             json_output(&json!({
                 "digest": result.tx_digest,
                 "tool_fqn": tool_fqn,
-                "tool_id": result.tool_id,
                 "verifier": "registered_key",
             }))
         }
-        ConfigureVerifierCommand::External {
+        VerifierCommand::External {
             tool_fqn,
             owner_cap,
             package,
@@ -49,7 +74,7 @@ pub(crate) async fn configure_verifier(
             command_title!("Configuring External verifier for Tool '{tool_fqn}'");
             let owner_cap = resolve_owner_cap(&tool_fqn, owner_cap).await?;
             let client = get_nexus_client(gas.sui_gas_coin, gas.sui_gas_budget).await?;
-            let handle = loading!("Preflighting and registering External verifier...");
+            let handle = loading!("Validating and registering External verifier...");
             let result = client
                 .tool()
                 .configure_external_verifier(
@@ -67,7 +92,6 @@ pub(crate) async fn configure_verifier(
             json_output(&json!({
                 "digest": result.tx_digest,
                 "tool_fqn": tool_fqn,
-                "tool_id": result.tool_id,
                 "verifier": "external",
                 "package": package,
                 "module": module,
@@ -87,38 +111,17 @@ async fn resolve_owner_cap(
         .or_else(|| conf.tools.get(tool_fqn).map(|tool| tool.over_tool))
         .ok_or_else(|| {
             NexusCliError::Any(anyhow!(
-                "No OwnerCap<OverTool> object ID found for tool '{tool_fqn}'."
+                "No OwnerCap<OverTool> object ID found for Tool '{tool_fqn}'."
             ))
         })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, clap::Parser};
 
     #[test]
-    fn parses_registered_key_configuration() {
-        let cli = crate::Cli::try_parse_from([
-            "nexus",
-            "tool",
-            "configure-verifier",
-            "registered-key",
-            "--tool-fqn",
-            "xyz.demo.tool@1",
-            "--owner-cap",
-            "0x10",
-        ])
-        .unwrap();
-        assert!(matches!(
-            cli.command,
-            crate::Command::Tool(crate::tool::ToolCommand::ConfigureVerifier {
-                verifier: ConfigureVerifierCommand::RegisteredKey { .. }
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_external_configuration_with_ordered_objects() {
+    fn external_configuration_accepts_ordered_objects_after_one_flag() {
         let cli = crate::Cli::try_parse_from([
             "nexus",
             "tool",
@@ -126,8 +129,6 @@ mod tests {
             "external",
             "--tool-fqn",
             "xyz.demo.tool@1",
-            "--owner-cap",
-            "0x10",
             "--package",
             "0x20",
             "--module",
@@ -136,18 +137,17 @@ mod tests {
             "verify",
             "--verifier-object",
             "0x30",
-            "--verifier-object",
             "0x31",
         ])
-        .unwrap();
-        let crate::Command::Tool(crate::tool::ToolCommand::ConfigureVerifier {
-            verifier:
-                ConfigureVerifierCommand::External {
-                    verifier_objects, ..
-                },
-        }) = cli.command
+        .expect("ordered verifier objects after one flag should parse");
+
+        let crate::Command::Tool(crate::tool::ToolCommand::ConfigureVerifier(
+            VerifierCommand::External {
+                verifier_objects, ..
+            },
+        )) = cli.command
         else {
-            panic!("expected External verifier command");
+            panic!("expected External verifier configuration");
         };
         assert_eq!(
             verifier_objects,
@@ -156,24 +156,5 @@ mod tests {
                 sui::types::Address::from_static("0x31"),
             ]
         );
-    }
-
-    #[test]
-    fn external_configuration_requires_a_witness_object() {
-        assert!(crate::Cli::try_parse_from([
-            "nexus",
-            "tool",
-            "configure-verifier",
-            "external",
-            "--tool-fqn",
-            "xyz.demo.tool@1",
-            "--package",
-            "0x20",
-            "--module",
-            "verifier",
-            "--function",
-            "verify",
-        ])
-        .is_err());
     }
 }

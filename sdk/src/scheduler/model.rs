@@ -136,8 +136,8 @@ pub enum TaskOperation {
         skill_id: SkillId,
         /// Optional DAG selected for the skill.
         selected_dag: Option<sui::types::Address>,
-        /// Authorization templates materialized for each occurrence.
-        authorization_templates: Vec<AuthorizationTemplate>,
+        /// Recipients authorized at grant requiring DAG vertices.
+        authorization_bindings: AuthorizationBindings,
     },
 }
 
@@ -152,13 +152,13 @@ impl TaskOperation {
         agent_id: AgentId,
         skill_id: SkillId,
         selected_dag: Option<sui::types::Address>,
-        authorization_templates: Vec<AuthorizationTemplate>,
+        authorization_bindings: AuthorizationBindings,
     ) -> Self {
         Self::AgentSkill {
             agent_id,
             skill_id,
             selected_dag,
-            authorization_templates,
+            authorization_bindings,
         }
     }
 
@@ -182,52 +182,13 @@ impl TaskOperation {
     }
 }
 
-/// Authorization material attached to each execution of an Agent skill.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthorizationTemplate {
-    skill_id: SkillId,
-    vertex: String,
-    recipient_id: sui::types::Address,
-}
-
-impl AuthorizationTemplate {
-    /// Creates an authorization template for one DAG vertex.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ScheduleError::EmptyAuthorizationVertex`] when `vertex` is
-    /// blank.
-    pub fn new(
-        skill_id: SkillId,
-        vertex: impl Into<String>,
-        recipient_id: sui::types::Address,
-    ) -> Result<Self, ScheduleError> {
-        let vertex = vertex.into();
-        if vertex.trim().is_empty() {
-            return Err(ScheduleError::EmptyAuthorizationVertex);
-        }
-        Ok(Self {
-            skill_id,
-            vertex,
-            recipient_id,
-        })
-    }
-
-    /// Returns the skill authorized by the template.
-    pub const fn skill_id(&self) -> SkillId {
-        self.skill_id
-    }
-
-    /// Returns the authorized DAG vertex name.
-    pub fn vertex(&self) -> &str {
-        &self.vertex
-    }
-
-    /// Returns the authorization recipient object.
-    pub const fn recipient_id(&self) -> sui::types::Address {
-        self.recipient_id
-    }
-}
+/// Authorization recipients indexed by their grant requiring DAG vertex.
+///
+/// The selected [`TaskOperation::AgentSkill`] already identifies the Agent and
+/// skill. Each entry therefore contains only the remaining caller choice: the
+/// object that receives the grant for one vertex. Task admission checks that
+/// this map exactly covers the selected DAG requirements.
+pub type AuthorizationBindings = BTreeMap<String, sui::types::Address>;
 
 /// Funding source and immutable controller for a Task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -751,14 +712,10 @@ mod tests {
         let agent_id = address("0xa");
         let selected_dag = address("0xb");
         let recipient_id = address("0xc");
-        let authorization = AuthorizationTemplate::new(7, "summarize", recipient_id)
-            .expect("authorization vertex is present");
-        assert_eq!(authorization.skill_id(), 7);
-        assert_eq!(authorization.vertex(), "summarize");
-        assert_eq!(authorization.recipient_id(), recipient_id);
+        let authorization_bindings = BTreeMap::from([("summarize".to_owned(), recipient_id)]);
 
         let operation =
-            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), vec![authorization]);
+            TaskOperation::agent_skill(agent_id, 11, Some(selected_dag), authorization_bindings);
         assert_eq!(operation.agent_id(), Some(agent_id));
         assert_eq!(TaskOperation::default_dag(selected_dag).agent_id(), None);
 
@@ -775,10 +732,10 @@ mod tests {
                 agent_id: stored_agent,
                 skill_id: 11,
                 selected_dag: Some(stored_dag),
-                authorization_templates,
+                authorization_bindings,
             } if *stored_agent == agent_id
                 && *stored_dag == selected_dag
-                && authorization_templates.len() == 1
+                && authorization_bindings.get("summarize") == Some(&recipient_id)
         ));
         assert_eq!(task.entry_group(), "main");
         assert!(task.inputs().contains_key("summarize"));
@@ -791,10 +748,6 @@ mod tests {
     #[test]
     fn task_authoring_rejects_blank_names_and_incompatible_funding() {
         let dag_id = address("0xd");
-        assert_eq!(
-            AuthorizationTemplate::new(1, "  ", dag_id).expect_err("blank authorization vertex"),
-            ScheduleError::EmptyAuthorizationVertex
-        );
         assert_eq!(
             TaskSpec::new(
                 TaskOperation::default_dag(dag_id),

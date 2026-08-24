@@ -2,13 +2,12 @@
 //! on Sui in Nexus context.
 use {
     crate::{
-        events::{NexusEvent, NexusEventQuery},
+        events::{NexusEvent, NexusEventDecoder},
         nexus::{
             crawler::Crawler,
             error::{NexusError, TransactionError},
         },
         sui::{self, traits::*},
-        types::NexusObjects,
     },
     std::sync::Arc,
     sui_rpc::client::ExecuteAndWaitError,
@@ -31,7 +30,7 @@ pub struct Signer {
     pub(super) client: Arc<sui::grpc::Client>,
     pub(super) pk: sui::crypto::Ed25519PrivateKey,
     pub(super) transaction_timeout: Duration,
-    pub(super) nexus_objects: Arc<NexusObjects>,
+    event_decoder: NexusEventDecoder,
 }
 
 impl Signer {
@@ -39,13 +38,13 @@ impl Signer {
         client: Arc<sui::grpc::Client>,
         pk: sui::crypto::Ed25519PrivateKey,
         transaction_timeout: Duration,
-        nexus_objects: Arc<NexusObjects>,
+        event_decoder: NexusEventDecoder,
     ) -> Self {
         Self {
             client,
             pk,
             transaction_timeout,
-            nexus_objects,
+            event_decoder,
         }
     }
 
@@ -135,18 +134,17 @@ impl Signer {
             )));
         };
 
-        let event_query = NexusEventQuery::new(Arc::clone(&self.nexus_objects));
-        let nexus_events = events
-            .0
-            .iter()
-            .enumerate()
-            .filter_map(|(index, event)| {
-                event_query
-                    .decode_sui_event(index as u64, digest, event)
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| NexusError::Parsing(error.into()))?;
+        let mut nexus_events = Vec::new();
+        for (index, event) in events.0.iter().enumerate() {
+            if let Some(event) = self
+                .event_decoder
+                .decode_sui_event(index as u64, digest, event)
+                .await
+                .map_err(|error| NexusError::Parsing(error.into()))?
+            {
+                nexus_events.push(event);
+            }
+        }
 
         // Deserialize objects.
         let Ok(objects) = response

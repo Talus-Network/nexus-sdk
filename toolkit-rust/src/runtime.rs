@@ -95,14 +95,13 @@ fn json_bytes_or_fallback(status: StatusCode, value: serde_json::Value) -> (Stat
 /// ## Example config
 /// ```json
 /// {
-///   "version": 2,
 ///   "invoke_max_body_bytes": 10485760,
 ///   "signed_http": {
 ///     "mode": "required",
 ///     "allowed_leaders_path": "./allowed_leaders.json",
 ///     "tools": {
 ///       "xyz.dummy.tool@1": {
-///         "tool_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
+///         "response_signing_key": "0000000000000000000000000000000000000000000000000000000000000000",
 ///         "replay_cache_ttl_ms": 300000
 ///       }
 ///     }

@@ -5,7 +5,7 @@ use {
         move_bindings::{
             scheduler::{
                 schedule::OccurrenceWithdrawalReason,
-                task::{OccurrenceState, TaskStateV1, TaskStatus},
+                task::{OccurrenceState, TaskInnerV1, TaskStatus},
             },
             sui_framework::object::ID,
         },
@@ -31,11 +31,11 @@ fn task_status_roundtrips_through_bcs() {
 
 #[test]
 fn task_state_v1_uses_versioned_move_type_name() {
-    let tag = TaskStateV1::struct_tag_static();
+    let tag = TaskInnerV1::struct_tag_static();
 
     assert_eq!(
         (tag.module().as_str(), tag.name().as_str()),
-        ("task", "TaskStateV1"),
+        ("task", "TaskInnerV1"),
     );
 }
 

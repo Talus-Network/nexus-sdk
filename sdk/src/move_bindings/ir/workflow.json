@@ -3,6 +3,58 @@
   "original_id": "0xa4",
   "version": 1,
   "modules": {
+    "era": {
+      "name": "era",
+      "datatypes": [
+        {
+          "type_name": {
+            "address": "0xa4",
+            "module": "era",
+            "name": "V1"
+          },
+          "module": "era",
+          "name": "V1",
+          "abilities": [
+            "Copy",
+            "Drop",
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
+                {
+                  "name": "dummy_field",
+                  "position": 0,
+                  "ty": "Bool"
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "functions": [
+        {
+          "name": "v1",
+          "visibility": "Friend",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa4",
+                  "module": "era",
+                  "name": "V1"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        }
+      ]
+    },
     "execution": {
       "name": "execution",
       "datatypes": [
@@ -378,15 +430,29 @@
                       "type_arguments": []
                     }
                   }
-                },
-                {
-                  "name": "protocol_version",
-                  "position": 1,
-                  "ty": "U64"
-                },
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type_name": {
+            "address": "0xa4",
+            "module": "execution",
+            "name": "DAGExecutionInnerV1"
+          },
+          "module": "execution",
+          "name": "DAGExecutionInnerV1",
+          "abilities": [
+            "Store"
+          ],
+          "type_parameters": [],
+          "kind": {
+            "Struct": {
+              "fields": [
                 {
                   "name": "dag",
-                  "position": 2,
+                  "position": 0,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -400,7 +466,7 @@
                 },
                 {
                   "name": "entry_group",
-                  "position": 3,
+                  "position": 1,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -414,22 +480,22 @@
                 },
                 {
                   "name": "invoker",
-                  "position": 4,
+                  "position": 2,
                   "ty": "Address"
                 },
                 {
                   "name": "created_at",
-                  "position": 5,
+                  "position": 3,
                   "ty": "U64"
                 },
                 {
                   "name": "priority_fee_percentage",
-                  "position": 6,
+                  "position": 4,
                   "ty": "U64"
                 },
                 {
                   "name": "agent_id",
-                  "position": 7,
+                  "position": 5,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -443,12 +509,12 @@
                 },
                 {
                   "name": "skill_id",
-                  "position": 8,
+                  "position": 6,
                   "ty": "U64"
                 },
                 {
                   "name": "interface_version",
-                  "position": 9,
+                  "position": 7,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -462,7 +528,7 @@
                 },
                 {
                   "name": "task_id",
-                  "position": 10,
+                  "position": 8,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -476,19 +542,19 @@
                 },
                 {
                   "name": "occurrence_id",
-                  "position": 11,
+                  "position": 9,
                   "ty": "U64"
                 },
                 {
                   "name": "last_request_for_execution_emitted_at_digest",
-                  "position": 12,
+                  "position": 10,
                   "ty": {
                     "Vector": "U8"
                   }
                 },
                 {
                   "name": "last_request_for_execution_leaders",
-                  "position": 13,
+                  "position": 11,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -504,7 +570,7 @@
                 },
                 {
                   "name": "network",
-                  "position": 14,
+                  "position": 12,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -518,7 +584,7 @@
                 },
                 {
                   "name": "evaluations",
-                  "position": 15,
+                  "position": 13,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -553,7 +619,7 @@
                 },
                 {
                   "name": "terminal_records",
-                  "position": 16,
+                  "position": 14,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -579,7 +645,7 @@
                 },
                 {
                   "name": "submission_failure_records",
-                  "position": 17,
+                  "position": 15,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -607,7 +673,7 @@
                 },
                 {
                   "name": "pending_retry_handoff_cap_ids",
-                  "position": 18,
+                  "position": 16,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -633,7 +699,7 @@
                 },
                 {
                   "name": "walk_request_authorities",
-                  "position": 19,
+                  "position": 17,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -659,7 +725,7 @@
                 },
                 {
                   "name": "pending_payment_settlements",
-                  "position": 20,
+                  "position": 18,
                   "ty": {
                     "Datatype": {
                       "type_name": {
@@ -694,7 +760,7 @@
                 },
                 {
                   "name": "walks",
-                  "position": 21,
+                  "position": 19,
                   "ty": {
                     "Vector": {
                       "Datatype": {
@@ -710,42 +776,42 @@
                 },
                 {
                   "name": "active_walks",
-                  "position": 22,
+                  "position": 20,
                   "ty": "U64"
                 },
                 {
                   "name": "pending_abort_walks",
-                  "position": 23,
+                  "position": 21,
                   "ty": "U64"
                 },
                 {
                   "name": "pending_settlement_walks",
-                  "position": 24,
+                  "position": 22,
                   "ty": "U64"
                 },
                 {
                   "name": "successful_walks",
-                  "position": 25,
+                  "position": 23,
                   "ty": "U64"
                 },
                 {
                   "name": "failed_walks",
-                  "position": 26,
+                  "position": 24,
                   "ty": "U64"
                 },
                 {
                   "name": "aborted_walks",
-                  "position": 27,
+                  "position": 25,
                   "ty": "U64"
                 },
                 {
                   "name": "consumed_walks",
-                  "position": 28,
+                  "position": 26,
                   "ty": "U64"
                 },
                 {
                   "name": "cancelled_walks",
-                  "position": 29,
+                  "position": 27,
                   "ty": "U64"
                 }
               ]
@@ -983,30 +1049,6 @@
             "Copy",
             "Drop",
             "Store"
-          ],
-          "type_parameters": [],
-          "kind": {
-            "Struct": {
-              "fields": [
-                {
-                  "name": "dummy_field",
-                  "position": 0,
-                  "ty": "Bool"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type_name": {
-            "address": "0xa4",
-            "module": "execution",
-            "name": "LeaderRegistryWorkflowWitness"
-          },
-          "module": "execution",
-          "name": "LeaderRegistryWorkflowWitness",
-          "abilities": [
-            "Drop"
           ],
           "type_parameters": [],
           "kind": {
@@ -2569,6 +2611,90 @@
           "return_types": []
         },
         {
+          "name": "assert_complete_authorization_bindings",
+          "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "bindings",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "vec_map",
+                        "name": "VecMap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa2",
+                              "module": "graph",
+                              "name": "Vertex"
+                            },
+                            "type_arguments": []
+                          }
+                        },
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0x2",
+                              "module": "object",
+                              "name": "ID"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "assert_execution_can_accomplish_payment",
           "visibility": "Friend",
           "is_entry": false,
@@ -2953,6 +3079,33 @@
           "return_types": []
         },
         {
+          "name": "assert_walkable_dag",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "attach_execution_payment",
           "visibility": "Private",
           "is_entry": false,
@@ -2986,51 +3139,6 @@
                     "name": "ExecutionPayment"
                   },
                   "type_arguments": []
-                }
-              }
-            }
-          ],
-          "return_types": []
-        },
-        {
-          "name": "bind_leader_registry_workflow",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderRegistry"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "admin",
-              "ty": {
-                "Ref": {
-                  "mutable": true,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "leader",
-                        "name": "LeaderCapabilitiesAdminCap"
-                      },
-                      "type_arguments": []
-                    }
-                  }
                 }
               }
             }
@@ -4194,10 +4302,6 @@
             },
             {
               "name": "occurrence_id",
-              "ty": "U64"
-            },
-            {
-              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -7337,6 +7441,92 @@
           ]
         },
         {
+          "name": "load",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": false,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa4",
+                      "module": "execution",
+                      "name": "DAGExecutionInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "load_mut",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Ref": {
+                "mutable": true,
+                "inner": {
+                  "Datatype": {
+                    "type_name": {
+                      "address": "0xa4",
+                      "module": "execution",
+                      "name": "DAGExecutionInnerV1"
+                    },
+                    "type_arguments": []
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
           "name": "mark_payment_insufficient_settlement",
           "visibility": "Friend",
           "is_entry": false,
@@ -7505,10 +7695,6 @@
             },
             {
               "name": "occurrence_id",
-              "ty": "U64"
-            },
-            {
-              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -8204,35 +8390,6 @@
           ]
         },
         {
-          "name": "payment_protocol_version",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
-          ]
-        },
-        {
           "name": "payment_ready_active_walks",
           "visibility": "Friend",
           "is_entry": false,
@@ -8587,35 +8744,6 @@
           ],
           "return_types": [
             "Bool"
-          ]
-        },
-        {
-          "name": "protocol_version",
-          "visibility": "Public",
-          "is_entry": false,
-          "type_parameters": [],
-          "parameters": [
-            {
-              "name": "self",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa4",
-                        "module": "execution",
-                        "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            }
-          ],
-          "return_types": [
-            "U64"
           ]
         },
         {
@@ -10139,8 +10267,35 @@
           "name": "stamp_leader_submission_worksheet",
           "visibility": "Friend",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "registry",
               "ty": {
@@ -11457,6 +11612,130 @@
       "datatypes": [],
       "functions": [
         {
+          "name": "assert_complete_task_authorization_grants",
+          "visibility": "Private",
+          "is_entry": false,
+          "type_parameters": [],
+          "parameters": [
+            {
+              "name": "dag",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "authorization",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "authorization",
+                        "name": "AgentSkillAuthorization"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "grants",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Vector": {
+                      "Datatype": {
+                        "type_name": {
+                          "address": "0xa1",
+                          "module": "authorization",
+                          "name": "Grant"
+                        },
+                        "type_arguments": [
+                          {
+                            "Datatype": {
+                              "type_name": {
+                                "address": "0xa2",
+                                "module": "authorization",
+                                "name": "AgentVertexAuthorization"
+                              },
+                              "type_arguments": []
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "agent_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "skill_id",
+              "ty": "U64"
+            },
+            {
+              "name": "task_id",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0x2",
+                    "module": "object",
+                    "name": "ID"
+                  },
+                  "type_arguments": []
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
           "name": "copy_authorization_grants",
           "visibility": "Private",
           "is_entry": false,
@@ -11514,24 +11793,6 @@
           "type_parameters": [],
           "parameters": [
             {
-              "name": "dag",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa2",
-                        "module": "dag",
-                        "name": "DAG"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
               "name": "execution",
               "ty": {
                 "Ref": {
@@ -11542,24 +11803,6 @@
                         "address": "0xa4",
                         "module": "execution",
                         "name": "DAGExecution"
-                      },
-                      "type_arguments": []
-                    }
-                  }
-                }
-              }
-            },
-            {
-              "name": "registry",
-              "ty": {
-                "Ref": {
-                  "mutable": false,
-                  "inner": {
-                    "Datatype": {
-                      "type_name": {
-                        "address": "0xa3",
-                        "module": "agent_registry",
-                        "name": "AgentRegistry"
                       },
                       "type_arguments": []
                     }
@@ -11592,23 +11835,6 @@
                   }
                 }
               }
-            },
-            {
-              "name": "agent_id",
-              "ty": {
-                "Datatype": {
-                  "type_name": {
-                    "address": "0x2",
-                    "module": "object",
-                    "name": "ID"
-                  },
-                  "type_arguments": []
-                }
-              }
-            },
-            {
-              "name": "skill_id",
-              "ty": "U64"
             }
           ],
           "return_types": []
@@ -11729,10 +11955,6 @@
             },
             {
               "name": "occurrence_id",
-              "ty": "U64"
-            },
-            {
-              "name": "protocol_version",
               "ty": "U64"
             },
             {
@@ -11858,6 +12080,274 @@
           "name": "new_task_execution_with_gas_charge",
           "visibility": "Public",
           "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "agent_registry",
+                        "name": "AgentRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "authorization",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "authorization",
+                        "name": "AgentSkillAuthorization"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "payment_reserve",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "payment",
+                        "name": "TaskPaymentReserve"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "spec",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "agent",
+                        "name": "ExecutionSpec"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "task_uid",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "object",
+                        "name": "UID"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "tool_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa7",
+                        "module": "tool_registry",
+                        "name": "ToolRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_cap",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa1",
+                        "module": "owner_cap",
+                        "name": "CloneableOwnerCap"
+                      },
+                      "type_arguments": [
+                        {
+                          "Datatype": {
+                            "type_name": {
+                              "address": "0xa3",
+                              "module": "leader_cap",
+                              "name": "OverNetwork"
+                            },
+                            "type_arguments": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "occurrence_id",
+              "ty": "U64"
+            },
+            {
+              "name": "priority_fee_percentage",
+              "ty": "U64"
+            },
+            {
+              "name": "gas_charge",
+              "ty": "U64"
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": [
+            {
+              "Datatype": {
+                "type_name": {
+                  "address": "0xa4",
+                  "module": "execution",
+                  "name": "DAGExecution"
+                },
+                "type_arguments": []
+              }
+            }
+          ]
+        },
+        {
+          "name": "new_task_execution_with_gas_charge_",
+          "visibility": "Private",
+          "is_entry": false,
           "type_parameters": [],
           "parameters": [
             {
@@ -12038,10 +12528,6 @@
               "ty": "U64"
             },
             {
-              "name": "protocol_version",
-              "ty": "U64"
-            },
-            {
               "name": "priority_fee_percentage",
               "ty": "U64"
             },
@@ -12102,6 +12588,127 @@
         {
           "name": "start_and_share",
           "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Datatype": {
+                  "type_name": {
+                    "address": "0xa4",
+                    "module": "execution",
+                    "name": "DAGExecution"
+                  },
+                  "type_arguments": []
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "start_and_share_",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -12196,6 +12803,132 @@
         {
           "name": "start_execution",
           "visibility": "Public",
+          "is_entry": false,
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
+          "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "self",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa2",
+                        "module": "dag",
+                        "name": "DAG"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "execution",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa4",
+                        "module": "execution",
+                        "name": "DAGExecution"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "leader_registry",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa3",
+                        "module": "leader",
+                        "name": "LeaderRegistry"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "clock",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "clock",
+                        "name": "Clock"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "ctx",
+              "ty": {
+                "Ref": {
+                  "mutable": true,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0x2",
+                        "module": "tx_context",
+                        "name": "TxContext"
+                      },
+                      "type_arguments": []
+                    }
+                  }
+                }
+              }
+            }
+          ],
+          "return_types": []
+        },
+        {
+          "name": "start_execution_",
+          "visibility": "Private",
           "is_entry": false,
           "type_parameters": [],
           "parameters": [
@@ -15576,8 +16309,35 @@
           "name": "abort_expired_execution",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -15657,8 +16417,35 @@
           "name": "cleanup_broken_onchain_tool_result",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -15786,8 +16573,35 @@
           "name": "emit_payment_ready_walk_requests",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -15909,8 +16723,35 @@
           "name": "record_committed_tool_result_gas_charge_by_leader",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -16243,8 +17084,35 @@
           "name": "refill_tap_execution_payment",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "execution",
               "ty": {
@@ -16312,8 +17180,35 @@
           "name": "refill_tap_execution_payment_from_agent_vault",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "agent",
               "ty": {
@@ -16361,8 +17256,35 @@
           "name": "settle_committed_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -16500,8 +17422,35 @@
           "name": "settle_committed_tool_result_for_walk_by_leader",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -17202,8 +18151,35 @@
           "name": "settle_onchain_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -17380,8 +18356,35 @@
           "name": "settle_task_execution",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "reserve",
               "ty": {
@@ -17852,8 +18855,35 @@
           "name": "commit_off_chain_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -18054,8 +19084,35 @@
           "name": "consume_on_chain_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -18269,8 +19326,35 @@
           "name": "create_on_chain_tool_result_for_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -18513,8 +19597,35 @@
           "name": "prepare_tool_result_submission_worksheet",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "self",
               "ty": {
@@ -18720,8 +19831,35 @@
           "name": "release_vertex_authorization_for_onchain_walk",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "dag",
               "ty": {
@@ -19080,8 +20218,35 @@
           "name": "abort_expired_execution_with_tool_cashier",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "tool_cashier",
               "ty": {
@@ -19237,8 +20402,35 @@
           "name": "finalize_payment_state_for_vertex",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "tool_cashier",
               "ty": {
@@ -19368,8 +20560,35 @@
           "name": "lock_payment_state_for_tool",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "tool_cashier",
               "ty": {
@@ -19617,8 +20836,35 @@
           "name": "refund_payment_state_for_vertex",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "tool_cashier",
               "ty": {
@@ -19757,8 +21003,35 @@
           "name": "settle_payment_state_for_vertex",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "tool_cashier",
               "ty": {
@@ -19833,8 +21106,35 @@
           "name": "snapshot_dag_invocation_costs",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "registry",
               "ty": {
@@ -19896,8 +21196,35 @@
           "name": "snapshot_invocation_cost",
           "visibility": "Public",
           "is_entry": false,
-          "type_parameters": [],
+          "type_parameters": [
+            {
+              "constraints": [],
+              "is_phantom": false
+            }
+          ],
           "parameters": [
+            {
+              "name": "_permit",
+              "ty": {
+                "Ref": {
+                  "mutable": false,
+                  "inner": {
+                    "Datatype": {
+                      "type_name": {
+                        "address": "0xa0",
+                        "module": "runtime_authority",
+                        "name": "RuntimePermit"
+                      },
+                      "type_arguments": [
+                        {
+                          "TypeParameter": 0
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
             {
               "name": "registry",
               "ty": {

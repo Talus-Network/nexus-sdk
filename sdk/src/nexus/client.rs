@@ -3,20 +3,20 @@
 
 use {
     crate::{
-        events::{NexusEventIngestor, NexusEventQuery},
+        events::{NexusEventDecoder, NexusEventIngestor, NexusEventQuery},
         nexus::{
             address_balance::{fetch_submission_context, finish_transaction, NonceAllocator},
             crawler::Crawler,
             error::NexusError,
             network::NetworkActions,
-            protocol::{ProtocolExtras, ProtocolResolver},
             scheduler::Scheduler,
             signer::{ExecutedTransaction, Signer},
+            state::StateResolver,
             transaction::NexusTransaction,
             workflow::WorkflowActions,
         },
         sui,
-        types::NexusObjects,
+        types::{NexusContext, NexusObjects, PackageRole, SharedRoot},
         ToolFqn,
     },
     std::sync::Arc,
@@ -124,7 +124,7 @@ pub struct AddressBalanceGas {
 }
 
 impl AddressBalanceGas {
-    /// Creates a new independent sender nonce authority.
+    /// Creates a configuration backed by the process nonce authority.
     pub fn new(budget: u64) -> Self {
         Self::with_nonce_allocator(budget, NonceAllocator::default())
     }
@@ -147,10 +147,7 @@ pub struct NexusClientBuilder {
     gas_coins: Vec<sui::types::ObjectReference>,
     gas_budget: Option<u64>,
     address_balance_gas: Option<AddressBalanceGas>,
-    #[cfg(any(test, feature = "test_utils"))]
     nexus_objects: Option<NexusObjects>,
-    protocol: Option<sui::types::ObjectReference>,
-    protocol_extras: Option<ProtocolExtras>,
     transaction_timeout: Option<Duration>,
 }
 
@@ -179,11 +176,11 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Configures address balance based gas with an independent nonce authority.
+    /// Configures address balance based gas with the process nonce authority.
     ///
-    /// This creates a nonce authority owned by the resulting client. Use
-    /// [`Self::with_address_balance_gas_config`] when several clients submit
-    /// for the same sender.
+    /// Independently constructed clients in this process allocate from the
+    /// same nonce sequence. Use [`Self::with_address_balance_gas_config`] when
+    /// the caller must supply a distinct nonce authority explicitly.
     pub fn with_address_balance_gas(mut self, budget: u64) -> Self {
         self.address_balance_gas = Some(AddressBalanceGas::new(budget));
         self
@@ -196,23 +193,9 @@ impl NexusClientBuilder {
         self
     }
 
-    /// Set a fixed Nexus object snapshot for tests.
-    #[doc(hidden)]
-    #[cfg(any(test, feature = "test_utils"))]
+    /// Configures stable Nexus environment identities.
     pub fn with_nexus_objects(mut self, nexus_objects: NexusObjects) -> Self {
         self.nexus_objects = Some(nexus_objects);
-        self
-    }
-
-    /// Resolve the active Nexus configuration from one stable protocol root.
-    pub fn with_protocol(mut self, protocol: sui::types::ObjectReference) -> Self {
-        self.protocol = Some(protocol);
-        self
-    }
-
-    /// Supply external token and optional operator authority configuration.
-    pub fn with_protocol_extras(mut self, extras: ProtocolExtras) -> Self {
-        self.protocol_extras = Some(extras);
         self
     }
 
@@ -240,38 +223,19 @@ impl NexusClientBuilder {
         let rpc_url = self
             .rpc_url
             .ok_or_else(|| NexusError::Configuration("RPC URL is required".into()))?;
-
-        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
-        #[cfg(any(test, feature = "test_utils"))]
-        let test_objects = self.nexus_objects;
-        #[cfg(not(any(test, feature = "test_utils")))]
-        let test_objects: Option<NexusObjects> = None;
-
-        let (nexus_objects, protocol_resolver) = match (test_objects, self.protocol) {
-            (Some(_), Some(_)) => {
-                return Err(NexusError::Configuration(
-                    "configure either Nexus objects or a protocol root, not both".into(),
-                ));
-            }
-            (Some(objects), None) => (objects, None),
-            (None, Some(protocol)) => {
-                let resolver = ProtocolResolver::new(protocol, Arc::clone(&client))
-                    .with_extras(self.protocol_extras.unwrap_or_default());
-                let objects = Box::pin(resolver.resolve_active()).await?;
-                (objects, Some(resolver))
-            }
-            (None, None) => {
-                return Err(NexusError::Configuration(
-                    "a protocol root is required".into(),
-                ));
-            }
-        };
-        let nexus_objects = Arc::new(nexus_objects);
+        let nexus_objects = self
+            .nexus_objects
+            .ok_or_else(|| NexusError::Configuration("Nexus objects are required".into()))?;
         let coin_gas_requested = self.gas_budget.is_some() || !self.gas_coins.is_empty();
         let gas_source = match (coin_gas_requested, self.address_balance_gas) {
             (true, Some(_)) => {
                 return Err(NexusError::Configuration(
                     "coin based gas and address balance based gas cannot both be configured".into(),
+                ));
+            }
+            (true, None) if self.gas_coins.is_empty() => {
+                return Err(NexusError::Configuration(
+                    "at least one gas coin is required for coin based gas".into(),
                 ));
             }
             (true, None) => Some(GasSource::coin(
@@ -282,14 +246,40 @@ impl NexusClientBuilder {
             (false, Some(gas)) => Some(GasSource::AddressBalance(gas)),
             (false, None) => None,
         };
-        let crawler = Crawler::new(Arc::clone(&client));
+        if gas_source.is_some() && self.pk.is_none() {
+            return Err(NexusError::MissingPrivateKey);
+        }
+
+        let client = Arc::new(sui::grpc::client(&rpc_url).map_err(NexusError::Rpc)?);
+        let actual_chain = client
+            .as_ref()
+            .clone()
+            .ledger_client()
+            .get_service_info(sui::grpc::GetServiceInfoRequest::default())
+            .await
+            .map_err(|error| NexusError::Rpc(error.into()))?
+            .into_inner()
+            .chain_id
+            .ok_or_else(|| NexusError::Rpc(anyhow::anyhow!("Sui service omitted its chain ID")))?;
+        if actual_chain != nexus_objects.chain_id {
+            return Err(NexusError::ChainMismatch {
+                expected: nexus_objects.chain_id,
+                actual: actual_chain,
+            });
+        }
+        let nexus_objects = Arc::new(nexus_objects);
+        let crawler = Arc::new(Crawler::new(Arc::clone(&client)));
+        let state_resolver = StateResolver::new(Arc::clone(&crawler));
 
         let signer = self.pk.map(|pk| {
             Signer::new(
                 client,
                 pk,
                 self.transaction_timeout.unwrap_or(Duration::from_secs(5)),
-                Arc::clone(&nexus_objects),
+                crate::events::NexusEventDecoder::new(
+                    state_resolver.clone(),
+                    Arc::clone(&nexus_objects),
+                ),
             )
         });
 
@@ -298,9 +288,8 @@ impl NexusClientBuilder {
             gas: Arc::new(OnceCell::new()),
             nexus_objects,
             crawler,
+            state_resolver,
             rpc_url,
-            protocol_resolver,
-            operation_snapshot: false,
         };
         if let Some(gas_source) = gas_source {
             nexus_client.set_gas_source(gas_source).await?;
@@ -320,15 +309,11 @@ pub struct NexusClient {
     /// Nexus objects to use.
     pub(super) nexus_objects: Arc<NexusObjects>,
     /// Provide access to an instantiated object crawler.
-    pub(super) crawler: Crawler,
+    pub(super) crawler: Arc<Crawler>,
+    /// Resolves live state and immutable package graphs.
+    pub(super) state_resolver: StateResolver,
     /// RPC URL used by the client.
     pub(super) rpc_url: String,
-    /// Authority used to follow the canonical protocol.
-    ///
-    /// This is absent only for snapshots created by test support.
-    protocol_resolver: Option<ProtocolResolver>,
-    /// Whether this clone is pinned for one in progress operation.
-    operation_snapshot: bool,
 }
 
 impl NexusClient {
@@ -358,13 +343,52 @@ impl NexusClient {
         }
     }
 
-    /// Starts one programmable transaction from the active protocol snapshot.
+    /// Starts a programmable transaction for effects on an existing object.
+    ///
+    /// The object witness is validated for SDK compatibility, while the fixed
+    /// runtime authority selects the package graph. This prevents a historical
+    /// Task or execution from routing effects back through historical code.
     ///
     /// # Errors
     ///
-    /// Returns [`NexusError`] when the active protocol cannot be resolved.
-    pub async fn transaction(&self) -> Result<NexusTransaction, NexusError> {
-        Ok(NexusTransaction::new(self.operation_client().await?))
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`Self::context_for_object`] and [`Self::runtime_context`].
+    pub async fn transaction_for_object(
+        &self,
+        object_id: sui::types::Address,
+        required_roots: &[SharedRoot],
+    ) -> Result<NexusTransaction, NexusError> {
+        self.context_for_object(object_id).await?;
+        let context = self.runtime_context(required_roots).await?;
+        Ok(NexusTransaction::for_object(
+            self.clone(),
+            context,
+            object_id,
+        ))
+    }
+
+    /// Starts a programmable transaction whose package graph is selected by
+    /// an explicit creator package.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, package metadata, or RPC errors reported by
+    /// [`Self::context_for_creator`].
+    pub async fn transaction_for_creator(
+        &self,
+        creator_package: sui::types::Address,
+        creator_role: PackageRole,
+        required_roots: &[SharedRoot],
+    ) -> Result<NexusTransaction, NexusError> {
+        let context = self
+            .context_for_creator(creator_package, creator_role, required_roots)
+            .await?;
+        Ok(NexusTransaction::for_creator(
+            self.clone(),
+            context,
+            creator_package,
+            creator_role,
+        ))
     }
 
     /// Returns a
@@ -395,6 +419,142 @@ impl NexusClient {
     /// Return a [`Crawler`] instance for object crawling operations.
     pub fn crawler(&self) -> &Crawler {
         &self.crawler
+    }
+
+    /// Returns the live object and package state resolver.
+    pub fn state_resolver(&self) -> &StateResolver {
+        &self.state_resolver
+    }
+
+    /// Resolves the operation context selected by one live object witness.
+    ///
+    /// Package metadata is resolved only for this request. Stable environment
+    /// identity remains shared by all contexts created by this client.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`StateResolver::resolve_context`].
+    pub async fn context_for_object(
+        &self,
+        object_id: sui::types::Address,
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let (_, context) = self
+            .state_resolver
+            .resolve_context(Arc::clone(&self.nexus_objects), object_id)
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves the operation context selected by a canonical shared root.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`Self::context_for_object`].
+    pub async fn context_for_root(
+        &self,
+        root: &SharedRoot,
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        self.context_for_object(root.object_id()).await
+    }
+
+    /// Resolves one source object and validates every canonical root used by
+    /// the operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`StateResolver::resolve_context_with_roots`].
+    pub async fn context_for_object_with_roots(
+        &self,
+        object_id: sui::types::Address,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let (_, context) = self
+            .state_resolver
+            .resolve_context_with_roots(Arc::clone(&self.nexus_objects), object_id, required_roots)
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves an explicit creator package after validating every root it
+    /// will use.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::IncompatiblePackage`] when creator linkage does
+    /// not match current root authority. Other resolver and RPC failures are
+    /// returned unchanged.
+    pub async fn context_for_creator(
+        &self,
+        creator_package: sui::types::Address,
+        creator_role: PackageRole,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let context = self
+            .state_resolver
+            .resolve_creator_context(
+                Arc::clone(&self.nexus_objects),
+                creator_package,
+                creator_role,
+                required_roots,
+            )
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves the package graph preferred for new proposal construction.
+    ///
+    /// This context remains available while runtime effects are paused. It is
+    /// a routing decision only and does not confer protocol effect authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns routing, package compatibility, object state, or RPC errors
+    /// reported by [`StateResolver::resolve_routing_context`].
+    pub async fn routing_context(
+        &self,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let context = self
+            .state_resolver
+            .resolve_routing_context(Arc::clone(&self.nexus_objects), required_roots)
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Resolves the only package graph currently allowed to produce protocol effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns runtime authority, package compatibility, object state, or RPC
+    /// errors reported by [`StateResolver::resolve_runtime_context`].
+    pub async fn runtime_context(
+        &self,
+        required_roots: &[SharedRoot],
+    ) -> Result<Arc<NexusContext>, NexusError> {
+        let context = self
+            .state_resolver
+            .resolve_runtime_context(Arc::clone(&self.nexus_objects), required_roots)
+            .await?;
+        Ok(Arc::new(context))
+    }
+
+    /// Fetches the current transaction input reference for a stable object ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NexusError::Rpc`] when the object metadata cannot be fetched.
+    pub(crate) async fn object_reference(
+        &self,
+        object_id: sui::types::Address,
+    ) -> Result<sui::types::ObjectReference, NexusError> {
+        self.crawler
+            .get_object_metadata(object_id)
+            .await
+            .map(|object| object.object_ref())
+            .map_err(NexusError::Rpc)
     }
 
     /// Return the owner address derived from this client's signing key.
@@ -548,12 +708,27 @@ impl NexusClient {
         self.signer.as_ref().ok_or(NexusError::MissingPrivateKey)
     }
 
-    /// Returns a [`NexusEventIngestor`] for this Nexus deployment.
-    pub fn event_ingestor(&self) -> NexusEventIngestor {
-        NexusEventIngestor::new(
+    /// Returns a [`NexusEventIngestor`] whose server filter is selected by the
+    /// witness on `filter_source`.
+    ///
+    /// Event decoding still resolves each emitter package independently. The
+    /// source controls only the exact wrapper types sent to the Sui server.
+    ///
+    /// # Errors
+    ///
+    /// Returns compatibility, object state, or RPC errors reported by
+    /// [`Self::context_for_object`].
+    pub async fn event_ingestor(
+        &self,
+        filter_source: sui::types::Address,
+    ) -> Result<NexusEventIngestor, NexusError> {
+        let context = self.context_for_object(filter_source).await?;
+        let decoder =
+            NexusEventDecoder::new(self.state_resolver.clone(), Arc::clone(&self.nexus_objects));
+        Ok(NexusEventIngestor::new(
             &self.rpc_url,
-            NexusEventQuery::new(Arc::clone(&self.nexus_objects)),
-        )
+            NexusEventQuery::new(context, decoder),
+        ))
     }
 
     /// Attaches the gas source shared by this client, its clones, and action facades.
@@ -612,80 +787,6 @@ impl NexusClient {
         Arc::clone(&self.nexus_objects)
     }
 
-    /// Return a new immutable client bound to the active protocol configuration.
-    ///
-    /// The original client remains bound to its existing configuration.
-    /// Standard action methods resolve [`crate::move_bindings::primitives::protocol::Protocol`]
-    /// before beginning an operation.
-    pub async fn refresh_protocol(&self) -> Result<NexusClient, NexusError> {
-        let Some(resolver) = &self.protocol_resolver else {
-            return Ok(self.clone());
-        };
-        let Some(objects) = resolver
-            .resolve_active_if_changed(&self.nexus_objects)
-            .await?
-        else {
-            return Ok(self.clone());
-        };
-
-        Ok(self.with_protocol_objects(objects))
-    }
-
-    /// Pin this client to its current protocol configuration.
-    ///
-    /// Actions invoked through the returned snapshot keep one configuration.
-    /// Transaction submission still verifies that the configuration remains
-    /// active before signing.
-    pub fn into_protocol_snapshot(mut self) -> Self {
-        self.operation_snapshot = true;
-        self
-    }
-
-    pub(crate) async fn operation_client(&self) -> Result<NexusClient, NexusError> {
-        if self.operation_snapshot {
-            return Ok(self.clone());
-        }
-
-        let mut client = self.refresh_protocol().await?;
-        client.operation_snapshot = true;
-        Ok(client)
-    }
-
-    fn with_protocol_objects(&self, nexus_objects: NexusObjects) -> Self {
-        let nexus_objects = Arc::new(nexus_objects);
-        let signer = self.signer.clone().map(|mut signer| {
-            signer.nexus_objects = Arc::clone(&nexus_objects);
-            signer
-        });
-
-        Self {
-            signer,
-            gas: Arc::clone(&self.gas),
-            nexus_objects,
-            crawler: self.crawler.clone(),
-            rpc_url: self.rpc_url.clone(),
-            protocol_resolver: self.protocol_resolver.clone(),
-            operation_snapshot: self.operation_snapshot,
-        }
-    }
-
-    async fn ensure_protocol_is_current(&self) -> Result<(), NexusError> {
-        let Some(resolver) = &self.protocol_resolver else {
-            return Ok(());
-        };
-        let Some(active) = resolver
-            .resolve_active_if_changed(&self.nexus_objects)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        Err(NexusError::StaleProtocol {
-            client_version: self.nexus_objects.protocol_version,
-            active_version: active.protocol_version,
-        })
-    }
-
     /// Submits a programmable transaction through this client's configured
     /// [`Gas`] source.
     ///
@@ -698,7 +799,6 @@ impl NexusClient {
         tx: sui::types::ProgrammableTransaction,
         address: sui::types::Address,
     ) -> Result<ExecutedTransaction, NexusError> {
-        self.ensure_protocol_is_current().await?;
         let signer = self.signer()?;
         let gas = self.gas_configured()?;
         let response = match &gas {
@@ -733,15 +833,6 @@ impl NexusClient {
             }
         };
 
-        if response.is_err() {
-            match self.ensure_protocol_is_current().await {
-                Err(error @ NexusError::StaleProtocol { .. })
-                | Err(error @ NexusError::UnsupportedProtocolVersion { .. })
-                | Err(error @ NexusError::ProtocolValidation(_)) => return Err(error),
-                _ => {}
-            }
-        }
-
         response
     }
 
@@ -757,7 +848,7 @@ impl NexusClient {
         tool_fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
         let crawler = self.crawler();
-        let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
+        let tool_registry_object_id = self.nexus_objects.tool_registry.object_id();
 
         let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
             .map_err(NexusError::Parsing)?;
@@ -775,14 +866,19 @@ impl NexusClient {
         tool_fqn: &ToolFqn,
     ) -> anyhow::Result<sui::types::ObjectReference, NexusError> {
         let crawler = self.crawler();
-        let tool_registry_object_id = *self.nexus_objects.tool_registry.object_id();
+        let tool_registry_object_id = self.nexus_objects.tool_registry.object_id();
         let tool_id = crate::move_bindings::derive_tool_id(tool_registry_object_id, tool_fqn)
             .map_err(NexusError::Parsing)?;
-        let tool_cashier_id = crate::move_bindings::derive_tool_cashier_id(
-            self.nexus_objects.tool_cashier_type_origin_pkg_id(),
-            tool_id,
-        )
-        .map_err(NexusError::Parsing)?;
+        let context = self.context_for_object(tool_id).await?;
+        let tool_package = context
+            .require_package(PackageRole::Tool)
+            .map_err(|error| NexusError::Configuration(error.to_string()))?;
+        let tool_cashier_origin = tool_package
+            .type_origin("tool_cashier", "ToolCashierKey")
+            .map_err(|error| NexusError::Configuration(error.to_string()))?;
+        let tool_cashier_id =
+            crate::move_bindings::derive_tool_cashier_id(tool_cashier_origin, tool_id)
+                .map_err(NexusError::Parsing)?;
         let tool_cashier = crawler
             .get_object_metadata(tool_cashier_id)
             .await
@@ -867,76 +963,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn protocol_rebind_keeps_both_clients_immutable_and_shares_resources() {
-        let first = sui_mocks::mock_nexus_objects();
-        let mut second = first.clone();
-        second.protocol_version += 1;
-        second.config_hash = vec![9; sui::types::Digest::LENGTH];
-        let private_key = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
-        let client = NexusClient::builder()
-            .with_private_key(private_key)
-            .with_rpc_url("http://127.0.0.1:1")
-            .with_address_balance_gas(1_000_000)
-            .with_nexus_objects(first.clone())
-            .build()
-            .await
-            .unwrap();
-
-        let rebound = client.with_protocol_objects(second.clone());
-
-        assert_eq!(
-            client.get_nexus_objects().protocol_version,
-            first.protocol_version,
-        );
-        assert_eq!(
-            rebound.get_nexus_objects().protocol_version,
-            second.protocol_version,
-        );
-        assert!(Arc::ptr_eq(&client.gas, &rebound.gas));
-        assert_eq!(
-            rebound.signer().unwrap().nexus_objects.protocol_version,
-            second.protocol_version,
-        );
-    }
-
-    #[tokio::test]
-    async fn fixed_client_refresh_preserves_its_snapshot() {
-        let client = keyless_client("http://127.0.0.1:1").await;
-
-        let refreshed = client.refresh_protocol().await.unwrap();
+    async fn stable_environment_identity_is_shared_by_client_clones() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
+        let client = keyless_client(&rpc_url).await;
+        let cloned = client.clone();
 
         assert!(Arc::ptr_eq(
             &client.get_nexus_objects(),
-            &refreshed.get_nexus_objects(),
+            &cloned.get_nexus_objects(),
         ));
-    }
-
-    #[tokio::test]
-    async fn nested_actions_keep_one_operation_snapshot() {
-        let client = keyless_client("http://127.0.0.1:1").await;
-
-        let operation = client.operation_client().await.unwrap();
-        let nested = operation.operation_client().await.unwrap();
-
-        assert!(!client.operation_snapshot);
-        assert!(operation.operation_snapshot);
-        assert!(Arc::ptr_eq(
-            &operation.get_nexus_objects(),
-            &nested.get_nexus_objects(),
-        ));
-    }
-
-    #[test]
-    fn stale_protocol_error_names_both_versions() {
-        let error = NexusError::StaleProtocol {
-            client_version: 1,
-            active_version: 2,
-        };
-
-        assert_eq!(
-            error.to_string(),
-            "Protocol changed from version 1 to version 2 while the operation was in progress",
-        );
+        assert_eq!(client.get_nexus_objects(), cloned.get_nexus_objects());
     }
 
     #[tokio::test]
@@ -1107,28 +1143,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keyless_client_supports_read_only_action_queries() {
-        let mut ledger_service_mock = sui_mocks::grpc::MockLedgerService::new();
-        ledger_service_mock
-            .expect_get_object()
-            .times(2)
-            .returning(|_| Err(tonic::Status::not_found("object not present")));
-        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
-            ledger_service_mock: Some(ledger_service_mock),
-            ..Default::default()
-        });
+    async fn keyless_client_supports_read_only_construction() {
+        let rpc_url = sui_mocks::grpc::mock_server(Default::default());
         let client = keyless_client(&rpc_url).await;
-        let tool_fqn = "xyz.demo.tool@1"
-            .parse()
-            .expect("test tool FQN should parse");
 
-        let inspection = client
-            .tool()
-            .inspect_tool(&tool_fqn)
-            .await
-            .expect("query-only Tool action should succeed");
-
-        assert!(!inspection.exists);
+        assert!(matches!(client.owner(), Err(NexusError::MissingPrivateKey)));
+        assert!(client.signer().is_err());
     }
 
     #[tokio::test]
@@ -1440,8 +1460,12 @@ mod tests {
     async fn fetch_coin_by_type_selects_the_explicit_id() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let owner = pk.public_key().derive_address();
-        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
-            .coin_type_tag();
+        let object_type = crate::types::UsTokenConfig::new(
+            sui::types::Address::from_static("0xa"),
+            sui::types::Address::from_static("0xb"),
+            sui::types::Address::from_static("0xc"),
+        )
+        .coin_type_tag();
         let first_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x20"));
         let requested_coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x21"));
         let client = client_with_owned_coins(
@@ -1490,8 +1514,12 @@ mod tests {
     async fn fetch_coin_by_type_selects_the_deterministic_ordinal() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let owner = pk.public_key().derive_address();
-        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
-            .coin_type_tag();
+        let object_type = crate::types::UsTokenConfig::new(
+            sui::types::Address::from_static("0xa"),
+            sui::types::Address::from_static("0xb"),
+            sui::types::Address::from_static("0xc"),
+        )
+        .coin_type_tag();
         let smallest_balance =
             sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x1"));
         let lower_tied_id = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x2"));
@@ -1519,8 +1547,12 @@ mod tests {
     async fn fetch_coin_by_type_rejects_an_out_of_range_ordinal() {
         let pk = sui::crypto::Ed25519PrivateKey::generate(rand::thread_rng());
         let owner = pk.public_key().derive_address();
-        let object_type = crate::types::UsTokenConfig::new(sui::types::Address::from_static("0xa"))
-            .coin_type_tag();
+        let object_type = crate::types::UsTokenConfig::new(
+            sui::types::Address::from_static("0xa"),
+            sui::types::Address::from_static("0xb"),
+            sui::types::Address::from_static("0xc"),
+        )
+        .coin_type_tag();
         let coin = sui_mocks::object_ref_for_id(sui::types::Address::from_static("0x30"));
         let client = client_with_owned_coins(
             pk,
@@ -1984,7 +2016,7 @@ mod tests {
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23, chain);
+        sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23);
         let submitted =
             sui_mocks::grpc::mock_execute_transaction_without_gas_and_wait_for_checkpoint(
                 &mut tx_service_mock,
@@ -2013,6 +2045,7 @@ mod tests {
                 },
             );
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            chain_id: chain,
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
@@ -2020,11 +2053,16 @@ mod tests {
         });
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
         let sender = pk.public_key().derive_address();
+        let mut nexus_objects = nexus_objects;
+        nexus_objects.chain_id = chain.to_string();
         let client = NexusClientBuilder::new()
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)
             .with_nexus_objects(nexus_objects)
-            .with_address_balance_gas(9_000)
+            .with_address_balance_gas_config(AddressBalanceGas::with_nonce_allocator(
+                9_000,
+                NonceAllocator::new(0),
+            ))
             .build()
             .await
             .unwrap();
@@ -2051,7 +2089,7 @@ mod tests {
         let mut tx_service_mock = sui_mocks::grpc::MockTransactionExecutionService::new();
         let mut sub_service_mock = sui_mocks::grpc::MockSubscriptionService::new();
 
-        sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23, chain);
+        sui_mocks::grpc::mock_submission_context(&mut ledger_service_mock, 17, 23);
         sub_service_mock
             .expect_subscribe_checkpoints()
             .times(1)
@@ -2080,6 +2118,7 @@ mod tests {
             .times(2)
             .returning(|_| Err(tonic::Status::not_found("transaction is not indexed")));
         let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            chain_id: chain,
             ledger_service_mock: Some(ledger_service_mock),
             execution_service_mock: Some(tx_service_mock),
             subscription_service_mock: Some(sub_service_mock),
@@ -2087,10 +2126,12 @@ mod tests {
         });
         let pk = sui::crypto::Ed25519PrivateKey::generate(&mut rng);
         let sender = pk.public_key().derive_address();
+        let mut nexus_objects = sui_mocks::mock_nexus_objects();
+        nexus_objects.chain_id = chain.to_string();
         let client = NexusClientBuilder::new()
             .with_private_key(pk)
             .with_rpc_url(&rpc_url)
-            .with_nexus_objects(sui_mocks::mock_nexus_objects())
+            .with_nexus_objects(nexus_objects)
             .build()
             .await
             .expect("client should build before gas attachment");
@@ -2132,5 +2173,114 @@ mod tests {
         ptb: sui::types::ProgrammableTransaction,
     ) {
         let _ = client.submit_transaction(ptb, sender).await;
+    }
+
+    #[tokio::test]
+    async fn runtime_context_resolves_only_the_bound_scheduler_graph() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, false);
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let runtime = client.runtime_context(&[]).await.expect("runtime resolves");
+
+        assert_eq!(
+            runtime
+                .require_package(PackageRole::Scheduler)
+                .expect("runtime graph contains Scheduler")
+                .storage_id,
+            context
+                .require_package(PackageRole::Scheduler)
+                .expect("fixture contains Scheduler")
+                .storage_id,
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_context_rejects_a_paused_runtime_before_package_resolution() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, true);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let error = client
+            .runtime_context(&[])
+            .await
+            .expect_err("a paused runtime has no effect authority");
+
+        assert!(matches!(
+            error,
+            NexusError::InvalidObjectState { object, ref reason }
+                if object == context.runtime_authority.object_id()
+                    && reason.contains("paused")
+        ));
+    }
+
+    #[tokio::test]
+    async fn routing_context_resolves_the_bound_graph_while_runtime_is_paused() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        let mut packages = sui_mocks::grpc::MockMovePackageService::new();
+        sui_mocks::grpc::mock_runtime_authority(&mut ledger, &context, true);
+        sui_mocks::grpc::mock_nexus_package_graph(&mut ledger, &mut packages, context.packages());
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            package_service_mock: Some(packages),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let routing = client
+            .routing_context(&[])
+            .await
+            .expect("a pause removes effect authority, not package routing");
+
+        assert_eq!(
+            routing
+                .package_id(PackageRole::Scheduler)
+                .expect("routing graph contains Scheduler"),
+            context
+                .package_id(PackageRole::Scheduler)
+                .expect("fixture contains Scheduler"),
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_context_rejects_an_unbound_authority() {
+        let context = sui_mocks::mock_nexus_context();
+        let mut ledger = sui_mocks::grpc::MockLedgerService::new();
+        sui_mocks::grpc::mock_unbound_runtime_authority(&mut ledger, &context);
+        let rpc_url = sui_mocks::grpc::mock_server(sui_mocks::grpc::ServerMocks {
+            ledger_service_mock: Some(ledger),
+            ..Default::default()
+        });
+        let client =
+            nexus_mocks::mock_nexus_client_without_coins(context.objects(), &rpc_url).await;
+
+        let error = client
+            .runtime_context(&[])
+            .await
+            .expect_err("an unbound root has no effect authority");
+
+        assert!(matches!(
+            error,
+            NexusError::InvalidObjectState { object, ref reason }
+                if object == context.runtime_authority.object_id()
+                    && reason.contains("not bound")
+        ));
     }
 }

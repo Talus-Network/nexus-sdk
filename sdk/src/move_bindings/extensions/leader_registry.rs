@@ -6,9 +6,9 @@
 //! truth.
 
 #[cfg(test)]
-use crate::move_bindings::{
-    move_std::{option::Option as MoveOption, type_name::TypeName},
-    sui_framework::{table::Table as MoveTable, vec_set::VecSet as MoveVecSet},
+use crate::move_bindings::sui_framework::{
+    table::Table as MoveTable,
+    vec_set::VecSet as MoveVecSet,
 };
 #[cfg(test)]
 use crate::move_bindings::{primitives, registry};
@@ -17,7 +17,7 @@ use {
         move_bindings::registry::leader::{
             CapabilityManger,
             LeaderRegistry,
-            LeaderRegistryStateV1,
+            LeaderRegistryInnerV1,
         },
         sui,
     },
@@ -34,7 +34,7 @@ impl LeaderRegistry {
     }
 }
 
-impl LeaderRegistryStateV1 {
+impl LeaderRegistryInnerV1 {
     /// Decode a version one leader registry payload from BCS bytes.
     pub fn from_bcs(contents: &[u8]) -> anyhow::Result<Self> {
         bcs::from_bytes(contents).context("failed to decode leader registry state")
@@ -53,10 +53,6 @@ impl LeaderRegistryStateV1 {
     #[cfg(test)]
     pub(crate) fn new_for_test(id: sui::types::Address, network: sui::types::Address) -> Self {
         Self {
-            protocol_id: crate::move_bindings::sui_framework::object::ID::new(
-                sui::types::Address::ZERO,
-            ),
-            minimum_protocol_version: 1,
             unbonding_duration_ms: 0,
             min_stake_us: 0,
             max_transaction_budget: 10_000_000_000,
@@ -74,7 +70,6 @@ impl LeaderRegistryStateV1 {
                     sui::types::Address::ZERO,
                 ),
             },
-            workflow_witness_type: MoveOption::from_option(None),
         }
     }
 }
@@ -116,15 +111,15 @@ fn leader_cap_issuer_for_test(
 mod tests {
     use super::*;
 
-    /// Round trip an empty [`LeaderRegistryStateV1`] payload through BCS.
+    /// Round trip an empty [`LeaderRegistryInnerV1`] payload through BCS.
     #[test]
     fn from_bcs_round_trips_empty_registry_payload() {
         let registry_id = sui::types::Address::from_static("0x1");
         let network_id = sui::types::Address::from_static("0x2");
-        let original = LeaderRegistryStateV1::new_for_test(registry_id, network_id);
+        let original = LeaderRegistryInnerV1::new_for_test(registry_id, network_id);
         let bytes = bcs::to_bytes(&original).expect("encode test registry");
 
-        let decoded = LeaderRegistryStateV1::from_bcs(&bytes).expect("decode round-trips");
+        let decoded = LeaderRegistryInnerV1::from_bcs(&bytes).expect("decode round-trips");
         let re_encoded = bcs::to_bytes(&decoded).expect("re-encode decoded registry");
 
         assert_eq!(
@@ -146,11 +141,7 @@ mod tests {
         let issuer_id = sui::types::Address::from_static("0x60");
         let issuer_inner = sui::types::Address::from_static("0x61");
 
-        let original = LeaderRegistryStateV1 {
-            protocol_id: crate::move_bindings::sui_framework::object::ID::new(
-                sui::types::Address::ZERO,
-            ),
-            minimum_protocol_version: 1,
+        let original = LeaderRegistryInnerV1 {
             unbonding_duration_ms: 5_000,
             min_stake_us: 1_000_000,
             max_transaction_budget: 7_500_000_000,
@@ -169,13 +160,10 @@ mod tests {
                 admin_cap_id: crate::move_bindings::sui_framework::object::ID::new(admin_cap_id),
                 leader_cap_issuer: leader_cap_issuer_for_test(issuer_id, registry_id, issuer_inner),
             },
-            workflow_witness_type: MoveOption::from_option(Some(TypeName::new(
-                "0x42::workflow::Witness",
-            ))),
         };
 
         let bytes = bcs::to_bytes(&original).expect("encode populated registry");
-        let decoded = LeaderRegistryStateV1::from_bcs(&bytes).expect("decode round-trips");
+        let decoded = LeaderRegistryInnerV1::from_bcs(&bytes).expect("decode round-trips");
         let re_encoded = bcs::to_bytes(&decoded).expect("re-encode decoded registry");
 
         assert_eq!(
@@ -215,14 +203,14 @@ mod tests {
 
     #[test]
     fn from_bcs_reports_truncated_input_via_context() {
-        let original = LeaderRegistryStateV1::new_for_test(
+        let original = LeaderRegistryInnerV1::new_for_test(
             sui::types::Address::from_static("0x1"),
             sui::types::Address::from_static("0x2"),
         );
         let bytes = bcs::to_bytes(&original).expect("encode test registry");
         let truncated = &bytes[..bytes.len() / 2];
 
-        let error = LeaderRegistryStateV1::from_bcs(truncated)
+        let error = LeaderRegistryInnerV1::from_bcs(truncated)
             .expect_err("decoding a truncated payload must fail");
 
         assert!(
@@ -235,7 +223,7 @@ mod tests {
 
     #[test]
     fn from_bcs_rejects_garbage_input() {
-        let error = LeaderRegistryStateV1::from_bcs(b"not-bcs")
+        let error = LeaderRegistryInnerV1::from_bcs(b"not-bcs")
             .expect_err("decoding random bytes must fail");
 
         assert!(
