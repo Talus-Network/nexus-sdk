@@ -37,6 +37,14 @@ pub struct InvocationTarget<'a> {
     pub vertex: &'a RuntimeVertex,
 }
 
+fn policy_type_name(context: &NexusContext, module: &str) -> anyhow::Result<TypeName> {
+    let origin = context.type_origin(PackageRole::Tool, module, "Policy")?;
+    Ok(TypeName::new(&format!(
+        "{}::{module}::Policy",
+        hex::encode(origin.as_bytes()),
+    )))
+}
+
 impl InvocationPolicyCall {
     /// Creates an arbitrary policy call from its witness [TypeName].
     pub fn new(policy: TypeName, arguments: Vec<OnchainToolArgument>) -> Self {
@@ -45,18 +53,16 @@ impl InvocationPolicyCall {
 
     /// Selects the canonical fixed price policy for this Nexus deployment.
     pub fn fixed_price(context: &NexusContext) -> anyhow::Result<Self> {
-        let origin = context.type_origin(PackageRole::Tool, "fixed_price", "Policy")?;
         Ok(Self::new(
-            TypeName::new(&format!("{origin}::fixed_price::Policy")),
+            policy_type_name(context, "fixed_price")?,
             Vec::new(),
         ))
     }
 
     /// Selects the canonical sponsored free policy for this Nexus deployment.
     pub fn free_invocation(context: &NexusContext) -> anyhow::Result<Self> {
-        let origin = context.type_origin(PackageRole::Tool, "free_invocation", "Policy")?;
         Ok(Self::new(
-            TypeName::new(&format!("{origin}::free_invocation::Policy")),
+            policy_type_name(context, "free_invocation")?,
             Vec::new(),
         ))
     }
@@ -79,8 +85,7 @@ impl InvocationPolicyCall {
 
     /// Returns the canonical finite credits witness [TypeName].
     pub fn finite_credits_policy(context: &NexusContext) -> anyhow::Result<TypeName> {
-        let origin = context.type_origin(PackageRole::Tool, "finite_credits", "Policy")?;
-        Ok(TypeName::new(&format!("{origin}::finite_credits::Policy")))
+        policy_type_name(context, "finite_credits")
     }
 
     /// Selects the canonical time pass policy with one read only shared account.
@@ -89,9 +94,8 @@ impl InvocationPolicyCall {
         pass: sui::types::Address,
         initial_shared_version: sui::types::Version,
     ) -> anyhow::Result<Self> {
-        let origin = context.type_origin(PackageRole::Tool, "time_pass", "Policy")?;
         Ok(Self::new(
-            TypeName::new(&format!("{origin}::time_pass::Policy")),
+            policy_type_name(context, "time_pass")?,
             vec![OnchainToolArgument::SharedObject {
                 object_id: pass,
                 initial_shared_version,
@@ -397,6 +401,13 @@ mod tests {
                 initial_shared_version,
                 mutable: true,
             }]
+        );
+        let origin = context
+            .type_origin(PackageRole::Tool, "finite_credits", "Policy")
+            .unwrap();
+        assert_eq!(
+            policy.policy.as_str(),
+            format!("{}::finite_credits::Policy", hex::encode(origin.as_bytes()))
         );
     }
 
