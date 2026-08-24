@@ -1347,7 +1347,7 @@ pub fn abort_expired_execution_for_self_ptb(
             vec![runtime_authority, dag, execution, clock],
         )?;
         if let Some(task) = task_settlement {
-            scheduler::append_settle_occurrence(tx, task, execution, leader_registry)?;
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
         Ok(())
     })
@@ -1390,7 +1390,7 @@ pub fn settle_committed_tool_result_for_walk_for_self_ptb(
         )?;
         super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         if let Some(task) = task_settlement {
-            scheduler::append_settle_occurrence(tx, task, execution, leader_registry)?;
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
         Ok(())
     })
@@ -1475,7 +1475,7 @@ pub fn settle_onchain_tool_result_for_walk_for_self_ptb(
 
         super::invocation::settle(tx, dag, execution, expected_vertex, invocation)?;
         if let Some(task) = task_settlement {
-            scheduler::append_settle_occurrence(tx, task, execution, leader_registry)?;
+            scheduler::append_settle_occurrence(tx, task, execution, clock)?;
         }
 
         Ok(())
@@ -1841,6 +1841,18 @@ mod tests {
         assert_eq!(shared.object_id(), expected.object_id());
         assert_eq!(shared.version(), expected.initial_shared_version);
         assert_eq!(shared.mutability().is_mutable(), expected_mutable);
+    }
+
+    fn expect_task_settlement_uses_clock(ptb: &ProgrammableTransaction) {
+        let settle = move_call_index(ptb, None, "scheduler", "settle");
+        let Command::MoveCall(call) = &ptb.commands[settle] else {
+            panic!("expected task settlement call");
+        };
+        let Input::Shared(clock) = input_for_argument(ptb, &call.arguments[3]) else {
+            panic!("expected Clock shared object argument");
+        };
+        assert_eq!(clock.object_id(), move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
     }
 
     fn expect_u64_arg(
@@ -2494,6 +2506,7 @@ mod tests {
         let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
         let task = move_call_index(&ptb, None, "scheduler", "settle");
         assert!(call_index < invocation && invocation < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]
@@ -2527,6 +2540,7 @@ mod tests {
         let invocation = move_call_index(&ptb, None, "invocation_adapter", "settle");
         let task = move_call_index(&ptb, None, "scheduler", "settle");
         assert!(call_index < invocation && invocation < task);
+        expect_task_settlement_uses_clock(&ptb);
 
         assert_eq!(call.arguments.len(), 11);
         expect_shared_root_arg(&ptb, &call.arguments[0], &objects.runtime_authority, false);
@@ -2556,6 +2570,7 @@ mod tests {
         );
         let task = move_call_index(&ptb, None, "scheduler", "settle");
         assert!(abort < task);
+        expect_task_settlement_uses_clock(&ptb);
     }
 
     #[test]

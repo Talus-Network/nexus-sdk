@@ -246,7 +246,6 @@ pub fn abort_expired_ptb(
     move_boundary::ptb(context, |transaction| {
         let dag = transaction.immutable_object(dag)?;
         let execution = transaction.shared_object(execution, true)?;
-        let leader_registry = transaction.shared_root(&context.leader_registry, false)?;
         let vertex = super::dag::runtime_vertex_arg(transaction, vertex)?;
         let receiving = transaction.receiving_object::<Invocation>(invocation)?;
         let clock = transaction.clock()?;
@@ -256,12 +255,7 @@ pub fn abort_expired_ptb(
             vec![runtime_authority, dag, execution, vertex, receiving, clock],
         )?;
         if let Some(task) = task_settlement {
-            super::scheduler::append_settle_occurrence(
-                transaction,
-                task,
-                execution,
-                leader_registry,
-            )?;
+            super::scheduler::append_settle_occurrence(transaction, task, execution, clock)?;
         }
         Ok(())
     })
@@ -441,23 +435,40 @@ mod tests {
             panic!("finalized DAG must be an immutable input")
         };
         assert_eq!(dag_input.object_id(), dag.object_id());
-        let calls = ptb
+        let refund = ptb
             .commands
             .iter()
-            .filter_map(|command| match command {
-                Command::MoveCall(call) => Some((call.module.as_str(), call.function.as_str())),
-                _ => None,
+            .position(|command| match command {
+                Command::MoveCall(call) => {
+                    call.module.as_str() == "invocation_adapter"
+                        && call.function.as_str() == "abort_expired"
+                }
+                _ => false,
             })
-            .collect::<Vec<_>>();
-        let refund = calls
-            .iter()
-            .position(|call| *call == ("invocation_adapter", "abort_expired"))
             .expect("Invocation timeout refund should be present");
-        let task = calls
+        let task = ptb
+            .commands
             .iter()
-            .position(|call| *call == ("scheduler", "settle"))
+            .position(|command| match command {
+                Command::MoveCall(call) => {
+                    call.module.as_str() == "scheduler" && call.function.as_str() == "settle"
+                }
+                _ => false,
+            })
             .expect("Task settlement should be present");
 
         assert!(refund < task);
+
+        let Command::MoveCall(task_settlement) = &ptb.commands[task] else {
+            panic!("expected task settlement Move call");
+        };
+        let Argument::Input(clock_index) = task_settlement.arguments[3] else {
+            panic!("expected Clock input argument");
+        };
+        let Input::Shared(clock) = &ptb.inputs[usize::from(clock_index)] else {
+            panic!("expected Clock shared object input");
+        };
+        assert_eq!(clock.object_id(), move_boundary::CLOCK_OBJECT_ID);
+        assert!(!clock.mutability().is_mutable());
     }
 }
